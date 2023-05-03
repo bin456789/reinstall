@@ -1,0 +1,64 @@
+#cloud-config
+# 顺序 early-commands > 安装系统 > late-commands > 重启进入系统 > cloud-init: runcmd > cloud-init: 其他
+autoinstall:
+  version: 1
+  source:
+    id: ubuntu-server-minimal
+    search_drivers: false
+  timezone: Asia/Shanghai
+  ssh:
+    allow-pw: true
+    authorized-keys: []
+    install-server: true
+  early-commands:
+    - |
+      # 解决 20.04 不能识别硬盘
+      # https://askubuntu.com/questions/1302392/ubuntu-server-20-04-setup-stuck-at-block-probing-did-not-discover-any-disks
+      mount | grep /isodevice && { losetup -d /dev/loop0; umount -l /isodevice; } || true
+
+      # 提取 extra.confhome
+      eval "$(grep -o '\bextra\.[^ ]*' /proc/cmdline | sed 's/\bextra.//')"
+
+      # 生成分区信息
+      curl -L $confhome/ubuntu-storage-early.sh | bash -s
+
+      # 禁用 DNS  强制离线安装内核和跳过最后的更新
+      # 但安装器会配置时区和写入最近的mirror到/etc/apt/sources.list 所以要提前解析
+      echo $(dig +short geoip.ubuntu.com | grep -v '\.$' | head -1) geoip.ubuntu.com >>/etc/hosts
+      sed -i -E 's/(^nameserver )/#\1/' /etc/resolv.conf
+  late-commands:
+    - |
+      # root ssh 登录
+      echo "PermitRootLogin yes" >/target/etc/ssh/sshd_config.d/01-permitrootlogin.conf
+
+      # 还原 DNS
+      sed -i -E 's/^#(nameserver )/\1/' /etc/resolv.conf
+
+      # 提取 extra.confhome
+      eval "$(grep -o '\bextra\.[^ ]*' /proc/cmdline | sed 's/\bextra.//')"
+
+      # 下载合并分区脚本
+      cd /target
+      curl -O $confhome/resize.sh
+
+      # 升级 cloud-init
+      # curtin in-target --target=/target -- apt update
+      # curtin in-target --target=/target -- apt-get install --only-upgrade cloud-init
+  user-data:
+    runcmd:
+      - |
+        # 合并分区
+        bash /resize.sh
+    disable_root: false
+    users:
+      - name: root
+        lock_passwd: false
+    chpasswd:
+      expire: false
+      # 20.04 arm 需要
+      list: |
+        root:1
+      users:
+        - name: root
+          password: 1
+          type: text
