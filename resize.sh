@@ -17,7 +17,8 @@ xda=$(lsblk -dn -o NAME | grep -E 'nvme0n1|.da')
 installer_num=$(readlink -f /dev/disk/by-label/installer | grep -o '[0-9]*$')
 if [ -n "$installer_num" ]; then
   # 要添加 LC_NUMERIC 或者将%转义成\%才能在cron里正确运行
-  LC_NUMERIC=en_US.utf8
+  # locale -a 不一定有"en_US.UTF-8"，但肯定有"C.UTF-8"
+  LC_NUMERIC="C.UTF-8"
   printf "d\n%s\nw" "$installer_num" | fdisk /dev/$xda
   update_part /dev/$xda
 fi
