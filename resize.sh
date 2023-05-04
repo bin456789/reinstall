@@ -7,8 +7,16 @@ update_part() {
   udevadm settle
 }
 
-# rh 自带 fdisk parted
+# el 自带 fdisk parted (el7的part不支持在线扩容)
 # ubuntu 自带 fdisk growpart
+
+# 删除分区用
+# el/ubuntu fdisk
+
+# 扩容分区用
+# el7 grownparted 额外安装
+# el8/9/fedora parted
+# ubuntu grownpart
 
 # 找出主硬盘
 xda=$(lsblk -dn -o NAME | grep -E 'nvme0n1|.da')
@@ -30,9 +38,13 @@ part_num=$(ls -1v /dev/$xda* | tail -1 | grep -o '[0-9]*$')
 part_fstype=$(lsblk -no FSTYPE /dev/$xda$part_num)
 
 # 扩容分区
-# rh 7 不能用parted在线扩容，而fdisk扩容会改变 PARTUUID，所以用 growpart
-# printf 'yes\n100%%' | parted /dev/$xda resizepart $part_num ---pretend-input-tty
-growpart /dev/$xda $part_num
+# ubuntu 和 el7 用 growpart，其他用 parted
+# el7 不能用parted在线扩容，而fdisk扩容会改变 PARTUUID，所以用 growpart
+if grep -E -i 'centos:7|ubuntu' /etc/os-release; then
+  growpart /dev/$xda $part_num
+else
+  printf 'yes\n100%%' | parted /dev/$xda resizepart $part_num ---pretend-input-tty
+fi
 update_part /dev/$xda
 
 # 扩容最后一个分区的文件系统
