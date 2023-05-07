@@ -5,7 +5,7 @@ xda=$(lsblk -dn -o NAME | grep -E 'nvme0n1|.da')
 # https://curtin.readthedocs.io/en/latest/topics/storage.html
 size_os=$(lsblk -bn -o SIZE /dev/disk/by-label/os)
 
-if parted /dev/sda print | grep '^Partition Table' | grep gpt; then
+if parted /dev/$xda print | grep '^Partition Table' | grep gpt; then
   # parted 3.1 on centos7 bug
   # https://documentation.suse.com/zh-cn/sles/15/html/SLES-all/cha-expert-partitioner.html#sec-expert-partitioner-tables-gpt
   parted /dev/$xda -s 'set 2 msftdata off' # os
