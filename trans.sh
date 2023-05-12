@@ -1,18 +1,94 @@
-# shellcheck disable=SC2148
-rescue --nomount
-%pre
+#!/bin/ash
+# shellcheck shell=dash
+# alpine 默认使用 busybox ash
 
-exec >/dev/pts/0 2>&1
+# 显示输出到前台
+# 似乎script更优雅，但 alpine 不带 script 命令
+# script -f/dev/tty0
+exec >/dev/tty0 2>&1
+
+# 提取 finalos/extra 到变量
+for prefix in finalos extra; do
+    for var in $(grep -o "\b$prefix\.[^ ]*" /proc/cmdline | xargs); do
+        eval "$(echo $var | sed -E "s/$prefix\.([^=]*)=(.*)/\1='\2'/")"
+    done
+done
+
+# 找到主硬盘
+# alpine 不自带lsblk，liveos安装的软件也会被带到新系统，所以不用lsblk
+# xda=$(lsblk -dn -o NAME | grep -E 'nvme0n1|.da')
+# shellcheck disable=SC2010
+xda=$(ls /dev/ | grep -Ex '[shv]da|nvme0n1')
+
+# arm要手动从硬件同步时间，避免访问https出错
+hwclock -s
+
+# 安装并打开 ssh
+echo root:123@@@ | chpasswd
+printf '\nyes' | setup-sshd
+
+# shellcheck disable=SC2154
+if [ "$distro" = "alpine" ]; then
+    # 还原改动，不然本脚本会被复制到新系统
+    rm -f /etc/local.d/trans.start
+    rm -f /etc/runlevels/default/local
+
+    # 网络
+    setup-interfaces -a # 生成 /etc/network/interfaces
+    rc-update add networking boot
+
+    # 设置
+    setup-keymap us us
+    setup-timezone -i Asia/Shanghai
+    setup-ntp chrony
+
+    # 在 arm netboot initramfs init 中
+    # 如果识别到rtc硬件，就往系统添加hwclock服务，否则添加swclock
+    # 这个设置也被复制到安装的系统中
+    # 但是从initramfs chroot到真正的系统后，是能识别rtc硬件的
+    # 所以我们手动改用hwclock修复这个问题
+    rc-update del swclock boot
+    rc-update add hwclock boot
+
+    # 通过 setup-alpine 安装会多启用几个服务
+    # https://github.com/alpinelinux/alpine-conf/blob/c5131e9a038b09881d3d44fb35e86851e406c756/setup-alpine.in#L189
+    # acpid | default
+    # crond | default
+    # seedrng | boot
+
+    # 添加 virt-what 用到的社区仓库
+    alpine_ver=$(cut -d. -f1,2 </etc/alpine-release)
+    echo http://dl-cdn.alpinelinux.org/alpine/v$alpine_ver/community >>/etc/apk/repositories
+
+    # 如果是 vm 就用 virt 内核
+    cp /etc/apk/world /tmp/world.old
+    apk add virt-what
+    if [ -n "$(virt-what)" ]; then
+        kernel_opt="-k virt"
+    fi
+    # 删除 virt-what 和依赖，不然会带到新系统
+    apk del "$(diff /tmp/world.old /etc/apk/world | grep '^+' | sed '1d' | sed 's/^+//')"
+
+    # 重置为官方仓库配置
+    true >/etc/apk/repositories
+    setup-apkrepos -1
+    setup-apkcache /var/cache/apk
+
+    # 安装到硬盘
+    # alpine默认使用 syslinux (efi 环境除外)，这里强制使用 grub，方便用脚本再次重装
+    export BOOTLOADER="grub"
+    printf 'y' | setup-disk -m sys $kernel_opt -s 0 /dev/$xda
+    exec reboot
+fi
 
 download() {
-    # axel 有问题
-    # axel "https://rocky-linux-us-south1.production.gcp.mirrors.ctrliq.cloud/pub/rocky//8.7/BaseOS/aarch64/os/images/pxeboot/vmlinuz"
-    # Initializing download: https://rocky-linux-us-south1.production.gcp.mirrors.ctrliq.cloud/pub/rocky//8.7/BaseOS/aarch64/os/images/pxeboot/vmlinuz
-    # Connection gone.
+    # 显示 url
+    echo $1
 
-    # axel https://fedorapeople.org/groups/virt/virtio-win/direct-downloads/archive-virtio/virtio-win-0.1.229-1/virtio-win-0.1.229.iso
-    # Initializing download: https://fedorapeople.org/groups/virt/virtio-win/direct-downloads/archive-virtio/virtio-win-0.1.229-1/virtio-win-0.1.229.iso
-    # Too many redirects.
+    # 阿里云禁止 axel 下载
+    # axel https://mirrors.aliyun.com/alpine/latest-stable/releases/x86_64/alpine-netboot-3.17.0-x86_64.tar.gz
+    # Initializing download: https://mirrors.aliyun.com/alpine/latest-stable/releases/x86_64/alpine-netboot-3.17.0-x86_64.tar.gz
+    # HTTP/1.1 403 Forbidden
 
     # 先用 axel 下载
     [ -z $2 ] && save="" || save="-o $2"
@@ -24,16 +100,25 @@ download() {
 }
 
 update_part() {
-    partprobe
+    hdparm -z $1
+    partprobe $1
     partx -u $1
     udevadm settle
-}
+    echo 1 >/sys/block/${1#/dev/}/device/rescan
+} 2>/dev/null
 
-# 找到主硬盘
-xda=$(lsblk -dn -o NAME | grep -E 'nvme0n1|.da')
+if ! apk add util-linux axel grub udev hdparm e2fsprogs curl parted; then
+    echo 'Unable to install package!'
+    sleep 1m
+    exec reboot
+fi
+
+# 打开dev才能刷新分区名
+rc-service udev start
 
 # 反激活 lvm
-vgchange -an
+# alpine live 不需要
+false && vgchange -an
 
 # 移除 lsblk 显示的分区
 partx -d /dev/$xda
@@ -46,6 +131,7 @@ disk_2t=$((2 * 1024 * 1024 * 1024 * 1024))
 # {xda}*1 星号用于 nvme0n1p1 的字母 p
 if [ -d /sys/firmware/efi ]; then
     # efi
+    apk add dosfstools
     parted /dev/$xda -s -- \
         mklabel gpt \
         mkpart '" "' fat32 1MiB 1025MiB \
@@ -93,45 +179,36 @@ mount /dev/disk/by-label/installer /os/installer
 
 # 安装 grub2
 basearch=$(uname -m)
-if [ -d /sys/firmware/efi ]; then
-    # el7的grub无法启动f38 arm的内核
+if [ -d /sys/firmware/efi/ ]; then
+    # 注意低版本的grub无法启动f38 arm的内核
     # https://forums.fedoraforum.org/showthread.php?330104-aarch64-pxeboot-vmlinuz-file-format-changed-broke-PXE-installs
 
-    # shellcheck disable=SC2164
-    cd /os/boot/efi
-    download https://mirrors.aliyun.com/fedora/releases/38/Everything/$basearch/os/images/efiboot.img
-    mkdir /efiboot
-    mount -o ro efiboot.img /efiboot
-    cp -r /efiboot/* /os/boot/efi/
+    apk add grub-efi efibootmgr
+    grub-install --efi-directory=/os/boot/efi --boot-directory=/os/boot
+
+    # 添加 netboot 备用
+    cd /os/boot/efi || exit
+    if [ "$basearch" = aarch64 ]; then
+        download https://boot.netboot.xyz/ipxe/netboot.xyz-arm64.efi
+    else
+        download https://boot.netboot.xyz/ipxe/netboot.xyz.efi
+    fi
 else
-    rpm -i --nodeps https://mirrors.aliyun.com/centos/7/os/x86_64/Packages/grub2-pc-modules-2.02-0.86.el7.centos.noarch.rpm
-    grub2-install --boot-directory=/os/boot /dev/$xda
+    apk add grub-bios
+    grub-install --boot-directory=/os/boot /dev/$xda
 fi
-
-# 安装 axel
-rpm -i --nodeps https://mirrors.aliyun.com/epel/7/$basearch/Packages/a/axel-2.4-9.el7.$basearch.rpm
-
-if [ -d /sys/firmware/efi ] && [ "$basearch" = "x86_64" ]; then
-    action='efi'
-fi
-
-# 提取 finalos 到变量
-eval "$(grep -o '\bfinalos\.[^ ]*' /proc/cmdline | sed 's/finalos.//')"
 
 # 重新整理 extra，因为grub会处理掉引号，要重新添加引号
 for var in $(grep -o '\bextra\.[^ ]*' /proc/cmdline | xargs); do
-    extra_cmdline+=" $(echo $var | sed -E "s/(extra\.[^=]*)=(.*)/\1='\2'/")"
+    extra_cmdline="$extra_cmdline $(echo $var | sed -E "s/(extra\.[^=]*)=(.*)/\1='\2'/")"
 done
 
-if [ -d /sys/firmware/efi ]; then
-    grub_cfg=/os/boot/efi/EFI/BOOT/grub.cfg
-else
-    grub_cfg=/os/boot/grub2/grub.cfg
-fi
+grub_cfg=/os/boot/grub/grub.cfg
 
-# shellcheck disable=SC2154,SC2164
+# 新版grub不区分linux/linuxefi
+# shellcheck disable=SC2154
 if [ "$distro" = "ubuntu" ]; then
-    cd /os/installer/
+    cd /os/installer/ || exit
     download $iso ubuntu.iso
 
     iso_file=/ubuntu.iso
@@ -144,26 +221,25 @@ if [ "$distro" = "ubuntu" ]; then
             rmmod tpm
             search --no-floppy --label --set=root installer
             loopback loop $iso_file
-            linux (loop)/casper/vmlinuz iso-scan/filename=$iso_file autoinstall cloud-config-url=$ks $extra_cmdline ---
+            linux (loop)/casper/vmlinuz iso-scan/filename=$iso_file autoinstall noprompt noeject cloud-config-url=$ks $extra_cmdline ---
             initrd (loop)/casper/initrd
         }
 EOF
 else
-    cd /os/
+    cd /os/ || exit
     download $vmlinuz
     download $initrd
 
-    cd /os/installer/
+    cd /os/installer/ || exit
     download $squashfs install.img
 
     cat <<EOF >$grub_cfg
         set timeout=5
         menuentry "reinstall" {
             search --no-floppy --label --set=root os
-            linux$action /vmlinuz inst.stage2=hd:LABEL=installer:/install.img inst.ks=$ks $extra_cmdline
-            initrd$action /initrd.img
+            linux /vmlinuz inst.stage2=hd:LABEL=installer:/install.img inst.ks=$ks $extra_cmdline
+            initrd /initrd.img
         }
 EOF
 fi
 reboot
-%end

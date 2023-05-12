@@ -2,10 +2,12 @@
 PATH="/usr/sbin:/usr/bin"
 
 update_part() {
-  partprobe
+  hdparm -z $1
+  partprobe $1
   partx -u $1
   udevadm settle
-}
+  echo 1 >/sys/block/${1#/dev/}/device/rescan
+} 2>/dev/null
 
 # el 自带 fdisk parted (el7的part不支持在线扩容)
 # ubuntu 自带 fdisk growpart
@@ -52,6 +54,7 @@ case $part_fstype in
 xfs) xfs_growfs / ;;
 ext*) resize2fs /dev/$xda$part_num ;;
 esac
+update_part /dev/$xda
 
 # 删除脚本自身
 rm -f /resize.sh /etc/cron.d/resize

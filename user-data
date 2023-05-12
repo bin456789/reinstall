@@ -17,7 +17,10 @@ autoinstall:
       mount | grep /isodevice && { losetup -d /dev/loop0; umount -l /isodevice; } || true
 
       # 提取 extra.confhome
-      eval "$(grep -o '\bextra\.[^ ]*' /proc/cmdline | sed 's/\bextra.//')"
+      prefix=extra
+      for var in $(grep -o "\b$prefix\.[^ ]*" /proc/cmdline | xargs); do
+          eval "$(echo $var | sed -E "s/$prefix\.([^=]*)=(.*)/\1='\2'/")"
+      done
 
       # 生成分区信息
       curl -L $confhome/ubuntu-storage-early.sh | bash -s
@@ -35,7 +38,10 @@ autoinstall:
       sed -i -E 's/^#(nameserver )/\1/' /etc/resolv.conf
 
       # 提取 extra.confhome
-      eval "$(grep -o '\bextra\.[^ ]*' /proc/cmdline | sed 's/\bextra.//')"
+      prefix=extra
+      for var in $(grep -o "\b$prefix\.[^ ]*" /proc/cmdline | xargs); do
+          eval "$(echo $var | sed -E "s/$prefix\.([^=]*)=(.*)/\1='\2'/")"
+      done
 
       # 下载合并分区脚本
       cd /target
@@ -43,7 +49,7 @@ autoinstall:
 
       # 升级 cloud-init
       # curtin in-target --target=/target -- apt update
-      # curtin in-target --target=/target -- apt-get install --only-upgrade cloud-init
+      # curtin in-target --target=/target -- apt install --only-upgrade cloud-init
   user-data:
     runcmd:
       - |

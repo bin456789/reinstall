@@ -1,21 +1,23 @@
 #!/bin/bash
-sed -i '$d' /autoinstall.yaml
+sed -i -E '/^\.{3}$/d' /autoinstall.yaml
+echo 'storage:' >>/autoinstall.yaml
+
+# 禁用 swap
+cat <<EOF >>/autoinstall.yaml
+  swap:
+    size: 0
+EOF
+
 xda=$(lsblk -dn -o NAME | grep -E 'nvme0n1|.da')
 # 是用 size 寻找分区，number 没什么用
 # https://curtin.readthedocs.io/en/latest/topics/storage.html
 size_os=$(lsblk -bn -o SIZE /dev/disk/by-label/os)
 
 if parted /dev/$xda print | grep '^Partition Table' | grep gpt; then
-  # parted 3.1 on centos7 bug
-  # https://documentation.suse.com/zh-cn/sles/15/html/SLES-all/cha-expert-partitioner.html#sec-expert-partitioner-tables-gpt
-  parted /dev/$xda -s 'set 2 msftdata off' # os
-  parted /dev/$xda -s 'set 3 msftdata off' # installer
-
   # efi
   if [ -e /dev/disk/by-label/efi ]; then
     size_efi=$(lsblk -bn -o SIZE /dev/disk/by-label/efi)
     cat <<EOF >>/autoinstall.yaml
-storage:
   config:
     # disk
     - ptable: gpt
@@ -60,7 +62,6 @@ EOF
     # bios 2t
     size_biosboot=$(parted /dev/$xda unit b print | grep bios_grub | awk '{print $4}' | sed 's/B$//')
     cat <<EOF >>/autoinstall.yaml
-storage:
   config:
     # disk
     - ptable: gpt
@@ -97,7 +98,6 @@ EOF
 else
   # bios
   cat <<EOF >>/autoinstall.yaml
-storage:
   config:
     # disk
     - ptable: msdos
