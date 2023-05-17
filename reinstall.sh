@@ -3,7 +3,7 @@ confhome=https://raw.githubusercontent.com/bin456789/reinstall/main
 localtest_confhome=http://192.168.253.1
 
 usage_and_exit() {
-    echo "Usage: reinstall.sh centos-7/8/9 alma-8/9 rocky-8/9 fedora-36/37/38 ubuntu-20.04/22.04 alpine-3.16/3.17/3.18"
+    echo "Usage: reinstall.sh centos-7/8/9 alma-8/9 rocky-8/9 fedora-36/37/38 ubuntu-20.04/22.04 alpine-3.16/3.17/3.18 debian-10/11"
     exit 1
 }
 
@@ -20,11 +20,8 @@ setos() {
     local step=$1
     local distro=$2
     local releasever=$3
-    local ks=$4
 
     setos_alpine() {
-        eval ${step}_distro=$distro
-
         if [ "$localtest" = 1 ]; then
             mirror=$confhome/alpine-netboot-3.17.3-x86_64/boot
             eval ${step}_vmlinuz=$mirror/vmlinuz-lts
@@ -45,10 +42,32 @@ setos() {
         fi
     }
 
+    setos_debian() {
+        if [ "$localtest" = 1 ]; then
+            mirror=$confhome/debian/install.amd
+            eval ${step}_vmlinuz=$mirror/vmlinuz
+            eval ${step}_initrd=$mirror/initrd.gz
+        else
+            case "$releasever" in
+            12) codename=bookworm ;;
+            11) codename=bullseye ;;
+            10) codename=buster ;;
+            esac
+            if is_in_china; then
+                hostname=ftp.cn.debian.org
+            else
+                hostname=deb.debian.org
+            fi
+            mirror=http://$hostname/debian/dists/$codename/main/installer-$basearch_alt/current/images/netboot/debian-installer/$basearch_alt
+            eval ${step}_vmlinuz=$mirror/linux
+            eval ${step}_initrd=$mirror/initrd.gz
+        fi
+        eval ${step}_ks=$confhome/preseed.cfg
+    }
+
     setos_ubuntu() {
         if [ "$localtest" = 1 ]; then
             mirror=$confhome/
-            eval ${step}_ks=$confhome/$ks
         else
             if is_in_china; then
                 case "$basearch" in
@@ -61,23 +80,16 @@ setos() {
                 "aarch64") mirror=https://cdimage.ubuntu.com/releases/$releasever/release/ ;;
                 esac
             fi
-            eval ${step}_ks=$confhome/user-data
         fi
 
-        case "$basearch" in
-        "x86_64") arch=amd64 ;;
-        "aarch64") arch=arm64 ;;
-        esac
-
-        filename=$(curl $mirror | grep -oP "ubuntu-$releasever.*?-live-server-$arch.iso" | head -1)
+        filename=$(curl $mirror | grep -oP "ubuntu-$releasever.*?-live-server-$basearch_alt.iso" | head -1)
         eval ${step}_iso=$mirror$filename
-        eval ${step}_distro=ubuntu
+        eval ${step}_ks=$confhome/user-data
     }
 
     setos_redhat() {
         if [ "$localtest" = 1 ]; then
             mirror=$confhome/$releasever/
-            eval ${step}_ks=$confhome/$ks
         else
             case $distro in
             "centos")
@@ -95,8 +107,7 @@ setos() {
             mirror=$(curl -L $mirrorlist | sed "/^#/d" | sed "/anigil/d" | head -1 | sed "s,\$basearch,$basearch,")
             eval "${step}_mirrorlist='${mirrorlist}'"
         fi
-        eval ${step}_ks=$confhome/$ks
-        eval ${step}_distro=${distro}
+        eval ${step}_ks=$confhome/ks.cfg
         eval ${step}_vmlinuz=${mirror}images/pxeboot/vmlinuz
         eval ${step}_initrd=${mirror}images/pxeboot/initrd.img
         eval ${step}_squashfs=${mirror}images/install.img
@@ -106,21 +117,26 @@ setos() {
         fi
     }
 
+    eval ${step}_distro=$distro
     case "$distro" in
     ubuntu) setos_ubuntu ;;
     alpine) setos_alpine ;;
+    debian) setos_debian ;;
     *) setos_redhat ;;
     esac
 }
 
 # 检查是否为正确的系统名
 verify_os_string() {
-    for os in 'centos-7|8|9' 'alma|rocky-8|9' 'fedora-36|37|38' 'ubuntu-20.04|22.04' 'alpine-3.16|3.17|3.18'; do
+    for os in 'centos-7|8|9' 'alma|rocky-8|9' 'fedora-36|37|38' 'ubuntu-20.04|22.04' 'alpine-3.16|3.17|3.18' 'debian-10|11|12'; do
         ds=$(echo $os | cut -d- -f1)
         vers=$(echo $os | cut -d- -f2 | sed 's \. \\\. g')
         finalos=$(echo "$@" | tr '[:upper:]' '[:lower:]' | sed -n -E "s,^($ds)[ :-]?($vers)$,\1:\2,p")
         if [ -n "$finalos" ]; then
             distro=$(echo $finalos | cut -d: -f1)
+            if [ "$distro" = centos ] || [ "$distro" = alma ] || [ "$distro" = rocky ]; then
+                distro_like=redhat
+            fi
             releasever=$(echo $finalos | cut -d: -f2)
             return
         fi
@@ -138,6 +154,8 @@ apt_install() {
 install_pkg() {
     pkgs=$*
     for pkg in $pkgs; do
+        # util-linux 用 lsmem 命令测试
+        [ "$pkg" = util-linux ] && pkg=lsmem
         if ! command -v $pkg; then
             {
                 apt_install $pkgs ||
@@ -150,6 +168,28 @@ install_pkg() {
             break
         fi
     done
+}
+
+check_ram() {
+    # lsmem最准确但centos7 arm 和alpine不能用
+    # arm 24g dmidecode 显示少了128m
+    install_pkg util-linux
+    ram_size=$(lsmem -b 2>/dev/null | grep 'Total online memory:' | awk '{ print $NF/1024/1024 }')
+    if [ -z $ram_size ]; then
+        install_pkg dmidecode
+        ram_size=$(dmidecode -t 17 | grep "Size.*[GM]B" | awk '{if ($3=="GB") s+=$2*1024; else s+=$2} END {print s}')
+    fi
+
+    case "$distro" in
+    alpine) ram_requirement=0 ;; # 未测试
+    debian) ram_requirement=384 ;;
+    *) ram_requirement=1024 ;;
+    esac
+
+    if [ $ram_size -lt $ram_requirement ]; then
+        echo "Could not install $distro: RAM < $ram_requirement MB."
+        exit 1
+    fi
 }
 
 # 脚本入口
@@ -190,38 +230,27 @@ if [ -f /etc/alpine-release ]; then
     apk add grep
 fi
 
-# 获取内存大小，lsmem最准确但centos7 arm 和alpine不能用
-# arm 24g dmidecode 显示少了128m
-if [ $distro != "alpine" ]; then
-    install_pkg util-linux
-    ram_size=$(lsmem -b 2>/dev/null | grep 'Total online memory:' | awk '{ print $NF/1024/1024 }')
-    if [ -z $ram_size ]; then
-        install_pkg dmidecode
-        ram_size=$(dmidecode -t 17 | grep "Size.*[GM]B" | awk '{if ($3=="GB") s+=$2*1024; else s+=$2} END {print s}')
-    fi
-
-    if [ $ram_size -lt 1024 ]; then
-        echo 'RAM < 1G. Unsupported.'
-        exit 1
-    fi
-fi
-
+check_ram
 basearch=$(uname -m)
+case "$basearch" in
+"x86_64") basearch_alt=amd64 ;;
+"aarch64") basearch_alt=arm64 ;;
+esac
+
 # 以下目标系统需要进入alpine环境安装
 # ubuntu/alpine
 # el8/9/fedora 任何架构 <2g
 # el7 aarch64 <1.5g
-if [ $distro = "ubuntu" ] ||
-    [ $distro = "alpine" ] ||
-    { [ $releasever -ge 8 ] && [ $ram_size -lt 2048 ]; } ||
-    { [ $releasever -eq 7 ] && [ $ram_size -lt 1536 ] && [ $basearch = "aarch64" ]; }; then
-    [ $distro = "ubuntu" ] && ks=user-data || ks=ks.cfg
+if [ "$distro" = "ubuntu" ] ||
+    [ "$distro" = "alpine" ] ||
+    { [ "$distro_like" = "redhat" ] && [ $releasever -ge 8 ] && [ $ram_size -lt 2048 ]; } ||
+    { [ "$distro_like" = "redhat" ] && [ $releasever -eq 7 ] && [ $ram_size -lt 1536 ] && [ $basearch = "aarch64" ]; }; then
     # 安装alpine时，使用指定的版本。 alpine作为中间系统时，使用 3.18
-    [ $distro = "alpine" ] && alpine_releasever=$releasever || alpine_releasever=3.18
-    setos finalos $distro $releasever $ks
+    [ "$distro" = "alpine" ] && alpine_releasever=$releasever || alpine_releasever=3.18
+    setos finalos $distro $releasever
     setos nextos alpine $alpine_releasever
 else
-    setos nextos $distro $releasever ks.cfg
+    setos nextos $distro $releasever
 fi
 
 # 下载启动内核
@@ -229,11 +258,10 @@ fi
 {
     cd /
     echo $nextos_vmlinuz
-    curl -Lo vmlinuz $nextos_vmlinuz
+    curl -Lo reinstall-vmlinuz $nextos_vmlinuz
 
     echo $nextos_initrd
-    curl -Lo initrd $nextos_initrd
-    touch reinstall.mark
+    curl -Lo reinstall-initrd $nextos_initrd
 }
 
 # 转换 finalos_a=1 为 finalos.a=1 ，排除 finalos_mirrorlist
@@ -289,7 +317,7 @@ if [ -n "$finalos_cmdline" ]; then
     rm -rf $tmp_dir
     mkdir -p $tmp_dir
     cd $tmp_dir
-    zcat /initrd | cpio -idm
+    zcat /reinstall-initrd | cpio -idm
 
     # hack
     # exec /bin/busybox switch_root $switch_root_opts $sysroot $chart_init "$KOPT_init" $KOPT_init_args # 3.17
@@ -309,7 +337,7 @@ EOF
     # -c    Identical to "-H newc", use the new (SVR4)
     #       portable format.If you wish the old portable
     #       (ASCII) archive format, use "-H odc" instead.
-    find . | cpio -o -H newc | gzip -1 >/initrd
+    find . | cpio -o -H newc | gzip -1 >/reinstall-initrd
 
     # 删除临时文件
     cd /
@@ -320,7 +348,11 @@ EOF
     # apkovl=sda2:ext4:/apkovl.tar.gz 官方有写但不生效
     cmdline="alpine_repo=$nextos_repo modloop=$nextos_modloop $extra_cmdline $finalos_cmdline "
 else
-    cmdline="root=live:$nextos_squashfs inst.ks=$nextos_ks $extra_cmdline"
+    if [ $distro = debian ]; then
+        cmdline="lowmem=+1 lowmem/low=1 auto=true priority=critical url=$nextos_ks"
+    else
+        cmdline="root=live:$nextos_squashfs inst.ks=$nextos_ks $extra_cmdline"
+    fi
 fi
 
 custom_cfg=$grub_cfg_dir/custom.cfg
@@ -329,9 +361,9 @@ cat <<EOF | tee $custom_cfg
 menuentry "reinstall" {
     insmod lvm
     insmod xfs
-    search --no-floppy --file --set=root /reinstall.mark
-    linux$efi /vmlinuz $cmdline
-    initrd$efi /initrd
+    search --no-floppy --file --set=root /reinstall-vmlinuz
+    linux$efi /reinstall-vmlinuz $cmdline
+    initrd$efi /reinstall-initrd
 }
 EOF
 
