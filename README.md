@@ -40,10 +40,10 @@ windows (见下方注意事项)
 只支持 UEFI 引导的机器，已测试成功的系统有 7 10 11，其他系统不保证成功
 安装 Windows 需要以下参数
 --iso           iso 链接，不需要提前添加 virtio 驱动
---image-name    系统全名，例如：
-                Windows 7 Ultimate
-                Windows 10 Enterprise LTSC 2021
-                Windows 11 Pro
+--image-name    系统全名，两边要有引号，例如：
+                'Windows 7 Ultimate'
+                'Windows 10 Enterprise LTSC 2021'
+                'Windows 11 Pro'
 ```
 #### 内存要求:
 ```
