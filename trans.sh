@@ -7,11 +7,22 @@
 # script -f/dev/tty0
 exec >/dev/tty0 2>&1
 
+add_community_repo() {
+    alpine_ver=$(cut -d. -f1,2 </etc/alpine-release)
+    echo http://dl-cdn.alpinelinux.org/alpine/v$alpine_ver/community >>/etc/apk/repositories
+}
+
 # 提取 finalos/extra 到变量
 for prefix in finalos extra; do
-    for var in $(grep -o "\b$prefix\.[^ ]*" /proc/cmdline | xargs); do
-        eval "$(echo $var | sed -E "s/$prefix\.([^=]*)=(.*)/\1='\2'/")"
-    done
+    while read -r line; do
+        if [ -n "$line" ]; then
+            key=$(echo $line | cut -d= -f1)
+            value=$(echo $line | cut -d= -f2-)
+            eval "$key='$value'"
+        fi
+    done <<EOF
+$(xargs -n1 </proc/cmdline | grep "^$prefix" | sed "s/^$prefix\.//")
+EOF
 done
 
 # 找到主硬盘
@@ -57,8 +68,7 @@ if [ "$distro" = "alpine" ]; then
     # seedrng | boot
 
     # 添加 virt-what 用到的社区仓库
-    alpine_ver=$(cut -d. -f1,2 </etc/alpine-release)
-    echo http://dl-cdn.alpinelinux.org/alpine/v$alpine_ver/community >>/etc/apk/repositories
+    add_community_repo
 
     # 如果是 vm 就用 virt 内核
     cp /etc/apk/world /tmp/world.old
@@ -129,42 +139,69 @@ disk_2t=$((2 * 1024 * 1024 * 1024 * 1024))
 # 对于红帽系是临时分区表，安装时除了 installer 分区，其他分区会重建为默认的大小
 # 对于ubuntu是最终分区表，因为 ubuntu 的安装器不能调整个别分区，只能重建整个分区表
 # {xda}*1 星号用于 nvme0n1p1 的字母 p
-if [ -d /sys/firmware/efi ]; then
-    # efi
-    apk add dosfstools
-    parted /dev/$xda -s -- \
-        mklabel gpt \
-        mkpart '" "' fat32 1MiB 1025MiB \
-        mkpart '" "' ext4 1025MiB -2GiB \
-        mkpart '" "' ext4 -2GiB 100% \
-        set 1 boot on
-    update_part /dev/$xda
-    mkfs.fat -F 32 -n efi /dev/${xda}*1     #1 efi
-    mkfs.ext4 -F -L os /dev/${xda}*2        #2 os
-    mkfs.ext4 -F -L installer /dev/${xda}*3 #3 installer
-elif [ "$disk_size" -ge "$disk_2t" ]; then
-    # bios 2t
-    parted /dev/$xda -s -- \
-        mklabel gpt \
-        mkpart '" "' ext4 1MiB 2MiB \
-        mkpart '" "' ext4 2MiB -2GiB \
-        mkpart '" "' ext4 -2GiB 100% \
-        set 1 bios_grub on
-    update_part /dev/$xda
-    echo                                    #1 bios_boot
-    mkfs.ext4 -F -L os /dev/${xda}*2        #2 os
-    mkfs.ext4 -F -L installer /dev/${xda}*3 #3 installer
+if [ "$distro" = windows ]; then
+    if [ -d /sys/firmware/efi ]; then
+        add_community_repo
+        apk add dosfstools ntfs-3g ntfs-3g-progs fuse virt-what wimlib rsync efibootmgr
+        modprobe fuse
+        parted /dev/$xda -s -- \
+            mklabel gpt \
+            mkpart '" "' fat32 1MiB 1025MiB \
+            mkpart '" "' fat32 1025MiB 1041MiB \
+            mkpart '" "' ext4 1041MiB -6GiB \
+            mkpart '" "' ntfs -6GiB 100% \
+            set 1 boot on \
+            set 2 msftres on \
+            set 3 msftdata on
+        update_part /dev/$xda
+        mkfs.fat -F 32 -n efi /dev/${xda}*1        #1 efi
+        echo                                       #2 msr
+        mkfs.ext4 -F -L os /dev/${xda}*3           #3 os
+        mkfs.ntfs -f -F -L installer /dev/${xda}*4 #4 installer
+    else
+        echo "This script not support install windows on none-efi system"
+        sleep 1m
+        exec reboot
+    fi
 else
-    # bios
-    parted /dev/$xda -s -- \
-        mklabel msdos \
-        mkpart primary ext4 1MiB -2GiB \
-        mkpart primary ext4 -2GiB 100% \
-        set 1 boot on
-    update_part /dev/$xda
-    mkfs.ext4 -F -L os /dev/${xda}*1        #1 os
-    mkfs.ext4 -F -L installer /dev/${xda}*2 #2 installer
+    if [ -d /sys/firmware/efi ]; then
+        # efi
+        apk add dosfstools
+        parted /dev/$xda -s -- \
+            mklabel gpt \
+            mkpart '" "' fat32 1MiB 1025MiB \
+            mkpart '" "' ext4 1025MiB -2GiB \
+            mkpart '" "' ext4 -2GiB 100% \
+            set 1 boot on
+        update_part /dev/$xda
+        mkfs.fat -F 32 -n efi /dev/${xda}*1     #1 efi
+        mkfs.ext4 -F -L os /dev/${xda}*2        #2 os
+        mkfs.ext4 -F -L installer /dev/${xda}*3 #3 installer
+    elif [ "$disk_size" -ge "$disk_2t" ]; then
+        # bios 2t
+        parted /dev/$xda -s -- \
+            mklabel gpt \
+            mkpart '" "' ext4 1MiB 2MiB \
+            mkpart '" "' ext4 2MiB -2GiB \
+            mkpart '" "' ext4 -2GiB 100% \
+            set 1 bios_grub on
+        update_part /dev/$xda
+        echo                                    #1 bios_boot
+        mkfs.ext4 -F -L os /dev/${xda}*2        #2 os
+        mkfs.ext4 -F -L installer /dev/${xda}*3 #3 installer
+    else
+        # bios
+        parted /dev/$xda -s -- \
+            mklabel msdos \
+            mkpart primary ext4 1MiB -2GiB \
+            mkpart primary ext4 -2GiB 100% \
+            set 1 boot on
+        update_part /dev/$xda
+        mkfs.ext4 -F -L os /dev/${xda}*1        #1 os
+        mkfs.ext4 -F -L installer /dev/${xda}*2 #2 installer
+    fi
 fi
+
 update_part /dev/$xda
 
 # 挂载主分区
@@ -177,8 +214,94 @@ mount /dev/disk/by-label/efi /os/boot/efi
 mkdir -p /os/installer
 mount /dev/disk/by-label/installer /os/installer
 
-# 安装 grub2
 basearch=$(uname -m)
+case "$basearch" in
+"x86_64") basearch_alt=amd64 ;;
+"aarch64") basearch_alt=arm64 ;;
+esac
+
+# 目前只支持 efi
+# shellcheck disable=SC2154
+if [ "$distro" = "windows" ] && [ -d /sys/firmware/efi/ ]; then
+    download $iso /os/windows.iso
+    mkdir /iso
+    mount /os/windows.iso /iso
+
+    # 下载 virtio 驱动
+    if [ "$(virt-what)" = kvm ]; then
+        case $(echo "$image_name" | tr '[:upper:]' '[:lower:]') in
+        'windows server 2022'*) sys=2k22 ;;
+        'windows server 2019'*) sys=2k19 ;;
+        'windows server 2016'*) sys=2k16 ;;
+        'windows server 2012 R2'*) sys=2k12R2 ;;
+        'windows server 2012'*) sys=2k12 ;;
+        'windows server 2008 R2'*) sys=2k8R2 ;;
+        'windows server 2008'*) sys=2k8 ;;
+        'windows 11'*) sys=w11 ;;
+        'windows 10'*) sys=w10 ;;
+        'windows 8.1'*) sys=w8.1 ;;
+        'windows 8'*) sys=w8 ;;
+        'windows 7'*) sys=w7 ;;
+        esac
+
+        if [ $sys = w7 ]; then
+            # https://github.com/virtio-win/virtio-win-pkg-scripts/issues/40
+            # https://tcler.github.io/2022/01/24/virtio-win-for-windows-7/
+            dir=archive-virtio/virtio-win-0.1.189-1
+        else
+            dir=stable-virtio
+        fi
+        download https://fedorapeople.org/groups/virt/virtio-win/direct-downloads/$dir/virtio-win.iso /os/virtio-win.iso
+        mkdir /virtio
+        mount /os/virtio-win.iso /virtio
+    fi
+
+    # 复制启动文件到efi分区
+    mkdir -p /os/boot/efi/sources/
+    /bin/cp -rv /iso/boot* /iso/efi/ /os/boot/efi/
+    /bin/cp -rv /iso/sources/boot.wim /os/boot/efi/sources/
+
+    # 复制全部文件到installer分区，除了 boot.wim
+    rsync -rv --exclude=/sources/boot.wim /iso/* /os/installer/
+
+    # 合并分区脚本
+    download $confhome/resize.bat /os/installer/resize.bat
+
+    # 修改应答文件
+    download $confhome/Autounattend.xml /tmp/Autounattend.xml
+    locale=$(wiminfo /os/boot/efi/sources/boot.wim | grep 'Default Language' | head -1 | awk '{print $NF}')
+    sed -i "s|%arch%|$basearch_alt|; s|%image_name%|$image_name|; s|%locale%|$locale|; s|%confhome%|$confhome|" /tmp/Autounattend.xml
+
+
+    mkdir /wim
+    wimmountrw /os/boot/efi/sources/boot.wim 2 /wim/
+
+    # virtio 驱动
+    if [ -d /virtio ]; then
+        mkdir /wim/virtio
+        find /virtio \
+            -ipath "*/$sys/$basearch_alt/*" \
+            -not -iname '*.pdb' \
+            -not -iname '*.doc' \
+            -exec /bin/cp -r {} /wim/virtio/ \;
+    fi
+
+    # win7 要添加 bootx64.efi 到 efi 目录
+    [ $basearch = x86_64 ] && boot_efi=bootx64.efi || boot_efi=bootaa64.efi
+    if [ ! -e /os/boot/efi/efi/boot/$boot_efi ]; then
+        mkdir -p /os/boot/efi/efi/boot/
+        cp /wim/Windows/Boot/EFI/bootmgfw.efi /os/boot/efi/efi/boot/$boot_efi
+    fi
+
+    # 应答文件
+    cp /tmp/Autounattend.xml /wim/
+    wimunmount --commit /wim/
+
+    efibootmgr -c -L "Windows Installer" -d /dev/$xda -p1 -l "\\EFI\\boot\\$boot_efi"
+    exec reboot
+fi
+
+# 安装 grub2
 if [ -d /sys/firmware/efi/ ]; then
     # 注意低版本的grub无法启动f38 arm的内核
     # https://forums.fedoraforum.org/showthread.php?330104-aarch64-pxeboot-vmlinuz-file-format-changed-broke-PXE-installs

@@ -3,7 +3,7 @@ confhome=https://raw.githubusercontent.com/bin456789/reinstall/main
 localtest_confhome=http://192.168.253.1
 
 usage_and_exit() {
-    echo "Usage: reinstall.sh centos-7/8/9 alma-8/9 rocky-8/9 fedora-36/37/38 ubuntu-20.04/22.04 alpine-3.16/3.17/3.18 debian-10/11"
+    echo "Usage: reinstall.sh centos-7/8/9 alma-8/9 rocky-8/9 fedora-36/37/38 ubuntu-20.04/22.04 alpine-3.16/3.17/3.18 debian-10/11 windows"
     exit 1
 }
 
@@ -23,10 +23,10 @@ setos() {
 
     setos_alpine() {
         if [ "$localtest" = 1 ]; then
-            mirror=$confhome/alpine-netboot-3.17.3-x86_64/boot
+            mirror=$confhome/alpine-netboot-3.18.0-x86_64/boot
             eval ${step}_vmlinuz=$mirror/vmlinuz-lts
             eval ${step}_initrd=$mirror/initramfs-lts
-            eval ${step}_repo=https://mirrors.aliyun.com/alpine/v3.17/main
+            eval ${step}_repo=https://mirrors.aliyun.com/alpine/v$releasever/main
             eval ${step}_modloop=$mirror/modloop-lts
         else
             # 不要用https 因为甲骨文云arm initramfs阶段不会从硬件同步时钟，导致访问https出错
@@ -87,6 +87,15 @@ setos() {
         eval ${step}_ks=$confhome/user-data
     }
 
+    setos_windows() {
+        if [ -z "$iso" ] || [ -z "$image_name" ]; then
+            echo "Install Windows need --iso --image-name"
+            exit 1
+        fi
+        eval "${step}_iso='$iso'"
+        eval "${step}_image_name='$image_name'"
+    }
+
     setos_redhat() {
         if [ "$localtest" = 1 ]; then
             mirror=$confhome/$releasever/
@@ -122,13 +131,14 @@ setos() {
     ubuntu) setos_ubuntu ;;
     alpine) setos_alpine ;;
     debian) setos_debian ;;
+    windows) setos_windows ;;
     *) setos_redhat ;;
     esac
 }
 
 # 检查是否为正确的系统名
 verify_os_string() {
-    for os in 'centos-7|8|9' 'alma|rocky-8|9' 'fedora-36|37|38' 'ubuntu-20.04|22.04' 'alpine-3.16|3.17|3.18' 'debian-10|11|12'; do
+    for os in 'centos-7|8|9' 'alma|rocky-8|9' 'fedora-36|37|38' 'ubuntu-20.04|22.04' 'alpine-3.16|3.17|3.18' 'debian-10|11|12' 'windows-'; do
         ds=$(echo $os | cut -d- -f1)
         vers=$(echo $os | cut -d- -f2 | sed 's \. \\\. g')
         finalos=$(echo "$@" | tr '[:upper:]' '[:lower:]' | sed -n -E "s,^($ds)[ :-]?($vers)$,\1:\2,p")
@@ -198,7 +208,7 @@ if [ "$EUID" -ne 0 ]; then
     exit 1
 fi
 
-if ! opts=$(getopt -a -n $0 --options l --long localtest -- "$@"); then
+if ! opts=$(getopt -a -n $0 --options l --long localtest,iso:,image-name: -- "$@"); then
     usage_and_exit
 fi
 
@@ -209,6 +219,14 @@ while true; do
         localtest=1
         confhome=$localtest_confhome
         shift
+        ;;
+    --iso)
+        iso=$2
+        shift 2
+        ;;
+    --image-name)
+        image_name=$2
+        shift 2
         ;;
     --)
         shift
@@ -243,6 +261,7 @@ esac
 # el7 aarch64 <1.5g
 if [ "$distro" = "ubuntu" ] ||
     [ "$distro" = "alpine" ] ||
+    [ "$distro" = "windows" ] ||
     { [ "$distro_like" = "redhat" ] && [ $releasever -ge 8 ] && [ $ram_size -lt 2048 ]; } ||
     { [ "$distro_like" = "redhat" ] && [ $releasever -eq 7 ] && [ $ram_size -lt 1536 ] && [ $basearch = "aarch64" ]; }; then
     # 安装alpine时，使用指定的版本。 alpine作为中间系统时，使用 3.18
@@ -270,7 +289,7 @@ build_finalos_cmdline() {
         value=${!key}
         key=${key#finalos_}
         if [ -n "$value" ] && [ $key != "mirrorlist" ]; then
-            finalos_cmdline+=" finalos.$key=$value"
+            finalos_cmdline+=" finalos.$key='$value'"
         fi
     done
 }
@@ -279,7 +298,7 @@ build_extra_cmdline() {
     for key in localtest confhome; do
         value=${!key}
         if [ -n "$value" ]; then
-            extra_cmdline+=" extra.$key=$value"
+            extra_cmdline+=" extra.$key='$value'"
         fi
     done
 
