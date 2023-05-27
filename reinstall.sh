@@ -3,7 +3,7 @@ confhome=https://raw.githubusercontent.com/bin456789/reinstall/main
 localtest_confhome=http://192.168.253.1
 
 usage_and_exit() {
-    echo "Usage: reinstall.sh centos-7/8/9 alma-8/9 rocky-8/9 fedora-36/37/38 ubuntu-20.04/22.04 alpine-3.16/3.17/3.18 debian-10/11 windows"
+    echo "Usage: reinstall.sh centos-7/8/9 alma-8/9 rocky-8/9 fedora-37/38 ubuntu-20.04/22.04 alpine-3.16/3.17/3.18 debian-10/11 windows"
     exit 1
 }
 
@@ -138,7 +138,7 @@ setos() {
 
 # 检查是否为正确的系统名
 verify_os_string() {
-    for os in 'centos-7|8|9' 'alma|rocky-8|9' 'fedora-36|37|38' 'ubuntu-20.04|22.04' 'alpine-3.16|3.17|3.18' 'debian-10|11|12' 'windows-'; do
+    for os in 'centos-7|8|9' 'alma|rocky-8|9' 'fedora-37|38' 'ubuntu-20.04|22.04' 'alpine-3.16|3.17|3.18' 'debian-10|11|12' 'windows-'; do
         ds=$(echo $os | cut -d- -f1)
         vers=$(echo $os | cut -d- -f2 | sed 's \. \\\. g')
         finalos=$(echo "$@" | tr '[:upper:]' '[:lower:]' | sed -n -E "s,^($ds)[ :-]?($vers)$,\1:\2,p")
