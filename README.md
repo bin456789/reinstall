@@ -19,14 +19,14 @@ curl -O https://raw.githubusercontent.com/bin456789/reinstall/main/reinstall.sh
 bash reinstall.sh centos-7 (或其他系统)
 
 安装 Windows:
-bash reinstall.sh windows --iso=https://archive.org/download/xxx/zh-cn_windows_10_enterprise_ltsc_2021_x64_dvd_033b7312.iso --image-name='Windows 10 Enterprise LTSC 2021' (或其他系统)
+bash reinstall.sh windows --iso=https://example.com/zh-cn_windows_10_enterprise_ltsc_2021_x64_dvd_033b7312.iso --image-name='Windows 10 Enterprise LTSC 2021'
 
 重启:
 reboot
 ```
 #### 支持重装到:
 ```
-centos-7/8/9    # centos 8/9 为 stream 版本
+centos-7/8/9 (centos 8/9 为 stream 版本)
 alma-8/9
 rocky-8/9
 fedora-36/37/38
@@ -37,13 +37,16 @@ windows (见下方注意事项)
 ```
 #### Windows 注意事项:
 ```
-只支持 UEFI 引导的机器，已测试成功的系统有 7 10 11，其他系统不保证成功
+支持 x64 BIOS, x64 UEFI，测试成功的系统有 7 10 11 2022
+经测试不支持甲骨文云的 ARM
 安装 Windows 需要以下参数
 --iso           iso 链接，不需要提前添加 virtio 驱动
---image-name    系统全名，两边要有引号，例如：
+--image-name    系统全名，不区分大小写，两边要有引号，例如：
                 'Windows 7 Ultimate'
                 'Windows 10 Enterprise LTSC 2021'
                 'Windows 11 Pro'
+                'Windows Server 2022 SERVERDATACENTER'
+
 ```
 #### 内存要求:
 ```
@@ -61,4 +64,11 @@ windows 1G
 ```
 root            123@@@
 administrator   123@@@
+````
+#### todo:
+```
+32位 Windows
+测试 Xen
+添加 Xen Windows 驱动
+使用 Cloud Images
 ````

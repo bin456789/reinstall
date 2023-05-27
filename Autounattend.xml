@@ -15,20 +15,6 @@
                     <DiskID>0</DiskID>
                     <WillWipeDisk>false</WillWipeDisk>
                     <ModifyPartitions>
-                        <ModifyPartition wcm:action="add">
-                            <Order>1</Order>
-                            <PartitionID>1</PartitionID>
-                            <Format>FAT32</Format>
-                        </ModifyPartition>
-                        <ModifyPartition wcm:action="add">
-                            <Order>2</Order>
-                            <PartitionID>2</PartitionID>
-                        </ModifyPartition>
-                        <ModifyPartition wcm:action="add">
-                            <Order>3</Order>
-                            <PartitionID>3</PartitionID>
-                            <Format>NTFS</Format>
-                        </ModifyPartition>
                     </ModifyPartitions>
                 </Disk>
             </DiskConfiguration>
@@ -46,7 +32,7 @@
                     <WillShowUI>OnError</WillShowUI>
                     <InstallTo>
                         <DiskID>0</DiskID>
-                        <PartitionID>3</PartitionID>
+                        <PartitionID>%installto_partitionid%</PartitionID>
                     </InstallTo>
                 </OSImage>
             </ImageInstall>
@@ -113,11 +99,11 @@
                 </RunSynchronousCommand>
                 <RunSynchronousCommand wcm:action="add">
                     <Order>2</Order>
-                    <Path>xcopy D:\resize.bat C:\Windows\Temp\</Path>
+                    <Path>C:\resize.bat</Path>
                 </RunSynchronousCommand>
                  <RunSynchronousCommand wcm:action="add">
                     <Order>3</Order>
-                    <Path>C:\Windows\Temp\resize.bat</Path>
+                    <Path>cmd /c "del C:\resize.bat"</Path>
                 </RunSynchronousCommand>
             </RunSynchronous>
         </component>
