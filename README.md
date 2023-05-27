@@ -45,8 +45,9 @@ windows (见下方注意事项)
                 'Windows 7 Ultimate'
                 'Windows 10 Enterprise LTSC 2021'
                 'Windows 11 Pro'
-                'Windows Server 2022 SERVERDATACENTER'
-
+                'Windows Server 2022 SERVERDATACENTER' 
+                
+提示：iso 链接可以到 https://archive.org 上面找
 ```
 #### 内存要求:
 ```
