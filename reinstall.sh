@@ -172,7 +172,7 @@ install_pkg() {
                     dnf install -y $pkgs ||
                     yum install -y $pkgs ||
                     zypper install -y $pkgs ||
-                    pacman -Syu $pkgs ||
+                    pacman -Syu --noconfirm $pkgs ||
                     apk add $pkgs
             } 2>/dev/null
             break
