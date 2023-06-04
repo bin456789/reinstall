@@ -91,8 +91,7 @@ if [ "$distro" = "alpine" ]; then
     exec reboot
 
 elif [ "$distro" = "dd" ]; then
-    filetype=$(echo $ddimg | awk -F. '{print $NF}')
-    case "$filetype" in
+    case "$ddimg_type" in
     gz) prog=gzip ;;
     xz) prog=xz ;;
     esac

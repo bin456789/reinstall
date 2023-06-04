@@ -7,6 +7,11 @@ usage_and_exit() {
     exit 1
 }
 
+error_and_exit() {
+    echo "Error: $1"
+    exit 1
+}
+
 is_in_china() {
     if [ -z $_is_in_china ]; then
         # https://geoip.ubuntu.com/lookup
@@ -14,6 +19,29 @@ is_in_china() {
         _is_in_china=$?
     fi
     return $_is_in_china
+}
+
+test_url() {
+    url=$1
+    expect_type=$2
+    tmp_file=/tmp/reinstall-img-test
+    install_pkg file
+
+    http_code=$(curl -Ls -r 0-1048576 -w "%{http_code}" -o $tmp_file $url)
+    if [ "$http_code" != 200 ] && [ "$http_code" != 206 ]; then
+        error_and_exit "$url not accessible"
+    fi
+
+    mime=$(file -ib $tmp_file | cut -d';' -f1 | cut -d'/' -f2)
+    case $mime in
+    gzip) img_type=gz ;;
+    x-xz) img_type=xz ;;
+    x-iso9660-image) img_type=iso ;;
+    esac
+
+    if ! echo $expect_type | grep -wo "$img_type"; then
+        error_and_exit "$url $mime not supported"
+    fi
 }
 
 setos() {
@@ -83,7 +111,9 @@ setos() {
         fi
 
         filename=$(curl $mirror | grep -oP "ubuntu-$releasever.*?-live-server-$basearch_alt.iso" | head -1)
-        eval ${step}_iso=$mirror$filename
+        iso=$mirror$filename
+        test_url $iso iso
+        eval ${step}_iso=$iso
         eval ${step}_ks=$confhome/user-data
     }
 
@@ -92,6 +122,7 @@ setos() {
             echo "Install Windows need --iso --image-name"
             exit 1
         fi
+        test_url $iso iso
         eval "${step}_iso='$iso'"
         eval "${step}_image_name='$image_name'"
     }
@@ -101,7 +132,9 @@ setos() {
             echo "dd need --ddimg"
             exit 1
         fi
+        test_url $ddimg 'xz|gz'
         eval "${step}_ddimg='$ddimg'"
+        eval "${step}_ddimg_type='$img_type'"
     }
 
     setos_redhat() {
