@@ -139,7 +139,7 @@ disk_2t=$((2 * 1024 * 1024 * 1024 * 1024))
 # xda*1 星号用于 nvme0n1p1 的字母 p
 if [ "$distro" = windows ]; then
     add_community_repo
-    apk add ntfs-3g ntfs-3g-progs fuse virt-what wimlib rsync dos2unix
+    apk add ntfs-3g ntfs-3g-progs fuse3 virt-what wimlib rsync dos2unix
     modprobe fuse
     if [ -d /sys/firmware/efi ]; then
         # efi
