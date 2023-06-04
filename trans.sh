@@ -253,12 +253,14 @@ if [ "$distro" = "windows" ]; then
         'windows 7'*) sys=w7 ;;
         esac
 
-        if [ $sys = w7 ]; then
-            # https://github.com/virtio-win/virtio-win-pkg-scripts/issues/40
-            dir=archive-virtio/virtio-win-0.1.173-9
-        else
-            dir=stable-virtio
-        fi
+        case "$sys" in
+        # https://github.com/virtio-win/virtio-win-pkg-scripts/issues/40
+        w7) dir=archive-virtio/virtio-win-0.1.173-9 ;;
+        # https://github.com/virtio-win/virtio-win-pkg-scripts/issues/61
+        2k12*) dir=archive-virtio/virtio-win-0.1.215-1 ;;
+        *) dir=stable-virtio ;;
+        esac
+
         download https://fedorapeople.org/groups/virt/virtio-win/direct-downloads/$dir/virtio-win.iso /os/virtio-win.iso
         mkdir /virtio
         mount /os/virtio-win.iso /virtio
