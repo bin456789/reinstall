@@ -89,6 +89,23 @@ if [ "$distro" = "alpine" ]; then
     export BOOTLOADER="grub"
     printf 'y' | setup-disk -m sys $kernel_opt -s 0 /dev/$xda
     exec reboot
+
+elif [ "$distro" = "dd" ]; then
+    filetype=$(echo $ddimg | awk -F. '{print $NF}')
+    case "$filetype" in
+    gz) prog=gzip ;;
+    xz) prog=xz ;;
+    esac
+
+    if [ -n "$prog" ]; then
+        # alpine busybox 自带 gzip xz，但官方版也许性能更好
+        apk add curl $prog
+        curl -L $ddimg | $prog -dc >/dev/$xda
+    else
+        echo 'Not supported'
+        sleep 1m
+    fi
+    exec reboot
 fi
 
 download() {

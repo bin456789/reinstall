@@ -3,7 +3,7 @@
 
 #### 亮点:
 ```
-使用官方安装方式，非第三方 dd 镜像，更安全
+使用官方安装方式，非第三方 dd 镜像，更安全（也提供 dd 功能）
 支持 BIOS/EFI 机器，支持 ARM 机器
 可能是第一个支持在 1g 内存上安装 红帽 7/8/9 系列的脚本
 可能是第一个支持重装到 ubuntu 22.04 的脚本
@@ -21,6 +21,9 @@ bash reinstall.sh centos-7 (或其他系统)
 安装 Windows:
 bash reinstall.sh windows --iso=https://example.com/zh-cn_windows_10_enterprise_ltsc_2021_x64_dvd_033b7312.iso --image-name='Windows 10 Enterprise LTSC 2021'
 
+dd:
+bash reinstall.sh dd --ddimg=https://example.com/xxx.gz
+
 重启:
 reboot
 ```
@@ -34,6 +37,7 @@ ubuntu-20.04/22.04
 alpine-3.16/3.17/3.18
 debian-10/11
 windows (见下方注意事项)
+dd
 ```
 #### Windows 注意事项:
 ```
