@@ -318,6 +318,13 @@ EOF
     fi
     unix2dos /tmp/Autounattend.xml
 
+    #     # ei.cfg
+    #     cat <<EOF >/os/installer/sources/ei.cfg
+    #         [Channel]
+    #         OEM
+    # EOF
+    #     unix2dos /os/installer/sources/ei.cfg
+
     # 挂载 boot.wim
     mkdir /wim
     wimmountrw $boot_wim 2 /wim/
