@@ -270,7 +270,8 @@ if [ "$distro" = "windows" ]; then
     # bios: 复制iso全部文件到installer分区
     if [ -d /sys/firmware/efi/ ]; then
         mkdir -p /os/boot/efi/sources/
-        /bin/cp -rv /iso/boot* /iso/efi/ /os/boot/efi/
+        /bin/cp -rv /iso/boot* /os/boot/efi/
+        /bin/cp -rv /iso/efi/ /os/boot/efi/
         /bin/cp -rv /iso/sources/boot.wim /os/boot/efi/sources/
         rsync -rv --exclude=/sources/boot.wim /iso/* /os/installer/
         boot_wim=/os/boot/efi/sources/boot.wim
