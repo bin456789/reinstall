@@ -22,7 +22,7 @@ bash reinstall.sh centos-7 (或其他系统)
 bash reinstall.sh windows --iso=https://example.com/zh-cn_windows_10_enterprise_ltsc_2021_x64_dvd_033b7312.iso --image-name='Windows 10 Enterprise LTSC 2021'
 
 dd:
-bash reinstall.sh dd --ddimg=https://example.com/xxx.gz
+bash reinstall.sh dd --img=https://example.com/xxx.gz
 
 重启:
 reboot

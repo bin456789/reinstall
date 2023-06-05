@@ -91,7 +91,7 @@ if [ "$distro" = "alpine" ]; then
     exec reboot
 
 elif [ "$distro" = "dd" ]; then
-    case "$ddimg_type" in
+    case "$img_type" in
     gz) prog=gzip ;;
     xz) prog=xz ;;
     esac
@@ -99,7 +99,7 @@ elif [ "$distro" = "dd" ]; then
     if [ -n "$prog" ]; then
         # alpine busybox 自带 gzip xz，但官方版也许性能更好
         apk add curl $prog
-        curl -L $ddimg | $prog -dc >/dev/$xda
+        curl -L $img | $prog -dc >/dev/$xda
     else
         echo 'Not supported'
         sleep 1m

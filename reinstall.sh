@@ -128,13 +128,13 @@ setos() {
     }
 
     setos_dd() {
-        if [ -z "$ddimg" ]; then
-            echo "dd need --ddimg"
+        if [ -z "$img" ]; then
+            echo "dd need --img"
             exit 1
         fi
-        test_url $ddimg 'xz|gz'
-        eval "${step}_ddimg='$ddimg'"
-        eval "${step}_ddimg_type='$img_type'"
+        test_url $img 'xz|gz'
+        eval "${step}_img='$img'"
+        eval "${step}_img_type='$img_type'"
     }
 
     setos_redhat() {
@@ -250,7 +250,7 @@ if [ "$EUID" -ne 0 ]; then
     exit 1
 fi
 
-if ! opts=$(getopt -a -n $0 --options l --long localtest,iso:,image-name:,ddimg: -- "$@"); then
+if ! opts=$(getopt -a -n $0 --options l --long localtest,iso:,image-name:,img: -- "$@"); then
     usage_and_exit
 fi
 
@@ -262,8 +262,8 @@ while true; do
         confhome=$localtest_confhome
         shift
         ;;
-    --ddimg)
-        ddimg=$2
+    --img)
+        img=$2
         shift 2
         ;;
     --iso)
