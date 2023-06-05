@@ -43,7 +43,7 @@ test_url() {
     [ -n "$var_to_eval" ] && eval $var_to_eval=$real_type
 
     if ! echo $expect_type | grep -wo "$real_type"; then
-        error_and_exit "$url expect: $expect_type. real: $real_type, "
+        error_and_exit "$url expect: $expect_type. real: $real_type."
     fi
 }
 
@@ -416,7 +416,7 @@ EOF
     # 可添加 pkgs=xxx,yyy 启动时自动安装
     # apkovl=http://xxx.com/apkovl.tar.gz 可用，arm https未测但应该不行
     # apkovl=sda2:ext4:/apkovl.tar.gz 官方有写但不生效
-    cmdline="alpine_repo=$nextos_repo modloop=$nextos_modloop $extra_cmdline $finalos_cmdline "
+    cmdline="alpine_repo=$nextos_repo modloop=$nextos_modloop $extra_cmdline $finalos_cmdline"
 else
     if [ $distro = debian ]; then
         cmdline="lowmem=+1 lowmem/low=1 auto=true priority=critical url=$nextos_ks"
