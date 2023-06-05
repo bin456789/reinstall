@@ -92,7 +92,7 @@ if [ "$distro" = "alpine" ]; then
 
 elif [ "$distro" = "dd" ]; then
     case "$img_type" in
-    gz) prog=gzip ;;
+    gzip) prog=gzip ;;
     xz) prog=xz ;;
     esac
 

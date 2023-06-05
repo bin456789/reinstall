@@ -24,6 +24,8 @@ is_in_china() {
 test_url() {
     url=$1
     expect_type=$2
+    var_to_eval=$3
+
     tmp_file=/tmp/reinstall-img-test
     install_pkg file
 
@@ -32,15 +34,16 @@ test_url() {
         error_and_exit "$url not accessible"
     fi
 
-    mime=$(file -ib $tmp_file | cut -d';' -f1 | cut -d'/' -f2)
-    case $mime in
-    gzip) img_type=gz ;;
-    x-xz) img_type=xz ;;
-    x-iso9660-image) img_type=iso ;;
-    esac
+    # gzip的mime有很多种写法
+    # centos7中显示为 x-gzip，在其他系统中显示为 gzip，可能还有其他
+    # 所以不用mime判断
+    # https://www.digipres.org/formats/sources/tika/formats/#application/gzip
 
-    if ! echo $expect_type | grep -wo "$img_type"; then
-        error_and_exit "$url $mime not supported"
+    real_type=$(file -b $tmp_file | cut -d' ' -f1 | tr '[:upper:]' '[:lower:]')
+    [ -n "$var_to_eval" ] && eval $var_to_eval=$real_type
+
+    if ! echo $expect_type | grep -wo "$real_type"; then
+        error_and_exit "$url expect: $expect_type. real: $real_type, "
     fi
 }
 
@@ -127,12 +130,13 @@ setos() {
         eval "${step}_image_name='$image_name'"
     }
 
+    # shellcheck disable=SC2154
     setos_dd() {
         if [ -z "$img" ]; then
             echo "dd need --img"
             exit 1
         fi
-        test_url $img 'xz|gz'
+        test_url $img 'xz|gzip' img_type
         eval "${step}_img='$img'"
         eval "${step}_img_type='$img_type'"
     }
