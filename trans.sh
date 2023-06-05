@@ -253,7 +253,8 @@ if [ "$distro" = "windows" ]; then
     mount /os/windows.iso /iso
 
     # 下载 virtio 驱动
-    if [ "$(virt-what)" = kvm ]; then
+    # virt-what 可能返回多个结果，因此配合 grep 使用
+    if virt-what | grep kvm; then
         case $(echo "$image_name" | tr '[:upper:]' '[:lower:]') in
         'windows server 2022'*) sys=2k22 ;;
         'windows server 2019'*) sys=2k19 ;;
