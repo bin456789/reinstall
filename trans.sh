@@ -240,17 +240,30 @@ fi
 mkdir -p /os/installer
 mount /dev/disk/by-label/installer /os/installer
 
-basearch=$(uname -m)
-case "$basearch" in
-"x86_64") basearch_alt=amd64 ;;
-"aarch64") basearch_alt=arm64 ;;
-esac
-
 # shellcheck disable=SC2154
 if [ "$distro" = "windows" ]; then
     download $iso /os/windows.iso
     mkdir /iso
     mount /os/windows.iso /iso
+
+    # 变量名    使用场景
+    # basearch uname -m                x86_64  aarch64
+    # arch_wim wiminfo            x86  x86_64  ARM64
+    # arch     virtio win应答文件  x86  amd64   arm64
+
+    # 将 wim 的 arch 转为驱动和应答文件的 arch
+    arch_wim=$(wiminfo /iso/sources/install.wim 1 | grep Architecture: | awk '{print $2}' | tr '[:upper:]' '[:lower:]')
+    case "$arch_wim" in
+    x86) arch=x86 ;;
+    x86_64) arch=amd64 ;;
+    arm64) arch=arm64 ;;
+    esac
+
+    # virt-what 要用最新版
+    # vultr 1G High Frequency LAX 实际上是 kvm
+    # debian 11 virt-what 1.19 显示为 hyperv qemu
+    # debian 11 systemd-detect-virt 显示为 microsoft
+    # alpine virt-what 1.25 显示为 kvm
 
     # 下载 virtio 驱动
     # virt-what 可能返回多个结果，因此配合 grep 使用
@@ -301,7 +314,7 @@ if [ "$distro" = "windows" ]; then
     # 修改应答文件
     download $confhome/Autounattend.xml /tmp/Autounattend.xml
     locale=$(wiminfo $install_wim | grep 'Default Language' | head -1 | awk '{print $NF}')
-    sed -i "s|%arch%|$basearch_alt|; s|%image_name%|$image_name|; s|%locale%|$locale|" /tmp/Autounattend.xml
+    sed -i "s|%arch%|$arch|; s|%image_name%|$image_name|; s|%locale%|$locale|" /tmp/Autounattend.xml
 
     # 修改应答文件，分区配置
     line_num=$(grep -E -n '<ModifyPartitions>' /tmp/Autounattend.xml | cut -d: -f1)
@@ -350,14 +363,14 @@ EOF
     if [ -d /virtio ]; then
         mkdir /wim/virtio
         find /virtio \
-            -ipath "*/$sys/$basearch_alt/*" \
+            -ipath "*/$sys/$arch/*" \
             -not -iname '*.pdb' \
             -not -iname '*.doc' \
             -exec /bin/cp -rf {} /wim/virtio/ \;
     fi
 
     # win7 要添加 bootx64.efi 到 efi 目录
-    [ $basearch = x86_64 ] && boot_efi=bootx64.efi || boot_efi=bootaa64.efi
+    [ $arch = amd64 ] && boot_efi=bootx64.efi || boot_efi=bootaa64.efi
     if [ -d /sys/firmware/efi/ ] && [ ! -e /os/boot/efi/efi/boot/$boot_efi ]; then
         mkdir -p /os/boot/efi/efi/boot/
         cp /wim/Windows/Boot/EFI/bootmgfw.efi /os/boot/efi/efi/boot/$boot_efi
@@ -405,6 +418,7 @@ if [ -d /sys/firmware/efi/ ]; then
     grub-install --efi-directory=/os/boot/efi --boot-directory=/os/boot
 
     # 添加 netboot 备用
+    basearch=$(uname -m)
     cd /os/boot/efi || exit
     if [ "$basearch" = aarch64 ]; then
         download https://boot.netboot.xyz/ipxe/netboot.xyz-arm64.efi

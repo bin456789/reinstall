@@ -72,7 +72,6 @@ administrator   123@@@
 ````
 #### todo:
 ```
-32位 Windows
 测试 Xen
 添加 Xen Windows 驱动
 使用 Cloud Images
