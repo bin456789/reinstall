@@ -73,5 +73,5 @@ exit /b !errorlevel!
 :download
 :: coreutil 会被 windows Defender 报毒
 :: certutil -urlcache -f -split %~1 %~2
-bitsadmin /transfer "%~3" %~1 %~2
+bitsadmin /transfer "%~3" /priority foreground %~1 %~2
 exit /b !errorlevel!
