@@ -1,16 +1,60 @@
 #!/bin/ash
 # shellcheck shell=dash
+# shellcheck disable=SC3047,SC3036
 # alpine 默认使用 busybox ash
+
+# 命令出错退出脚本，进入到登录界面，防止失联
+# TODO: neet more test
+set -eE
 
 # 显示输出到前台
 # 似乎script更优雅，但 alpine 不带 script 命令
 # script -f/dev/tty0
 exec >/dev/tty0 2>&1
+trap 'error' ERR
+
+catch() {
+    if [ "$1" != "0" ]; then
+        error "Error $1 occurred on $2"
+    fi
+}
+
+error() {
+    color='\e[31m'
+    plain='\e[0m'
+    echo -e "${color}Error: $*$plain"
+}
 
 add_community_repo() {
     alpine_ver=$(cut -d. -f1,2 </etc/alpine-release)
     echo http://dl-cdn.alpinelinux.org/alpine/v$alpine_ver/community >>/etc/apk/repositories
 }
+
+download() {
+    # 显示 url
+    echo $1
+
+    # 阿里云禁止 axel 下载
+    # axel https://mirrors.aliyun.com/alpine/latest-stable/releases/x86_64/alpine-netboot-3.17.0-x86_64.tar.gz
+    # Initializing download: https://mirrors.aliyun.com/alpine/latest-stable/releases/x86_64/alpine-netboot-3.17.0-x86_64.tar.gz
+    # HTTP/1.1 403 Forbidden
+
+    # 先用 axel 下载
+    [ -z $2 ] && save="" || save="-o $2"
+    if ! axel $1 $save; then
+        # 出错再用 curl
+        [ -z $2 ] && save="-O" || save="-o $2"
+        curl -L $1 $save
+    fi
+}
+
+update_part() {
+    hdparm -z $1 || true
+    partprobe $1 || true
+    partx -u $1 || true
+    udevadm settle || true
+    echo 1 >/sys/block/${1#/dev/}/device/rescan || true
+} 2>/dev/null
 
 # 提取 finalos/extra 到变量
 for prefix in finalos extra; do
@@ -39,6 +83,12 @@ echo root:123@@@ | chpasswd
 printf '\nyes' | setup-sshd
 
 # shellcheck disable=SC2154
+if [ "$sleep" = 1 ]; then
+    cd /
+    sleep infinity
+fi
+
+# shellcheck disable=SC2154
 if [ "$distro" = "alpine" ]; then
     # 还原改动，不然本脚本会被复制到新系统
     rm -f /etc/local.d/trans.start
@@ -51,15 +101,15 @@ if [ "$distro" = "alpine" ]; then
     # 设置
     setup-keymap us us
     setup-timezone -i Asia/Shanghai
-    setup-ntp chrony
+    setup-ntp chrony || true
 
     # 在 arm netboot initramfs init 中
     # 如果识别到rtc硬件，就往系统添加hwclock服务，否则添加swclock
     # 这个设置也被复制到安装的系统中
     # 但是从initramfs chroot到真正的系统后，是能识别rtc硬件的
     # 所以我们手动改用hwclock修复这个问题
-    rc-update del swclock boot
-    rc-update add hwclock boot
+    rc-update del swclock boot || true
+    rc-update add hwclock boot || true
 
     # 通过 setup-alpine 安装会多启用几个服务
     # https://github.com/alpinelinux/alpine-conf/blob/c5131e9a038b09881d3d44fb35e86851e406c756/setup-alpine.in#L189
@@ -98,41 +148,23 @@ elif [ "$distro" = "dd" ]; then
 
     if [ -n "$prog" ]; then
         # alpine busybox 自带 gzip xz，但官方版也许性能更好
+        # wget -O- $img | $prog -dc >/dev/$xda
         apk add curl $prog
         curl -L $img | $prog -dc >/dev/$xda
+        sync
     else
         echo 'Not supported'
         sleep 1m
     fi
+    if [ "$sleep" = 2 ]; then
+        cd /
+        sleep infinity
+    fi
     exec reboot
 fi
 
-download() {
-    # 显示 url
-    echo $1
-
-    # 阿里云禁止 axel 下载
-    # axel https://mirrors.aliyun.com/alpine/latest-stable/releases/x86_64/alpine-netboot-3.17.0-x86_64.tar.gz
-    # Initializing download: https://mirrors.aliyun.com/alpine/latest-stable/releases/x86_64/alpine-netboot-3.17.0-x86_64.tar.gz
-    # HTTP/1.1 403 Forbidden
-
-    # 先用 axel 下载
-    [ -z $2 ] && save="" || save="-o $2"
-    if ! axel $1 $save; then
-        # 出错再用 curl
-        [ -z $2 ] && save="-O" || save="-o $2"
-        curl -L $1 $save
-    fi
-}
-
-update_part() {
-    hdparm -z $1
-    partprobe $1
-    partx -u $1
-    udevadm settle
-    echo 1 >/sys/block/${1#/dev/}/device/rescan
-} 2>/dev/null
-
+# 目标系统非 alpine 和 dd
+# 脚本开始
 if ! apk add util-linux axel grub udev hdparm e2fsprogs curl parted; then
     echo 'Unable to install package!'
     sleep 1m
@@ -281,6 +313,7 @@ if [ "$distro" = "windows" ]; then
         'windows 8.1'*) sys=w8.1 ;;
         'windows 8'*) sys=w8 ;;
         'windows 7'*) sys=w7 ;;
+        'windows vista'*) sys=2k8 ;; # virtio 没有 vista 专用驱动
         esac
 
         case "$sys" in

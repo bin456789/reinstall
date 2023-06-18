@@ -1,35 +1,72 @@
 #!/bin/bash
+set -eE
 confhome=https://raw.githubusercontent.com/bin456789/reinstall/main
 localtest_confhome=http://192.168.253.1
 
+trap 'error line $LINENO return $?' ERR
+
 usage_and_exit() {
-    echo "Usage: reinstall.sh centos-7/8/9 alma-8/9 rocky-8/9 fedora-37/38 ubuntu-20.04/22.04 alpine-3.16/3.17/3.18 debian-10/11 windows dd"
+    echo "Usage: reinstall.sh centos-7/8/9 alma-8/9 rocky-8/9 fedora-37/38 ubuntu-20.04/22.04 alpine-3.16/3.17/3.18 debian-10/11/12 windows dd"
     exit 1
 }
 
+info() {
+    color='\e[32m'
+    plain='\e[0m'
+    upper=$(echo "$@" | tr '[:lower:]' '[:upper:]')
+    echo -e "$color***** $upper *****$plain"
+}
+
+error() {
+    color='\e[31m'
+    plain='\e[0m'
+    echo -e "${color}Error: $*$plain"
+}
+
 error_and_exit() {
-    echo "Error: $1"
+    error "$@"
     exit 1
+}
+
+curl() {
+    command curl --connect-timeout 10 --retry 5 --retry-delay 0 "$@"
 }
 
 is_in_china() {
     if [ -z $_is_in_china ]; then
+        # https://geoip.fedoraproject.org/city
         # https://geoip.ubuntu.com/lookup
-        curl -L https://geoip.fedoraproject.org/city | grep -w CHN
+        curl -L https://geoip.ubuntu.com/lookup | grep -qw CHN
         _is_in_china=$?
     fi
     return $_is_in_china
+}
+
+is_in_windows() {
+    [ "$(uname -o)" = Cygwin ] || [ "$(uname -o)" = Msys ]
+}
+
+set_github_proxy() {
+    case "$confhome" in
+    http*://raw.githubusercontent.com/*)
+        if is_in_china; then
+            confhome=https://ghproxy.com/$confhome
+        fi
+        ;;
+    esac
 }
 
 test_url() {
     url=$1
     expect_type=$2
     var_to_eval=$3
+    info test url
+    echo $url
 
     tmp_file=/tmp/reinstall-img-test
     install_pkg file
 
-    http_code=$(curl -Ls -r 0-1048576 -w "%{http_code}" -o $tmp_file $url)
+    http_code=$(curl -Ls -r 0-1048575 -w "%{http_code}" -o $tmp_file $url)
     if [ "$http_code" != 200 ] && [ "$http_code" != 206 ]; then
         error_and_exit "$url not accessible"
     fi
@@ -47,29 +84,58 @@ test_url() {
     fi
 }
 
+add_community_repo_for_alpine() {
+    alpine_ver=$(cut -d. -f1,2 </etc/alpine-release)
+    echo http://dl-cdn.alpinelinux.org/alpine/v$alpine_ver/community >>/etc/apk/repositories
+}
+
+is_virt() {
+    if command -v systemd-detect-virt; then
+        systemd-detect-virt
+    else
+        if ! install_pkg virt-what && [ -f /etc/alpine-release ]; then
+            add_community_repo_for_alpine
+            install_pkg virt-what
+        fi
+        virt-what
+    fi
+}
+
 setos() {
     local step=$1
     local distro=$2
     local releasever=$3
+    info set $step $distro $releasever
 
     setos_alpine() {
+        flavour=lts
+        # 在windows中没有命令判断是否为虚拟机
+        if ! is_in_windows && is_virt; then
+            # alpine aarch64 3.18 才有 virt 直连链接
+            if [ "$basearch" == aarch64 ]; then
+                (($("$releasever >= 3.18" | bc))) && flavour=virt
+            else
+                flavour=virt
+            fi
+        fi
+
         if [ "$localtest" = 1 ]; then
             mirror=$confhome/alpine-netboot-3.18.0-x86_64/boot
-            eval ${step}_vmlinuz=$mirror/vmlinuz-lts
-            eval ${step}_initrd=$mirror/initramfs-lts
-            eval ${step}_repo=https://mirrors.aliyun.com/alpine/v$releasever/main
-            eval ${step}_modloop=$mirror/modloop-lts
+            eval ${step}_vmlinuz=$mirror/vmlinuz-$flavour
+            eval ${step}_initrd=$mirror/initramfs-$flavour
+            eval ${step}_repo=http://mirrors.tuna.tsinghua.edu.cn/alpine/v$releasever/main
+            eval ${step}_modloop=$mirror/modloop-$flavour
         else
             # 不要用https 因为甲骨文云arm initramfs阶段不会从硬件同步时钟，导致访问https出错
             if is_in_china; then
-                mirror=http://mirrors.aliyun.com/alpine/v$releasever
+                mirror=http://mirrors.tuna.tsinghua.edu.cn/alpine/v$releasever
             else
                 mirror=http://dl-cdn.alpinelinux.org/alpine/v$releasever
             fi
-            eval ${step}_vmlinuz=$mirror/releases/$basearch/netboot/vmlinuz-lts
-            eval ${step}_initrd=$mirror/releases/$basearch/netboot/initramfs-lts
+            eval ${step}_vmlinuz=$mirror/releases/$basearch/netboot/vmlinuz-$flavour
+            eval ${step}_initrd=$mirror/releases/$basearch/netboot/initramfs-$flavour
             eval ${step}_repo=$mirror/main
-            eval ${step}_modloop=$mirror/releases/$basearch/netboot/modloop-lts
+            eval ${step}_modloop=$mirror/releases/$basearch/netboot/modloop-$flavour
         fi
     }
 
@@ -102,8 +168,8 @@ setos() {
         else
             if is_in_china; then
                 case "$basearch" in
-                "x86_64") mirror=https://mirrors.aliyun.com/ubuntu-releases/$releasever/ ;;
-                "aarch64") mirror=https://mirrors.aliyun.com/ubuntu-cdimage/releases/$releasever/release/ ;;
+                "x86_64") mirror=https://mirrors.tuna.tsinghua.edu.cn/ubuntu-releases/$releasever/ ;;
+                "aarch64") mirror=https://mirrors.tuna.tsinghua.edu.cn/ubuntu-cdimage/releases/$releasever/release/ ;;
                 esac
             else
                 case "$basearch" in
@@ -122,8 +188,7 @@ setos() {
 
     setos_windows() {
         if [ -z "$iso" ] || [ -z "$image_name" ]; then
-            echo "Install Windows need --iso --image-name"
-            exit 1
+            error_and_exit "Install Windows need --iso --image-name"
         fi
         test_url $iso iso
         eval "${step}_iso='$iso'"
@@ -133,8 +198,7 @@ setos() {
     # shellcheck disable=SC2154
     setos_dd() {
         if [ -z "$img" ]; then
-            echo "dd need --img"
-            exit 1
+            error_and_exit "dd need --img"
         fi
         test_url $img 'xz|gzip' img_type
         eval "${step}_img='$img'"
@@ -198,7 +262,7 @@ verify_os_string() {
         fi
     done
 
-    echo "Please specify a proper os."
+    error "Please specify a proper os"
     usage_and_exit
 }
 
@@ -212,7 +276,7 @@ install_pkg() {
     for pkg in $pkgs; do
         # util-linux 用 lsmem 命令测试
         [ "$pkg" = util-linux ] && pkg=lsmem
-        if ! command -v $pkg; then
+        if ! command -v $pkg >/dev/null; then
             {
                 apt_install $pkgs ||
                     dnf install -y $pkgs ||
@@ -227,13 +291,17 @@ install_pkg() {
 }
 
 check_ram() {
-    # lsmem最准确但centos7 arm 和alpine不能用
-    # arm 24g dmidecode 显示少了128m
-    install_pkg util-linux
-    ram_size=$(lsmem -b 2>/dev/null | grep 'Total online memory:' | awk '{ print $NF/1024/1024 }')
-    if [ -z $ram_size ]; then
-        install_pkg dmidecode
-        ram_size=$(dmidecode -t 17 | grep "Size.*[GM]B" | awk '{if ($3=="GB") s+=$2*1024; else s+=$2} END {print s}')
+    if is_in_windows; then
+        ram_size=$(wmic memorychip get capacity | tail +2 | awk '{sum+=$1} END {print sum/1024/1024}')
+    else
+        # lsmem最准确但centos7 arm 和alpine不能用
+        # arm 24g dmidecode 显示少了128m
+        install_pkg util-linux
+        ram_size=$(lsmem -b 2>/dev/null | grep 'Total online memory:' | awk '{ print $NF/1024/1024 }')
+        if [ -z $ram_size ]; then
+            install_pkg dmidecode
+            ram_size=$(dmidecode -t 17 | grep "Size.*[GM]B" | awk '{if ($3=="GB") s+=$2*1024; else s+=$2} END {print s}')
+        fi
     fi
 
     case "$distro" in
@@ -242,29 +310,140 @@ check_ram() {
     *) ram_requirement=1024 ;;
     esac
 
+    if [ -z $ram_size ] || [ $ram_size -le 0 ]; then
+        error_and_exit "Could not detect RAM size."
+    fi
+
     if [ $ram_size -lt $ram_requirement ]; then
-        echo "Could not install $distro: RAM < $ram_requirement MB."
-        exit 1
+        error_and_exit "Could not install $distro: RAM < $ram_requirement MB."
+    fi
+}
+
+is_efi() {
+    if is_in_windows; then
+        bcdedit | grep -q '^path.*\.efi'
+    else
+        [ -d /sys/firmware/efi ]
+    fi
+}
+
+install_grub_win() {
+    grub_cfg=$1 # /cygdrive/$c/grub.cfg
+
+    # 下载 grub
+    info download grub
+    grub_ver=2.06
+    is_in_china && grub_url=https://mirrors.tuna.tsinghua.edu.cn/gnu/grub/grub-$grub_ver-for-windows.zip ||
+        grub_url=https://ftp.gnu.org/gnu/grub/grub-$grub_ver-for-windows.zip
+    echo $grub_url
+    curl -Lo /tmp/grub.zip $grub_url
+    # unzip -qo /tmp/grub.zip
+    7z x /tmp/grub.zip -o/tmp -r -y -xr!i386-efi -xr!locale -xr!themes -bso0
+    grub_exe_dir=$(readlink -f /tmp/grub-$grub_ver-for-windows)
+
+    # 设置 grub 内嵌的模块
+    grub_modules+=" normal minicmd ls echo test cat reboot halt linux chain search all_video configfile"
+    grub_modules+=" scsi part_msdos part_gpt fat ntfs ntfscomp ext2 lvm xfs lzopio xzio gzio zstd"
+    if ! is_efi; then
+        grub_modules+=" biosdisk"
+    fi
+
+    # 设置 grub prefix 为c盘根目录
+    # 运行 grub-probe 会改变cmd窗口字体
+    prefix=$($grub_exe_dir/grub-probe -t drive $c: | sed 's,.*PhysicalDrive,(hd,' | sed 's,\r,,')/
+    echo $prefix
+
+    # 安装 grub
+    if is_efi; then
+        # efi
+        info install grub for efi
+
+        # 挂载
+        if result=$(find /cygdrive/?/EFI/Microsoft/Boot/bootmgfw.efi 2>/dev/null); then
+            # 已经挂载
+            x=$(echo $result | cut -d/ -f3)
+        else
+            # 找到空盘符并挂载
+            for x in {a..z}; do
+                [ ! -e /cygdrive/$x ] && break
+            done
+            mountvol $x: /s
+        fi
+
+        # 文件夹命名为reinstall而不是grub，因为可能机器已经安装了grub，bcdedit名字同理
+        grub_dir=$x:\\EFI\\reinstall
+        mkdir -p $grub_dir
+        # grub-mkimage 可设置prefix，也可嵌入配置文件（官方不建议嵌入menuentry条目）
+        #  -c $grub_cfg_win
+        $grub_exe_dir/grub-mkimage -p $prefix -O x86_64-efi -o $grub_dir\\grubx64.efi $grub_modules
+
+        # 添加引导
+        # 脚本可能不是首次运行，所以先删除原来的
+        bcdedit /enum bootmgr | grep --text -B3 Reinstall | awk '{print $2}' | grep '{.*}' |
+            xargs -I {} cmd /c bcdedit /delete {}
+        id=$(bcdedit /copy '{bootmgr}' /d Reinstall | grep -o '{.*}')
+        bcdedit /set $id device partition=$x:
+        bcdedit /set $id path \\EFI\\reinstall\\grubx64.efi
+        bcdedit /set '{fwbootmgr}' bootsequence $id
+    else
+        # bios
+        info install grub for bios
+
+        # bootmgr 加载 gr2ldr 有64k限制
+        # 解决方法1 gr2ldr.mbr + gr2ldr
+        # 解决方法2 生成少于64K的 g2ldr + 动态模块
+
+        # gr2ldr.mbr
+        curl -LO http://ftp.cn.debian.org/debian/tools/win32-loader/stable/win32-loader.exe
+        7z x win32-loader.exe 'g2ldr.mbr' -o/tmp/win32-loader -r -y -bso0
+        find /tmp/win32-loader -name 'g2ldr.mbr' -exec cp {} /cygdrive/$c/ \;
+
+        # g2ldr
+        $grub_exe_dir/grub-mkimage -p "$prefix" -O i386-pc -o core.img $grub_modules
+        cat $grub_exe_dir/i386-pc/lnxboot.img core.img >/cygdrive/$c/g2ldr
+
+        # 添加引导
+        # 脚本可能不是首次运行，所以先删除原来的
+        id='{1c41f649-1637-52f1-aea8-f96bfebeecc8}'
+        bcdedit /enum all | grep --text $id && bcdedit /delete $id
+        bcdedit /create $id /d Reinstall /application bootsector
+        bcdedit /set $id device partition=$c:
+        bcdedit /set $id path \\g2ldr.mbr
+        bcdedit /displayorder $id /addlast
+        bcdedit /bootsequence $id /addfirst
     fi
 }
 
 # 脚本入口
-if [ "$EUID" -ne 0 ]; then
-    echo "Please run as root."
-    exit 1
+# 检查 root
+if ! is_in_windows; then
+    if [ "$EUID" -ne 0 ]; then
+        info "Please run as root."
+        exit 1
+    fi
 fi
 
-if ! opts=$(getopt -a -n $0 --options l --long localtest,iso:,image-name:,img: -- "$@"); then
+# 整理参数
+if ! opts=$(getopt -n $0 -o "" --long localtest,debug,sleep:,iso:,image-name:,img: -- "$@"); then
     usage_and_exit
 fi
 
 eval set -- "$opts"
+# shellcheck disable=SC2034
 while true; do
     case "$1" in
-    -l | --localtest)
+    --localtest)
         localtest=1
         confhome=$localtest_confhome
         shift
+        ;;
+    --debug)
+        set -x
+        shift
+        ;;
+    --sleep)
+        sleep=$2
+        shift 2
         ;;
     --img)
         img=$2
@@ -289,7 +468,13 @@ while true; do
     esac
 done
 
+# 验证目标系统字符串
 verify_os_string "$@"
+
+# win系统盘
+if is_in_windows; then
+    c=$(echo $SYSTEMDRIVE | cut -c1)
+fi
 
 # 必备组件
 install_pkg curl
@@ -298,12 +483,20 @@ if [ -f /etc/alpine-release ]; then
     apk add grep
 fi
 
+# 检查内存
 check_ram
+
+# 检查硬件架构
+# x86强制使用x64
 basearch=$(uname -m)
+[ $basearch = i686 ] && basearch=x86_64
 case "$basearch" in
 "x86_64") basearch_alt=amd64 ;;
 "aarch64") basearch_alt=arm64 ;;
 esac
+
+# 设置 github 国内代理
+set_github_proxy
 
 # 以下目标系统需要进入alpine环境安装
 # ubuntu/alpine
@@ -326,27 +519,29 @@ fi
 # 下载启动内核
 # shellcheck disable=SC2154
 {
-    cd /
+    info download vmlnuz and initrd
     echo $nextos_vmlinuz
-    curl -Lo reinstall-vmlinuz $nextos_vmlinuz
+    curl -Lo /reinstall-vmlinuz $nextos_vmlinuz
 
     echo $nextos_initrd
-    curl -Lo reinstall-initrd $nextos_initrd
+    curl -Lo /reinstall-initrd $nextos_initrd
 }
 
 # 转换 finalos_a=1 为 finalos.a=1 ，排除 finalos_mirrorlist
 build_finalos_cmdline() {
-    for key in $(compgen -v finalos_); do
-        value=${!key}
-        key=${key#finalos_}
-        if [ -n "$value" ] && [ $key != "mirrorlist" ]; then
-            finalos_cmdline+=" finalos.$key='$value'"
-        fi
-    done
+    if vars=$(compgen -v finalos_); then
+        for key in $vars; do
+            value=${!key}
+            key=${key#finalos_}
+            if [ -n "$value" ] && [ $key != "mirrorlist" ]; then
+                finalos_cmdline+=" finalos.$key='$value'"
+            fi
+        done
+    fi
 }
 
 build_extra_cmdline() {
-    for key in localtest confhome; do
+    for key in localtest confhome sleep; do
         value=${!key}
         if [ -n "$value" ]; then
             extra_cmdline+=" extra.$key='$value'"
@@ -361,24 +556,30 @@ build_extra_cmdline() {
     fi
 }
 
-build_finalos_cmdline
-build_extra_cmdline
-grub_cfg=$(find /boot -type f -name grub.cfg -exec grep -E -l 'menuentry|blscfg' {} \;)
-grub_cfg_dir=$(dirname $grub_cfg)
+# shellcheck disable=SC2154
+build_cmdline() {
+    if [ -n "$finalos_cmdline" ]; then
+        # 有 finalos_cmdline 表示需要两步安装
+        # 两步安装需要修改 alpine initrd
+        mod_alpine_initrd
 
-# 在x86 efi机器上，可能用 linux 或 linuxefi 加载内核
-# 通过检测原有的条目有没有 linuxefi 字样就知道当前 grub 用哪一种
-search_files=$(find /boot -type f -name grub.cfg)
-if [ -d /boot/loader/entries/ ]; then
-    search_files="$search_files /boot/loader/entries/"
-fi
-if grep -q -r -E '^[[:blank:]]*linuxefi[[:blank:]]' $search_files; then
-    efi=efi
-fi
+        # 可添加 pkgs=xxx,yyy 启动时自动安装
+        # apkovl=http://xxx.com/apkovl.tar.gz 可用，arm https未测但应该不行
+        # apkovl=sda2:ext4:/apkovl.tar.gz 官方有写但不生效
+        cmdline="alpine_repo=$nextos_repo modloop=$nextos_modloop $extra_cmdline $finalos_cmdline"
+    else
+        if [ $distro = debian ]; then
+            cmdline="lowmem=+1 lowmem/low=1 auto=true priority=critical url=$nextos_ks"
+        else
+            # redhat
+            cmdline="root=live:$nextos_squashfs inst.ks=$nextos_ks $extra_cmdline"
+        fi
+    fi
+}
 
-# 修改 alpine 启动时运行我们的脚本
-# shellcheck disable=SC2154,SC2164
-if [ -n "$finalos_cmdline" ]; then
+mod_alpine_initrd() {
+    # 修改 alpine 启动时运行我们的脚本
+    info mod alpine initrd
     install_pkg gzip cpio
 
     # 解压
@@ -394,13 +595,12 @@ if [ -n "$finalos_cmdline" ]; then
     # exec              switch_root $switch_root_opts $sysroot $chart_init "$KOPT_init" $KOPT_init_args # 3.18
     line_num=$(grep -E -n '^exec (/bin/busybox )?switch_root' init | cut -d: -f1)
     line_num=$((line_num - 1))
+    # alpine arm initramfs 时间问题 要添加 --no-check-certificate
     cat <<EOF | sed -i "${line_num}r /dev/stdin" init
-        # alpine arm initramfs 时间问题 要添加 --no-check-certificate
         wget --no-check-certificate -O \$sysroot/etc/local.d/trans.start $confhome/trans.sh
         chmod a+x \$sysroot/etc/local.d/trans.start
         ln -s /etc/init.d/local \$sysroot/etc/runlevels/default/
 EOF
-
     # 重建
     # 注意要用 cpio -H newc 不要用 cpio -c ，不同版本的 -c 作用不一样，很坑
     # -c    Use the old portable (ASCII) archive format
@@ -408,26 +608,35 @@ EOF
     #       portable format.If you wish the old portable
     #       (ASCII) archive format, use "-H odc" instead.
     find . | cpio -o -H newc | gzip -1 >/reinstall-initrd
+    cd -
+}
 
-    # 删除临时文件
-    cd /
-    rm -rf $tmp_dir
+build_finalos_cmdline
+build_extra_cmdline
+build_cmdline
 
-    # 可添加 pkgs=xxx,yyy 启动时自动安装
-    # apkovl=http://xxx.com/apkovl.tar.gz 可用，arm https未测但应该不行
-    # apkovl=sda2:ext4:/apkovl.tar.gz 官方有写但不生效
-    cmdline="alpine_repo=$nextos_repo modloop=$nextos_modloop $extra_cmdline $finalos_cmdline"
-else
-    if [ $distro = debian ]; then
-        cmdline="lowmem=+1 lowmem/low=1 auto=true priority=critical url=$nextos_ks"
-    else
-        cmdline="root=live:$nextos_squashfs inst.ks=$nextos_ks $extra_cmdline"
+info 'create grub config'
+# linux grub
+if ! is_in_windows; then
+    # 找到主配置 grub.cfg
+    grub_cfg=$(find /boot -type f -name grub.cfg -exec grep -E -l 'menuentry|blscfg' {} \;)
+
+    # 在x86 efi机器上，不同版本的 grub 可能用 linux 或 linuxefi 加载内核
+    # 通过检测原有的条目有没有 linuxefi 字样就知道当前 grub 用哪一种
+    search_files=$(find /boot -type f -name grub.cfg)
+    if [ -d /boot/loader/entries/ ]; then
+        search_files+=" /boot/loader/entries/"
+    fi
+    if grep -q -r -E '^[[:blank:]]*linuxefi[[:blank:]]' $search_files; then
+        efi=efi
     fi
 fi
 
-custom_cfg=$grub_cfg_dir/custom.cfg
+# 生成 custom.cfg (linux) 或者 grub.cfg (win)
+is_in_windows && custom_cfg=/cygdrive/$c/grub.cfg || custom_cfg=$(dirname $grub_cfg)/custom.cfg
 echo $custom_cfg
 cat <<EOF | tee $custom_cfg
+set timeout=5
 menuentry "reinstall" {
     insmod lvm
     insmod xfs
@@ -437,5 +646,12 @@ menuentry "reinstall" {
 }
 EOF
 
-$(command -v grub-reboot grub2-reboot) reinstall
-echo "Please reboot to begin the installation."
+if is_in_windows; then
+    mv /reinstall-vmlinuz /cygdrive/$c/
+    mv /reinstall-initrd /cygdrive/$c/
+    install_grub_win $custom_cfg
+else
+    $(command -v grub-reboot grub2-reboot) reinstall
+fi
+
+info 'Please reboot to begin the installation'
