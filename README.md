@@ -13,7 +13,7 @@
 有高贵的 dd 进度条
 有很多注释
 ```
-#### 使用:
+#### 使用（当前系统是 Linux）:
 ```
 下载:
 curl -O https://raw.githubusercontent.com/bin456789/reinstall/main/reinstall.sh
@@ -29,6 +29,15 @@ bash reinstall.sh dd --img=https://example.com/xxx.gz
 
 重启:
 reboot
+```
+#### 使用（当前系统是 Windows）:
+```
+下载 https://raw.githubusercontent.com/bin456789/reinstall/main/reinstall.bat
+
+管理员权限打开 cmd/powershell
+reinstall.bat centos-7 (或其他系统)
+
+本脚本所有功能皆可在 Windows 下使用，包括重装到Linux/Windows/dd
 ```
 #### 支持重装到:
 ```
