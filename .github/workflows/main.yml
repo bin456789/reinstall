@@ -1,0 +1,36 @@
+name: test
+
+on: [push, workflow_dispatch]
+
+jobs:
+  test:
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, windows-latest]
+        include:
+          - os: ubuntu-latest
+            command: sudo bash reinstall.sh --debug
+          - os: windows-latest
+            command: ./reinstall.bat --debug
+    runs-on: ${{ matrix.os }}
+    steps:
+      - name: Disable Git autocrlf
+        run: |
+          git config --global core.autocrlf false
+      - name: Checkout
+        uses: actions/checkout@v3
+      - name: Run Script
+        shell: bash # https://github.com/actions/runner-images/issues/6668
+        run: |
+          ${{ matrix.command }} centos-7
+          ${{ matrix.command }} alma-8
+          ${{ matrix.command }} rocky-9
+          ${{ matrix.command }} alpine-3.18
+          ${{ matrix.command }} ubuntu-22.04
+          ${{ matrix.command }} debian-12
+          ${{ matrix.command }} dd --img=https://cdn.kernel.org/pub/linux/kernel/v6.x/linux-6.3.8.tar.xz
+          # 测试失败例子
+          ! ${{ matrix.command }} wrong-os
+          ! ${{ matrix.command }} dd --img=https://github.com/
+          ! ${{ matrix.command }} windows --iso=https://github.com/ --image-name=abc
