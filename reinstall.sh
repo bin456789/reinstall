@@ -76,7 +76,8 @@ test_url() {
     # 所以不用mime判断
     # https://www.digipres.org/formats/sources/tika/formats/#application/gzip
 
-    real_type=$(file -b $tmp_file | cut -d' ' -f1 | tr '[:upper:]' '[:lower:]')
+    # 有些 file 版本输出的是 # ISO 9660 CD-ROM filesystem data ，要去掉开头的井号
+    real_type=$(file -b $tmp_file | sed 's/^# //' | cut -d' ' -f1 | tr '[:upper:]' '[:lower:]')
     [ -n "$var_to_eval" ] && eval $var_to_eval=$real_type
 
     if ! echo $expect_type | grep -wo "$real_type"; then
