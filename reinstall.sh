@@ -191,6 +191,11 @@ setos() {
         if [ -z "$iso" ] || [ -z "$image_name" ]; then
             error_and_exit "Install Windows need --iso --image-name"
         fi
+        # 防止常见错误
+        # --image-name 肯定大于等于3个单词
+        if [ "$(echo "$image_name" | wc -w)" -lt 3 ]; then
+            error_and_exit "--image-name wrong."
+        fi
         test_url $iso iso
         eval "${step}_iso='$iso'"
         eval "${step}_image_name='$image_name'"
