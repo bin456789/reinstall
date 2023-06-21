@@ -275,7 +275,7 @@ mount /dev/disk/by-label/installer /os/installer
 # shellcheck disable=SC2154
 if [ "$distro" = "windows" ]; then
     download $iso /os/windows.iso
-    mkdir /iso
+    mkdir -p /iso
     mount /os/windows.iso /iso
 
     # 变量名    使用场景
@@ -325,7 +325,7 @@ if [ "$distro" = "windows" ]; then
         esac
 
         download https://fedorapeople.org/groups/virt/virtio-win/direct-downloads/$dir/virtio-win.iso /os/virtio-win.iso
-        mkdir /virtio
+        mkdir -p /virtio
         mount /os/virtio-win.iso /virtio
     fi
 
@@ -389,12 +389,12 @@ EOF
     #     unix2dos /os/installer/sources/ei.cfg
 
     # 挂载 boot.wim
-    mkdir /wim
+    mkdir -p /wim
     wimmountrw $boot_wim 2 /wim/
 
     # virtio 驱动
     if [ -d /virtio ]; then
-        mkdir /wim/virtio
+        mkdir -p /wim/virtio
         find /virtio \
             -ipath "*/$sys/$arch/*" \
             -not -iname '*.pdb' \
