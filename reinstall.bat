@@ -2,6 +2,10 @@
 set confhome=https://raw.githubusercontent.com/bin456789/reinstall/main
 setlocal EnableDelayedExpansion
 
+:: Windows 7 SP1 winhttp 默认不支持 tls 1.2
+:: https://support.microsoft.com/en-us/topic/update-to-enable-tls-1-1-and-tls-1-2-as-default-secure-protocols-in-winhttp-in-windows-c4bd73d2-31d7-761e-0178-11268bb10392
+:: 有些系统根证书没更新
+:: 所以不要用https
 :: 进入脚本目录
 cd /d %~dp0
 
@@ -18,12 +22,12 @@ set tags=%tmp%\cygwin-installed-!pkgs!
 if not exist !tags! (
     :: 检查是否国内
     :: 在括号里面，:: 下一行不能是空行!!!!!
-    call :download https://geoip.fedoraproject.org/city %tmp%\geoip "Check Location"
+    call :download http://geoip.fedoraproject.org/city %tmp%\geoip "Check Location"
     findstr CHN %tmp%\geoip >nul
     if !errorlevel! == 0 (
-        set host=https://mirrors.tuna.tsinghua.edu.cn
+        set host=http://mirror.nju.edu.cn
     ) else (
-        set host=https://mirrors.kernel.org
+        set host=http://mirrors.kernel.org
     )
 
     :: 检查32/64位
@@ -37,7 +41,7 @@ if not exist !tags! (
     )
 
     :: 下载 Cygwin
-    call :download https://www.cygwin.com/setup-!arch!.exe %tmp%\setup-cygwin.exe "Download Cygwin"
+    call :download http://www.cygwin.com/setup-!arch!.exe %tmp%\setup-cygwin.exe "Download Cygwin"
 
     :: 安装 Cygwin
     set site=!host!!dir!

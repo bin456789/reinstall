@@ -34,10 +34,13 @@ reboot
 ```
 #### 使用（当前系统是 Windows）:
 ```
-下载 https://raw.githubusercontent.com/bin456789/reinstall/main/reinstall.bat
+下载
+https://raw.githubusercontent.com/bin456789/reinstall/main/reinstall.bat
+https://raw.githubusercontent.com/bin456789/reinstall/main/reinstall.sh
+放到同一目录
 
-管理员权限打开 cmd/powershell
-reinstall.bat centos-7 (或其他系统)
+管理员权限打开 cmd/powershell 窗口
+运行 reinstall.bat centos-7 (或其他系统)
 
 本脚本所有功能皆可在 Windows 下使用，包括重装到 Linux/Windows/dd
 ```
