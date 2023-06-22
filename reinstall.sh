@@ -291,7 +291,8 @@ install_pkg() {
                     pacman -Syu --noconfirm $pkgs ||
                     apk add $pkgs
             } 2>/dev/null
-            break
+            # break 返回值始终为 0
+            return
         fi
     done
 }
