@@ -91,14 +91,21 @@ add_community_repo_for_alpine() {
 }
 
 is_virt() {
-    if command -v systemd-detect-virt; then
-        systemd-detect-virt
+    if is_in_windows; then
+        vmstr='VMware|Virtual|BOCHS|QEMU'
+        wmic ComputerSystem | grep -Eiw $vmstr && return 0
+        wmic bios | grep -Eiw $vmstr && return 0
+        wmic /namespace:'\\root\cimv2' PATH Win32_Fan | head -1 | grep -q -v Name
     else
-        if ! install_pkg virt-what && [ -f /etc/alpine-release ]; then
-            add_community_repo_for_alpine
-            install_pkg virt-what
+        if command -v systemd-detect-virt; then
+            systemd-detect-virt
+        else
+            if ! install_pkg virt-what && [ -f /etc/alpine-release ]; then
+                add_community_repo_for_alpine
+                install_pkg virt-what
+            fi
+            virt-what
         fi
-        virt-what
     fi
 }
 
@@ -110,8 +117,7 @@ setos() {
 
     setos_alpine() {
         flavour=lts
-        # 在windows中没有命令判断是否为虚拟机
-        if ! is_in_windows && is_virt; then
+        if is_virt; then
             # alpine aarch64 3.18 才有 virt 直连链接
             if [ "$basearch" == aarch64 ]; then
                 (($("$releasever >= 3.18" | bc))) && flavour=virt
