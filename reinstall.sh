@@ -92,9 +92,12 @@ add_community_repo_for_alpine() {
 
 is_virt() {
     if is_in_windows; then
-        vmstr='VMware|Virtual|BOCHS|QEMU'
-        wmic ComputerSystem | grep -Eiw $vmstr && return 0
-        wmic bios | grep -Eiw $vmstr && return 0
+        # https://github.com/systemd/systemd/blob/main/src/basic/virt.c
+        # https://sources.debian.org/src/hw-detect/1.159/hw-detect.finish-install.d/08hw-detect/
+        vmstr='VMware|Virtual|Virtualization|VirtualBox|VMW|Hyper-V|Bochs|QEMU|KVM|OpenStack|KubeVirt|innotek|Xen|Parallels|BHYVE'
+        for name in ComputerSystem BIOS BaseBoard; do
+            wmic $name | grep -Eiw $vmstr && return 0
+        done
         wmic /namespace:'\\root\cimv2' PATH Win32_Fan | head -1 | grep -q -v Name
     else
         if command -v systemd-detect-virt; then
