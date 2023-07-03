@@ -11,7 +11,7 @@ set -eE
 # 似乎script更优雅，但 alpine 不带 script 命令
 # script -f/dev/tty0
 exec >/dev/tty0 2>&1
-trap 'error' ERR
+trap 'error line $LINENO return $?' ERR
 
 catch() {
     if [ "$1" != "0" ]; then
@@ -30,21 +30,28 @@ add_community_repo() {
     echo http://dl-cdn.alpinelinux.org/alpine/v$alpine_ver/community >>/etc/apk/repositories
 }
 
+cp() {
+    # 防止 alias cp='cp -i'
+    command cp "$@"
+}
+
 download() {
-    # 显示 url
-    echo $1
+    url=$1
+    file=$2
+    echo $url
 
     # 阿里云禁止 axel 下载
     # axel https://mirrors.aliyun.com/alpine/latest-stable/releases/x86_64/alpine-netboot-3.17.0-x86_64.tar.gz
     # Initializing download: https://mirrors.aliyun.com/alpine/latest-stable/releases/x86_64/alpine-netboot-3.17.0-x86_64.tar.gz
     # HTTP/1.1 403 Forbidden
 
-    # 先用 axel 下载
-    [ -z $2 ] && save="" || save="-o $2"
-    if ! axel $1 $save; then
+    # axel 在 lightsail 上会占用大量cpu
+    # 先用 aria2 下载
+    [ -z $file ] && save="" || save="-o $file"
+    if ! aria2c -x4 $url $save; then
         # 出错再用 curl
-        [ -z $2 ] && save="-O" || save="-o $2"
-        curl -L $1 $save
+        [ -z $file ] && save="-O" || save="-o $file"
+        curl -L $url $save
     fi
 }
 
@@ -166,7 +173,8 @@ fi
 
 # 目标系统非 alpine 和 dd
 # 脚本开始
-if ! apk add util-linux axel grub udev hdparm e2fsprogs curl parted; then
+add_community_repo
+if ! apk add util-linux aria2 grub udev hdparm e2fsprogs curl parted; then
     echo 'Unable to install package!'
     sleep 1m
     exec reboot
@@ -279,17 +287,27 @@ if [ "$distro" = "windows" ]; then
     mkdir -p /iso
     mount /os/windows.iso /iso
 
-    # 变量名    使用场景
-    # basearch uname -m                x86_64  aarch64
-    # arch_wim wiminfo            x86  x86_64  ARM64
-    # arch     virtio win应答文件  x86  amd64   arm64
+    # 变量名     使用场景
+    # arch_uname uname -m                      x86_64  aarch64
+    # arch_wim   wiminfo                  x86  x86_64  ARM64
+    # arch       virtio驱动/unattend.xml  x86  amd64   arm64
+    # arch_xen   xen驱动                  x86  x64
 
     # 将 wim 的 arch 转为驱动和应答文件的 arch
     arch_wim=$(wiminfo /iso/sources/install.wim 1 | grep Architecture: | awk '{print $2}' | tr '[:upper:]' '[:lower:]')
     case "$arch_wim" in
-    x86) arch=x86 ;;
-    x86_64) arch=amd64 ;;
-    arm64) arch=arm64 ;;
+    x86)
+        arch=x86
+        arch_xen=x86
+        ;;
+    x86_64)
+        arch=amd64
+        arch_xen=x64
+        ;;
+    arm64)
+        arch=arm64
+        arch_xen= # xen 没有 arm64 驱动
+        ;;
     esac
 
     # virt-what 要用最新版
@@ -299,16 +317,50 @@ if [ "$distro" = "windows" ]; then
     # alpine virt-what 1.25 显示为 kvm
 
     # 下载 virtio 驱动
-    # virt-what 可能返回多个结果，因此配合 grep 使用
-    # aws lightsail t3 (nitro) 输出结果是 kvm aws
-    if virt-what | grep aws; then
+    # virt-what 可能会输出多行结果，因此用 grep
+    drv=/os/drivers
+    mkdir -p $drv
+    if virt-what | grep aws &&
+        virt-what | grep kvm &&
+        arch_wim=x86_64; then
+        # aws nitro
+        # 只有 64 位驱动
         # https://docs.aws.amazon.com/zh_cn/AWSEC2/latest/WindowsGuide/migrating-latest-types.html
         apk add unzip
-        download https://s3.amazonaws.com/ec2-windows-drivers-downloads/NVMe/Latest/AWSNVMe.zip /os/AWSNVMe.zip
-        unzip -o -d /aws /os/AWSNVMe.zip
-        download https://s3.amazonaws.com/ec2-windows-drivers-downloads/ENA/Latest/AwsEnaNetworkDriver.zip /os/AwsEnaNetworkDriver.zip
-        unzip -o -d /aws /os/AwsEnaNetworkDriver.zip
+        download https://s3.amazonaws.com/ec2-windows-drivers-downloads/NVMe/Latest/AWSNVMe.zip $drv/AWSNVMe.zip
+        unzip -o -d $drv/aws/ $drv/AWSNVMe.zip
+        download https://s3.amazonaws.com/ec2-windows-drivers-downloads/ENA/Latest/AwsEnaNetworkDriver.zip $drv/AwsEnaNetworkDriver.zip
+        unzip -o -d $drv/aws/ $drv/AwsEnaNetworkDriver.zip
+
+    elif virt-what | grep aws &&
+        virt-what | grep xen &&
+        arch_wim=x86_64; then
+        # aws xen
+        # 只有 64 位驱动
+        # 未测试
+        # https://docs.aws.amazon.com/zh_cn/AWSEC2/latest/WindowsGuide/Upgrading_PV_drivers.html
+        apk add unzip msitools
+        download https://s3.amazonaws.com/ec2-windows-drivers-downloads/AWSPV/Latest/AWSPVDriver.zip $drv/AWSPVDriver.zip
+        unzip -o -d $drv $drv/AWSPVDriver.zip
+        msiextract $drv/AWSPVDriverSetup.msi -C $drv
+        mkdir -p $drv/aws/
+        cp -rf $drv/.Drivers/* $drv/aws/
+
+    elif virt-what | grep xen; then
+        # xen
+        # 未测试
+        # https://xenbits.xenproject.org/pvdrivers/win/
+        ver='9.0.0'
+        parts='xenbus xencons xenhid xeniface xennet xenvbd xenvif xenvkbd'
+        mkdir -p $drv/xen/
+        for part in $parts; do
+            download https://xenbits.xenproject.org/pvdrivers/win/$ver/$part.tar $drv/$part.tar
+            tar -xf $drv/$part.tar -C $drv/xen/
+        done
+
     elif virt-what | grep kvm; then
+        # virtio
+        # https://fedorapeople.org/groups/virt/virtio-win/direct-downloads/stable-virtio/
         case $(echo "$image_name" | tr '[:upper:]' '[:lower:]') in
         'windows server 2022'*) sys=2k22 ;;
         'windows server 2019'*) sys=2k19 ;;
@@ -333,18 +385,18 @@ if [ "$distro" = "windows" ]; then
         *) dir=stable-virtio ;;
         esac
 
-        download https://fedorapeople.org/groups/virt/virtio-win/direct-downloads/$dir/virtio-win.iso /os/virtio-win.iso
-        mkdir -p /virtio
-        mount /os/virtio-win.iso /virtio
+        download https://fedorapeople.org/groups/virt/virtio-win/direct-downloads/$dir/virtio-win.iso $drv/virtio-win.iso
+        mkdir -p $drv/virtio
+        mount $drv/virtio-win.iso $drv/virtio
     fi
 
     # efi: 复制boot开头的文件+efi目录到efi分区，复制iso全部文件(除了boot.wim)到installer分区
     # bios: 复制iso全部文件到installer分区
     if [ -d /sys/firmware/efi/ ]; then
         mkdir -p /os/boot/efi/sources/
-        /bin/cp -rv /iso/boot* /os/boot/efi/
-        /bin/cp -rv /iso/efi/ /os/boot/efi/
-        /bin/cp -rv /iso/sources/boot.wim /os/boot/efi/sources/
+        cp -rv /iso/boot* /os/boot/efi/
+        cp -rv /iso/efi/ /os/boot/efi/
+        cp -rv /iso/sources/boot.wim /os/boot/efi/sources/
         rsync -rv --exclude=/sources/boot.wim /iso/* /os/installer/
         boot_wim=/os/boot/efi/sources/boot.wim
     else
@@ -401,20 +453,24 @@ EOF
     mkdir -p /wim
     wimmountrw $boot_wim 2 /wim/
 
-    # virtio 驱动
-    if [ -d /virtio ]; then
-        mkdir -p /wim/drivers/
-        find /virtio \
-            -ipath "*/$sys/$arch/*" \
-            -not -iname '*.pdb' \
-            -not -iname '*.doc' \
-            -exec /bin/cp -rf {} /wim/drivers/ \;
-    fi
-    # aws 驱动
-    if [ -d /aws ]; then
-        mkdir -p /wim/drivers/
-        /bin/cp -rf /aws/* /wim/drivers/
-    fi
+    cp_drivers() {
+        src=$1
+        dist=$2
+        path=$3
+        [ -n "$path" ] && filter="-ipath $path" || filter=""
+        find $src \
+            $filter \
+            -not -iname "*.pdb" \
+            -not -iname "dpinst.exe" \
+            -exec /bin/cp -rf {} $dist \;
+    }
+
+    # 添加驱动
+    mkdir -p /wim/drivers
+
+    [ -d $drv/virtio ] && cp_drivers $drv/virtio /wim/drivers "*/$sys/$arch/*"
+    [ -d $drv/aws ] && cp_drivers $drv/aws /wim/drivers
+    [ -d $drv/xen ] && cp_drivers $drv/xen /wim/drivers "*/$arch_xen/*"
 
     # win7 要添加 bootx64.efi 到 efi 目录
     [ $arch = amd64 ] && boot_efi=bootx64.efi || boot_efi=bootaa64.efi
@@ -469,9 +525,9 @@ if [ -d /sys/firmware/efi/ ]; then
     grub-install --efi-directory=/os/boot/efi --boot-directory=/os/boot
 
     # 添加 netboot 备用
-    basearch=$(uname -m)
-    cd /os/boot/efi || exit
-    if [ "$basearch" = aarch64 ]; then
+    arch_uname=$(uname -m)
+    cd /os/boot/efi
+    if [ "$arch_uname" = aarch64 ]; then
         download https://boot.netboot.xyz/ipxe/netboot.xyz-arm64.efi
     else
         download https://boot.netboot.xyz/ipxe/netboot.xyz.efi
@@ -491,7 +547,7 @@ grub_cfg=/os/boot/grub/grub.cfg
 # 新版grub不区分linux/linuxefi
 # shellcheck disable=SC2154
 if [ "$distro" = "ubuntu" ]; then
-    cd /os/installer/ || exit
+    cd /os/installer/
     download $iso ubuntu.iso
 
     iso_file=/ubuntu.iso

@@ -92,7 +92,7 @@ administrator   123@@@
 ````
 #### todo:
 ```
-测试 Xen
-添加 Xen Windows 驱动
+测试 Xen / AWS Xen
 使用 Cloud Images
+静态 IP / IPV6
 ````
