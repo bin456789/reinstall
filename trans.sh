@@ -150,6 +150,7 @@ elif [ "$distro" = "dd" ]; then
         # alpine busybox 自带 gzip xz，但官方版也许性能更好
         # wget -O- $img | $prog -dc >/dev/$xda
         apk add curl $prog
+        # curl -L $img | $prog -dc | dd of=/dev/$xda bs=1M
         curl -L $img | $prog -dc >/dev/$xda
         sync
     else
@@ -299,7 +300,15 @@ if [ "$distro" = "windows" ]; then
 
     # 下载 virtio 驱动
     # virt-what 可能返回多个结果，因此配合 grep 使用
-    if virt-what | grep kvm; then
+    # aws lightsail t3 (nitro) 输出结果是 kvm aws
+    if virt-what | grep aws; then
+        # https://docs.aws.amazon.com/zh_cn/AWSEC2/latest/WindowsGuide/migrating-latest-types.html
+        apk add unzip
+        download https://s3.amazonaws.com/ec2-windows-drivers-downloads/NVMe/Latest/AWSNVMe.zip /os/AWSNVMe.zip
+        unzip -o -d /aws /os/AWSNVMe.zip
+        download https://s3.amazonaws.com/ec2-windows-drivers-downloads/ENA/Latest/AwsEnaNetworkDriver.zip /os/AwsEnaNetworkDriver.zip
+        unzip -o -d /aws /os/AwsEnaNetworkDriver.zip
+    elif virt-what | grep kvm; then
         case $(echo "$image_name" | tr '[:upper:]' '[:lower:]') in
         'windows server 2022'*) sys=2k22 ;;
         'windows server 2019'*) sys=2k19 ;;
@@ -394,12 +403,17 @@ EOF
 
     # virtio 驱动
     if [ -d /virtio ]; then
-        mkdir -p /wim/virtio
+        mkdir -p /wim/drivers/
         find /virtio \
             -ipath "*/$sys/$arch/*" \
             -not -iname '*.pdb' \
             -not -iname '*.doc' \
-            -exec /bin/cp -rf {} /wim/virtio/ \;
+            -exec /bin/cp -rf {} /wim/drivers/ \;
+    fi
+    # aws 驱动
+    if [ -d /aws ]; then
+        mkdir -p /wim/drivers/
+        /bin/cp -rf /aws/* /wim/drivers/
     fi
 
     # win7 要添加 bootx64.efi 到 efi 目录
@@ -438,6 +452,10 @@ EOF
                 ntldr /bootmgr
             }
 EOF
+    fi
+    if [ "$sleep" = 2 ]; then
+        cd /
+        sleep infinity
     fi
     exec reboot
 fi
