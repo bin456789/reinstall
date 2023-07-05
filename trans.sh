@@ -26,8 +26,10 @@ error() {
 }
 
 add_community_repo() {
-    alpine_ver=$(cut -d. -f1,2 </etc/alpine-release)
-    echo http://dl-cdn.alpinelinux.org/alpine/v$alpine_ver/community >>/etc/apk/repositories
+    if ! grep -x 'http.*/community' /etc/apk/repositories; then
+        alpine_ver=$(cut -d. -f1,2 </etc/alpine-release)
+        echo http://dl-cdn.alpinelinux.org/alpine/v$alpine_ver/community >>/etc/apk/repositories
+    fi
 }
 
 cp() {

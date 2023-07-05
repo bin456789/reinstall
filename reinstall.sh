@@ -86,8 +86,10 @@ test_url() {
 }
 
 add_community_repo_for_alpine() {
-    alpine_ver=$(cut -d. -f1,2 </etc/alpine-release)
-    echo http://dl-cdn.alpinelinux.org/alpine/v$alpine_ver/community >>/etc/apk/repositories
+    if ! grep -x 'http.*/community' /etc/apk/repositories; then
+        alpine_ver=$(cut -d. -f1,2 </etc/alpine-release)
+        echo http://dl-cdn.alpinelinux.org/alpine/v$alpine_ver/community >>/etc/apk/repositories
+    fi
 }
 
 is_virt() {
@@ -103,10 +105,7 @@ is_virt() {
         if command -v systemd-detect-virt; then
             systemd-detect-virt
         else
-            if ! install_pkg virt-what && [ -f /etc/alpine-release ]; then
-                add_community_repo_for_alpine
-                install_pkg virt-what
-            fi
+            install_pkg virt-what
             virt-what
         fi
     fi
@@ -123,7 +122,7 @@ setos() {
         if is_virt; then
             # alpine aarch64 3.18 才有 virt 直连链接
             if [ "$basearch" == aarch64 ]; then
-                (($("$releasever >= 3.18" | bc))) && flavour=virt
+                (($(echo "$releasever >= 3.18" | bc))) && flavour=virt
             else
                 flavour=virt
             fi
@@ -293,12 +292,18 @@ install_pkg() {
         [ "$pkg" = util-linux ] && pkg=lsmem
         if ! command -v $pkg >/dev/null; then
             {
-                apt_install $pkgs ||
-                    dnf install -y $pkgs ||
-                    yum install -y $pkgs ||
-                    zypper install -y $pkgs ||
-                    pacman -Syu --noconfirm $pkgs ||
-                    apk add $pkgs
+                if [ -f /etc/alpine-release ]; then
+                    if ! apk add $pkgs; then
+                        add_community_repo_for_alpine
+                        apk add $pkgs
+                    fi
+                else
+                    apt_install $pkgs ||
+                        dnf install -y $pkgs ||
+                        yum install -y $pkgs ||
+                        zypper install -y $pkgs ||
+                        pacman -Syu --noconfirm $pkgs
+                fi
             } 2>/dev/null
             # break 返回值始终为 0
             return
@@ -312,11 +317,22 @@ check_ram() {
     else
         # lsmem最准确但centos7 arm 和alpine不能用
         # arm 24g dmidecode 显示少了128m
+        # arm 24g lshw 显示23BiB
+        # ec2 t4g arm alpine 用 lsmem 和 dmidecode 都无效，要用 lshw，但结果和free -m一致，其他平台则没问题
         install_pkg util-linux
         ram_size=$(lsmem -b 2>/dev/null | grep 'Total online memory:' | awk '{ print $NF/1024/1024 }')
+
         if [ -z $ram_size ]; then
             install_pkg dmidecode
             ram_size=$(dmidecode -t 17 | grep "Size.*[GM]B" | awk '{if ($3=="GB") s+=$2*1024; else s+=$2} END {print s}')
+        fi
+
+        if [ -z $ram_size ]; then
+            install_pkg lshw
+            # 不能忽略 -i，alpine 显示的是 System memory
+            ram_str=$(lshw -c memory -short | grep -i 'System Memory' | awk '{print $3}')
+            ram_size=$(grep <<<$ram_str -o '[0-9]*')
+            grep <<<$ram_str GiB && ram_size=$((ram_size * 1024))
         fi
     fi
 
