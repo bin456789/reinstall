@@ -622,14 +622,23 @@ mod_alpine_initrd() {
     cd $tmp_dir
     zcat /reinstall-initrd | cpio -idm
 
+    # 预先下载脚本
+    curl -Lo $tmp_dir/trans.start $confhome/trans.sh
+
     # hack
     # exec /bin/busybox switch_root $switch_root_opts $sysroot $chart_init "$KOPT_init" $KOPT_init_args # 3.17
     # exec              switch_root $switch_root_opts $sysroot $chart_init "$KOPT_init" $KOPT_init_args # 3.18
     line_num=$(grep -E -n '^exec (/bin/busybox )?switch_root' init | cut -d: -f1)
     line_num=$((line_num - 1))
-    # alpine arm initramfs 时间问题 要添加 --no-check-certificate
+    # 1. alpine arm initramfs 时间问题 要添加 --no-check-certificate
+    # 2. 神奇的 aws t4g arm 会出现bad header错误， 但甲骨文arm就正常，所以只能预先下载
+    # Connecting to raw.githubusercontent.com (185.199.108.133:443)
+    # 60C0BB2FFAFF0000:error:0A00009C:SSL routines:ssl3_get_record:http request:ssl/record/ssl3_record.c:345:
+    # ssl_client: SSL_connect
+    # wget: bad header line: �
     cat <<EOF | sed -i "${line_num}r /dev/stdin" init
-        wget --no-check-certificate -O \$sysroot/etc/local.d/trans.start $confhome/trans.sh
+        # wget --no-check-certificate -O \$sysroot/etc/local.d/trans.start $confhome/trans.sh
+        cp /trans.start \$sysroot/etc/local.d/trans.start
         chmod a+x \$sysroot/etc/local.d/trans.start
         ln -s /etc/init.d/local \$sysroot/etc/runlevels/default/
 EOF
