@@ -322,9 +322,9 @@ if [ "$distro" = "windows" ]; then
     mkdir -p $drv
     if virt-what | grep aws &&
         virt-what | grep kvm &&
-        arch_wim=x86_64; then
+        [ "$arch_wim" = x86_64 ]; then
         # aws nitro
-        # 只有 64 位驱动
+        # 只有 x64 位驱动
         # https://docs.aws.amazon.com/zh_cn/AWSEC2/latest/WindowsGuide/migrating-latest-types.html
         apk add unzip
         download https://s3.amazonaws.com/ec2-windows-drivers-downloads/NVMe/Latest/AWSNVMe.zip $drv/AWSNVMe.zip
@@ -334,7 +334,7 @@ if [ "$distro" = "windows" ]; then
 
     elif virt-what | grep aws &&
         virt-what | grep xen &&
-        arch_wim=x86_64; then
+        [ "$arch_wim" = x86_64 ]; then
         # aws xen
         # 只有 64 位驱动
         # 未测试
@@ -346,8 +346,10 @@ if [ "$distro" = "windows" ]; then
         mkdir -p $drv/aws/
         cp -rf $drv/.Drivers/* $drv/aws/
 
-    elif virt-what | grep xen; then
+    elif virt-what | grep xen &&
+        [ "$arch_wim" != arm64 ]; then
         # xen
+        # 有 x86 x64，没arm64驱动
         # 未测试
         # https://xenbits.xenproject.org/pvdrivers/win/
         ver='9.0.0'
@@ -360,6 +362,7 @@ if [ "$distro" = "windows" ]; then
 
     elif virt-what | grep kvm; then
         # virtio
+        # x86 x64 arm64 都有
         # https://fedorapeople.org/groups/virt/virtio-win/direct-downloads/stable-virtio/
         case $(echo "$image_name" | tr '[:upper:]' '[:lower:]') in
         'windows server 2022'*) sys=2k22 ;;
