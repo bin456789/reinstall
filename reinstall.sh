@@ -122,6 +122,7 @@ setos() {
         if is_virt; then
             # alpine aarch64 3.18 才有 virt 直连链接
             if [ "$basearch" == aarch64 ]; then
+                install_pkg bc
                 (($(echo "$releasever >= 3.18" | bc))) && flavour=virt
             else
                 flavour=virt
