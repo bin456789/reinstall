@@ -516,10 +516,12 @@ EOF
     # windows 7 没有 invoke-webrequest
     # installer分区盘符不一定是D盘
     # 所以复制 resize.bat 到 install.wim
-    image_name=$(wiminfo $install_wim | grep -ix "Name:[[:blank:]]*$image_name" | cut -d: -f2 | xargs)
-    wimmountrw $install_wim "$image_name" /wim/
-    download $confhome/resize.bat /wim/resize.bat
-    wimunmount --commit /wim/
+    # TODO: 由于esd文件无法修改，要将resize.bat放到boot.wim
+    if [[ "$install_wim" = "*.wim" ]]; then
+        wimmountrw $install_wim "$image_name" /wim/
+        download $confhome/resize.bat /wim/resize.bat
+        wimunmount --commit /wim/
+    fi
 
     # 添加引导
     if [ -d /sys/firmware/efi/ ]; then

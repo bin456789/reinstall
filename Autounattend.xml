@@ -93,16 +93,22 @@
     <settings pass="specialize">
         <component name="Microsoft-Windows-Deployment" processorArchitecture="%arch%" publicKeyToken="31bf3856ad364e35" language="neutral" versionScope="nonSxS" xmlns:wcm="http://schemas.microsoft.com/WMIConfig/2002/State" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance">
             <RunSynchronous>
+                <!-- 启用 administrator 账户 -->
                 <RunSynchronousCommand wcm:action="add">
-                    <Path>net user Administrator /active:yes</Path>
                     <Order>1</Order>
+                    <Path>net user Administrator /active:yes</Path>
                 </RunSynchronousCommand>
+                <!-- workaround esd 里面没有这个文件，先touch -->
                 <RunSynchronousCommand wcm:action="add">
                     <Order>2</Order>
+                    <Path>cmd /c type nul >>C:\resize.bat</Path>
+                </RunSynchronousCommand>
+                <RunSynchronousCommand wcm:action="add">
+                    <Order>3</Order>
                     <Path>C:\resize.bat</Path>
                 </RunSynchronousCommand>
-                 <RunSynchronousCommand wcm:action="add">
-                    <Order>3</Order>
+                <RunSynchronousCommand wcm:action="add">
+                    <Order>4</Order>
                     <Path>cmd /c "del C:\resize.bat"</Path>
                 </RunSynchronousCommand>
             </RunSynchronous>
