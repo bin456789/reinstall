@@ -487,9 +487,10 @@ EOF
         [ -n "$path" ] && filter="-ipath $path" || filter=""
         find $src \
             $filter \
+            -type f \
             -not -iname "*.pdb" \
             -not -iname "dpinst.exe" \
-            -exec /bin/cp -rf {} $dist \;
+            -exec /bin/cp -rfv {} $dist \;
     }
 
     # 添加驱动
