@@ -39,7 +39,8 @@ https://raw.githubusercontent.com/bin456789/reinstall/main/reinstall.bat
 https://raw.githubusercontent.com/bin456789/reinstall/main/reinstall.sh
 放到同一目录
 
-管理员权限打开 cmd/powershell 窗口
+管理员权限打开 cmd / powershell 窗口
+运行 cmd (重要!)
 运行 reinstall.bat centos-7 (或其他系统)
 
 本脚本所有功能皆可在 Windows 下使用，包括重装到 Linux/Windows/dd
@@ -69,7 +70,7 @@ dd
 
 暂不支持 Xen 虚拟化的机器重装到 Windows
 经测试不支持甲骨文云的 ARM
-不推荐用这种方法安装 zh-cn_windows_10_enterprise_ltsc_2021_x64_dvd_033b7312.iso，此镜像有“wsappx占用cpu”的问题，需要自行解决
+zh-cn_windows_10_enterprise_ltsc_2021_x64_dvd_033b7312.iso 有“wsappx占用cpu”的问题，解决方法是手动安装 VCLibs 库
                 
 提示：iso 链接可以到 https://archive.org 上面找
 ```
