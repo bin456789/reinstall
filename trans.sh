@@ -1,6 +1,6 @@
 #!/bin/ash
 # shellcheck shell=dash
-# shellcheck disable=SC3047,SC3036
+# shellcheck disable=SC3047,SC3036,SC3010
 # alpine 默认使用 busybox ash
 
 # 命令出错退出脚本，进入到登录界面，防止失联
@@ -289,6 +289,39 @@ if [ "$distro" = "windows" ]; then
     mkdir -p /iso
     mount /os/windows.iso /iso
 
+    # 从iso复制文件
+    # efi: 复制boot开头的文件+efi目录到efi分区，复制iso全部文件(除了boot.wim)到installer分区
+    # bios: 复制iso全部文件到installer分区
+    if [ -d /sys/firmware/efi/ ]; then
+        mkdir -p /os/boot/efi/sources/
+        cp -rv /iso/boot* /os/boot/efi/
+        cp -rv /iso/efi/ /os/boot/efi/
+        cp -rv /iso/sources/boot.wim /os/boot/efi/sources/
+        rsync -rv --exclude=/sources/boot.wim /iso/* /os/installer/
+        boot_wim=/os/boot/efi/sources/boot.wim
+    else
+        rsync -rv /iso/* /os/installer/
+        boot_wim=/os/installer/sources/boot.wim
+    fi
+
+    if [ -e /os/installer/sources/install.esd ]; then
+        install_wim=/os/installer/sources/install.esd
+    else
+        install_wim=/os/installer/sources/install.wim
+    fi
+
+    # 匹配映像版本
+    # 需要整行匹配，因为要区分 Windows 10 Pro 和 Windows 10 Pro for Workstations
+    # TODO: 如果无法匹配，等待用户输入？安装第一个？
+    image_count=$(wiminfo $install_wim | grep "Image Count:" | cut -d: -f2 | xargs)
+    if [ "$image_count" = 1 ]; then
+        # 只有一个版本就使用第一个版本
+        image_name=$(wiminfo $install_wim | grep -ix "Name:[[:blank:]]*.*" | cut -d: -f2 | xargs)
+    else
+        # 否则改成正确的大小写
+        image_name=$(wiminfo $install_wim | grep -ix "Name:[[:blank:]]*$image_name" | cut -d: -f2 | xargs)
+    fi
+
     # 变量名     使用场景
     # arch_uname uname -m                      x86_64  aarch64
     # arch_wim   wiminfo                  x86  x86_64  ARM64
@@ -296,7 +329,7 @@ if [ "$distro" = "windows" ]; then
     # arch_xen   xen驱动                  x86  x64
 
     # 将 wim 的 arch 转为驱动和应答文件的 arch
-    arch_wim=$(wiminfo /iso/sources/install.wim 1 | grep Architecture: | awk '{print $2}' | tr '[:upper:]' '[:lower:]')
+    arch_wim=$(wiminfo $install_wim 1 | grep Architecture: | awk '{print $2}' | tr '[:upper:]' '[:lower:]')
     case "$arch_wim" in
     x86)
         arch=x86
@@ -317,6 +350,10 @@ if [ "$distro" = "windows" ]; then
     # debian 11 virt-what 1.19 显示为 hyperv qemu
     # debian 11 systemd-detect-virt 显示为 microsoft
     # alpine virt-what 1.25 显示为 kvm
+    # 所以不要在原系统上判断具体虚拟化环境
+
+    # lscpu 也可查看虚拟化环境，但 alpine on lightsail 运行结果为 Microsoft
+    # 猜测 lscpu 只参考了 cpuid 没参考 dmi
 
     # 下载 virtio 驱动
     # virt-what 可能会输出多行结果，因此用 grep
@@ -394,21 +431,6 @@ if [ "$distro" = "windows" ]; then
         mkdir -p $drv/virtio
         mount $drv/virtio-win.iso $drv/virtio
     fi
-
-    # efi: 复制boot开头的文件+efi目录到efi分区，复制iso全部文件(除了boot.wim)到installer分区
-    # bios: 复制iso全部文件到installer分区
-    if [ -d /sys/firmware/efi/ ]; then
-        mkdir -p /os/boot/efi/sources/
-        cp -rv /iso/boot* /os/boot/efi/
-        cp -rv /iso/efi/ /os/boot/efi/
-        cp -rv /iso/sources/boot.wim /os/boot/efi/sources/
-        rsync -rv --exclude=/sources/boot.wim /iso/* /os/installer/
-        boot_wim=/os/boot/efi/sources/boot.wim
-    else
-        rsync -rv /iso/* /os/installer/
-        boot_wim=/os/installer/sources/boot.wim
-    fi
-    install_wim=/os/installer/sources/install.wim
 
     # 修改应答文件
     download $confhome/Autounattend.xml /tmp/Autounattend.xml
