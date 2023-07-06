@@ -65,6 +65,10 @@ update_part() {
     echo 1 >/sys/block/${1#/dev/}/device/rescan || true
 } 2>/dev/null
 
+is_efi() {
+    [ -d /sys/firmware/efi/ ]
+}
+
 # 提取 finalos/extra 到变量
 for prefix in finalos extra; do
     while read -r line; do
@@ -200,7 +204,7 @@ if [ "$distro" = windows ]; then
     add_community_repo
     apk add ntfs-3g ntfs-3g-progs fuse3 virt-what wimlib rsync dos2unix
     modprobe fuse
-    if [ -d /sys/firmware/efi ]; then
+    if is_efi; then
         # efi
         apk add dosfstools
         parted /dev/$xda -s -- \
@@ -231,7 +235,7 @@ if [ "$distro" = windows ]; then
 else
     # 对于红帽系是临时分区表，安装时除了 installer 分区，其他分区会重建为默认的大小
     # 对于ubuntu是最终分区表，因为 ubuntu 的安装器不能调整个别分区，只能重建整个分区表
-    if [ -d /sys/firmware/efi ]; then
+    if is_efi; then
         # efi
         apk add dosfstools
         parted /dev/$xda -s -- \
@@ -277,7 +281,7 @@ mount /dev/disk/by-label/os /os
 
 # 挂载其他分区
 mkdir -p /os/boot/efi
-if [ -d /sys/firmware/efi/ ]; then
+if is_efi; then
     mount /dev/disk/by-label/efi /os/boot/efi
 fi
 mkdir -p /os/installer
@@ -292,7 +296,7 @@ if [ "$distro" = "windows" ]; then
     # 从iso复制文件
     # efi: 复制boot开头的文件+efi目录到efi分区，复制iso全部文件(除了boot.wim)到installer分区
     # bios: 复制iso全部文件到installer分区
-    if [ -d /sys/firmware/efi/ ]; then
+    if is_efi; then
         mkdir -p /os/boot/efi/sources/
         cp -rv /iso/boot* /os/boot/efi/
         cp -rv /iso/efi/ /os/boot/efi/
@@ -321,6 +325,10 @@ if [ "$distro" = "windows" ]; then
         # 否则改成正确的大小写
         image_name=$(wiminfo $install_wim | grep -ix "Name:[[:blank:]]*$image_name" | cut -d: -f2 | xargs)
     fi
+
+    is_win7_or_win2008r2() {
+        echo $image_name | grep -iEw '^Windows (7|2008 R2)'
+    }
 
     # 变量名     使用场景
     # arch_uname uname -m                      x86_64  aarch64
@@ -354,7 +362,6 @@ if [ "$distro" = "windows" ]; then
 
     # lscpu 也可查看虚拟化环境，但 alpine on lightsail 运行结果为 Microsoft
     # 猜测 lscpu 只参考了 cpuid 没参考 dmi
-
     # 下载 virtio 驱动
     # virt-what 可能会输出多行结果，因此用 grep
     drv=/os/drivers
@@ -366,9 +373,14 @@ if [ "$distro" = "windows" ]; then
         # 只有 x64 位驱动
         # https://docs.aws.amazon.com/zh_cn/AWSEC2/latest/WindowsGuide/migrating-latest-types.html
         apk add unzip
-        download https://s3.amazonaws.com/ec2-windows-drivers-downloads/NVMe/Latest/AWSNVMe.zip $drv/AWSNVMe.zip
+        if is_win7_or_win2008r2; then
+            download https://s3.amazonaws.com/ec2-windows-drivers-downloads/NVMe/1.3.2/AWSNVMe.zip $drv/AWSNVMe.zip
+            download https://s3.amazonaws.com/ec2-windows-drivers-downloads/ENA/x64/2.2.3/AwsEnaNetworkDriver.zip $drv/AwsEnaNetworkDriver.zip
+        else
+            download https://s3.amazonaws.com/ec2-windows-drivers-downloads/NVMe/Latest/AWSNVMe.zip $drv/AWSNVMe.zip
+            download https://s3.amazonaws.com/ec2-windows-drivers-downloads/ENA/Latest/AwsEnaNetworkDriver.zip $drv/AwsEnaNetworkDriver.zip
+        fi
         unzip -o -d $drv/aws/ $drv/AWSNVMe.zip
-        download https://s3.amazonaws.com/ec2-windows-drivers-downloads/ENA/Latest/AwsEnaNetworkDriver.zip $drv/AwsEnaNetworkDriver.zip
         unzip -o -d $drv/aws/ $drv/AwsEnaNetworkDriver.zip
 
     elif virt-what | grep aws &&
@@ -379,7 +391,13 @@ if [ "$distro" = "windows" ]; then
         # 未测试
         # https://docs.aws.amazon.com/zh_cn/AWSEC2/latest/WindowsGuide/Upgrading_PV_drivers.html
         apk add unzip msitools
-        download https://s3.amazonaws.com/ec2-windows-drivers-downloads/AWSPV/Latest/AWSPVDriver.zip $drv/AWSPVDriver.zip
+
+        if is_win7_or_win2008r2; then
+            download https://s3.amazonaws.com/ec2-windows-drivers-downloads/AWSPV/8.3.5/AWSPVDriver.zip $drv/AWSPVDriver.zip
+        else
+            download https://s3.amazonaws.com/ec2-windows-drivers-downloads/AWSPV/Latest/AWSPVDriver.zip $drv/AWSPVDriver.zip
+        fi
+
         unzip -o -d $drv $drv/AWSPVDriver.zip
         msiextract $drv/AWSPVDriverSetup.msi -C $drv
         mkdir -p $drv/aws/
@@ -439,7 +457,7 @@ if [ "$distro" = "windows" ]; then
 
     # 修改应答文件，分区配置
     line_num=$(grep -E -n '<ModifyPartitions>' /tmp/Autounattend.xml | cut -d: -f1)
-    if [ -d /sys/firmware/efi/ ]; then
+    if is_efi; then
         sed -i "s|%installto_partitionid%|3|" /tmp/Autounattend.xml
         cat <<EOF | sed -i "${line_num}r /dev/stdin" /tmp/Autounattend.xml
             <ModifyPartition wcm:action="add">
@@ -502,7 +520,7 @@ EOF
 
     # win7 要添加 bootx64.efi 到 efi 目录
     [ $arch = amd64 ] && boot_efi=bootx64.efi || boot_efi=bootaa64.efi
-    if [ -d /sys/firmware/efi/ ] && [ ! -e /os/boot/efi/efi/boot/$boot_efi ]; then
+    if is_efi && [ ! -e /os/boot/efi/efi/boot/$boot_efi ]; then
         mkdir -p /os/boot/efi/efi/boot/
         cp /wim/Windows/Boot/EFI/bootmgfw.efi /os/boot/efi/efi/boot/$boot_efi
     fi
@@ -524,7 +542,7 @@ EOF
     fi
 
     # 添加引导
-    if [ -d /sys/firmware/efi/ ]; then
+    if is_efi; then
         apk add efibootmgr
         efibootmgr -c -L "Windows Installer" -d /dev/$xda -p1 -l "\\EFI\\boot\\$boot_efi"
     else
@@ -547,7 +565,7 @@ EOF
 fi
 
 # 安装 grub2
-if [ -d /sys/firmware/efi/ ]; then
+if is_efi; then
     # 注意低版本的grub无法启动f38 arm的内核
     # https://forums.fedoraforum.org/showthread.php?330104-aarch64-pxeboot-vmlinuz-file-format-changed-broke-PXE-installs
 
