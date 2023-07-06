@@ -50,7 +50,7 @@ download() {
     # axel 在 lightsail 上会占用大量cpu
     # 先用 aria2 下载
     [ -z $file ] && save="" || save="-d / -o $file"
-    if ! aria2c -x4 $url $save; then
+    if ! aria2c -x4 --allow-overwrite=true $url $save; then
         # 出错再用 curl
         [ -z $file ] && save="-O" || save="-o $file"
         curl -L $url $save
