@@ -93,22 +93,37 @@
     <settings pass="specialize">
         <component name="Microsoft-Windows-Deployment" processorArchitecture="%arch%" publicKeyToken="31bf3856ad364e35" language="neutral" versionScope="nonSxS" xmlns:wcm="http://schemas.microsoft.com/WMIConfig/2002/State" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance">
             <RunSynchronous>
-                <!-- 启用 administrator 账户 -->
+                <!-- aws和华为云都要求设置为从不关闭显示器
+                https://docs.aws.amazon.com/zh_cn/AWSEC2/latest/WindowsGuide/migrating-latest-types.html
+                https://support.huaweicloud.com/usermanual-ims/zh-cn_topic_0047501112.html -->
                 <RunSynchronousCommand wcm:action="add">
                     <Order>1</Order>
+                    <Path>powercfg /setacvalueindex 381b4222-f694-41f0-9685-ff5bb260df2e 7516b95f-f776-4464-8c53-06167f40cc99 3c0bc021-c8a8-4e07-a973-6b14cbcb2b7e 0</Path>
+                </RunSynchronousCommand>
+                <RunSynchronousCommand wcm:action="add">
+                    <Order>2</Order>
+                    <Path>powercfg /setacvalueindex 8c5e7fda-e8bf-4a96-9a85-a6e23a8c635c 7516b95f-f776-4464-8c53-06167f40cc99 3c0bc021-c8a8-4e07-a973-6b14cbcb2b7e 0</Path>
+                </RunSynchronousCommand>
+                <RunSynchronousCommand wcm:action="add">
+                    <Order>3</Order>
+                    <Path>powercfg /setacvalueindex a1841308-3541-4fab-bc81-f71556f20b4a 7516b95f-f776-4464-8c53-06167f40cc99 3c0bc021-c8a8-4e07-a973-6b14cbcb2b7e 0</Path>
+                </RunSynchronousCommand>
+                <!-- 启用 administrator 账户 -->
+                <RunSynchronousCommand wcm:action="add">
+                    <Order>4</Order>
                     <Path>net user Administrator /active:yes</Path>
                 </RunSynchronousCommand>
                 <!-- workaround esd 里面没有这个文件，先touch -->
                 <RunSynchronousCommand wcm:action="add">
-                    <Order>2</Order>
+                    <Order>5</Order>
                     <Path>cmd /c type nul >>C:\resize.bat</Path>
                 </RunSynchronousCommand>
                 <RunSynchronousCommand wcm:action="add">
-                    <Order>3</Order>
+                    <Order>6</Order>
                     <Path>C:\resize.bat</Path>
                 </RunSynchronousCommand>
                 <RunSynchronousCommand wcm:action="add">
-                    <Order>4</Order>
+                    <Order>7</Order>
                     <Path>cmd /c "del C:\resize.bat"</Path>
                 </RunSynchronousCommand>
             </RunSynchronous>
