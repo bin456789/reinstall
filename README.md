@@ -62,11 +62,12 @@ dd
 支持 32 位系统 (BIOS)、64 位系统 (BIOS/UEFI)，测试成功的系统有 7 10 11 2022
 安装 Windows 需要以下参数
 --iso           iso 链接，不需要提前添加 virtio 驱动
---image-name    系统全名，不区分大小写，两边要有引号，例如：
+--image-name    映像名称，不区分大小写，两边要有引号，例如：
                 'Windows 7 Ultimate'
                 'Windows 10 Enterprise LTSC 2021'
                 'Windows 11 Pro'
-                'Windows Server 2022 SERVERDATACENTER' 
+                'Windows Server 2022 SERVERDATACENTER'
+                使用 Dism++ 文件菜单>打开映像文件，选择要安装的 iso，可以得到映像名称
 
 暂不支持 Xen 虚拟化的机器重装到 Windows
 经测试不支持甲骨文云的 ARM
@@ -74,6 +75,8 @@ zh-cn_windows_10_enterprise_ltsc_2021_x64_dvd_033b7312.iso 有“wsappx占用cpu
                 
 提示：iso 链接可以到 https://archive.org 上面找
 ```
+
+![image-name](https://github.com/bin456789/reinstall/assets/7548515/5aae0a9b-61e2-4f66-bb98-d470a6beaac2)
 #### 内存要求:
 ```
 debian 384M
@@ -97,3 +100,4 @@ administrator   123@@@
 使用 Cloud Images
 静态 IP / IPV6
 ````
+
