@@ -48,8 +48,20 @@ download() {
     # HTTP/1.1 403 Forbidden
 
     # axel 在 lightsail 上会占用大量cpu
+    # 构造 aria2 参数
+    # 没有指定文件名的情况
+    if [ -z $file ]; then
+        save=""
+    else
+        # 文件名是绝对路径
+        if [[ "$file" = "/*" ]]; then
+            save="-d / -o $file"
+        else
+            # 文件名是相对路径
+            save="-o $file"
+        fi
+    fi
     # 先用 aria2 下载
-    [ -z $file ] && save="" || save="-d / -o $file"
     if ! aria2c -x4 --allow-overwrite=true $url $save; then
         # 出错再用 curl
         [ -z $file ] && save="-O" || save="-o $file"
@@ -595,10 +607,8 @@ grub_cfg=/os/boot/grub/grub.cfg
 # 新版grub不区分linux/linuxefi
 # shellcheck disable=SC2154
 if [ "$distro" = "ubuntu" ]; then
-    cd /os/installer/
-    download $iso ubuntu.iso
+    download $iso /os/installer/ubuntu.iso
 
-    iso_file=/ubuntu.iso
     # 正常写法应该是 ds="nocloud-net;s=https://xxx/" 但是甲骨文云的ds更优先，自己的ds根本无访问记录
     # $seed 是 https://xxx/
     cat <<EOF >$grub_cfg
@@ -607,18 +617,16 @@ if [ "$distro" = "ubuntu" ]; then
             # https://bugs.launchpad.net/ubuntu/+source/grub2/+bug/1851311
             # rmmod tpm
             search --no-floppy --label --set=root installer
-            loopback loop $iso_file
-            linux (loop)/casper/vmlinuz iso-scan/filename=$iso_file autoinstall noprompt noeject cloud-config-url=$ks $extra_cmdline ---
+            loopback loop /ubuntu.iso
+            linux (loop)/casper/vmlinuz iso-scan/filename=/ubuntu.iso autoinstall noprompt noeject cloud-config-url=$ks $extra_cmdline ---
             initrd (loop)/casper/initrd
         }
 EOF
 else
-    cd /os/ || exit
-    download $vmlinuz
-    download $initrd
+    download $vmlinuz /os/vmlinuz
+    download $initrd /os/initrd.img
 
-    cd /os/installer/ || exit
-    download $squashfs install.img
+    download $squashfs /os/installer/install.img
 
     cat <<EOF >$grub_cfg
         set timeout=5
