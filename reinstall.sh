@@ -102,12 +102,16 @@ is_virt() {
         done
         wmic /namespace:'\\root\cimv2' PATH Win32_Fan | head -1 | grep -q -v Name
     else
-        if command -v systemd-detect-virt; then
-            systemd-detect-virt
-        else
-            install_pkg virt-what
-            virt-what
+        # aws t4g debian 11 systemd-detect-virt 为 none，即使装了dmidecode
+        # virt-what: 未装 deidecode时结果为空，装了deidecode后结果为aws
+        # 所以综合两个命令的结果来判断
+        if command -v systemd-detect-virt && systemd-detect-virt; then
+            return 0
         fi
+        # debian 安装 virt-what 不会自动安装 dmidecode，因此结果有误
+        install_pkg dmidecode virt-what
+        # virt-what 返回值始终是0，所以用是否有输出作为判断
+        [ -n "$(virt-what)" ]
     fi
 }
 
