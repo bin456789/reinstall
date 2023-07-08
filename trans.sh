@@ -339,7 +339,7 @@ if [ "$distro" = "windows" ]; then
     fi
 
     is_win7_or_win2008r2() {
-        echo $image_name | grep -iEw '^Windows (7|2008 R2)'
+        echo $image_name | grep -iEw '^Windows (7|Server 2008 R2)'
     }
 
     # 变量名     使用场景
