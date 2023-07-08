@@ -1,16 +1,19 @@
 #!/bin/ash
 # shellcheck shell=dash
-# shellcheck disable=SC3047,SC3036,SC3010
+# shellcheck disable=SC3047,SC3036,SC3010,SC3001
 # alpine 默认使用 busybox ash
 
-# 命令出错退出脚本，进入到登录界面，防止失联
-# TODO: neet more test
+# 命令出错终止运行，将进入到登录界面，防止失联
 set -eE
 
 # 显示输出到前台
 # 似乎script更优雅，但 alpine 不带 script 命令
-# script -f/dev/tty0
-exec >/dev/tty0 2>&1
+# script -f /dev/tty0
+if [ -e /dev/ttyS0 ]; then
+    exec > >(tee /dev/tty0 /dev/ttyS0 /reinstall.log) 2>&1
+else
+    exec > >(tee /dev/tty0 /reinstall.log) 2>&1
+fi
 trap 'error line $LINENO return $?' ERR
 
 catch() {
@@ -22,7 +25,8 @@ catch() {
 error() {
     color='\e[31m'
     plain='\e[0m'
-    echo -e "${color}Error: $*$plain"
+    echo -e "${color}Error: $*${plain}"
+    wall "Error: $*"
 }
 
 add_community_repo() {
@@ -81,6 +85,29 @@ is_efi() {
     [ -d /sys/firmware/efi/ ]
 }
 
+setup_nginx() {
+    apk add nginx
+    cat <<EOF >/etc/nginx/http.d/default.conf
+        server {
+            listen 80 default_server;
+            listen [::]:80 default_server;
+            location = / {
+                root /;
+                try_files /reinstall.log /reinstall.log;
+                types {
+                    text/plain log;
+                }
+            }
+        }
+EOF
+    # rc-service nginx start
+    nginx
+}
+setup_lighttpd() {
+    apk add lighttpd
+    ln -sf /reinstall.log /var/www/localhost/htdocs/index.html
+    rc-service lighttpd start
+}
 # 提取 finalos/extra 到变量
 for prefix in finalos extra; do
     while read -r line; do
@@ -93,6 +120,18 @@ for prefix in finalos extra; do
 $(xargs -n1 </proc/cmdline | grep "^$prefix" | sed "s/^$prefix\.//")
 EOF
 done
+
+# 安装 nginx，目标系统是 alpine 除外
+# shellcheck disable=SC2154
+if [ "$distro" != "alpine" ]; then
+    total_ram=$(free -m | awk '{print $2}' | sed -n '2p')
+    # 避免后面没内存安装程序，谨慎起见，512内存才安装
+    if [ $total_ram -gt 400 ]; then
+        # lighttpd 虽然运行占用内存少，但安装占用空间大
+        # setup_lighttpd
+        setup_nginx
+    fi
+fi
 
 # 找到主硬盘
 # alpine 不自带lsblk，liveos安装的软件也会被带到新系统，所以不用lsblk
