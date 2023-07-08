@@ -21,7 +21,9 @@ update_part() {
 # ubuntu grownpart
 
 # 找出主硬盘
-xda=$(lsblk -dn -o NAME | grep -E 'nvme0n1|.da')
+# xda=$(lsblk -dn -o NAME | grep -E 'nvme0n1|.da')
+# shellcheck disable=SC2010
+xda=$(ls /dev/ | grep -Ex 'sda|hda|xda|vda|xvda|nvme0n1')
 
 # 删除 installer 分区
 installer_num=$(readlink -f /dev/disk/by-label/installer | grep -o '[0-9]*$')

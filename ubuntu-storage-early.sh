@@ -8,7 +8,9 @@ cat <<EOF >>/autoinstall.yaml
     size: 0
 EOF
 
-xda=$(lsblk -dn -o NAME | grep -E 'nvme0n1|.da')
+# xda=$(lsblk -dn -o NAME | grep -E 'nvme0n1|.da')
+# shellcheck disable=SC2010
+xda=$(ls /dev/ | grep -Ex 'sda|hda|xda|vda|xvda|nvme0n1')
 # 是用 size 寻找分区，number 没什么用
 # https://curtin.readthedocs.io/en/latest/topics/storage.html
 size_os=$(lsblk -bn -o SIZE /dev/disk/by-label/os)

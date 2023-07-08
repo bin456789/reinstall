@@ -137,7 +137,7 @@ fi
 # alpine 不自带lsblk，liveos安装的软件也会被带到新系统，所以不用lsblk
 # xda=$(lsblk -dn -o NAME | grep -E 'nvme0n1|.da')
 # shellcheck disable=SC2010
-xda=$(ls /dev/ | grep -Ex '[shv]da|nvme0n1')
+xda=$(ls /dev/ | grep -Ex 'sda|hda|xda|vda|xvda|nvme0n1')
 
 # arm要手动从硬件同步时间，避免访问https出错
 hwclock -s
