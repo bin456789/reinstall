@@ -279,8 +279,9 @@ disk_2t=$((2 * 1024 * 1024 * 1024 * 1024))
 # xda*1 星号用于 nvme0n1p1 的字母 p
 if [ "$distro" = windows ]; then
     add_community_repo
-    apk add ntfs-3g ntfs-3g-progs fuse3 virt-what wimlib rsync dos2unix
-    modprobe fuse
+    apk add ntfs-3g-progs fuse3 virt-what wimlib rsync dos2unix
+    # 虽然ntfs3不需要fuse，但wimmount需要，所以还是要保留
+    modprobe fuse ntfs3
     if is_efi; then
         # efi
         apk add dosfstools
@@ -362,7 +363,10 @@ if is_efi; then
     mount /dev/disk/by-label/efi /os/boot/efi
 fi
 mkdir -p /os/installer
-mount /dev/disk/by-label/installer /os/installer
+if [ "$distro" = windows ]; then
+    mount_args="-t ntfs3"
+fi
+mount $mount_args /dev/disk/by-label/installer /os/installer
 
 # shellcheck disable=SC2154
 if [ "$distro" = "windows" ]; then
