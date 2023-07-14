@@ -223,7 +223,6 @@ if [ "$distro" = "alpine" ]; then
     # 重置为官方仓库配置
     true >/etc/apk/repositories
     setup-apkrepos -1
-    setup-apkcache /var/cache/apk
 
     # 安装到硬盘
     # alpine默认使用 syslinux (efi 环境除外)，这里强制使用 grub，方便用脚本再次重装
