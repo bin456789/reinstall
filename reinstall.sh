@@ -34,9 +34,9 @@ curl() {
 
 is_in_china() {
     if [ -z $_is_in_china ]; then
-        # https://geoip.fedoraproject.org/city
-        # https://geoip.ubuntu.com/lookup
-        curl -L https://geoip.ubuntu.com/lookup | grep -qw CHN
+        # https://geoip.fedoraproject.org/city # 不支持 ipv6
+        # https://geoip.ubuntu.com/lookup # 不支持 ipv6
+        curl -L http://www.cloudflare.com/cdn-cgi/trace | grep -qx 'loc=CN'
         _is_in_china=$?
     fi
     return $_is_in_china
