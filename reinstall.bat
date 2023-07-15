@@ -17,7 +17,7 @@ if not !errorlevel! == 0 (
 )
 
 :: pkgs 改动了才重新运行 Cygwin 安装程序
-set pkgs="curl,cpio,p7zip"
+set pkgs="curl,cpio,p7zip,bind-utils"
 set tags=%tmp%\cygwin-installed-!pkgs!
 if not exist !tags! (
     :: 检查是否国内
