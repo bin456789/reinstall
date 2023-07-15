@@ -29,7 +29,7 @@ error_and_exit() {
 }
 
 curl() {
-    command curl --connect-timeout 10 --retry 5 --retry-delay 0 "$@"
+    command curl --connect-timeout 5 --retry 3 --retry-delay 0 "$@"
 }
 
 is_in_china() {
@@ -72,24 +72,28 @@ test_url() {
     echo $url
 
     tmp_file=/tmp/reinstall-img-test
-    install_pkg file
 
-    http_code=$(curl -Ls -r 0-1048575 -w "%{http_code}" -o $tmp_file $url)
+    http_code=$(command curl --connect-timeout 5 -Ls -r 0-1048575 -w "%{http_code}" -o $tmp_file $url)
     if [ "$http_code" != 200 ] && [ "$http_code" != 206 ]; then
-        error_and_exit "$url not accessible"
+        error "$url not accessible"
+        return 1
     fi
 
-    # gzip的mime有很多种写法
-    # centos7中显示为 x-gzip，在其他系统中显示为 gzip，可能还有其他
-    # 所以不用mime判断
-    # https://www.digipres.org/formats/sources/tika/formats/#application/gzip
+    if [ -n "$expect_type" ]; then
+        # gzip的mime有很多种写法
+        # centos7中显示为 x-gzip，在其他系统中显示为 gzip，可能还有其他
+        # 所以不用mime判断
+        # https://www.digipres.org/formats/sources/tika/formats/#application/gzip
 
-    # 有些 file 版本输出的是 # ISO 9660 CD-ROM filesystem data ，要去掉开头的井号
-    real_type=$(file -b $tmp_file | sed 's/^# //' | cut -d' ' -f1 | tr '[:upper:]' '[:lower:]')
-    [ -n "$var_to_eval" ] && eval $var_to_eval=$real_type
+        # 有些 file 版本输出的是 # ISO 9660 CD-ROM filesystem data ，要去掉开头的井号
+        install_pkg file
+        real_type=$(file -b $tmp_file | sed 's/^# //' | cut -d' ' -f1 | tr '[:upper:]' '[:lower:]')
+        [ -n "$var_to_eval" ] && eval $var_to_eval=$real_type
 
-    if ! echo $expect_type | grep -wo "$real_type"; then
-        error_and_exit "$url expect: $expect_type. real: $real_type."
+        if ! echo $expect_type | grep -wo "$real_type"; then
+            error "$url expect: $expect_type. real: $real_type."
+            return 1
+        fi
     fi
 }
 
@@ -203,7 +207,7 @@ setos() {
 
         filename=$(curl $mirror | grep -oP "ubuntu-$releasever.*?-live-server-$basearch_alt.iso" | head -1)
         iso=$mirror$filename
-        test_url $iso iso
+        test_url $iso iso || exit 1
         eval ${step}_iso=$iso
         eval ${step}_ks=$confhome/user-data
     }
@@ -217,7 +221,7 @@ setos() {
         if [ "$(echo "$image_name" | wc -w)" -lt 3 ]; then
             error_and_exit "--image-name wrong."
         fi
-        test_url $iso iso
+        test_url $iso iso || exit 1
         eval "${step}_iso='$iso'"
         eval "${step}_image_name='$image_name'"
     }
@@ -227,7 +231,7 @@ setos() {
         if [ -z "$img" ]; then
             error_and_exit "dd need --img"
         fi
-        test_url $img 'xz|gzip' img_type
+        test_url $img 'xz|gzip' img_type || exit 1
         eval "${step}_img='$img'"
         eval "${step}_img_type='$img_type'"
     }
