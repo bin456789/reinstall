@@ -54,6 +54,18 @@ is_in_arch() {
     [ -f /etc/arch-release ]
 }
 
+is_host_has_ipv4_and_ipv6() {
+    install_pkg dig
+    # dig会显示cname结果，cname结果以.结尾，grep -v '\.$' 用于去除 cname 结果
+    res=$(dig +short $host A $host AAAA | grep -v '\.$')
+    # 有.表示有ipv4地址，有:表示有ipv6地址
+    grep -q \. <<<$res && grep -q : <<<$res
+}
+
+get_host_by_url() {
+    cut -d/ -f3 <<<$1
+}
+
 set_github_proxy() {
     case "$confhome" in
     http*://raw.githubusercontent.com/*)
@@ -252,8 +264,18 @@ setos() {
             "rocky") mirrorlist="https://mirrors.rockylinux.org/mirrorlist?arch=$basearch&repo=BaseOS-$releasever" ;;
             "fedora") mirrorlist="https://mirrors.fedoraproject.org/mirrorlist?arch=$basearch&repo=fedora-$releasever" ;;
             esac
-            # rocky/centos9 需要删除第一行注释， alma 需要替换$basearch，anigil 这个源不稳定
-            mirror=$(curl -L $mirrorlist | sed "/^#/d" | sed "/anigil/d" | head -1 | sed "s,\$basearch,$basearch,")
+            # rocky/centos9 需要删除第一行注释， alma 需要替换$basearch
+            for cur_mirror in $(curl -L $mirrorlist | sed "/^#/d" | sed "s,\$basearch,$basearch,"); do
+                host=$(get_host_by_url $cur_mirror)
+                if is_host_has_ipv4_and_ipv6 $host &&
+                    test_url ${cur_mirror}images/pxeboot/vmlinuz; then
+                    mirror=$cur_mirror
+                    break
+                fi
+            done
+            if [ -z "$mirror" ]; then
+                error_and_exit "All mirror failed."
+            fi
             eval "${step}_mirrorlist='${mirrorlist}'"
         fi
         eval ${step}_ks=$confhome/ks.cfg
