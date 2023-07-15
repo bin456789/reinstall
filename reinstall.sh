@@ -46,6 +46,14 @@ is_in_windows() {
     [ "$(uname -o)" = Cygwin ] || [ "$(uname -o)" = Msys ]
 }
 
+is_in_alpine() {
+    [ -f /etc/alpine-release ]
+}
+
+is_in_arch() {
+    [ -f /etc/arch-release ]
+}
+
 set_github_proxy() {
     case "$confhome" in
     http*://raw.githubusercontent.com/*)
@@ -291,29 +299,45 @@ apt_install() {
 }
 
 install_pkg() {
-    pkgs=$*
-    for pkg in $pkgs; do
-        # util-linux 用 lsmem 命令测试
-        [ "$pkg" = util-linux ] && pkg=lsmem
-        if ! command -v $pkg >/dev/null; then
-            {
-                if [ -f /etc/alpine-release ]; then
-                    if ! apk add $pkgs; then
-                        add_community_repo_for_alpine
-                        apk add $pkgs
-                    fi
-                else
-                    apt_install $pkgs ||
-                        dnf install -y $pkgs ||
-                        yum install -y $pkgs ||
-                        zypper install -y $pkgs ||
-                        pacman -Syu --noconfirm $pkgs
-                fi
-            } 2>/dev/null
-            # break 返回值始终为 0
-            return
+    cmds=$*
+    need_install=false
+    for cmd in $cmds; do
+        if ! command -v $cmd >/dev/null; then
+            need_install=true
+            break
         fi
     done
+
+    if $need_install; then
+        if is_in_alpine; then
+            add_community_repo_for_alpine
+        fi
+        # cmds to pkgs
+        for cmd in $cmds; do
+            case $cmd in
+            lsmem) pkg=util-linux ;;
+            nslookup | dig)
+                if is_in_alpine; then
+                    pkg="bind-tools"
+                elif is_in_arch; then
+                    pkg="bind"
+                else
+                    pkg="bind*-*utils"
+                fi
+                ;;
+            *) pkg=$cmd ;;
+            esac
+            pkgs+=" $pkg"
+        done
+        {
+            apt_install $pkgs ||
+                dnf install -y $pkgs ||
+                yum install -y $pkgs ||
+                zypper install -y $pkgs ||
+                pacman -Syu --noconfirm $pkgs ||
+                apk add $pkgs
+        } 2>/dev/null
+    fi
 }
 
 check_ram() {
@@ -324,7 +348,7 @@ check_ram() {
         # arm 24g dmidecode 显示少了128m
         # arm 24g lshw 显示23BiB
         # ec2 t4g arm alpine 用 lsmem 和 dmidecode 都无效，要用 lshw，但结果和free -m一致，其他平台则没问题
-        install_pkg util-linux
+        install_pkg lsmem
         ram_size=$(lsmem -b 2>/dev/null | grep 'Total online memory:' | awk '{ print $NF/1024/1024 }')
 
         if [ -z $ram_size ]; then
@@ -516,7 +540,7 @@ fi
 # 必备组件
 install_pkg curl
 # alpine 自带的 grep 是 busybox 里面的， 要下载完整版grep
-if [ -f /etc/alpine-release ]; then
+if is_in_alpine; then
     apk add grep
 fi
 
