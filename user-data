@@ -27,6 +27,7 @@ autoinstall:
 
       # 禁用 DNS  强制离线安装内核和跳过最后的更新
       # 但安装器会配置时区和写入最近的mirror到/etc/apt/sources.list 所以要提前解析
+      # dig会显示cname结果，cname会以.结尾，grep -v '\.$' 表示去除 cname 结果
       echo $(dig +short geoip.ubuntu.com | grep -v '\.$' | head -1) geoip.ubuntu.com >>/etc/hosts
       sed -i -E 's/(^nameserver )/#\1/' /etc/resolv.conf
   late-commands:
