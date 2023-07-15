@@ -121,13 +121,13 @@ setup_tty_and_log() {
     <pre>
 EOF
     # 显示输出到前台
-    # 似乎script更优雅，但 alpine 不带 script 命令
     # script -f /dev/tty0
-    if [ -e /dev/ttyS0 ]; then
-        exec > >(tee -a /dev/tty0 /dev/ttyS0 /reinstall.html) 2>&1
-    else
-        exec > >(tee -a /dev/tty0 /reinstall.html) 2>&1
-    fi
+    for t in /dev/tty0 /dev/ttyS0 /dev/ttyAMA0; do
+        if [ -e $t ] && echo >$t 2>/dev/null; then
+            ttys="$ttys $t"
+        fi
+    done
+    exec > >(tee -a $ttys /reinstall.html) 2>&1
 }
 
 extract_env_from_cmdline() {
