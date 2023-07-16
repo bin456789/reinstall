@@ -664,6 +664,20 @@ build_cmdline() {
     fi
 }
 
+# 脚本可能多次运行，先清理之前的残留
+mkdir_clear() {
+    dir=$1
+
+    if [ -z "$dir" ] || [ "$dir" = / ]; then
+        return
+    fi
+
+    # alpine 没有 -R
+    { umount $dir || umount -R $dir || true; } 2>/dev/null
+    rm -rf $dir
+    mkdir -p $dir
+}
+
 mod_alpine_initrd() {
     # 修改 alpine 启动时运行我们的脚本
     info mod alpine initrd
@@ -671,16 +685,33 @@ mod_alpine_initrd() {
 
     # 解压
     # 先删除临时文件，避免之前运行中断有残留文件
-    tmp_dir=/tmp/reinstall/
-    rm -rf $tmp_dir
-    mkdir -p $tmp_dir
+    tmp_dir=/tmp/reinstall
+    mkdir_clear $tmp_dir
     cd $tmp_dir
     zcat /reinstall-initrd | cpio -idm
 
     # 预先下载脚本
     curl -Lo $tmp_dir/trans.start $confhome/trans.sh
 
-    # hack
+    # virt 内核添加 ipv6 模块
+    if virt_dir=$(ls -d $tmp_dir/lib/modules/*-virt 2>/dev/null); then
+        ipv6_dir=$virt_dir/kernel/net/ipv6
+        mkdir -p $ipv6_dir
+        modloop_file=/tmp/modloop_file
+        modloop_dir=/tmp/modloop_dir
+        curl -Lo $modloop_file $nextos_modloop
+        if is_in_windows; then
+            # cygwin 无法 mount，只能解压
+            7z e $modloop_file ipv6.ko -r -y -oa$ipv6_dir
+        else
+            mkdir_clear $modloop_dir
+            mount $modloop_file $modloop_dir
+            find $modloop_dir -name ipv6.ko -exec cp {} $ipv6_dir/ \;
+            umount $modloop_dir
+        fi
+    fi
+
+    # hack 运行 trans.start
     # exec /bin/busybox switch_root $switch_root_opts $sysroot $chart_init "$KOPT_init" $KOPT_init_args # 3.17
     # exec              switch_root $switch_root_opts $sysroot $chart_init "$KOPT_init" $KOPT_init_args # 3.18
     line_num=$(grep -E -n '^exec (/bin/busybox )?switch_root' init | cut -d: -f1)
