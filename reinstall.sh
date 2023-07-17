@@ -54,6 +54,10 @@ is_in_arch() {
     [ -f /etc/arch-release ]
 }
 
+is_use_cloud_image() {
+    [ -n "$cloud_image" ] && [ "$cloud_image" = 1 ]
+}
+
 is_host_has_ipv4_and_ipv6() {
     install_pkg dig
     # dig会显示cname结果，cname结果以.结尾，grep -v '\.$' 用于去除 cname 结果
@@ -178,50 +182,74 @@ setos() {
     }
 
     setos_debian() {
-        if [ "$localtest" = 1 ]; then
-            mirror=$confhome/debian/install.amd
-            eval ${step}_vmlinuz=$mirror/vmlinuz
-            eval ${step}_initrd=$mirror/initrd.gz
+        case "$releasever" in
+        12) codename=bookworm ;;
+        11) codename=bullseye ;;
+        10) codename=buster ;;
+        esac
+
+        if is_use_cloud_image; then
+            # cloud image
+            ci_mirror=https://cloud.debian.org/images/cloud
+            is_virt && ci_type=genericcloud || ci_type=generic
+            eval ${step}_img=$ci_mirror/$codename/latest/debian-$releasever-$ci_type-$basearch_alt.qcow2
         else
-            case "$releasever" in
-            12) codename=bookworm ;;
-            11) codename=bullseye ;;
-            10) codename=buster ;;
-            esac
-            if is_in_china; then
-                hostname=ftp.cn.debian.org
+            # 传统安装
+            if [ "$localtest" = 1 ]; then
+                mirror=$confhome/debian/install.amd
+                eval ${step}_vmlinuz=$mirror/vmlinuz
+                eval ${step}_initrd=$mirror/initrd.gz
             else
-                hostname=deb.debian.org
+                if is_in_china; then
+                    hostname=ftp.cn.debian.org
+                else
+                    hostname=deb.debian.org
+                fi
+                mirror=http://$hostname/debian/dists/$codename/main/installer-$basearch_alt/current/images/netboot/debian-installer/$basearch_alt
+                eval ${step}_vmlinuz=$mirror/linux
+                eval ${step}_initrd=$mirror/initrd.gz
             fi
-            mirror=http://$hostname/debian/dists/$codename/main/installer-$basearch_alt/current/images/netboot/debian-installer/$basearch_alt
-            eval ${step}_vmlinuz=$mirror/linux
-            eval ${step}_initrd=$mirror/initrd.gz
+            eval ${step}_ks=$confhome/preseed.cfg
         fi
-        eval ${step}_ks=$confhome/preseed.cfg
     }
 
     setos_ubuntu() {
-        if [ "$localtest" = 1 ]; then
-            mirror=$confhome/
-        else
+        if is_use_cloud_image; then
+            # cloud image
+            # TODO: Minimal 镜像
             if is_in_china; then
-                case "$basearch" in
-                "x86_64") mirror=https://mirrors.tuna.tsinghua.edu.cn/ubuntu-releases/$releasever/ ;;
-                "aarch64") mirror=https://mirrors.tuna.tsinghua.edu.cn/ubuntu-cdimage/releases/$releasever/release/ ;;
-                esac
+                ci_mirror=https://mirror.nju.edu.cn/ubuntu-cloud-images/releases
             else
-                case "$basearch" in
-                "x86_64") mirror=https://releases.ubuntu.com/$releasever/ ;;
-                "aarch64") mirror=https://cdimage.ubuntu.com/releases/$releasever/release/ ;;
-                esac
+                ci_mirror=https://cloud-images.ubuntu.com/releases/$releasever/release
             fi
-        fi
+            eval ${step}_img=$ci_mirror/ubuntu-$releasever-server-cloudimg-$basearch_alt.img
+        else
+            # 传统安装
+            if [ "$localtest" = 1 ]; then
+                mirror=$confhome/
+            else
+                if is_in_china; then
+                    case "$basearch" in
+                    "x86_64") mirror=https://mirrors.tuna.tsinghua.edu.cn/ubuntu-releases/$releasever ;;
+                    "aarch64") mirror=https://mirrors.tuna.tsinghua.edu.cn/ubuntu-cdimage/releases/$releasever/release ;;
+                    esac
+                else
+                    case "$basearch" in
+                    "x86_64") mirror=https://releases.ubuntu.com/$releasever ;;
+                    "aarch64") mirror=https://cdimage.ubuntu.com/releases/$releasever/release ;;
+                    esac
+                fi
+            fi
 
-        filename=$(curl $mirror | grep -oP "ubuntu-$releasever.*?-live-server-$basearch_alt.iso" | head -1)
-        iso=$mirror$filename
-        test_url $iso iso || exit 1
-        eval ${step}_iso=$iso
-        eval ${step}_ks=$confhome/user-data
+            # iso
+            filename=$(curl -L $mirror | grep -oP "ubuntu-$releasever.*?-live-server-$basearch_alt.iso" | head -1)
+            iso=$mirror/$filename
+            test_url $iso iso || exit 1
+            eval ${step}_iso=$iso
+
+            # ks
+            eval ${step}_ks=$confhome/user-data
+        fi
     }
 
     setos_windows() {
@@ -249,42 +277,81 @@ setos() {
     }
 
     setos_redhat() {
-        if [ "$localtest" = 1 ]; then
-            mirror=$confhome/$releasever/
-        else
+        if is_use_cloud_image; then
+            # ci
+            [ "$distro" = "centos" ] && [ "$releasever" = "7" ] && stream_suffix="" || stream_suffix="-stream"
+            if is_in_china; then
+                case $distro in
+                "centos") ci_mirror="https://mirror.nju.edu.cn/centos-cloud/centos" ;;
+                "alma") ci_mirror="https://mirror.nju.edu.cn/almalinux/$releasever/cloud/$basearch/images" ;;
+                "rocky") ci_mirror="https://mirror.nju.edu.cn/rocky/$releasever/images/$basearch" ;;
+                "fedora") ci_mirror="https://mirror.nju.edu.cn/fedora/releases/$releasever/Cloud/$basearch/images" ;;
+                esac
+            else
+                case $distro in
+                "centos") ci_mirror="https://cloud.centos.org/centos" ;;
+                "alma") ci_mirror="https://repo.almalinux.org/almalinux/$releasever/cloud/$basearch/images" ;;
+                "rocky") ci_mirror="https://download.rockylinux.org/pub/rocky/$releasever/images/$basearch" ;;
+                "fedora") ci_mirror="https://download.fedoraproject.org/pub/fedora/linux/releases/$releasever/Cloud/$basearch/images" ;;
+                esac
+            fi
             case $distro in
             "centos")
                 case $releasever in
-                "7") mirrorlist="http://mirrorlist.centos.org/?release=7&arch=$basearch&repo=os" ;;
-                "8") mirrorlist="http://mirrorlist.centos.org/?release=8-stream&arch=$basearch&repo=BaseOS" ;;
-                "9") mirrorlist="https://mirrors.centos.org/mirrorlist?repo=centos-baseos-9-stream&arch=$basearch" ;;
+                "7") ci_image=$ci_mirror/$releasever$stream_suffix/images/CentOS-7-$basearch-GenericCloud.qcow2 ;;
+                "8" | "9") ci_image=$ci_mirror/$releasever$stream_suffix/$basearch/images/CentOS-Stream-GenericCloud-$releasever-latest.$basearch.qcow2 ;;
                 esac
                 ;;
-            "alma") mirrorlist="https://mirrors.almalinux.org/mirrorlist/$releasever/baseos" ;;
-            "rocky") mirrorlist="https://mirrors.rockylinux.org/mirrorlist?arch=$basearch&repo=BaseOS-$releasever" ;;
-            "fedora") mirrorlist="https://mirrors.fedoraproject.org/mirrorlist?arch=$basearch&repo=fedora-$releasever" ;;
+            # TODO: alma8 有独立的uefi镜像
+            "alma") ci_image=$ci_mirror/AlmaLinux-$releasever-GenericCloud-latest.$basearch.qcow2 ;;
+            "rocky") ci_image=$ci_mirror/Rocky-$releasever-GenericCloud-Base.latest.$basearch.qcow2 ;;
+            # TODO: 小版本号
+            "fedora") ci_image=$ci_mirror/Fedora-Cloud-Base-$releasever-1.6.$basearch.qcow2 ;;
             esac
-            # rocky/centos9 需要删除第一行注释， alma 需要替换$basearch
-            for cur_mirror in $(curl -L $mirrorlist | sed "/^#/d" | sed "s,\$basearch,$basearch,"); do
-                host=$(get_host_by_url $cur_mirror)
-                if is_host_has_ipv4_and_ipv6 $host &&
-                    test_url ${cur_mirror}images/pxeboot/vmlinuz; then
-                    mirror=$cur_mirror
-                    break
-                fi
-            done
-            if [ -z "$mirror" ]; then
-                error_and_exit "All mirror failed."
-            fi
-            eval "${step}_mirrorlist='${mirrorlist}'"
-        fi
-        eval ${step}_ks=$confhome/ks.cfg
-        eval ${step}_vmlinuz=${mirror}images/pxeboot/vmlinuz
-        eval ${step}_initrd=${mirror}images/pxeboot/initrd.img
-        eval ${step}_squashfs=${mirror}images/install.img
 
-        if [ "$releasever" = 7 ]; then
-            eval ${step}_squashfs=${mirror}LiveOS/squashfs.img
+            eval ${step}_img=${ci_image}
+        else
+            # 传统安装
+            if [ "$localtest" = 1 ]; then
+                mirror=$confhome/$releasever/
+            else
+                case $distro in
+                "centos")
+                    case $releasever in
+                    "7") mirrorlist="http://mirrorlist.centos.org/?release=7&arch=$basearch&repo=os" ;;
+                    "8") mirrorlist="http://mirrorlist.centos.org/?release=8-stream&arch=$basearch&repo=BaseOS" ;;
+                    "9") mirrorlist="https://mirrors.centos.org/mirrorlist?repo=centos-baseos-9-stream&arch=$basearch" ;;
+                    esac
+                    ;;
+                "alma") mirrorlist="https://mirrors.almalinux.org/mirrorlist/$releasever/baseos" ;;
+                "rocky") mirrorlist="https://mirrors.rockylinux.org/mirrorlist?arch=$basearch&repo=BaseOS-$releasever" ;;
+                "fedora") mirrorlist="https://mirrors.fedoraproject.org/mirrorlist?arch=$basearch&repo=fedora-$releasever" ;;
+                esac
+
+                # rocky/centos9 需要删除第一行注释， alma 需要替换$basearch
+                for cur_mirror in $(curl -L $mirrorlist | sed "/^#/d" | sed "s,\$basearch,$basearch,"); do
+                    host=$(get_host_by_url $cur_mirror)
+                    if is_host_has_ipv4_and_ipv6 $host &&
+                        test_url ${cur_mirror}images/pxeboot/vmlinuz; then
+                        mirror=$cur_mirror
+                        break
+                    fi
+                done
+
+                if [ -z "$mirror" ]; then
+                    error_and_exit "All mirror failed."
+                fi
+
+                eval "${step}_mirrorlist='${mirrorlist}'"
+            fi
+
+            eval ${step}_ks=$confhome/ks.cfg
+            eval ${step}_vmlinuz=${mirror}images/pxeboot/vmlinuz
+            eval ${step}_initrd=${mirror}images/pxeboot/initrd.img
+            eval ${step}_squashfs=${mirror}images/install.img
+            if [ "$releasever" = 7 ]; then
+                eval ${step}_squashfs=${mirror}LiveOS/squashfs.img
+            fi
         fi
     }
 
@@ -401,8 +468,16 @@ check_ram() {
         error_and_exit "Could not detect RAM size."
     fi
 
+    # ram 足够就用普通方法安装，否则如果内存大于512就用 cloud image
     if [ $ram_size -lt $ram_requirement ]; then
-        error_and_exit "Could not install $distro: RAM < $ram_requirement MB."
+        # TODO: 测试 256 384 内存
+        ram_requirement=512
+        if false && [ $ram_size -ge $ram_requirement ]; then
+            info "RAM < $ram_requirement MB. Switch to cloud image mode"
+            cloud_image=1
+        else
+            error_and_exit "Could not install $distro: RAM < $ram_requirement MB."
+        fi
     fi
 }
 
@@ -511,7 +586,7 @@ if ! is_in_windows; then
 fi
 
 # 整理参数
-if ! opts=$(getopt -n $0 -o "" --long localtest,debug,sleep:,iso:,image-name:,img: -- "$@"); then
+if ! opts=$(getopt -n $0 -o "" --long localtest,debug,sleep:,iso:,image-name:,img:,ci,cloud-image -- "$@"); then
     usage_and_exit
 fi
 
@@ -526,6 +601,10 @@ while true; do
         ;;
     --debug)
         set -x
+        shift
+        ;;
+    --ci | --cloud-image)
+        cloud_image=1
         shift
         ;;
     --sleep)
@@ -571,7 +650,9 @@ if is_in_alpine; then
 fi
 
 # 检查内存
-check_ram
+if ! is_use_cloud_image; then
+    check_ram
+fi
 
 # 检查硬件架构
 # x86强制使用x64
@@ -586,10 +667,12 @@ esac
 set_github_proxy
 
 # 以下目标系统需要进入alpine环境安装
-# ubuntu/alpine
+# cloud image
+# ubuntu/alpine/windows/dd
 # el8/9/fedora 任何架构 <2g
 # el7 aarch64 <1.5g
-if [ "$distro" = "ubuntu" ] ||
+if is_use_cloud_image ||
+    [ "$distro" = "ubuntu" ] ||
     [ "$distro" = "alpine" ] ||
     [ "$distro" = "windows" ] ||
     [ "$distro" = "dd" ] ||
@@ -603,9 +686,14 @@ else
     setos nextos $distro $releasever
 fi
 
-# 下载启动内核
 # shellcheck disable=SC2154
 {
+    # 测试 cloud img 链接
+    if is_use_cloud_image; then
+        test_url $finalos_img
+    fi
+
+    # 下载 nextos 内核
     info download vmlnuz and initrd
     echo $nextos_vmlinuz
     curl -Lo /reinstall-vmlinuz $nextos_vmlinuz
@@ -628,7 +716,7 @@ build_finalos_cmdline() {
 }
 
 build_extra_cmdline() {
-    for key in localtest confhome sleep; do
+    for key in localtest confhome sleep cloud_image; do
         value=${!key}
         if [ -n "$value" ]; then
             extra_cmdline+=" extra.$key='$value'"

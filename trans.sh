@@ -78,6 +78,10 @@ is_efi() {
     [ -d /sys/firmware/efi/ ]
 }
 
+is_use_cloud_image() {
+    [ -n "$cloud_image" ] && [ "$cloud_image" = 1 ]
+}
+
 setup_nginx() {
     apk add nginx
     cat <<EOF >/etc/nginx/http.d/default.conf
@@ -323,6 +327,14 @@ if [ "$distro" = windows ]; then
         mkfs.ext4 -F -L os /dev/$xda*1           #1 os
         mkfs.ntfs -f -F -L installer /dev/$xda*2 #2 installer
     fi
+elif is_use_cloud_image; then
+    parted /dev/$xda -s -- \
+        mklabel gpt \
+        mkpart '" "' ext4 1MiB -1GiB \
+        mkpart '" "' ext4 -1GiB 100%
+    update_part /dev/$xda
+    mkfs.ext4 -F -L os /dev/$xda*1        #1 os
+    mkfs.ext4 -F -L installer /dev/$xda*2 #2 installer
 else
     # 对于红帽系是临时分区表，安装时除了 installer 分区，其他分区会重建为默认的大小
     # 对于ubuntu是最终分区表，因为 ubuntu 的安装器不能调整个别分区，只能重建整个分区表
@@ -366,20 +378,68 @@ fi
 
 update_part /dev/$xda
 
-# 挂载主分区
-mkdir -p /os
-mount /dev/disk/by-label/os /os
+if is_use_cloud_image; then
+    apk add qemu-img
 
-# 挂载其他分区
-mkdir -p /os/boot/efi
-if is_efi; then
-    mount /dev/disk/by-label/efi /os/boot/efi
+    mkdir -p /installer
+    mount /dev/disk/by-label/installer /installer
+    qcow_file=/installer/cloud_image.qcow2
+    download $img $qcow_file
+    # qcow_virtualx_size=$(qemu-img info $qcow_file | grep 'virtual size' | grep -oE '[0-9]+' | tail -1)
+    # TODO: centos dd 需要 8g 空间，改成手动释放文件
+    if true; then
+        modprobe nbd
+        qemu-nbd -c /dev/nbd0 $qcow_file
+
+        # 将前1M dd到内存
+        dd if=/dev/nbd0 of=/first-1M bs=1M count=1
+
+        # 将1M之后 dd到硬盘
+        case 3 in
+        1)
+            # BusyBox dd
+            dd if=/dev/nbd0 of=/dev/$xda bs=1M skip=1 seek=1
+            ;;
+        2)
+            # 用原版 dd status=progress，但没有进度和剩余时间
+            apk add coreutils
+            dd if=/dev/nbd0 of=/dev/$xda bs=1M skip=1 seek=1 status=progress
+            ;;
+        3)
+            # 用 pv
+            apk add pv
+            pv -f /dev/nbd0 | dd of=/dev/$xda bs=1M skip=1 seek=1 iflag=fullblock
+            ;;
+        esac
+
+        qemu-nbd -d /dev/nbd0
+    else
+        # 将前1M dd到内存，将1M之后 dd到硬盘
+        qemu-img dd if=$qcow_file of=/first-1M bs=1M count=1
+        qemu-img dd if=$qcow_file of=/dev/disk/by-label/os bs=1M skip=1
+    fi
+
+    # 将前1M从内存 dd 到硬盘
+    umount /installer/
+    dd if=/first-1M of=/dev/$xda
+    update_part /dev/$xda
+    exit
+else
+    # 挂载主分区
+    mkdir -p /os
+    mount /dev/disk/by-label/os /os
+
+    # 挂载其他分区
+    mkdir -p /os/boot/efi
+    if is_efi; then
+        mount /dev/disk/by-label/efi /os/boot/efi
+    fi
+    mkdir -p /os/installer
+    if [ "$distro" = windows ]; then
+        mount_args="-t ntfs3"
+    fi
+    mount $mount_args /dev/disk/by-label/installer /os/installer
 fi
-mkdir -p /os/installer
-if [ "$distro" = windows ]; then
-    mount_args="-t ntfs3"
-fi
-mount $mount_args /dev/disk/by-label/installer /os/installer
 
 # shellcheck disable=SC2154
 if [ "$distro" = "windows" ]; then
