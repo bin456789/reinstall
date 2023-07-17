@@ -30,6 +30,14 @@ jobs:
           ${{ matrix.command }} ubuntu-22.04
           ${{ matrix.command }} debian-12
           ${{ matrix.command }} dd --img=https://cdn.kernel.org/pub/linux/kernel/v6.x/linux-6.3.8.tar.xz
+
+          # 测试 cloud image
+          ${{ matrix.command }} centos-7 --ci
+          ${{ matrix.command }} alma-8 --ci
+          ${{ matrix.command }} rocky-9 --ci
+          ${{ matrix.command }} ubuntu-22.04 --ci
+          ${{ matrix.command }} debian-12 --ci
+
           # 测试失败例子
           ! ${{ matrix.command }} wrong-os
           ! ${{ matrix.command }} dd --img=https://github.com/
