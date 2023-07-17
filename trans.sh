@@ -65,12 +65,14 @@ download() {
 }
 
 update_part() {
-    hdparm -z $1 || true
-    partprobe $1 || true
-    partx -u $1 || true
-    udevadm settle || true
-    echo 1 >/sys/block/${1#/dev/}/device/rescan || true
-} 2>/dev/null
+    {
+        hdparm -z $1
+        partprobe $1
+        partx -u $1
+        udevadm settle
+        echo 1 >/sys/block/${1#/dev/}/device/rescan
+    } 2>/dev/null || true
+}
 
 is_efi() {
     [ -d /sys/firmware/efi/ ]
@@ -93,7 +95,11 @@ setup_nginx() {
         }
 EOF
     # rc-service nginx start
-    nginx
+    if pgrep nginx >/dev/null; then
+        nginx -s reload
+    else
+        nginx
+    fi
 }
 
 setup_lighttpd() {
@@ -145,6 +151,16 @@ EOF
     done
 }
 
+# 可能脚本不是首次运行，先清理之前的残留
+clear_previous() {
+    {
+        # TODO: fuser and kill
+        qemu-nbd -d /dev/nbd0
+        umount /iso /wim /installer /os/installer /os
+    } 2>/dev/null || true
+}
+
+clear_previous
 setup_tty_and_log
 extract_env_from_cmdline
 
@@ -175,8 +191,7 @@ printf '\nyes' | setup-sshd
 
 # shellcheck disable=SC2154
 if [ "$sleep" = 1 ]; then
-    cd /
-    sleep infinity
+    exit
 fi
 
 # shellcheck disable=SC2154
@@ -248,8 +263,7 @@ elif [ "$distro" = "dd" ]; then
         sleep 1m
     fi
     if [ "$sleep" = 2 ]; then
-        cd /
-        sleep infinity
+        exit
     fi
     exec reboot
 fi
@@ -278,7 +292,6 @@ disk_2t=$((2 * 1024 * 1024 * 1024 * 1024))
 
 # xda*1 星号用于 nvme0n1p1 的字母 p
 if [ "$distro" = windows ]; then
-    add_community_repo
     apk add ntfs-3g-progs virt-what wimlib rsync dos2unix
     # 虽然ntfs3不需要fuse，但wimmount需要，所以还是要保留
     modprobe fuse ntfs3
@@ -488,9 +501,10 @@ if [ "$distro" = "windows" ]; then
         [ "$arch_wim" != arm64 ]; then
         # xen
         # 有 x86 x64，没arm64驱动
-        # 未测试
         # https://xenbits.xenproject.org/pvdrivers/win/
         ver='9.0.0'
+        # 在 aws t2 上测试，安装 xenbus 会蓝屏，装了其他7个驱动后，能进系统但没网络
+        # 但 aws 应该用aws官方xen驱动，所以测试仅供参考
         parts='xenbus xencons xenhid xeniface xennet xenvbd xenvif xenvkbd'
         mkdir -p $drv/xen/
         for part in $parts; do
@@ -694,7 +708,6 @@ EOF
 else
     download $vmlinuz /os/vmlinuz
     download $initrd /os/initrd.img
-
     download $squashfs /os/installer/install.img
 
     cat <<EOF >$grub_cfg
