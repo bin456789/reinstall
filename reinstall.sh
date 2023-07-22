@@ -382,6 +382,10 @@ setos() {
     esac
 }
 
+is_distro_like_redhat() {
+    [ "$1" = centos ] || [ "$1" = alma ] || [ "$1" = rocky ] || [ "$1" = fedora ]
+}
+
 # 检查是否为正确的系统名
 verify_os_string() {
     for os in 'centos-7|8|9' 'alma|rocky-8|9' 'fedora-37|38' 'ubuntu-20.04|22.04' 'alpine-3.16|3.17|3.18' 'debian-10|11|12' 'arch-' 'windows-' 'dd-'; do
@@ -390,9 +394,6 @@ verify_os_string() {
         finalos=$(echo "$@" | tr '[:upper:]' '[:lower:]' | sed -n -E "s,^($ds)[ :-]?($vers)$,\1:\2,p")
         if [ -n "$finalos" ]; then
             distro=$(echo $finalos | cut -d: -f1)
-            if [ "$distro" = centos ] || [ "$distro" = alma ] || [ "$distro" = rocky ]; then
-                distro_like=redhat
-            fi
             releasever=$(echo $finalos | cut -d: -f2)
             return
         fi
@@ -700,8 +701,8 @@ if is_use_cloud_image ||
     [ "$distro" = "arch" ] ||
     [ "$distro" = "windows" ] ||
     [ "$distro" = "dd" ] ||
-    { [ "$distro_like" = "redhat" ] && [ $releasever -ge 8 ] && [ $ram_size -lt 2048 ]; } ||
-    { [ "$distro_like" = "redhat" ] && [ $releasever -eq 7 ] && [ $ram_size -lt 1536 ] && [ $basearch = "aarch64" ]; }; then
+    { is_distro_like_redhat "$distro" && [ $releasever -ge 8 ] && [ $ram_size -lt 2048 ]; } ||
+    { is_distro_like_redhat "$distro" && [ $releasever -eq 7 ] && [ $ram_size -lt 1536 ] && [ $basearch = "aarch64" ]; }; then
     # 安装alpine时，使用指定的版本。 alpine作为中间系统时，使用 3.18
     [ "$distro" = "alpine" ] && alpine_releasever=$releasever || alpine_releasever=3.18
     setos finalos $distro $releasever
