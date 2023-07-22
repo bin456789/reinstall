@@ -209,7 +209,7 @@ setos() {
                 eval ${step}_vmlinuz=$mirror/linux
                 eval ${step}_initrd=$mirror/initrd.gz
             fi
-            eval ${step}_ks=$confhome/preseed.cfg
+            eval ${step}_ks=$confhome/debian.cfg
         fi
     }
 
