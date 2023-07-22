@@ -606,7 +606,7 @@ if [ "$distro" = "windows" ]; then
     fi
 
     # 修改应答文件
-    download $confhome/Autounattend.xml /tmp/Autounattend.xml
+    download $confhome/windows.xml /tmp/Autounattend.xml
     locale=$(wiminfo $install_wim | grep 'Default Language' | head -1 | awk '{print $NF}')
     sed -i "s|%arch%|$arch|; s|%image_name%|$image_name|; s|%locale%|$locale|" /tmp/Autounattend.xml
 
