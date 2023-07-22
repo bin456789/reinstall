@@ -379,7 +379,7 @@ fi
 update_part /dev/$xda
 
 if is_use_cloud_image; then
-    apk add qemu-img
+    apk add qemu-img lsblk
 
     mkdir -p /installer
     mount /dev/disk/by-label/installer /installer
@@ -423,6 +423,12 @@ if is_use_cloud_image; then
     umount /installer/
     dd if=/first-1M of=/dev/$xda
     update_part /dev/$xda
+
+    # 找到系统分区，也就是最大的分区
+    os_part=$(lsblk /dev/sda*[0-9] --sort SIZE -o NAME | tail -1)
+    mkdir -p /os
+    mount /dev/$os_part /os
+    download $confhome/nocloud.yaml /os/etc/cloud/cloud.cfg.d/99_nocloud.cfg
     exit
 else
     # 挂载主分区

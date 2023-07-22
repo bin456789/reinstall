@@ -1,0 +1,21 @@
+#cloud-config
+datasource_list: [NoCloud]
+disable_root: false
+ssh_pwauth: true
+users:
+  - name: root
+    lock_passwd: false
+chpasswd:
+  expire: false
+  # 20.04 arm 需要
+  list: |
+    root:123@@@
+  users:
+    - name: root
+      password: 123@@@
+      type: text
+runcmd:
+  # arch 没有 /etc/ssh/sshd_config.d/ 文件夹
+  - echo "PermitRootLogin yes" >/etc/ssh/sshd_config.d/01-permitrootlogin.conf || echo "PermitRootLogin yes" >>/etc/ssh/sshd_config
+  - systemctl restart sshd
+  - echo -e '\nDone' >/dev/tty0
