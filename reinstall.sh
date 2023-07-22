@@ -248,7 +248,7 @@ setos() {
             eval ${step}_iso=$iso
 
             # ks
-            eval ${step}_ks=$confhome/user-data
+            eval ${step}_ks=$confhome/ubuntu.yaml
         fi
     }
 
