@@ -345,7 +345,7 @@ setos() {
                 eval "${step}_mirrorlist='${mirrorlist}'"
             fi
 
-            eval ${step}_ks=$confhome/ks.cfg
+            eval ${step}_ks=$confhome/redhat.cfg
             eval ${step}_vmlinuz=${mirror}images/pxeboot/vmlinuz
             eval ${step}_initrd=${mirror}images/pxeboot/initrd.img
             eval ${step}_squashfs=${mirror}images/install.img
