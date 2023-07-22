@@ -411,6 +411,8 @@ apt_install() {
 install_pkg() {
     cmds=$*
 
+    is_in_windows && return
+
     # arch 需先加载 squashfs 模块
     # arch 安装软件时一旦升级了内核，旧的内核文件夹就立即被删除，无法再加载模块
     if ! lsmod | grep squashfs; then
