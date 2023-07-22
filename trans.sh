@@ -330,8 +330,8 @@ if [ "$distro" = windows ]; then
 elif is_use_cloud_image; then
     parted /dev/$xda -s -- \
         mklabel gpt \
-        mkpart '" "' ext4 1MiB -1GiB \
-        mkpart '" "' ext4 -1GiB 100%
+        mkpart '" "' ext4 1MiB -2GiB \
+        mkpart '" "' ext4 -2GiB 100%
     update_part /dev/$xda
     mkfs.ext4 -F -L os /dev/$xda*1        #1 os
     mkfs.ext4 -F -L installer /dev/$xda*2 #2 installer
