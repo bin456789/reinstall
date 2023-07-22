@@ -252,6 +252,21 @@ setos() {
         fi
     }
 
+    setos_arch() {
+        if is_use_cloud_image; then
+            # cloud image
+            if is_in_china; then
+                ci_mirror=https://mirrors.tuna.tsinghua.edu.cn/archlinux
+            else
+                ci_mirror=https://geo.mirror.pkgbuild.com
+            fi
+            # eval ${step}_img=$ci_mirror/images/latest/Arch-Linux-x86_64-basic.qcow2
+            eval ${step}_img=$ci_mirror/images/latest/Arch-Linux-x86_64-cloudimg.qcow2
+        else
+            # 先略过
+            error_and_exit 'not support without --ci'
+        fi
+    }
     setos_windows() {
         if [ -z "$iso" ] || [ -z "$image_name" ]; then
             error_and_exit "Install Windows need --iso --image-name"
@@ -360,6 +375,7 @@ setos() {
     ubuntu) setos_ubuntu ;;
     alpine) setos_alpine ;;
     debian) setos_debian ;;
+    arch) setos_arch ;;
     windows) setos_windows ;;
     dd) setos_dd ;;
     *) setos_redhat ;;
@@ -368,7 +384,7 @@ setos() {
 
 # 检查是否为正确的系统名
 verify_os_string() {
-    for os in 'centos-7|8|9' 'alma|rocky-8|9' 'fedora-37|38' 'ubuntu-20.04|22.04' 'alpine-3.16|3.17|3.18' 'debian-10|11|12' 'windows-' 'dd-'; do
+    for os in 'centos-7|8|9' 'alma|rocky-8|9' 'fedora-37|38' 'ubuntu-20.04|22.04' 'alpine-3.16|3.17|3.18' 'debian-10|11|12' 'arch-' 'windows-' 'dd-'; do
         ds=$(echo $os | cut -d- -f1)
         vers=$(echo $os | cut -d- -f2 | sed 's \. \\\. g')
         finalos=$(echo "$@" | tr '[:upper:]' '[:lower:]' | sed -n -E "s,^($ds)[ :-]?($vers)$,\1:\2,p")
@@ -393,6 +409,13 @@ apt_install() {
 
 install_pkg() {
     cmds=$*
+
+    # arch 需先加载 squashfs 模块
+    # arch 安装软件时一旦升级了内核，旧的内核文件夹就立即被删除，无法再加载模块
+    if ! lsmod | grep squashfs; then
+        modprobe squashfs
+    fi
+
     need_install=false
     for cmd in $cmds; do
         if ! command -v $cmd >/dev/null; then
@@ -674,6 +697,7 @@ set_github_proxy
 if is_use_cloud_image ||
     [ "$distro" = "ubuntu" ] ||
     [ "$distro" = "alpine" ] ||
+    [ "$distro" = "arch" ] ||
     [ "$distro" = "windows" ] ||
     [ "$distro" = "dd" ] ||
     { [ "$distro_like" = "redhat" ] && [ $releasever -ge 8 ] && [ $ram_size -lt 2048 ]; } ||
