@@ -22,8 +22,8 @@ set tags=%tmp%\cygwin-installed-!pkgs!
 if not exist !tags! (
     :: 检查是否国内
     :: 在括号里面，:: 下一行不能是空行!!!!!
-    call :download http://geoip.fedoraproject.org/city %tmp%\geoip "Check Location"
-    findstr CHN %tmp%\geoip >nul
+    call :download http://www.cloudflare.com/cdn-cgi/trace %tmp%\geoip "Check Location"
+    findstr "loc=CN" %tmp%\geoip >nul
     if !errorlevel! == 0 (
         set host=http://mirror.nju.edu.cn
     ) else (
