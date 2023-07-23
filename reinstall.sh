@@ -58,6 +58,18 @@ is_use_cloud_image() {
     [ -n "$cloud_image" ] && [ "$cloud_image" = 1 ]
 }
 
+is_os_in_btrfs() {
+    mount | grep -w / | grep btrfs
+}
+
+get_os_subvol_in_btrfs() {
+    subvol=$(grep -w / /proc/mounts | grep -o 'subvol=[^ ]*' | cut -d= -f2)
+    if [ "$subvol" = / ]; then
+        subvol=
+    fi
+    echo $subvol
+}
+
 is_host_has_ipv4_and_ipv6() {
     install_pkg dig
     # dig会显示cname结果，cname结果以.结尾，grep -v '\.$' 用于去除 cname 结果
@@ -871,15 +883,16 @@ fi
 
 # 生成 custom.cfg (linux) 或者 grub.cfg (win)
 is_in_windows && custom_cfg=/cygdrive/$c/grub.cfg || custom_cfg=$(dirname $grub_cfg)/custom.cfg
+is_os_in_btrfs && subvol=$(get_os_subvol_in_btrfs)
 echo $custom_cfg
 cat <<EOF | tee $custom_cfg
 set timeout=5
 menuentry "reinstall" {
     insmod lvm
     insmod xfs
-    search --no-floppy --file --set=root /reinstall-vmlinuz
-    linux$efi /reinstall-vmlinuz $cmdline
-    initrd$efi /reinstall-initrd
+    search --no-floppy --file --set=root $subvol/reinstall-vmlinuz
+    linux$efi $subvol/reinstall-vmlinuz $cmdline
+    initrd$efi $subvol/reinstall-initrd
 }
 EOF
 
