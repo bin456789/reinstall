@@ -413,12 +413,6 @@ install_pkg() {
 
     is_in_windows && return
 
-    # arch 需先加载 squashfs 模块
-    # arch 安装软件时一旦升级了内核，旧的内核文件夹就立即被删除，无法再加载模块
-    if ! lsmod | grep squashfs; then
-        modprobe squashfs
-    fi
-
     need_install=false
     for cmd in $cmds; do
         if ! command -v $cmd >/dev/null; then
@@ -434,6 +428,7 @@ install_pkg() {
         # cmds to pkgs
         for cmd in $cmds; do
             case $cmd in
+            unsquashfs) pkg=squashfs-tools ;;
             lsmem) pkg=util-linux ;;
             nslookup | dig)
                 if is_in_alpine; then
@@ -788,7 +783,7 @@ mkdir_clear() {
     fi
 
     # alpine 没有 -R
-    { umount $dir || umount -R $dir || true; } 2>/dev/null
+    # { umount $dir || umount -R $dir || true; } 2>/dev/null
     rm -rf $dir
     mkdir -p $dir
 }
@@ -816,13 +811,13 @@ mod_alpine_initrd() {
         modloop_dir=/tmp/modloop_dir
         curl -Lo $modloop_file $nextos_modloop
         if is_in_windows; then
-            # cygwin 无法 mount，只能解压
+            # cygwin 没有 unsquashfs
             7z e $modloop_file ipv6.ko -r -y -oa$ipv6_dir
         else
+            install_pkg unsquashfs
             mkdir_clear $modloop_dir
-            mount $modloop_file $modloop_dir
+            unsquashfs -f -d $modloop_dir $modloop_file 'modules/*/kernel/net/ipv6/ipv6.ko'
             find $modloop_dir -name ipv6.ko -exec cp {} $ipv6_dir/ \;
-            umount $modloop_dir
         fi
     fi
 
