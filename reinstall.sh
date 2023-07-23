@@ -256,7 +256,7 @@ setos() {
             # iso
             filename=$(curl -L $mirror | grep -oP "ubuntu-$releasever.*?-live-server-$basearch_alt.iso" | head -1)
             iso=$mirror/$filename
-            test_url $iso iso || exit 1
+            test_url $iso || exit 1
             eval ${step}_iso=$iso
 
             # ks
@@ -288,7 +288,7 @@ setos() {
         if [ "$(echo "$image_name" | wc -w)" -lt 3 ]; then
             error_and_exit "--image-name wrong."
         fi
-        test_url $iso iso || exit 1
+        test_url $iso || exit 1
         eval "${step}_iso='$iso'"
         eval "${step}_image_name='$image_name'"
     }
