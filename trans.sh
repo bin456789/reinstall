@@ -395,6 +395,7 @@ if is_use_cloud_image; then
         dd if=/dev/nbd0 of=/first-1M bs=1M count=1
 
         # 将1M之后 dd到硬盘
+        # shellcheck disable=SC2194
         case 3 in
         1)
             # BusyBox dd
@@ -428,7 +429,11 @@ if is_use_cloud_image; then
     os_part=$(lsblk /dev/sda*[0-9] --sort SIZE -o NAME | tail -1)
     mkdir -p /os
     mount /dev/$os_part /os
-    download $confhome/nocloud.yaml /os/etc/cloud/cloud.cfg.d/99_nocloud.cfg
+    if [ "$distro" = fedora ]; then
+        subvol=/root
+    fi
+    # shellcheck disable=SC2154
+    download $confhome/nocloud.yaml /os$subvol/etc/cloud/cloud.cfg.d/99_nocloud.cfg
     exit
 else
     # 挂载主分区
