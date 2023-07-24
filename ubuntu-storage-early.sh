@@ -61,7 +61,7 @@ if parted /dev/$xda print | grep '^Partition Table' | grep gpt; then
       id: mount-efi
 EOF
   else
-    # bios 2t
+    # bios > 2t
     size_biosboot=$(parted /dev/$xda unit b print | grep bios_grub | awk '{print $4}' | sed 's/B$//')
     cat <<EOF >>/autoinstall.yaml
   config:
