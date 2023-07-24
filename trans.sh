@@ -20,6 +20,11 @@ error() {
     wall "Error: $*"
 }
 
+error_and_exit() {
+    error "$@"
+    exit 1
+}
+
 add_community_repo() {
     if ! grep -x 'http.*/community' /etc/apk/repositories; then
         alpine_ver=$(cut -d. -f1,2 </etc/alpine-release)
@@ -106,6 +111,16 @@ EOF
     fi
 }
 
+setup_nginx_if_enough_ram() {
+    total_ram=$(free -m | awk '{print $2}' | sed -n '2p')
+    # 避免后面没内存安装程序，谨慎起见，512内存才安装
+    if [ $total_ram -gt 400 ]; then
+        # lighttpd 虽然运行占用内存少，但安装占用空间大
+        # setup_lighttpd
+        setup_nginx
+    fi
+}
+
 setup_lighttpd() {
     apk add lighttpd
     ln -sf /reinstall.html /var/www/localhost/htdocs/index.html
@@ -164,42 +179,7 @@ clear_previous() {
     } 2>/dev/null || true
 }
 
-clear_previous
-setup_tty_and_log
-extract_env_from_cmdline
-
-# 安装 nginx，目标系统是 alpine 除外
-# shellcheck disable=SC2154
-if [ "$distro" != "alpine" ]; then
-    total_ram=$(free -m | awk '{print $2}' | sed -n '2p')
-    # 避免后面没内存安装程序，谨慎起见，512内存才安装
-    if [ $total_ram -gt 400 ]; then
-        # lighttpd 虽然运行占用内存少，但安装占用空间大
-        # setup_lighttpd
-        setup_nginx
-    fi
-fi
-
-# 找到主硬盘
-# alpine 不自带lsblk，liveos安装的软件也会被带到新系统，所以不用lsblk
-# xda=$(lsblk -dn -o NAME | grep -E 'nvme0n1|.da')
-# shellcheck disable=SC2010
-xda=$(ls /dev/ | grep -Ex 'sda|hda|xda|vda|xvda|nvme0n1')
-
-# arm要手动从硬件同步时间，避免访问https出错
-hwclock -s
-
-# 安装并打开 ssh
-echo root:123@@@ | chpasswd
-printf '\nyes' | setup-sshd
-
-# shellcheck disable=SC2154
-if [ "$sleep" = 1 ]; then
-    exit
-fi
-
-# shellcheck disable=SC2154
-if [ "$distro" = "alpine" ]; then
+install_alpine() {
     # 还原改动，不然本脚本会被复制到新系统
     rm -f /etc/local.d/trans.start
     rm -f /etc/runlevels/default/local
@@ -247,9 +227,10 @@ if [ "$distro" = "alpine" ]; then
     # alpine默认使用 syslinux (efi 环境除外)，这里强制使用 grub，方便用脚本再次重装
     export BOOTLOADER="grub"
     printf 'y' | setup-disk -m sys $kernel_opt -s 0 /dev/$xda
-    exec reboot
+}
 
-elif [ "$distro" = "dd" ]; then
+# shellcheck disable=SC2154
+install_dd() {
     case "$img_type" in
     gzip) prog=gzip ;;
     xz) prog=xz ;;
@@ -263,122 +244,117 @@ elif [ "$distro" = "dd" ]; then
         curl -L $img | $prog -dc >/dev/$xda
         sync
     else
-        echo 'Not supported'
-        sleep 1m
+        error_and_exit 'Not supported'
     fi
-    if [ "$sleep" = 2 ]; then
-        exit
-    fi
-    exec reboot
-fi
+}
 
-# 目标系统非 alpine 和 dd
-# 脚本开始
-add_community_repo
-if ! apk add util-linux aria2 grub udev hdparm e2fsprogs curl parted; then
-    echo 'Unable to install package!'
-    sleep 1m
-    exec reboot
-fi
+is_xda_gt_2t() {
+    disk_size=$(blockdev --getsize64 /dev/$xda)
+    disk_2t=$((2 * 1024 * 1024 * 1024 * 1024))
+    [ "$disk_size" -gt "$disk_2t" ]
+}
 
-# 打开dev才能刷新分区名
-rc-service udev start
+create_part() {
+    # 目标系统非 alpine 和 dd
+    # 脚本开始
+    apk add util-linux aria2 grub udev hdparm e2fsprogs curl parted
 
-# 反激活 lvm
-# alpine live 不需要
-false && vgchange -an
+    # 打开dev才能刷新分区名
+    rc-service udev start
 
-# 移除 lsblk 显示的分区
-partx -d /dev/$xda
+    # 反激活 lvm
+    # alpine live 不需要
+    false && vgchange -an
 
-disk_size=$(blockdev --getsize64 /dev/$xda)
-disk_2t=$((2 * 1024 * 1024 * 1024 * 1024))
+    # 移除 lsblk 显示的分区
+    partx -d /dev/$xda
 
-# xda*1 星号用于 nvme0n1p1 的字母 p
-if [ "$distro" = windows ]; then
-    apk add ntfs-3g-progs virt-what wimlib rsync dos2unix
-    # 虽然ntfs3不需要fuse，但wimmount需要，所以还是要保留
-    modprobe fuse ntfs3
-    if is_efi; then
-        # efi
-        apk add dosfstools
+    # xda*1 星号用于 nvme0n1p1 的字母 p
+    if [ "$distro" = windows ]; then
+        apk add ntfs-3g-progs virt-what wimlib rsync dos2unix
+        # 虽然ntfs3不需要fuse，但wimmount需要，所以还是要保留
+        modprobe fuse ntfs3
+        if is_efi; then
+            # efi
+            apk add dosfstools
+            parted /dev/$xda -s -- \
+                mklabel gpt \
+                mkpart '" "' fat32 1MiB 1025MiB \
+                mkpart '" "' fat32 1025MiB 1041MiB \
+                mkpart '" "' ext4 1041MiB -6GiB \
+                mkpart '" "' ntfs -6GiB 100% \
+                set 1 boot on \
+                set 2 msftres on \
+                set 3 msftdata on
+            update_part /dev/$xda
+            mkfs.fat -F 32 -n efi /dev/$xda*1        #1 efi
+            echo                                     #2 msr
+            mkfs.ext4 -F -L os /dev/$xda*3           #3 os
+            mkfs.ntfs -f -F -L installer /dev/$xda*4 #4 installer
+        else
+            # bios
+            parted /dev/$xda -s -- \
+                mklabel msdos \
+                mkpart primary ntfs 1MiB -6GiB \
+                mkpart primary ntfs -6GiB 100% \
+                set 1 boot on
+            update_part /dev/$xda
+            mkfs.ext4 -F -L os /dev/$xda*1           #1 os
+            mkfs.ntfs -f -F -L installer /dev/$xda*2 #2 installer
+        fi
+    elif is_use_cloud_image; then
         parted /dev/$xda -s -- \
             mklabel gpt \
-            mkpart '" "' fat32 1MiB 1025MiB \
-            mkpart '" "' fat32 1025MiB 1041MiB \
-            mkpart '" "' ext4 1041MiB -6GiB \
-            mkpart '" "' ntfs -6GiB 100% \
-            set 1 boot on \
-            set 2 msftres on \
-            set 3 msftdata on
-        update_part /dev/$xda
-        mkfs.fat -F 32 -n efi /dev/$xda*1        #1 efi
-        echo                                     #2 msr
-        mkfs.ext4 -F -L os /dev/$xda*3           #3 os
-        mkfs.ntfs -f -F -L installer /dev/$xda*4 #4 installer
-    else
-        # bios
-        parted /dev/$xda -s -- \
-            mklabel msdos \
-            mkpart primary ntfs 1MiB -6GiB \
-            mkpart primary ntfs -6GiB 100% \
-            set 1 boot on
-        update_part /dev/$xda
-        mkfs.ext4 -F -L os /dev/$xda*1           #1 os
-        mkfs.ntfs -f -F -L installer /dev/$xda*2 #2 installer
-    fi
-elif is_use_cloud_image; then
-    parted /dev/$xda -s -- \
-        mklabel gpt \
-        mkpart '" "' ext4 1MiB -2GiB \
-        mkpart '" "' ext4 -2GiB 100%
-    update_part /dev/$xda
-    mkfs.ext4 -F -L os /dev/$xda*1        #1 os
-    mkfs.ext4 -F -L installer /dev/$xda*2 #2 installer
-else
-    # 对于红帽系是临时分区表，安装时除了 installer 分区，其他分区会重建为默认的大小
-    # 对于ubuntu是最终分区表，因为 ubuntu 的安装器不能调整个别分区，只能重建整个分区表
-    if is_efi; then
-        # efi
-        apk add dosfstools
-        parted /dev/$xda -s -- \
-            mklabel gpt \
-            mkpart '" "' fat32 1MiB 1025MiB \
-            mkpart '" "' ext4 1025MiB -2GiB \
-            mkpart '" "' ext4 -2GiB 100% \
-            set 1 boot on
-        update_part /dev/$xda
-        mkfs.fat -F 32 -n efi /dev/$xda*1     #1 efi
-        mkfs.ext4 -F -L os /dev/$xda*2        #2 os
-        mkfs.ext4 -F -L installer /dev/$xda*3 #3 installer
-    elif [ "$disk_size" -ge "$disk_2t" ]; then
-        # bios 2t
-        parted /dev/$xda -s -- \
-            mklabel gpt \
-            mkpart '" "' ext4 1MiB 2MiB \
-            mkpart '" "' ext4 2MiB -2GiB \
-            mkpart '" "' ext4 -2GiB 100% \
-            set 1 bios_grub on
-        update_part /dev/$xda
-        echo                                  #1 bios_boot
-        mkfs.ext4 -F -L os /dev/$xda*2        #2 os
-        mkfs.ext4 -F -L installer /dev/$xda*3 #3 installer
-    else
-        # bios
-        parted /dev/$xda -s -- \
-            mklabel msdos \
-            mkpart primary ext4 1MiB -2GiB \
-            mkpart primary ext4 -2GiB 100% \
-            set 1 boot on
+            mkpart '" "' ext4 1MiB -2GiB \
+            mkpart '" "' ext4 -2GiB 100%
         update_part /dev/$xda
         mkfs.ext4 -F -L os /dev/$xda*1        #1 os
         mkfs.ext4 -F -L installer /dev/$xda*2 #2 installer
+    else
+        # 对于红帽系是临时分区表，安装时除了 installer 分区，其他分区会重建为默认的大小
+        # 对于ubuntu是最终分区表，因为 ubuntu 的安装器不能调整个别分区，只能重建整个分区表
+        if is_efi; then
+            # efi
+            apk add dosfstools
+            parted /dev/$xda -s -- \
+                mklabel gpt \
+                mkpart '" "' fat32 1MiB 1025MiB \
+                mkpart '" "' ext4 1025MiB -2GiB \
+                mkpart '" "' ext4 -2GiB 100% \
+                set 1 boot on
+            update_part /dev/$xda
+            mkfs.fat -F 32 -n efi /dev/$xda*1     #1 efi
+            mkfs.ext4 -F -L os /dev/$xda*2        #2 os
+            mkfs.ext4 -F -L installer /dev/$xda*3 #3 installer
+        elif is_xda_gt_2t; then
+            # bios > 2t
+            parted /dev/$xda -s -- \
+                mklabel gpt \
+                mkpart '" "' ext4 1MiB 2MiB \
+                mkpart '" "' ext4 2MiB -2GiB \
+                mkpart '" "' ext4 -2GiB 100% \
+                set 1 bios_grub on
+            update_part /dev/$xda
+            echo                                  #1 bios_boot
+            mkfs.ext4 -F -L os /dev/$xda*2        #2 os
+            mkfs.ext4 -F -L installer /dev/$xda*3 #3 installer
+        else
+            # bios
+            parted /dev/$xda -s -- \
+                mklabel msdos \
+                mkpart primary ext4 1MiB -2GiB \
+                mkpart primary ext4 -2GiB 100% \
+                set 1 boot on
+            update_part /dev/$xda
+            mkfs.ext4 -F -L os /dev/$xda*1        #1 os
+            mkfs.ext4 -F -L installer /dev/$xda*2 #2 installer
+        fi
     fi
-fi
 
-update_part /dev/$xda
+    update_part /dev/$xda
+}
 
-if is_use_cloud_image; then
+install_cloud_image() {
     apk add qemu-img lsblk
 
     mkdir -p /installer
@@ -434,8 +410,9 @@ if is_use_cloud_image; then
     fi
     # shellcheck disable=SC2154
     download $confhome/nocloud.yaml /os$subvol/etc/cloud/cloud.cfg.d/99_nocloud.cfg
-    exit
-else
+}
+
+mount_part() {
     # 挂载主分区
     mkdir -p /os
     mount /dev/disk/by-label/os /os
@@ -450,10 +427,10 @@ else
         mount_args="-t ntfs3"
     fi
     mount $mount_args /dev/disk/by-label/installer /os/installer
-fi
+}
 
-# shellcheck disable=SC2154
-if [ "$distro" = "windows" ]; then
+install_windows() {
+    # shellcheck disable=SC2154
     download $iso /os/windows.iso
     mkdir -p /iso
     mount /os/windows.iso /iso
@@ -723,49 +700,45 @@ EOF
             }
 EOF
     fi
-    if [ "$sleep" = 2 ]; then
-        cd /
-        sleep infinity
-    fi
-    exec reboot
-fi
+}
 
-# 安装 grub2
-if is_efi; then
-    # 注意低版本的grub无法启动f38 arm的内核
-    # https://forums.fedoraforum.org/showthread.php?330104-aarch64-pxeboot-vmlinuz-file-format-changed-broke-PXE-installs
+install_redhat_ubuntu() {
+    # 安装 grub2
+    if is_efi; then
+        # 注意低版本的grub无法启动f38 arm的内核
+        # https://forums.fedoraforum.org/showthread.php?330104-aarch64-pxeboot-vmlinuz-file-format-changed-broke-PXE-installs
 
-    apk add grub-efi efibootmgr
-    grub-install --efi-directory=/os/boot/efi --boot-directory=/os/boot
+        apk add grub-efi efibootmgr
+        grub-install --efi-directory=/os/boot/efi --boot-directory=/os/boot
 
-    # 添加 netboot 备用
-    arch_uname=$(uname -m)
-    cd /os/boot/efi
-    if [ "$arch_uname" = aarch64 ]; then
-        download https://boot.netboot.xyz/ipxe/netboot.xyz-arm64.efi
+        # 添加 netboot 备用
+        arch_uname=$(uname -m)
+        cd /os/boot/efi
+        if [ "$arch_uname" = aarch64 ]; then
+            download https://boot.netboot.xyz/ipxe/netboot.xyz-arm64.efi
+        else
+            download https://boot.netboot.xyz/ipxe/netboot.xyz.efi
+        fi
     else
-        download https://boot.netboot.xyz/ipxe/netboot.xyz.efi
+        apk add grub-bios
+        grub-install --boot-directory=/os/boot /dev/$xda
     fi
-else
-    apk add grub-bios
-    grub-install --boot-directory=/os/boot /dev/$xda
-fi
 
-# 重新整理 extra，因为grub会处理掉引号，要重新添加引号
-for var in $(grep -o '\bextra\.[^ ]*' /proc/cmdline | xargs); do
-    extra_cmdline="$extra_cmdline $(echo $var | sed -E "s/(extra\.[^=]*)=(.*)/\1='\2'/")"
-done
+    # 重新整理 extra，因为grub会处理掉引号，要重新添加引号
+    for var in $(grep -o '\bextra\.[^ ]*' /proc/cmdline | xargs); do
+        extra_cmdline="$extra_cmdline $(echo $var | sed -E "s/(extra\.[^=]*)=(.*)/\1='\2'/")"
+    done
 
-grub_cfg=/os/boot/grub/grub.cfg
+    grub_cfg=/os/boot/grub/grub.cfg
 
-# 新版grub不区分linux/linuxefi
-# shellcheck disable=SC2154
-if [ "$distro" = "ubuntu" ]; then
-    download $iso /os/installer/ubuntu.iso
+    # 新版grub不区分linux/linuxefi
+    # shellcheck disable=SC2154
+    if [ "$distro" = "ubuntu" ]; then
+        download $iso /os/installer/ubuntu.iso
 
-    # 正常写法应该是 ds="nocloud-net;s=https://xxx/" 但是甲骨文云的ds更优先，自己的ds根本无访问记录
-    # $seed 是 https://xxx/
-    cat <<EOF >$grub_cfg
+        # 正常写法应该是 ds="nocloud-net;s=https://xxx/" 但是甲骨文云的ds更优先，自己的ds根本无访问记录
+        # $seed 是 https://xxx/
+        cat <<EOF >$grub_cfg
         set timeout=5
         menuentry "reinstall" {
             # https://bugs.launchpad.net/ubuntu/+source/grub2/+bug/1851311
@@ -776,12 +749,12 @@ if [ "$distro" = "ubuntu" ]; then
             initrd (loop)/casper/initrd
         }
 EOF
-else
-    download $vmlinuz /os/vmlinuz
-    download $initrd /os/initrd.img
-    download $squashfs /os/installer/install.img
+    else
+        download $vmlinuz /os/vmlinuz
+        download $initrd /os/initrd.img
+        download $squashfs /os/installer/install.img
 
-    cat <<EOF >$grub_cfg
+        cat <<EOF >$grub_cfg
         set timeout=5
         menuentry "reinstall" {
             search --no-floppy --label --set=root os
@@ -789,5 +762,54 @@ else
             initrd /initrd.img
         }
 EOF
+    fi
+}
+
+# 脚本入口
+# arm要手动从硬件同步时间，避免访问https出错
+hwclock -s
+
+# 设置密码，安装并打开 ssh
+echo root:123@@@ | chpasswd
+printf '\nyes' | setup-sshd
+
+extract_env_from_cmdline
+# shellcheck disable=SC2154
+if [ "$sleep" = 1 ]; then
+    exit
+fi
+
+setup_tty_and_log
+clear_previous
+
+# 找到主硬盘
+# shellcheck disable=SC2010
+xda=$(ls /dev/ | grep -Ex 'sda|hda|xda|vda|xvda|nvme0n1')
+
+# shellcheck disable=SC2154
+if [ "$distro" != "alpine" ]; then
+    setup_nginx_if_enough_ram
+    add_community_repo
+fi
+
+if [ "$distro" = "alpine" ]; then
+    install_alpine
+elif [ "$distro" = "dd" ]; then
+    install_dd
+elif is_use_cloud_image; then
+    create_part
+    install_cloud_image
+else
+    create_part
+    mount_part
+    if [ "$distro" = "windows" ]; then
+        install_windows
+    else
+        install_redhat_ubuntu
+    fi
+fi
+
+if [ "$sleep" = 2 ]; then
+    exit
 fi
 reboot
