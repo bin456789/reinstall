@@ -175,7 +175,9 @@ clear_previous() {
     {
         # TODO: fuser and kill
         qemu-nbd -d /dev/nbd0
-        umount /iso /wim /installer /os/installer /os
+        # alpine 自带的umount没有-R，除非安装了util-linux
+        umount -R /iso /wim /installer /os/installer /os /nbd
+        umount /iso /wim /installer /os/installer /os /nbd
     } 2>/dev/null || true
 }
 
@@ -302,6 +304,21 @@ create_part() {
             mkfs.ext4 -F -L os /dev/$xda*1           #1 os
             mkfs.ntfs -f -F -L installer /dev/$xda*2 #2 installer
         fi
+    elif is_use_cloud_image && [ "$distro" = centos ]; then
+        apk add dosfstools xfsprogs e2fsprogs
+        parted /dev/$xda -s -- \
+            mklabel gpt \
+            mkpart '" "' ext4 1MiB 2MiB \
+            mkpart '" "' fat32 2MiB 602MiB \
+            mkpart '" "' xfs 602MiB -2GiB \
+            mkpart '" "' ext4 -2GiB 100% \
+            set 1 bios_grub on \
+            set 2 esp on
+        update_part /dev/$xda
+        echo                                  #1 bios_boot
+        mkfs.fat -F 32 -n efi /dev/$xda*2     #2 efi
+        mkfs.xfs -f -L os /dev/$xda*3         #3 os
+        mkfs.ext4 -F -L installer /dev/$xda*4 #4 installer
     elif is_use_cloud_image; then
         parted /dev/$xda -s -- \
             mklabel gpt \
@@ -361,55 +378,129 @@ install_cloud_image() {
     mount /dev/disk/by-label/installer /installer
     qcow_file=/installer/cloud_image.qcow2
     download $img $qcow_file
-    # qcow_virtualx_size=$(qemu-img info $qcow_file | grep 'virtual size' | grep -oE '[0-9]+' | tail -1)
-    # TODO: centos dd 需要 8g 空间，改成手动释放文件
-    if true; then
+    # qcow_virtual_size=$(qemu-img info $qcow_file | grep 'virtual size' | grep -oE '[0-9]+' | tail -1)
+    # centos cloud image 需要 8g 系统分区，因此改成复制系统文件
+    if [ "$distro" = "centos" ]; then
         modprobe nbd
         qemu-nbd -c /dev/nbd0 $qcow_file
 
-        # 将前1M dd到内存
-        dd if=/dev/nbd0 of=/first-1M bs=1M count=1
+        # 挂载os和efi
+        mkdir -p /nbd /os
+        sleep 5
+        mount -o ro /dev/nbd0p1 /nbd
+        mount -o noatime /dev/disk/by-label/os /os/
+        if is_efi; then
+            mkdir -p /os/boot/efi/
+            efi_mount_opts="defaults,uid=0,gid=0,umask=077,shortname=winnt"
+            mount -o $efi_mount_opts /dev/disk/by-label/efi /os/boot/efi/
+        fi
 
-        # 将1M之后 dd到硬盘
-        # shellcheck disable=SC2194
-        case 3 in
-        1)
-            # BusyBox dd
-            dd if=/dev/nbd0 of=/dev/$xda bs=1M skip=1 seek=1
-            ;;
-        2)
-            # 用原版 dd status=progress，但没有进度和剩余时间
-            apk add coreutils
-            dd if=/dev/nbd0 of=/dev/$xda bs=1M skip=1 seek=1 status=progress
-            ;;
-        3)
-            # 用 pv
-            apk add pv
-            pv -f /dev/nbd0 | dd of=/dev/$xda bs=1M skip=1 seek=1 iflag=fullblock
-            ;;
-        esac
+        # 复制系统
+        echo copying os files
+        cp -a /nbd/* /os/
 
+        # resolv.conf
+        mv /os/etc/resolv.conf /os/etc/resolv.conf.orig
+        cp /etc/resolv.conf /os/etc/resolv.conf
+
+        # fstab 系统分区
+        old_uuid=$(awk '$2=="/" { print $1 }' /os/etc/fstab | cut -d= -f2)
+        new_uuid=$(lsblk /dev/disk/by-label/os -n -o UUID)
+        sed -i "s/$old_uuid/$new_uuid/g" /os/etc/fstab
+
+        # fstab efi 分区
+        if is_efi; then
+            efi_uuid=$(lsblk /dev/disk/by-label/efi -n -o UUID)
+            echo "UUID=$efi_uuid /boot/efi vfat $efi_mount_opts 0 0" >>/os/etc/fstab
+        fi
+
+        # chroot前，挂载伪文件系统
+        # https://wiki.archlinux.org/title/Chroot#Using_chroot
+        mount -t proc /proc /os/proc/
+        mount -t sysfs /sys /os/sys/
+        mount --rbind /dev /os/dev/
+        mount --rbind /run /os/run/
+        if is_efi; then
+            mount --rbind /sys/firmware/efi/efivars /os/sys/firmware/efi/efivars/
+        fi
+
+        # grub
+        if is_efi; then
+            [ "$(uname -m)" = x86_64 ] && arch=x64 || arch=aa64
+            chroot /os/ dnf install -y shim-$arch grub2-efi-$arch
+            cat <<EOF >/os/boot/efi/EFI/centos/grub.cfg
+            search --no-floppy --fs-uuid --set=dev $new_uuid
+            set prefix=(\$dev)/boot/grub2
+            export \$prefix
+            configfile \$prefix/grub.cfg
+EOF
+        else
+            chroot /os/ grub2-install /dev/$xda
+        fi
+        chroot /os/ grub2-mkconfig -o /boot/grub2/grub.cfg
+
+        # cloud-init
+        download $confhome/nocloud.yaml /os/etc/cloud/cloud.cfg.d/99_nocloud.cfg
+
+        # 还原 resolv.conf
+        mv /os/etc/resolv.conf.orig /os/etc/resolv.conf
+
+        # selinux
+        touch /os/.autorelabel
+
+        umount /nbd/
         qemu-nbd -d /dev/nbd0
+        umount /installer/
+        parted /dev/$xda -s rm 4
     else
-        # 将前1M dd到内存，将1M之后 dd到硬盘
-        qemu-img dd if=$qcow_file of=/first-1M bs=1M count=1
-        qemu-img dd if=$qcow_file of=/dev/disk/by-label/os bs=1M skip=1
-    fi
+        if true; then
+            modprobe nbd
+            qemu-nbd -c /dev/nbd0 $qcow_file
 
-    # 将前1M从内存 dd 到硬盘
-    umount /installer/
-    dd if=/first-1M of=/dev/$xda
-    update_part /dev/$xda
+            # 将前1M dd到内存
+            dd if=/dev/nbd0 of=/first-1M bs=1M count=1
 
-    # 找到系统分区，也就是最大的分区
-    os_part=$(lsblk /dev/sda*[0-9] --sort SIZE -o NAME | tail -1)
-    mkdir -p /os
-    mount /dev/$os_part /os
-    if [ "$distro" = fedora ]; then
-        subvol=/root
+            # 将1M之后 dd到硬盘
+            # shellcheck disable=SC2194
+            case 3 in
+            1)
+                # BusyBox dd
+                dd if=/dev/nbd0 of=/dev/$xda bs=1M skip=1 seek=1
+                ;;
+            2)
+                # 用原版 dd status=progress，但没有进度和剩余时间
+                apk add coreutils
+                dd if=/dev/nbd0 of=/dev/$xda bs=1M skip=1 seek=1 status=progress
+                ;;
+            3)
+                # 用 pv
+                apk add pv
+                pv -f /dev/nbd0 | dd of=/dev/$xda bs=1M skip=1 seek=1 iflag=fullblock
+                ;;
+            esac
+
+            qemu-nbd -d /dev/nbd0
+        else
+            # 将前1M dd到内存，将1M之后 dd到硬盘
+            qemu-img dd if=$qcow_file of=/first-1M bs=1M count=1
+            qemu-img dd if=$qcow_file of=/dev/disk/by-label/os bs=1M skip=1
+        fi
+
+        # 将前1M从内存 dd 到硬盘
+        umount /installer/
+        dd if=/first-1M of=/dev/$xda
+        update_part /dev/$xda
+
+        # 找到系统分区，也就是最大的分区
+        os_part=$(lsblk /dev/sda*[0-9] --sort SIZE -o NAME | tail -1)
+        mkdir -p /os
+        mount /dev/$os_part /os
+        if [ "$distro" = fedora ]; then
+            subvol=/root
+        fi
+        # shellcheck disable=SC2154
+        download $confhome/nocloud.yaml /os$subvol/etc/cloud/cloud.cfg.d/99_nocloud.cfg
     fi
-    # shellcheck disable=SC2154
-    download $confhome/nocloud.yaml /os$subvol/etc/cloud/cloud.cfg.d/99_nocloud.cfg
 }
 
 mount_part() {
