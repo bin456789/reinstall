@@ -1024,12 +1024,15 @@ elif is_use_cloud_image; then
         create_part
         install_cloud_image
     fi
-elif [ "$distro" = "windows" ]; then
-    install_windows
 else
-    install_redhat_ubuntu
+    create_part
+    mount_part
+    if [ "$distro" = "windows" ]; then
+        install_windows
+    else
+        install_redhat_ubuntu
+    fi
 fi
-
 if [ "$sleep" = 2 ]; then
     exit
 fi
