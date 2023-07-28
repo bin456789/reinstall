@@ -20,6 +20,8 @@ info() {
 error() {
     color='\e[31m'
     plain='\e[0m'
+    # 如果从trap调用，显示错误行
+    [ "$1" = line ] && sed -n "$2"p $0
     echo -e "${color}Error: $*$plain"
 }
 
@@ -58,12 +60,15 @@ is_use_cloud_image() {
     [ -n "$cloud_image" ] && [ "$cloud_image" = 1 ]
 }
 
+is_use_dd() {
+    [ "$distro" = dd ]
+}
 is_os_in_btrfs() {
-    mount | grep -w / | grep btrfs
+    mount | grep -w 'on / type btrfs'
 }
 
 get_os_subvol_in_btrfs() {
-    subvol=$(grep -w / /proc/mounts | grep -o 'subvol=[^ ]*' | cut -d= -f2)
+    subvol=$(awk '{ if ($2=="/") print $i }' /proc/mounts | grep -o 'subvol=[^ ]*' | cut -d= -f2)
     if [ "$subvol" = / ]; then
         subvol=
     fi
@@ -329,14 +334,25 @@ setos() {
                 "8" | "9") ci_image=$ci_mirror/$releasever$stream_suffix/$basearch/images/CentOS-Stream-GenericCloud-$releasever-latest.$basearch.qcow2 ;;
                 esac
                 ;;
-            # TODO: alma8 有独立的uefi镜像
-            "alma") ci_image=$ci_mirror/AlmaLinux-$releasever-GenericCloud-latest.$basearch.qcow2 ;;
+            "alma")
+                # alma8 x86_64 有独立的uefi镜像
+                if [ "$releasever" = 8 ] && is_efi && [ "$basearch" = x86_64 ]; then
+                    alma_efi=-UEFI
+                fi
+                ci_image=$ci_mirror/AlmaLinux-$releasever-GenericCloud$alma_efi-latest.$basearch.qcow2
+                ;;
             "rocky") ci_image=$ci_mirror/Rocky-$releasever-GenericCloud-Base.latest.$basearch.qcow2 ;;
             # TODO: 小版本号
-            "fedora") ci_image=$ci_mirror/Fedora-Cloud-Base-$releasever-1.6.$basearch.qcow2 ;;
+            "fedora")
+                ci_image=$ci_mirror/Fedora-Cloud-Base-$releasever-1.6.$basearch.raw.xz
+                ci_image_type=xz
+                ;;
             esac
 
             eval ${step}_img=${ci_image}
+            if [ -n "$ci_image_type" ]; then
+                eval ${step}_img_type=${ci_image_type}
+            fi
         else
             # 传统安装
             if [ "$localtest" = 1 ]; then
@@ -683,7 +699,7 @@ if is_in_alpine; then
 fi
 
 # 检查内存
-if ! is_use_cloud_image; then
+if ! (is_use_cloud_image || is_use_dd); then
     check_ram
 fi
 
@@ -868,7 +884,10 @@ info 'create grub config'
 # linux grub
 if ! is_in_windows; then
     # 找到主配置 grub.cfg
-    grub_cfg=$(find /boot -type f -name grub.cfg -exec grep -E -l 'menuentry|blscfg' {} \;)
+    if ! is_efi; then
+        except_efi=(-not -path '/boot/efi/*')
+    fi
+    grub_cfg=$(find /boot -type f -name grub.cfg "${except_efi[@]}" -exec grep -E -l 'menuentry|blscfg' {} \;)
 
     # 在x86 efi机器上，不同版本的 grub 可能用 linux 或 linuxefi 加载内核
     # 通过检测原有的条目有没有 linuxefi 字样就知道当前 grub 用哪一种

@@ -16,6 +16,8 @@ catch() {
 error() {
     color='\e[31m'
     plain='\e[0m'
+    # 如果从trap调用，显示错误行
+    [ "$1" = line ] && sed -n "$2"p $0
     echo -e "${color}Error: $*${plain}"
     wall "Error: $*"
 }
@@ -62,7 +64,7 @@ download() {
         fi
     fi
     # 先用 aria2 下载
-    if ! aria2c -x4 --allow-overwrite=true $url $save; then
+    if ! (command -v aria2c && aria2c -x4 --allow-overwrite=true $url $save); then
         # 出错再用 curl
         [ -z $file ] && save="-O" || save="-o $file"
         curl -L $url $save
@@ -176,8 +178,8 @@ clear_previous() {
         # TODO: fuser and kill
         qemu-nbd -d /dev/nbd0
         # alpine 自带的umount没有-R，除非安装了util-linux
-        umount -R /iso /wim /installer /os/installer /os /nbd
-        umount /iso /wim /installer /os/installer /os /nbd
+        umount -R /iso /wim /installer /os/installer /os /nbd /nbd-boot /nbd-efi
+        umount /iso /wim /installer /os/installer /os /nbd-boot
     } 2>/dev/null || true
 }
 
@@ -269,7 +271,10 @@ create_part() {
     false && vgchange -an
 
     # 移除 lsblk 显示的分区
-    partx -d /dev/$xda
+    partx -d /dev/$xda || true
+
+    # 清除分区签名
+    wipefs -a /dev/$xda
 
     # xda*1 星号用于 nvme0n1p1 的字母 p
     if [ "$distro" = windows ]; then
@@ -289,7 +294,7 @@ create_part() {
                 set 2 msftres on \
                 set 3 msftdata on
             update_part /dev/$xda
-            mkfs.fat -F 32 -n efi /dev/$xda*1        #1 efi
+            mkfs.fat -n efi /dev/$xda*1              #1 efi
             echo                                     #2 msr
             mkfs.ext4 -F -L os /dev/$xda*3           #3 os
             mkfs.ntfs -f -F -L installer /dev/$xda*4 #4 installer
@@ -304,21 +309,31 @@ create_part() {
             mkfs.ext4 -F -L os /dev/$xda*1           #1 os
             mkfs.ntfs -f -F -L installer /dev/$xda*2 #2 installer
         fi
-    elif is_use_cloud_image && [ "$distro" = centos ]; then
+    elif is_use_cloud_image && { [ "$distro" = centos ] || [ "$distro" = alma ] || [ "$distro" = rocky ]; }; then
         apk add dosfstools xfsprogs e2fsprogs
-        parted /dev/$xda -s -- \
-            mklabel gpt \
-            mkpart '" "' ext4 1MiB 2MiB \
-            mkpart '" "' fat32 2MiB 602MiB \
-            mkpart '" "' xfs 602MiB -2GiB \
-            mkpart '" "' ext4 -2GiB 100% \
-            set 1 bios_grub on \
-            set 2 esp on
-        update_part /dev/$xda
-        echo                                  #1 bios_boot
-        mkfs.fat -F 32 -n efi /dev/$xda*2     #2 efi
-        mkfs.xfs -f -L os /dev/$xda*3         #3 os
-        mkfs.ext4 -F -L installer /dev/$xda*4 #4 installer
+        if is_efi; then
+            parted /dev/$xda -s -- \
+                mklabel gpt \
+                mkpart '" "' fat32 1MiB 601MiB \
+                mkpart '" "' xfs 601MiB -2GiB \
+                mkpart '" "' ext4 -2GiB 100% \
+                set 1 esp on
+            update_part /dev/$xda
+            mkfs.fat -n efi /dev/$xda*1           #1 efi
+            mkfs.xfs -f -L os /dev/$xda*2         #2 os
+            mkfs.ext4 -F -L installer /dev/$xda*3 #3 installer
+        else
+            parted /dev/$xda -s -- \
+                mklabel gpt \
+                mkpart '" "' ext4 1MiB 2MiB \
+                mkpart '" "' xfs 2MiB -2GiB \
+                mkpart '" "' ext4 -2GiB 100% \
+                set 1 bios_grub on
+            update_part /dev/$xda
+            echo                                  #1 bios_boot
+            mkfs.xfs -f -L os /dev/$xda*2         #2 os
+            mkfs.ext4 -F -L installer /dev/$xda*3 #3 installer
+        fi
     elif is_use_cloud_image; then
         parted /dev/$xda -s -- \
             mklabel gpt \
@@ -340,7 +355,7 @@ create_part() {
                 mkpart '" "' ext4 -2GiB 100% \
                 set 1 boot on
             update_part /dev/$xda
-            mkfs.fat -F 32 -n efi /dev/$xda*1     #1 efi
+            mkfs.fat -n efi /dev/$xda*1           #1 efi
             mkfs.ext4 -F -L os /dev/$xda*2        #2 os
             mkfs.ext4 -F -L installer /dev/$xda*3 #3 installer
         elif is_xda_gt_2t; then
@@ -371,6 +386,69 @@ create_part() {
     update_part /dev/$xda
 }
 
+mount_pseudo_fs() {
+    os_dir=$1
+
+    if [[ "$os_dir" != "*/" ]]; then
+        os_dir=$os_dir/
+    fi
+
+    # https://wiki.archlinux.org/title/Chroot#Using_chroot
+    mount -t proc /proc ${os_dir}proc/
+    mount -t sysfs /sys ${os_dir}sys/
+    mount --rbind /dev ${os_dir}dev/
+    mount --rbind /run ${os_dir}run/
+    if is_efi; then
+        mount --rbind /sys/firmware/efi/efivars ${os_dir}sys/firmware/efi/efivars/
+    fi
+}
+
+download_cloud_init_config() {
+    if ! mount | grep -w 'on /os type'; then
+        # 找到系统分区，也就是最大的分区
+        apk add lsblk
+        mkdir -p /os
+        os_part=$(lsblk /dev/$xda --sort SIZE -o NAME | sed '$d' | tail -1)
+        mount /dev/$os_part /os
+    fi
+
+    # btrfs 系统可能不在根目录，例如 fedora 系统在 root 子卷中
+    etc_dir=$(ls -d /os/etc || ls -d /os/*/etc)
+    ci_file=$etc_dir/cloud/cloud.cfg.d/99_nocloud.cfg
+
+    # shellcheck disable=SC2154
+    download $confhome/nocloud.yaml $ci_file
+
+    # swapfile
+    # arch自带swap，过滤掉
+    if ! grep -w swap $etc_dir/fstab; then
+        # btrfs
+        if mount | grep 'on /os type btrfs'; then
+            line_num=$(grep -E -n '^runcmd:' $ci_file | cut -d: -f1)
+            cat <<EOF | sed -i "${line_num}r /dev/stdin" $ci_file
+  - btrfs filesystem mkswapfile --size 1G /swapfile
+  - swapon /swapfile
+  - echo "/swapfile none swap defaults 0 0" >> /etc/fstab
+EOF
+        else
+            # ext4 xfs
+            cat <<EOF >>$ci_file
+swap:
+  filename: /swapfile
+  size: auto
+EOF
+        fi
+    fi
+}
+
+install_cloud_image_by_dd() {
+    apk add util-linux udev hdparm curl
+    rc-service udev start
+    install_dd
+    update_part /dev/$xda
+    download_cloud_init_config
+}
+
 install_cloud_image() {
     apk add qemu-img lsblk
 
@@ -378,81 +456,141 @@ install_cloud_image() {
     mount /dev/disk/by-label/installer /installer
     qcow_file=/installer/cloud_image.qcow2
     download $img $qcow_file
-    # qcow_virtual_size=$(qemu-img info $qcow_file | grep 'virtual size' | grep -oE '[0-9]+' | tail -1)
-    # centos cloud image 需要 8g 系统分区，因此改成复制系统文件
-    if [ "$distro" = "centos" ]; then
+
+    # centos/alma/rocky cloud image系统分区是8~9g xfs，而我们的目标是能在5g硬盘上运行，因此改成复制系统文件
+    if [ "$distro" = "centos" ] || [ "$distro" = "alma" ] || [ "$distro" = "rocky" ]; then
         modprobe nbd
         qemu-nbd -c /dev/nbd0 $qcow_file
-
-        # 挂载os和efi
-        mkdir -p /nbd /os
         sleep 5
-        mount -o ro /dev/nbd0p1 /nbd
+
+        os_part=$(lsblk /dev/nbd0p*[0-9] --sort SIZE -o NAME,FSTYPE | grep xfs | tail -1 | cut -d' ' -f1)
+        efi_part=$(lsblk /dev/nbd0p*[0-9] --sort SIZE -o NAME,FSTYPE | grep fat | tail -1 | cut -d' ' -f1)
+        boot_part=$(lsblk /dev/nbd0p*[0-9] --sort SIZE -o NAME,FSTYPE | grep xfs | sed '$d' | tail -1 | cut -d' ' -f1)
+        os_part_uuid=$(lsblk /dev/nbd0p*[0-9] --sort SIZE -o UUID,FSTYPE | grep xfs | tail -1 | cut -d' ' -f1)
+        efi_part_uuid=$(lsblk /dev/nbd0p*[0-9] --sort SIZE -o UUID,FSTYPE | grep fat | tail -1 | cut -d' ' -f1)
+
+        mkdir -p /nbd /nbd-boot /nbd-efi /os
+
+        # 使用目标系统的格式化程序
+        # centos8 如果用alpine格式化xfs，grub2-mkconfig和grub2里面都无法识别xfs分区
+        mount -o nouuid /dev/$os_part /nbd/
+        mount_pseudo_fs /nbd/
+
+        if is_efi; then
+            apk add mtools
+            chroot /nbd mkfs.fat -n efi /dev/$xda*1
+            mlabel -N "$(echo $efi_part_uuid | sed 's/-//')" -i /dev/$xda*1
+        fi
+        chroot /nbd mkfs.xfs -f -L os -m uuid=$os_part_uuid /dev/$xda*2
+        umount -R /nbd/
+
+        # 复制系统
+        echo copying os partition
+        mount -o ro,nouuid /dev/$os_part /nbd/
         mount -o noatime /dev/disk/by-label/os /os/
+        cp -a /nbd/* /os/
+
+        # 复制boot分区，如果有
+        if [ -n "$boot_part" ]; then
+            echo copying boot partition
+            mount -o ro,nouuid /dev/$boot_part /nbd-boot/
+            cp -a /nbd-boot/* /os/boot/
+        fi
+
+        # 挂载 efi
         if is_efi; then
             mkdir -p /os/boot/efi/
             efi_mount_opts="defaults,uid=0,gid=0,umask=077,shortname=winnt"
             mount -o $efi_mount_opts /dev/disk/by-label/efi /os/boot/efi/
+
+            # 复制efi分区，如果有
+            if [ -n "$efi_part" ]; then
+                echo copying efi partition
+                mount -o ro /dev/$efi_part /nbd-efi/
+                cp -a /nbd-efi/* /os/boot/efi/
+            fi
         fi
 
-        # 复制系统
-        echo copying os files
-        cp -a /nbd/* /os/
+        umount /nbd/ /nbd-boot/ /nbd-efi/ || true
+        qemu-nbd -d /dev/nbd0
+        sleep 5
+        umount /installer/
+        parted /dev/$xda -s rm 3
 
         # resolv.conf
         mv /os/etc/resolv.conf /os/etc/resolv.conf.orig
         cp /etc/resolv.conf /os/etc/resolv.conf
 
-        # fstab 系统分区
-        old_uuid=$(awk '$2=="/" { print $1 }' /os/etc/fstab | cut -d= -f2)
-        new_uuid=$(lsblk /dev/disk/by-label/os -n -o UUID)
-        sed -i "s/$old_uuid/$new_uuid/g" /os/etc/fstab
+        # fstab 删除 boot 分区
+        # alma/rocky 镜像本身有boot分区，但我们不需要
+        sed -i '/[[:blank:]]\/boot[[:blank:]]/d' /os/etc/fstab
 
-        # fstab efi 分区
+        # fstab 添加 efi 分区
         if is_efi; then
-            efi_uuid=$(lsblk /dev/disk/by-label/efi -n -o UUID)
-            echo "UUID=$efi_uuid /boot/efi vfat $efi_mount_opts 0 0" >>/os/etc/fstab
+            # 创建efi条目
+            if ! grep /boot/efi /os/etc/fstab; then
+                efi_uuid=$(lsblk /dev/disk/by-label/efi -n -o UUID)
+                echo "UUID=$efi_uuid /boot/efi vfat $efi_mount_opts 0 0" >>/os/etc/fstab
+            fi
+        else
+            # 删除 efi 条目
+            sed -i '/[[:blank:]]\/boot\/efi[[:blank:]]/d' /os/etc/fstab
+        fi
+
+        # selinux
+        use_selinux=false
+        if $use_selinux; then
+            touch /os/.autorelabel
+        else
+            # TODO: 还有cmdline el9
+            sed -i 's/^SELINUX=enforcing/SELINUX=disabled/g' /os/etc/selinux/config
         fi
 
         # chroot前，挂载伪文件系统
-        # https://wiki.archlinux.org/title/Chroot#Using_chroot
-        mount -t proc /proc /os/proc/
-        mount -t sysfs /sys /os/sys/
-        mount --rbind /dev /os/dev/
-        mount --rbind /run /os/run/
-        if is_efi; then
-            mount --rbind /sys/firmware/efi/efivars /os/sys/firmware/efi/efivars/
-        fi
+        mount_pseudo_fs /os/
 
-        # grub
+        # 安装 grub
         if is_efi; then
-            [ "$(uname -m)" = x86_64 ] && arch=x64 || arch=aa64
-            chroot /os/ dnf install -y shim-$arch grub2-efi-$arch
-            cat <<EOF >/os/boot/efi/EFI/centos/grub.cfg
-            search --no-floppy --fs-uuid --set=dev $new_uuid
-            set prefix=(\$dev)/boot/grub2
-            export \$prefix
-            configfile \$prefix/grub.cfg
+            if [ -z "$efi_part" ]; then
+                [ "$(uname -m)" = x86_64 ] && arch=x64 || arch=aa64
+                chroot /os/ yum list installed | grep shim-$arch ||
+                    chroot /os/ yum install -y shim-$arch grub2-efi-$arch grub2-efi-$arch-modules
+                # TODO: 修改centos
+                cat <<EOF >/os/boot/efi/EFI/centos/grub.cfg
+                    search --no-floppy --fs-uuid --set=dev $efi_part_uuid
+                    set prefix=(\$dev)/boot/grub2
+                    export \$prefix
+                    configfile \$prefix/grub.cfg
 EOF
+            fi
         else
+            chroot /os/ yum list installed | grep grub2-pc ||
+                chroot /os/ yum install -y grub2-pc
             chroot /os/ grub2-install /dev/$xda
         fi
-        chroot /os/ grub2-mkconfig -o /boot/grub2/grub.cfg
+
+        # blscfg 启动项
+        # rocky/alma镜像是独立的boot分区，但我们不是
+        # 因此要添加boot目录
+        if [ -d /os/boot/loader/entries/ ] && ! grep -q 'initrd /boot/' /os/boot/loader/entries/*.conf; then
+            sed -i -E 's,((linux|initrd) /),\1boot/,g' /os/boot/loader/entries/*.conf
+        fi
+
+        # grub.cfg
+        if grep centos:7 /os/etc/os-release && is_efi; then
+            chroot /os/ grub2-mkconfig -o /boot/efi/EFI/centos/grub.cfg
+        else
+            chroot /os/ grub2-mkconfig -o /boot/grub2/grub.cfg
+        fi
 
         # cloud-init
-        download $confhome/nocloud.yaml /os/etc/cloud/cloud.cfg.d/99_nocloud.cfg
+        download_cloud_init_config
 
         # 还原 resolv.conf
         mv /os/etc/resolv.conf.orig /os/etc/resolv.conf
 
-        # selinux
-        touch /os/.autorelabel
-
-        umount /nbd/
-        qemu-nbd -d /dev/nbd0
-        umount /installer/
-        parted /dev/$xda -s rm 4
     else
+        # debian ubuntu arch
         if true; then
             modprobe nbd
             qemu-nbd -c /dev/nbd0 $qcow_file
@@ -491,15 +629,7 @@ EOF
         dd if=/first-1M of=/dev/$xda
         update_part /dev/$xda
 
-        # 找到系统分区，也就是最大的分区
-        os_part=$(lsblk /dev/sda*[0-9] --sort SIZE -o NAME | tail -1)
-        mkdir -p /os
-        mount /dev/$os_part /os
-        if [ "$distro" = fedora ]; then
-            subvol=/root
-        fi
-        # shellcheck disable=SC2154
-        download $confhome/nocloud.yaml /os$subvol/etc/cloud/cloud.cfg.d/99_nocloud.cfg
+        download_cloud_init_config
     fi
 }
 
@@ -888,16 +1018,16 @@ if [ "$distro" = "alpine" ]; then
 elif [ "$distro" = "dd" ]; then
     install_dd
 elif is_use_cloud_image; then
-    create_part
-    install_cloud_image
-else
-    create_part
-    mount_part
-    if [ "$distro" = "windows" ]; then
-        install_windows
+    if [ "$distro" = "fedora" ]; then
+        install_cloud_image_by_dd
     else
-        install_redhat_ubuntu
+        create_part
+        install_cloud_image
     fi
+elif [ "$distro" = "windows" ]; then
+    install_windows
+else
+    install_redhat_ubuntu
 fi
 
 if [ "$sleep" = 2 ]; then
