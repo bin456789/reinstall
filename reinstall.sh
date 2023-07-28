@@ -463,8 +463,12 @@ install_pkg() {
                     pkg="bind-tools"
                 elif is_in_arch; then
                     pkg="bind"
+                elif command -v yum || command -v dnf; then
+                    pkg="bind-utils"
+                elif command -v apt; then
+                    pkg="bind9-dnsutils"
                 else
-                    pkg="bind*-*utils"
+                    error "Can't install nslookup / dig"
                 fi
                 ;;
             *) pkg=$cmd ;;
