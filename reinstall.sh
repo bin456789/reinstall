@@ -6,7 +6,17 @@ localtest_confhome=http://192.168.253.1
 trap 'error line $LINENO return $?' ERR
 
 usage_and_exit() {
-    echo "Usage: reinstall.sh centos-7/8/9 alma-8/9 rocky-8/9 fedora-37/38 ubuntu-20.04/22.04 alpine-3.16/3.17/3.18 debian-10/11/12 windows dd"
+    cat <<EOF
+Usage: reinstall.sh centos-7/8/9
+                    alma-8/9
+                    rocky-8/9
+                    fedora-37/38
+                    ubuntu-20.04/22.04
+                    alpine-3.16/3.17/3.18
+                    debian-10/11/12
+                    windows --iso=xxx --image-name=xxx
+                    dd      --img=xxx
+EOF
     exit 1
 }
 
