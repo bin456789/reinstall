@@ -381,6 +381,14 @@ create_part() {
             mkfs.ext4 -F -L os /dev/$xda*1        #1 os
             mkfs.ext4 -F -L installer /dev/$xda*2 #2 installer
         fi
+        update_part /dev/$xda
+
+        # centos 7 无法加载alpine格式化的ext4
+        # 要关闭这个属性
+        if [ "$distro" = centos ]; then
+            apk add e2fsprogs-extra
+            tune2fs -O ^metadata_csum_seed /dev/disk/by-label/installer
+        fi
     fi
 
     update_part /dev/$xda
