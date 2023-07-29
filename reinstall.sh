@@ -487,7 +487,7 @@ install_pkg() {
         done
         {
             apt_install $pkgs ||
-                dnf install -y $pkgs ||
+                dnf install -y --setopt=install_weak_deps=False $pkgs ||
                 yum install -y $pkgs ||
                 zypper install -y $pkgs ||
                 pacman -Syu --noconfirm $pkgs ||
