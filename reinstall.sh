@@ -897,19 +897,23 @@ build_cmdline
 info 'create grub config'
 # linux grub
 if ! is_in_windows; then
-    # 找到主配置 grub.cfg
-    if ! is_efi; then
-        except_efi=(-not -path '/boot/efi/*')
+    # 找出主配置文件（含有menuentry|blscfg）
+    # 如果是efi，先搜索efi目录
+    if is_efi; then
+        efi_dir='/boot/efi'
     fi
-    grub_cfg=$(find /boot -type f -name grub.cfg "${except_efi[@]}" -exec grep -E -l 'menuentry|blscfg' {} \;)
+    grub_cfg=$(
+        find $efi_dir /boot/grub* \
+            -type f -name grub.cfg \
+            -exec grep -E -l 'menuentry|blscfg' {} \; | xargs -0 | head -1
+    )
 
     # 在x86 efi机器上，不同版本的 grub 可能用 linux 或 linuxefi 加载内核
     # 通过检测原有的条目有没有 linuxefi 字样就知道当前 grub 用哪一种
-    search_files=$(find /boot -type f -name grub.cfg)
     if [ -d /boot/loader/entries/ ]; then
-        search_files+=" /boot/loader/entries/"
+        entries="/boot/loader/entries/"
     fi
-    if grep -q -r -E '^[[:blank:]]*linuxefi[[:blank:]]' $search_files; then
+    if grep -q -r -E '^[[:blank:]]*linuxefi[[:blank:]]' $grub_cfg $entries; then
         efi=efi
     fi
 fi
