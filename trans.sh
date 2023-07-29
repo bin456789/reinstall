@@ -177,6 +177,7 @@ clear_previous() {
     {
         # TODO: fuser and kill
         qemu-nbd -d /dev/nbd0
+        swapoff -a
         # alpine 自带的umount没有-R，除非安装了util-linux
         umount -R /iso /wim /installer /os/installer /os /nbd /nbd-boot /nbd-efi
         umount /iso /wim /installer /os/installer /os /nbd-boot
@@ -457,6 +458,20 @@ install_cloud_image_by_dd() {
     download_cloud_init_config
 }
 
+create_swap() {
+    swapfile=$1
+    if ! grep $swapfile /proc/swaps; then
+        apk add util-linux
+        ram_size=$(lsmem -b 2>/dev/null | grep 'Total online memory:' | awk '{ print $NF/1024/1024 }')
+        if [ -z $ram_size ] || [ $ram_size -lt 1024 ]; then
+            fallocate -l 512M $swapfile
+            chmod 0600 $swapfile
+            mkswap $swapfile
+            swapon $swapfile
+        fi
+    fi
+}
+
 install_cloud_image() {
     apk add qemu-img lsblk
 
@@ -467,15 +482,23 @@ install_cloud_image() {
 
     # centos/alma/rocky cloud image系统分区是8~9g xfs，而我们的目标是能在5g硬盘上运行，因此改成复制系统文件
     if [ "$distro" = "centos" ] || [ "$distro" = "alma" ] || [ "$distro" = "rocky" ]; then
+        yum() {
+            if [ "$releasever" = 7 ]; then
+                chroot /os/ yum -y --disablerepo=* --enablerepo=base,updates "$@"
+            else
+                chroot /os/ dnf -y --disablerepo=* --enablerepo=baseos --setopt=install_weak_deps=False "$@"
+            fi
+        }
+
         modprobe nbd
         qemu-nbd -c /dev/nbd0 $qcow_file
         sleep 5
 
-        os_part=$(lsblk /dev/nbd0p*[0-9] --sort SIZE -o NAME,FSTYPE | grep xfs | tail -1 | cut -d' ' -f1)
-        efi_part=$(lsblk /dev/nbd0p*[0-9] --sort SIZE -o NAME,FSTYPE | grep fat | tail -1 | cut -d' ' -f1)
-        boot_part=$(lsblk /dev/nbd0p*[0-9] --sort SIZE -o NAME,FSTYPE | grep xfs | sed '$d' | tail -1 | cut -d' ' -f1)
-        os_part_uuid=$(lsblk /dev/nbd0p*[0-9] --sort SIZE -o UUID,FSTYPE | grep xfs | tail -1 | cut -d' ' -f1)
-        efi_part_uuid=$(lsblk /dev/nbd0p*[0-9] --sort SIZE -o UUID,FSTYPE | grep fat | tail -1 | cut -d' ' -f1)
+        os_part=$(lsblk /dev/nbd0p*[0-9] --sort SIZE -no NAME,FSTYPE | grep xfs | tail -1 | cut -d' ' -f1)
+        efi_part=$(lsblk /dev/nbd0p*[0-9] --sort SIZE -no NAME,FSTYPE | grep fat | tail -1 | cut -d' ' -f1)
+        boot_part=$(lsblk /dev/nbd0p*[0-9] --sort SIZE -no NAME,FSTYPE | grep xfs | sed '$d' | tail -1 | cut -d' ' -f1)
+        os_part_uuid=$(lsblk /dev/nbd0p*[0-9] --sort SIZE -no UUID,FSTYPE | grep xfs | tail -1 | cut -d' ' -f1)
+        efi_part_uuid=$(lsblk /dev/nbd0p*[0-9] --sort SIZE -no UUID,FSTYPE | grep fat | tail -1 | cut -d' ' -f1)
 
         mkdir -p /nbd /nbd-boot /nbd-efi /os
 
@@ -483,47 +506,55 @@ install_cloud_image() {
         # centos8 如果用alpine格式化xfs，grub2-mkconfig和grub2里面都无法识别xfs分区
         mount -o nouuid /dev/$os_part /nbd/
         mount_pseudo_fs /nbd/
-
-        if is_efi; then
-            apk add mtools
-            chroot /nbd mkfs.fat -n efi /dev/$xda*1
-            mlabel -N "$(echo $efi_part_uuid | sed 's/-//')" -i /dev/$xda*1
-        fi
         chroot /nbd mkfs.xfs -f -L os -m uuid=$os_part_uuid /dev/$xda*2
         umount -R /nbd/
 
         # 复制系统
-        echo copying os partition
+        echo Copying os partition
         mount -o ro,nouuid /dev/$os_part /nbd/
         mount -o noatime /dev/disk/by-label/os /os/
         cp -a /nbd/* /os/
 
         # 复制boot分区，如果有
         if [ -n "$boot_part" ]; then
-            echo copying boot partition
+            echo Copying boot partition
             mount -o ro,nouuid /dev/$boot_part /nbd-boot/
             cp -a /nbd-boot/* /os/boot/
         fi
 
-        # 挂载 efi
+        # efi 分区
         if is_efi; then
+            # 挂载 efi
             mkdir -p /os/boot/efi/
             efi_mount_opts="defaults,uid=0,gid=0,umask=077,shortname=winnt"
             mount -o $efi_mount_opts /dev/disk/by-label/efi /os/boot/efi/
 
-            # 复制efi分区，如果有
+            # 如果镜像有 efi 分区
             if [ -n "$efi_part" ]; then
-                echo copying efi partition
+                # 复制文件
+                echo Copying efi partition
                 mount -o ro /dev/$efi_part /nbd-efi/
                 cp -a /nbd-efi/* /os/boot/efi/
+
+                # 复制其uuid
+                apk add mtools
+                mlabel -N "$(echo $efi_part_uuid | sed 's/-//')" -i /dev/$xda*1
+            else
+                efi_part_uuid=$(lsblk /dev/$xda*1 -no UUID)
             fi
         fi
 
+        # 挂载伪文件系统
+        mount_pseudo_fs /os/
+
+        # 取消挂载 nbd
         umount /nbd/ /nbd-boot/ /nbd-efi/ || true
         qemu-nbd -d /dev/nbd0
         sleep 5
-        umount /installer/
-        parted /dev/$xda -s rm 3
+
+        # 创建 swap
+        rm -rf /installer/*
+        create_swap /installer/swapfile
 
         # resolv.conf
         mv /os/etc/resolv.conf /os/etc/resolv.conf.orig
@@ -535,10 +566,9 @@ install_cloud_image() {
 
         # fstab 添加 efi 分区
         if is_efi; then
-            # 创建efi条目
+            # centos 要创建efi条目
             if ! grep /boot/efi /os/etc/fstab; then
-                efi_uuid=$(lsblk /dev/disk/by-label/efi -n -o UUID)
-                echo "UUID=$efi_uuid /boot/efi vfat $efi_mount_opts 0 0" >>/os/etc/fstab
+                echo "UUID=$efi_part_uuid /boot/efi vfat $efi_mount_opts 0 0" >>/os/etc/fstab
             fi
         else
             # 删除 efi 条目
@@ -554,26 +584,35 @@ install_cloud_image() {
             sed -i 's/^SELINUX=enforcing/SELINUX=disabled/g' /os/etc/selinux/config
         fi
 
-        # chroot前，挂载伪文件系统
-        mount_pseudo_fs /os/
+        distro_full=$(awk -F: '{ print $3 }' </os/etc/system-release-cpe)
+        releasever=$(awk -F: '{ print $5 }' </os/etc/system-release-cpe)
 
-        # 安装 grub
-        if is_efi; then
-            if [ -z "$efi_part" ]; then
-                [ "$(uname -m)" = x86_64 ] && arch=x64 || arch=aa64
-                chroot /os/ yum list installed | grep shim-$arch ||
-                    chroot /os/ yum install -y shim-$arch grub2-efi-$arch grub2-efi-$arch-modules
-                # TODO: 修改centos
-                cat <<EOF >/os/boot/efi/EFI/centos/grub.cfg
-                    search --no-floppy --fs-uuid --set=dev $efi_part_uuid
-                    set prefix=(\$dev)/boot/grub2
-                    export \$prefix
-                    configfile \$prefix/grub.cfg
-EOF
-            fi
-        else
-            chroot /os/ yum list installed | grep grub2-pc ||
-                chroot /os/ yum install -y grub2-pc
+        remove_grub_conflict_files() {
+            # bios 和 efi 转换前先删除
+
+            # bios转efi出错
+            # centos7是bios镜像，/boot/grub2/grubenv 是真身
+            # 安装grub-efi时，grubenv 会改成指向efi分区grubenv软连接
+            # 如果安装grub-efi前没有删除原来的grubenv，原来的grubenv将不变，新建的软连接将变成 grubenv.rpmnew
+            # 后续grubenv的改动无法同步到efi分区，会造成grub2-setdefault失效
+
+            # efi转bios出错
+            # 如果是指向efi目录的软连接（例如el8），先删除它，否则 grub2-install 会报错
+            rm -rf /os/boot/grub2/grubenv /os/boot/grub2/grub.cfg
+        }
+
+        # 安装 efi 引导
+        # 只有centos镜像没有efi，其他系统镜像已经从efi分区复制了文件
+        if [ "$distro" = "centos" ] && is_efi; then
+            remove_grub_conflict_files
+            [ "$(uname -m)" = x86_64 ] && arch=x64 || arch=aa64
+            yum install efibootmgr grub2-efi-$arch grub2-efi-$arch-modules shim-$arch
+        fi
+
+        # 安装 bios 引导
+        if ! is_efi; then
+            remove_grub_conflict_files
+            yum install grub2-pc grub2-pc-modules
             chroot /os/ grub2-install /dev/$xda
         fi
 
@@ -584,9 +623,20 @@ EOF
             sed -i -E 's,((linux|initrd) /),\1boot/,g' /os/boot/loader/entries/*.conf
         fi
 
-        # grub.cfg
-        if grep centos:7 /os/etc/os-release && is_efi; then
-            chroot /os/ grub2-mkconfig -o /boot/efi/EFI/centos/grub.cfg
+        # efi 分区 grub.cfg
+        # https://github.com/rhinstaller/anaconda/blob/346b932a26a19b339e9073c049b08bdef7f166c3/pyanaconda/modules/storage/bootloader/efi.py#L198
+        if is_efi && [ "$releasever" -ge 9 ]; then
+            cat <<EOF >/os/boot/efi/EFI/$distro_full/grub.cfg
+                    search --no-floppy --fs-uuid --set=dev $os_part_uuid
+                    set prefix=(\$dev)/boot/grub2
+                    export \$prefix
+                    configfile \$prefix/grub.cfg
+EOF
+        fi
+
+        # 主 grub.cfg
+        if is_efi && [ "$releasever" -le 8 ]; then
+            chroot /os/ grub2-mkconfig -o /boot/efi/EFI/$distro_full/grub.cfg
         else
             chroot /os/ grub2-mkconfig -o /boot/grub2/grub.cfg
         fi
@@ -596,6 +646,11 @@ EOF
 
         # 还原 resolv.conf
         mv /os/etc/resolv.conf.orig /os/etc/resolv.conf
+
+        # 删除installer分区，重启后cloud init会自动扩容
+        swapoff -a
+        umount /installer
+        parted /dev/$xda -s rm 3
 
     else
         # debian ubuntu arch
