@@ -306,6 +306,32 @@ setos() {
             error_and_exit 'not support without --ci'
         fi
     }
+
+    setos_opensuse() {
+        cloud_image=1
+        if grep -iq Tumbleweed <<<"$releasever"; then
+            dir=tumbleweed
+            releasever=Tumbleweed
+        else
+            if ! grep -q '\.' <<<"$releasever"; then
+                releasever=$(curl https://download.opensuse.org/download/distribution/leap/?json |
+                    grep -oP "(?<=\"name\":\")$releasever\.[0-9]*" | tail -1)
+            fi
+            dir=distribution/leap/$releasever
+            releasever=Leap-$releasever
+        fi
+
+        # cloud image
+        # 有专门的kvm镜像，openSUSE-Leap-15.5-Minimal-VM.x86_64-kvm-and-xen.qcow2，但里面没有cloud-init
+        # TODO: aria2 mata4问题
+        # TODO: Tumbleweed 网络问题/ssh主文件incloud子目录问题
+        if grep -q 15\.4 <<<"$releasever"; then
+            openstack=-OpenStack
+        fi
+        eval ${step}_img=https://mirrors.kernel.org/opensuse/$dir/appliances/openSUSE-$releasever-Minimal-VM.$basearch$openstack-Cloud.qcow2
+        # eval ${step}_img=https://download.opensuse.org/$dir/appliances/openSUSE-$releasever-Minimal-VM.$basearch-Cloud.qcow2
+    }
+
     setos_windows() {
         if [ -z "$iso" ] || [ -z "$image_name" ]; then
             error_and_exit "Install Windows need --iso --image-name"
@@ -424,6 +450,7 @@ setos() {
     alpine) setos_alpine ;;
     debian) setos_debian ;;
     arch) setos_arch ;;
+    opensuse) setos_opensuse ;;
     windows) setos_windows ;;
     dd) setos_dd ;;
     *) setos_redhat ;;
