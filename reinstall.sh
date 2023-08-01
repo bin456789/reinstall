@@ -771,25 +771,22 @@ esac
 # 设置 github 国内代理
 set_github_proxy
 
-# 以下目标系统需要进入alpine环境安装
-# cloud image
-# ubuntu/alpine/windows/dd
-# el8/9/fedora 任何架构 <2g
-# el7 aarch64 <1.5g
-if is_use_cloud_image ||
-    [ "$distro" = "ubuntu" ] ||
-    [ "$distro" = "alpine" ] ||
-    [ "$distro" = "arch" ] ||
-    [ "$distro" = "windows" ] ||
-    [ "$distro" = "dd" ] ||
-    { is_distro_like_redhat "$distro" && [ $releasever -ge 8 ] && [ $ram_size -lt 2048 ]; } ||
-    { is_distro_like_redhat "$distro" && [ $releasever -eq 7 ] && [ $ram_size -lt 1536 ] && [ $basearch = "aarch64" ]; }; then
+# 以下目标系统不需要进入alpine
+# debian
+# el7 x86_64 >=1g
+# el7 aarch64 >=1.5g
+# el8/9/fedora 任何架构 >=2g
+if ! is_use_cloud_image &&
+    { [ "$distro" = "debian" ] ||
+        { is_distro_like_redhat "$distro" && [ $releasever -eq 7 ] && [ $ram_size -ge 1024 ] && [ $basearch = "x86_64" ]; } ||
+        { is_distro_like_redhat "$distro" && [ $releasever -eq 7 ] && [ $ram_size -ge 1536 ] && [ $basearch = "aarch64" ]; } ||
+        { is_distro_like_redhat "$distro" && [ $releasever -ge 8 ] && [ $ram_size -ge 2048 ]; }; }; then
+    setos nextos $distro $releasever
+else
     # 安装alpine时，使用指定的版本。 alpine作为中间系统时，使用 3.18
     [ "$distro" = "alpine" ] && alpine_releasever=$releasever || alpine_releasever=3.18
     setos finalos $distro $releasever
     setos nextos alpine $alpine_releasever
-else
-    setos nextos $distro $releasever
 fi
 
 # 测试链接
