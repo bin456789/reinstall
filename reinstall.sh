@@ -292,19 +292,16 @@ setos() {
     }
 
     setos_arch() {
-        if is_use_cloud_image; then
-            # cloud image
-            if is_in_china; then
-                ci_mirror=https://mirrors.tuna.tsinghua.edu.cn/archlinux
-            else
-                ci_mirror=https://geo.mirror.pkgbuild.com
-            fi
-            # eval ${step}_img=$ci_mirror/images/latest/Arch-Linux-x86_64-basic.qcow2
-            eval ${step}_img=$ci_mirror/images/latest/Arch-Linux-x86_64-cloudimg.qcow2
+        cloud_image=1
+
+        # cloud image
+        if is_in_china; then
+            ci_mirror=https://mirrors.tuna.tsinghua.edu.cn/archlinux
         else
-            # 先略过
-            error_and_exit 'not support without --ci'
+            ci_mirror=https://geo.mirror.pkgbuild.com
         fi
+        # eval ${step}_img=$ci_mirror/images/latest/Arch-Linux-x86_64-basic.qcow2
+        eval ${step}_img=$ci_mirror/images/latest/Arch-Linux-x86_64-cloudimg.qcow2
     }
 
     setos_opensuse() {
