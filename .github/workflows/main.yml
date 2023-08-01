@@ -35,8 +35,11 @@ jobs:
           ${{ matrix.command }} centos-7 --ci
           ${{ matrix.command }} alma-8 --ci
           ${{ matrix.command }} rocky-9 --ci
+          ${{ matrix.command }} fedora-38 --ci
           ${{ matrix.command }} ubuntu-22.04 --ci
           ${{ matrix.command }} debian-12 --ci
+          ${{ matrix.command }} opensuse-15.5
+          ${{ matrix.command }} arch
 
           # 测试失败例子
           ! ${{ matrix.command }} wrong-os
