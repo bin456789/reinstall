@@ -420,6 +420,8 @@ mount_pseudo_fs() {
 }
 
 download_cloud_init_config() {
+    os_dir=$1
+
     if ! mount | grep -w 'on /os type'; then
         apk add lsblk
         mkdir -p /os
@@ -429,6 +431,7 @@ download_cloud_init_config() {
             # fedora 云镜像没有默认子卷，且系统在root子卷中
             if mount /dev/$part /os; then
                 if etc_dir=$({ ls -d /os/etc || ls -d /os/*/etc; } 2>/dev/null); then
+                    os_dir=$(dirname $etc_dir)
                     break
                 fi
                 umount /os
@@ -436,18 +439,18 @@ download_cloud_init_config() {
         done
     fi
 
-    if [ -z "$etc_dir" ]; then
+    if [ -z "$os_dir" ]; then
         error_and_exit "can't find os partition"
     fi
 
-    ci_file=$etc_dir/cloud/cloud.cfg.d/99_nocloud.cfg
+    ci_file=$os_dir/etc/cloud/cloud.cfg.d/99_nocloud.cfg
 
     # shellcheck disable=SC2154
     download $confhome/nocloud.yaml $ci_file
 
     # swapfile
     # arch自带swap，过滤掉
-    if ! grep -w swap $etc_dir/fstab; then
+    if ! grep -w swap $os_dir/etc/fstab; then
         # btrfs
         if mount | grep 'on /os type btrfs'; then
             line_num=$(grep -E -n '^runcmd:' $ci_file | cut -d: -f1)
@@ -657,7 +660,7 @@ EOF
         fi
 
         # cloud-init
-        download_cloud_init_config
+        download_cloud_init_config /os
 
         # 还原 resolv.conf
         mv /os/etc/resolv.conf.orig /os/etc/resolv.conf
