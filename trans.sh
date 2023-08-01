@@ -172,11 +172,16 @@ EOF
     done
 }
 
+qemu_nbd() {
+    command qemu-nbd "$@"
+    sleep 5
+}
+
 # 可能脚本不是首次运行，先清理之前的残留
 clear_previous() {
     {
         # TODO: fuser and kill
-        qemu-nbd -d /dev/nbd0
+        qemu_nbd -d /dev/nbd0
         swapoff -a
         # alpine 自带的umount没有-R，除非安装了util-linux
         umount -R /iso /wim /installer /os/installer /os /nbd /nbd-boot /nbd-efi
@@ -501,8 +506,7 @@ install_cloud_image() {
         }
 
         modprobe nbd
-        qemu-nbd -c /dev/nbd0 $qcow_file
-        sleep 5
+        qemu_nbd -c /dev/nbd0 $qcow_file
 
         os_part=$(lsblk /dev/nbd0p*[0-9] --sort SIZE -no NAME,FSTYPE | grep xfs | tail -1 | cut -d' ' -f1)
         efi_part=$(lsblk /dev/nbd0p*[0-9] --sort SIZE -no NAME,FSTYPE | grep fat | tail -1 | cut -d' ' -f1)
@@ -559,8 +563,7 @@ install_cloud_image() {
 
         # 取消挂载 nbd
         umount /nbd/ /nbd-boot/ /nbd-efi/ || true
-        qemu-nbd -d /dev/nbd0
-        sleep 5
+        qemu_nbd -d /dev/nbd0
 
         # 创建 swap
         rm -rf /installer/*
@@ -666,7 +669,7 @@ EOF
         # debian ubuntu arch
         if true; then
             modprobe nbd
-            qemu-nbd -c /dev/nbd0 $qcow_file
+            qemu_nbd -c /dev/nbd0 $qcow_file
 
             # 将前1M dd到内存
             dd if=/dev/nbd0 of=/first-1M bs=1M count=1
@@ -690,7 +693,7 @@ EOF
                 ;;
             esac
 
-            qemu-nbd -d /dev/nbd0
+            qemu_nbd -d /dev/nbd0
         else
             # 将前1M dd到内存，将1M之后 dd到硬盘
             qemu-img dd if=$qcow_file of=/first-1M bs=1M count=1
