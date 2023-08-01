@@ -414,15 +414,25 @@ mount_pseudo_fs() {
 
 download_cloud_init_config() {
     if ! mount | grep -w 'on /os type'; then
-        # 找到系统分区，也就是最大的分区
         apk add lsblk
         mkdir -p /os
-        os_part=$(lsblk /dev/$xda --sort SIZE -o NAME | sed '$d' | tail -1)
-        mount /dev/$os_part /os
+        # 按分区容量大到小，依次寻找系统分区
+        for part in $(lsblk /dev/$xda --sort SIZE -no NAME | sed '$d' | tac); do
+            # btrfs挂载的是默认子卷，如果没有默认子卷，挂载的是根目录
+            # fedora 云镜像没有默认子卷，且系统在root子卷中
+            if mount /dev/$part /os; then
+                if etc_dir=$({ ls -d /os/etc || ls -d /os/*/etc; } 2>/dev/null); then
+                    break
+                fi
+                umount /os
+            fi
+        done
     fi
 
-    # btrfs 系统可能不在根目录，例如 fedora 系统在 root 子卷中
-    etc_dir=$(ls -d /os/etc || ls -d /os/*/etc)
+    if [ -z "$etc_dir" ]; then
+        error_and_exit "can't find os partition"
+    fi
+
     ci_file=$etc_dir/cloud/cloud.cfg.d/99_nocloud.cfg
 
     # shellcheck disable=SC2154
