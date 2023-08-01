@@ -464,34 +464,32 @@ install_pkg() {
         fi
         # cmds to pkgs
         for cmd in $cmds; do
+            pkg=
             case $cmd in
-            unsquashfs) pkg=squashfs-tools ;;
+            unsquashfs) command -v zypper && pkg=squashfs || pkg=squashfs-tools ;;
             lsmem) pkg=util-linux ;;
             nslookup | dig)
-                if is_in_alpine; then
-                    pkg="bind-tools"
-                elif is_in_arch; then
-                    pkg="bind"
-                elif command -v yum || command -v dnf; then
-                    pkg="bind-utils"
-                elif command -v apt; then
-                    pkg="bind9-dnsutils"
-                else
-                    error "Can't install nslookup / dig"
-                fi
+                (command -v apk && pkg="bind-tools") ||
+                    (command -v apt && pkg="bind9-dnsutils") ||
+                    (command -v pacmcn && pkg="bind") ||
+                    (command -v yum dnf zypper && pkg="bind-utils")
                 ;;
             *) pkg=$cmd ;;
             esac
             pkgs+=" $pkg"
         done
-        {
-            apt_install $pkgs ||
-                dnf install -y --setopt=install_weak_deps=False $pkgs ||
-                yum install -y $pkgs ||
-                zypper install -y $pkgs ||
-                pacman -Syu --noconfirm $pkgs ||
-                apk add $pkgs
-        } 2>/dev/null
+
+        # command -v 有先后顺序，dnf放yum前面
+        pkg_mgr=$(command -v dnf yum apt pacman zypper apk | head -1 | awk -F/ '{print $NF}')
+        case $pkg_mgr in
+        dnf) dnf install -y --setopt=install_weak_deps=False $pkgs ;;
+        yum) yum install -y $pkgs ;;
+        apk) apk add $pkgs ;;
+        apt) apt_install $pkgs ;;
+        pacman) pacman -Syu --noconfirm --needed $pkgs ;;
+        zypper) zypper install -y $pkgs ;;
+        *) error_and_exit "Unexpected package manager: $pkg_mgr" ;;
+        esac
     fi
 }
 
