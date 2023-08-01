@@ -15,6 +15,8 @@ Usage: reinstall.sh centos-7/8/9
                     ubuntu-20.04/22.04
                     alpine-3.16/3.17/3.18
                     debian-10/11/12
+                    opensuse-15.4/15.5
+                    arch
                     windows --iso=xxx --image-name=xxx
                     dd      --img=xxx
 EOF
@@ -457,7 +459,18 @@ is_distro_like_redhat() {
 
 # 检查是否为正确的系统名
 verify_os_string() {
-    for os in 'centos-7|8|9' 'alma|rocky-8|9' 'fedora-37|38' 'ubuntu-20.04|22.04' 'alpine-3.16|3.17|3.18' 'debian-10|11|12' 'arch-' 'windows-' 'dd-'; do
+    for os in \
+        'centos-7|8|9' \
+        'alma-8|9' \
+        'rocky-8|9' \
+        'fedora-37|38' \
+        'ubuntu-20.04|22.04' \
+        'alpine-3.16|3.17|3.18' \
+        'debian-10|11|12' \
+        'opensuse-15|15.4|15.5|tumbleweed' \
+        'arch-' \
+        'windows-' \
+        'dd-'; do
         ds=$(echo $os | cut -d- -f1)
         vers=$(echo $os | cut -d- -f2 | sed 's \. \\\. g')
         finalos=$(echo "$@" | tr '[:upper:]' '[:lower:]' | sed -n -E "s,^($ds)[ :-]?($vers)$,\1:\2,p")
