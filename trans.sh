@@ -666,10 +666,48 @@ EOF
         parted /dev/$xda -s rm 3
 
     else
-        # debian ubuntu arch
+        # debian ubuntu arch opensuse
         if true; then
             modprobe nbd
             qemu_nbd -c /dev/nbd0 $qcow_file
+
+            # 检查最后一个分区是否是 btrfs
+            # 即使awk结果为空，返回值也是0，加上 grep . 检查是否结果为空
+            if part_num=$(parted /dev/nbd0 -s print | awk NF | tail -1 | grep btrfs | awk '{print $1}' | grep .); then
+                apk add btrfs-progs
+                mkdir -p /mnt/btrfs
+                mount /dev/nbd0p$part_num /mnt/btrfs
+
+                # 回收空数据块
+                btrfs device usage /mnt/btrfs
+                btrfs balance start -dusage=0 /mnt/btrfs
+                btrfs device usage /mnt/btrfs
+
+                # 计算可以缩小的空间
+                free_bytes=$(btrfs device usage /mnt/btrfs -b | grep Unallocated: | awk '{print $2}')
+                reserve_bytes=$((100 * 1024 * 1024)) # 预留 100M 可用空间
+                skrink_bytes=$((free_bytes - reserve_bytes))
+
+                if [ $skrink_bytes -gt 0 ]; then
+                    # 缩小文件系统
+                    btrfs filesystem resize -$skrink_bytes /mnt/btrfs
+                    # 缩小分区
+                    part_start=$(parted /dev/nbd0 -s 'unit b print' | awk "\$1==$part_num {print \$2}" | sed 's/B//')
+                    part_size=$(btrfs filesystem usage /mnt/btrfs -b | grep 'Device size:' | awk '{print $3}')
+                    part_end=$((part_start + part_size))
+                    umount /mnt/btrfs
+                    printf "yes" | parted /dev/nbd0 resizepart $part_num ${part_end}B ---pretend-input-tty
+
+                    # 缩小 qcow2
+                    qemu_nbd -d /dev/nbd0
+                    qemu-img resize --shrink $qcow_file $part_end
+
+                    # 重新连接
+                    qemu_nbd -c /dev/nbd0 $qcow_file
+                else
+                    umount /mnt/btrfs
+                fi
+            fi
 
             # 将前1M dd到内存
             dd if=/dev/nbd0 of=/first-1M bs=1M count=1
