@@ -385,17 +385,14 @@ setos() {
                 ci_image=$ci_mirror/AlmaLinux-$releasever-GenericCloud$alma_efi-latest.$basearch.qcow2
                 ;;
             "rocky") ci_image=$ci_mirror/Rocky-$releasever-GenericCloud-Base.latest.$basearch.qcow2 ;;
-            # TODO: 小版本号
             "fedora")
-                ci_image=$ci_mirror/Fedora-Cloud-Base-$releasever-1.6.$basearch.raw.xz
-                ci_image_type=xz
+                filename=$(curl -L $ci_mirror | grep -oP "Fedora-Cloud-Base-$releasever.*?$basearch" | head -1)
+                # ci_image=$ci_mirror/$filename.raw.xz
+                ci_image=$ci_mirror/$filename.qcow2
                 ;;
             esac
 
             eval ${step}_img=${ci_image}
-            if [ -n "$ci_image_type" ]; then
-                eval ${step}_img_type=${ci_image_type}
-            fi
         else
             # 传统安装
             if [ "$localtest" = 1 ]; then
