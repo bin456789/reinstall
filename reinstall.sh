@@ -4,6 +4,7 @@ confhome=https://raw.githubusercontent.com/bin456789/reinstall/main
 localtest_confhome=http://192.168.253.1
 
 trap 'error line $LINENO return $?' ERR
+this_script=$(realpath $0)
 
 usage_and_exit() {
     cat <<EOF
@@ -30,9 +31,11 @@ info() {
 error() {
     color='\e[31m'
     plain='\e[0m'
+    echo -e "${color}Error: $*${plain}"
     # 如果从trap调用，显示错误行
-    [ "$1" = line ] && sed -n "$2"p $0
-    echo -e "${color}Error: $*$plain"
+    if [ "$1" = line ]; then
+        sed -n "$2"p $this_script
+    fi
 }
 
 error_and_exit() {

@@ -6,6 +6,7 @@
 # 命令出错终止运行，将进入到登录界面，防止失联
 set -eE
 trap 'error line $LINENO return $?' ERR
+this_script=$(realpath $0)
 
 catch() {
     if [ "$1" != "0" ]; then
@@ -16,10 +17,11 @@ catch() {
 error() {
     color='\e[31m'
     plain='\e[0m'
-    # 如果从trap调用，显示错误行
-    [ "$1" = line ] && sed -n "$2"p $0
     echo -e "${color}Error: $*${plain}"
-    wall "Error: $*"
+    # 如果从trap调用，显示错误行
+    if [ "$1" = line ]; then
+        sed -n "$2"p $this_script
+    fi
 }
 
 error_and_exit() {
