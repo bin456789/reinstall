@@ -184,8 +184,8 @@ clear_previous() {
         qemu_nbd -d /dev/nbd0
         swapoff -a
         # alpine 自带的umount没有-R，除非安装了util-linux
-        umount -R /iso /wim /installer /os/installer /os /nbd /nbd-boot /nbd-efi
-        umount /iso /wim /installer /os/installer /os /nbd-boot
+        umount -R /iso /wim /installer /os/installer /os /nbd /nbd-boot /nbd-efi /mnt
+        umount /iso /wim /installer /os/installer /os /nbd /nbd-boot /nbd-efi /mnt
     } 2>/dev/null || true
 }
 
