@@ -514,10 +514,10 @@ install_pkg() {
             unsquashfs) command -v zypper && pkg=squashfs || pkg=squashfs-tools ;;
             lsmem) pkg=util-linux ;;
             nslookup | dig)
-                (command -v apk && pkg="bind-tools") ||
-                    (command -v apt && pkg="bind9-dnsutils") ||
-                    (command -v pacman && pkg="bind") ||
-                    (command -v yum dnf zypper && pkg="bind-utils")
+                { command -v apk && pkg="bind-tools"; } ||
+                    { command -v apt && pkg="bind9-dnsutils"; } ||
+                    { command -v pacman && pkg="bind"; } ||
+                    { command -v yum dnf zypper && pkg="bind-utils"; }
                 ;;
             *) pkg=$cmd ;;
             esac
