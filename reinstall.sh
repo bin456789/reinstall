@@ -945,8 +945,11 @@ info 'create grub config'
 if ! is_in_windows; then
     # 找出主配置文件（含有menuentry|blscfg）
     # 如果是efi，先搜索efi目录
+    # arch云镜像efi分区挂载在/efi
     if is_efi; then
-        efi_dir='/boot/efi'
+        for dir in /boot/efi /efi; do
+            [ -d $dir ] && efi_dir+=" $dir"
+        done
     fi
     grub_cfg=$(
         find $efi_dir /boot/grub* \
