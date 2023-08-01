@@ -1127,12 +1127,13 @@ if [ "$distro" != "alpine" ]; then
     add_community_repo
 fi
 
+# shellcheck disable=SC2154
 if [ "$distro" = "alpine" ]; then
     install_alpine
 elif [ "$distro" = "dd" ]; then
     install_dd
 elif is_use_cloud_image; then
-    if [ "$distro" = "fedora" ]; then
+    if [ "$img_type" = "xz" ] || [ "$img_type" = "gzip" ]; then
         install_cloud_image_by_dd
     else
         create_part
