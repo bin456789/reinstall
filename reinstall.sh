@@ -516,7 +516,7 @@ install_pkg() {
             nslookup | dig)
                 (command -v apk && pkg="bind-tools") ||
                     (command -v apt && pkg="bind9-dnsutils") ||
-                    (command -v pacmcn && pkg="bind") ||
+                    (command -v pacman && pkg="bind") ||
                     (command -v yum dnf zypper && pkg="bind-utils")
                 ;;
             *) pkg=$cmd ;;
