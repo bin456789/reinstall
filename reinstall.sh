@@ -80,12 +80,23 @@ is_os_in_btrfs() {
     mount | grep -w 'on / type btrfs'
 }
 
-get_os_subvol_in_btrfs() {
-    subvol=$(awk '{ if ($2=="/") print $i }' /proc/mounts | grep -o 'subvol=[^ ]*' | cut -d= -f2)
-    if [ "$subvol" = / ]; then
-        subvol=
+is_os_in_subvol() {
+    subvol=$(awk '($2=="/") { print $i }' /proc/mounts | grep -o 'subvol=[^ ]*' | cut -d= -f2)
+    [ "$subvol" != / ]
+}
+
+get_os_part() {
+    awk '($2=="/") { print $1 }' /proc/mounts
+}
+
+cp_to_btrfs_root() {
+    files=$*
+    mount_dir=/tmp/reinstall-btrfs-root
+    if ! grep -q $mount_dir /proc/mounts; then
+        mkdir -p $mount_dir
+        mount "$(get_os_part)" $mount_dir -t btrfs -o subvol=/
     fi
-    echo $subvol
+    cp -rf $files /tmp/reinstall-btrfs-root
 }
 
 is_host_has_ipv4_and_ipv6() {
@@ -924,16 +935,15 @@ fi
 
 # 生成 custom.cfg (linux) 或者 grub.cfg (win)
 is_in_windows && custom_cfg=/cygdrive/$c/grub.cfg || custom_cfg=$(dirname $grub_cfg)/custom.cfg
-is_os_in_btrfs && subvol=$(get_os_subvol_in_btrfs)
 echo $custom_cfg
 cat <<EOF | tee $custom_cfg
 set timeout=5
 menuentry "reinstall" {
     insmod lvm
     insmod xfs
-    search --no-floppy --file --set=root $subvol/reinstall-vmlinuz
-    linux$efi $subvol/reinstall-vmlinuz $cmdline
-    initrd$efi $subvol/reinstall-initrd
+    search --no-floppy --file --set=root /reinstall-vmlinuz
+    linux$efi /reinstall-vmlinuz $cmdline
+    initrd$efi /reinstall-initrd
 }
 EOF
 
@@ -942,6 +952,10 @@ if is_in_windows; then
     mv /reinstall-initrd /cygdrive/$c/
     install_grub_win $custom_cfg
 else
+    if is_os_in_btrfs && is_os_in_subvol; then
+        cp_to_btrfs_root /reinstall-vmlinuz
+        cp_to_btrfs_root /reinstall-initrd
+    fi
     $(command -v grub-reboot grub2-reboot) reinstall
 fi
 
