@@ -118,8 +118,7 @@ test_url() {
     echo $url
 
     tmp_file=/tmp/reinstall-img-test
-
-    http_code=$(command curl --connect-timeout 5 -Ls -r 0-1048575 -w "%{http_code}" -o $tmp_file $url)
+    http_code=$(command curl --connect-timeout 5 --retry 3 -Ls -r 0-1048575 -w "%{http_code}" -o $tmp_file $url)
     if [ "$http_code" != 200 ] && [ "$http_code" != 206 ]; then
         error "$url not accessible"
         return 1
@@ -274,7 +273,6 @@ setos() {
             # iso
             filename=$(curl -L $mirror | grep -oP "ubuntu-$releasever.*?-live-server-$basearch_alt.iso" | head -1)
             iso=$mirror/$filename
-            test_url $iso || exit 1
             eval ${step}_iso=$iso
 
             # ks
@@ -306,7 +304,6 @@ setos() {
         if [ "$(echo "$image_name" | wc -w)" -lt 3 ]; then
             error_and_exit "--image-name wrong."
         fi
-        test_url $iso || exit 1
         eval "${step}_iso='$iso'"
         eval "${step}_image_name='$image_name'"
     }
@@ -316,7 +313,6 @@ setos() {
         if [ -z "$img" ]; then
             error_and_exit "dd need --img"
         fi
-        test_url $img 'xz|gzip' img_type || exit 1
         eval "${step}_img='$img'"
         eval "${step}_img_type='$img_type'"
     }
@@ -753,13 +749,20 @@ else
     setos nextos $distro $releasever
 fi
 
+# 测试链接
+# 在 ubuntu 20.04 上，file 命令检测 ubuntu 22.04 iso 结果不正确，所以去掉 iso 检测
+if is_use_cloud_image; then
+    test_url $finalos_img 'xz|gzip|qemu' finalos_img_type
+elif is_use_dd; then
+    test_url $finalos_img 'xz|gzip' finalos_img_type
+elif [ -n "$finalos_img" ]; then
+    test_url $finalos_img
+elif [ -n "$finalos_iso" ]; then
+    test_url $finalos_iso
+fi
+
 # shellcheck disable=SC2154
 {
-    # 测试 cloud img 链接
-    if is_use_cloud_image; then
-        test_url $finalos_img
-    fi
-
     # 下载 nextos 内核
     info download vmlnuz and initrd
     echo $nextos_vmlinuz
