@@ -421,35 +421,13 @@ mount_pseudo_fs() {
 
 download_cloud_init_config() {
     os_dir=$1
-
-    if ! mount | grep -w 'on /os type'; then
-        apk add lsblk
-        mkdir -p /os
-        # 按分区容量大到小，依次寻找系统分区
-        for part in $(lsblk /dev/$xda --sort SIZE -no NAME | sed '$d' | tac); do
-            # btrfs挂载的是默认子卷，如果没有默认子卷，挂载的是根目录
-            # fedora 云镜像没有默认子卷，且系统在root子卷中
-            if mount /dev/$part /os; then
-                if etc_dir=$({ ls -d /os/etc || ls -d /os/*/etc; } 2>/dev/null); then
-                    os_dir=$(dirname $etc_dir)
-                    break
-                fi
-                umount /os
-            fi
-        done
-    fi
-
-    if [ -z "$os_dir" ]; then
-        error_and_exit "can't find os partition"
-    fi
-
     ci_file=$os_dir/etc/cloud/cloud.cfg.d/99_nocloud.cfg
 
     # shellcheck disable=SC2154
     download $confhome/nocloud.yaml $ci_file
 
     # swapfile
-    # arch自带swap，过滤掉
+    # 如果分区表中已经有swap就跳过，例如arch
     if ! grep -w swap $os_dir/etc/fstab; then
         # btrfs
         if mount | grep 'on /os type btrfs'; then
@@ -470,12 +448,40 @@ EOF
     fi
 }
 
+modify_dd_os() {
+    apk add lsblk
+    mkdir -p /os
+    # 按分区容量大到小，依次寻找系统分区
+    for part in $(lsblk /dev/$xda --sort SIZE -no NAME | sed '$d' | tac); do
+        # btrfs挂载的是默认子卷，如果没有默认子卷，挂载的是根目录
+        # fedora 云镜像没有默认子卷，且系统在root子卷中
+        if mount /dev/$part /os; then
+            if etc_dir=$({ ls -d /os/etc || ls -d /os/*/etc; } 2>/dev/null); then
+                os_dir=$(dirname $etc_dir)
+                break
+            fi
+            umount /os
+        fi
+    done
+
+    if [ -z "$os_dir" ]; then
+        error_and_exit "can't find os partition"
+    fi
+
+    download_cloud_init_config $os_dir
+    if [ -f $os_dir/etc/redhat-release ]; then
+        disable_selinux_kdump $os_dir
+    fi
+
+    umount /os
+}
+
 install_cloud_image_by_dd() {
     apk add util-linux udev hdparm curl
     rc-service udev start
     install_dd
     update_part /dev/$xda
-    download_cloud_init_config
+    modify_dd_os
 }
 
 create_swap() {
@@ -586,6 +592,9 @@ install_cloud_image() {
         mv /os/etc/resolv.conf /os/etc/resolv.conf.orig
         cp /etc/resolv.conf /os/etc/resolv.conf
 
+        # cloud-init
+        download_cloud_init_config /os
+
         # fstab 删除 boot 分区
         # alma/rocky 镜像本身有boot分区，但我们不需要
         sed -i '/[[:blank:]]\/boot[[:blank:]]/d' /os/etc/fstab
@@ -668,9 +677,6 @@ EOF
             chroot /os/ grub2-mkconfig -o /boot/grub2/grub.cfg
         fi
 
-        # cloud-init
-        download_cloud_init_config /os
-
         # 还原 resolv.conf
         mv /os/etc/resolv.conf.orig /os/etc/resolv.conf
 
@@ -723,6 +729,9 @@ EOF
                 fi
             fi
 
+            # 显示分区
+            lsblk /dev/nbd0
+
             # 将前1M dd到内存
             dd if=/dev/nbd0 of=/first-1M bs=1M count=1
 
@@ -757,7 +766,8 @@ EOF
         dd if=/first-1M of=/dev/$xda
         update_part /dev/$xda
 
-        download_cloud_init_config
+
+        modify_dd_os
     fi
 }
 
