@@ -565,25 +565,25 @@ check_ram() {
         fi
     fi
 
-    case "$distro" in
-    alpine) ram_requirement=0 ;; # 未测试
-    debian) ram_requirement=384 ;;
-    *) ram_requirement=1024 ;;
-    esac
-
     if [ -z $ram_size ] || [ $ram_size -le 0 ]; then
         error_and_exit "Could not detect RAM size."
     fi
 
+    case "$distro" in
+    alpine) ram_installer=0 ;; # 未测试
+    debian) ram_installer=384 ;;
+    *) ram_installer=1024 ;;
+    esac
+    ram_cloud_image=512
+
     # ram 足够就用普通方法安装，否则如果内存大于512就用 cloud image
-    if [ $ram_size -lt $ram_requirement ]; then
-        # TODO: 测试 256 384 内存
-        ram_requirement=512
-        if false && [ $ram_size -ge $ram_requirement ]; then
-            info "RAM < $ram_requirement MB. Switch to cloud image mode"
+    # TODO: 测试 256 384 内存
+    if [ $ram_size -lt $ram_cloud_image ]; then
+        if [ $ram_size -ge $ram_cloud_image ]; then
+            info "RAM < $ram_installer MB. Switch to cloud image mode"
             cloud_image=1
         else
-            error_and_exit "Could not install $distro: RAM < $ram_requirement MB."
+            error_and_exit "Could not install $distro: RAM < $ram_cloud_image MB."
         fi
     fi
 }
@@ -757,7 +757,7 @@ if is_in_alpine; then
 fi
 
 # 检查内存
-if ! (is_use_cloud_image || is_use_dd); then
+if ! { [ "$distro" = dd ] || [ "$distro" = windows ]; }; then
     check_ram
 fi
 
@@ -998,6 +998,14 @@ else
         cp_to_btrfs_root /reinstall-initrd
     fi
     $(command -v grub-reboot grub2-reboot) reinstall
+fi
+
+if is_use_cloud_image; then
+    info 'cloud image mode'
+elif is_use_dd; then
+    info 'dd mode'
+else
+    info 'installer mode'
 fi
 
 info 'Please reboot to begin the installation'
