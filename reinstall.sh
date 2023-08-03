@@ -234,6 +234,8 @@ setos() {
             # cloud image
             ci_mirror=https://cloud.debian.org/images/cloud
             is_virt && ci_type=genericcloud || ci_type=generic
+            # 甲骨文 debian 10 amd64 genericcloud vnc 没有显示
+            [ "$releasever" -eq 10 ] && [ "$basearch_alt" = amd64 ] && ci_type=generic
             eval ${step}_img=$ci_mirror/$codename/latest/debian-$releasever-$ci_type-$basearch_alt.qcow2
         else
             # 传统安装
