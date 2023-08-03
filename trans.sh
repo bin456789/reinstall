@@ -318,7 +318,7 @@ create_part() {
             mkfs.ntfs -f -F -L installer /dev/$xda*2 #2 installer
         fi
     elif is_use_cloud_image && { [ "$distro" = centos ] || [ "$distro" = alma ] || [ "$distro" = rocky ]; }; then
-        apk add dosfstools xfsprogs e2fsprogs
+        apk add dosfstools e2fsprogs
         if is_efi; then
             parted /dev/$xda -s -- \
                 mklabel gpt \
@@ -328,7 +328,7 @@ create_part() {
                 set 1 esp on
             update_part /dev/$xda
             mkfs.fat -n efi /dev/$xda*1           #1 efi
-            mkfs.xfs -f -L os /dev/$xda*2         #2 os
+            echo                                  #2 os 用目标系统的格式化工具
             mkfs.ext4 -F -L installer /dev/$xda*3 #3 installer
         else
             parted /dev/$xda -s -- \
@@ -339,7 +339,7 @@ create_part() {
                 set 1 bios_grub on
             update_part /dev/$xda
             echo                                  #1 bios_boot
-            mkfs.xfs -f -L os /dev/$xda*2         #2 os
+            echo                                  #2 os 用目标系统的格式化工具
             mkfs.ext4 -F -L installer /dev/$xda*3 #3 installer
         fi
     elif is_use_cloud_image; then
@@ -525,13 +525,13 @@ install_cloud_image() {
         # centos8 如果用alpine格式化xfs，grub2-mkconfig和grub2里面都无法识别xfs分区
         mount -o nouuid /dev/$os_part /nbd/
         mount_pseudo_fs /nbd/
-        chroot /nbd mkfs.xfs -f -L os -m uuid=$os_part_uuid /dev/$xda*2
+        chroot /nbd mkfs.xfs -f -m uuid=$os_part_uuid /dev/$xda*2
         umount -R /nbd/
 
         # 复制系统
         echo Copying os partition
         mount -o ro,nouuid /dev/$os_part /nbd/
-        mount -o noatime /dev/disk/by-label/os /os/
+        mount -o noatime /dev/$xda*2 /os/
         cp -a /nbd/* /os/
 
         # 复制boot分区，如果有
