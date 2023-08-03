@@ -513,11 +513,15 @@ install_cloud_image() {
         modprobe nbd
         qemu_nbd -c /dev/nbd0 $qcow_file
 
+        # TODO: 改成循环mount找出os+fstab查找剩余分区？
         os_part=$(lsblk /dev/nbd0p*[0-9] --sort SIZE -no NAME,FSTYPE | grep xfs | tail -1 | cut -d' ' -f1)
         efi_part=$(lsblk /dev/nbd0p*[0-9] --sort SIZE -no NAME,FSTYPE | grep fat | tail -1 | cut -d' ' -f1)
         boot_part=$(lsblk /dev/nbd0p*[0-9] --sort SIZE -no NAME,FSTYPE | grep xfs | sed '$d' | tail -1 | cut -d' ' -f1)
-        os_part_uuid=$(lsblk /dev/nbd0p*[0-9] --sort SIZE -no UUID,FSTYPE | grep xfs | tail -1 | cut -d' ' -f1)
-        efi_part_uuid=$(lsblk /dev/nbd0p*[0-9] --sort SIZE -no UUID,FSTYPE | grep fat | tail -1 | cut -d' ' -f1)
+
+        os_part_uuid=$(lsblk /dev/$os_part -no UUID)
+        if [ -n "$efi_part" ]; then
+            efi_part_uuid=$(lsblk /dev/$efi_part -no UUID)
+        fi
 
         mkdir -p /nbd /nbd-boot /nbd-efi /os
 
@@ -542,33 +546,37 @@ install_cloud_image() {
         fi
 
         # efi 分区
+        efi_mount_opts="defaults,uid=0,gid=0,umask=077,shortname=winnt"
         if is_efi; then
             # 挂载 efi
             mkdir -p /os/boot/efi/
-            efi_mount_opts="defaults,uid=0,gid=0,umask=077,shortname=winnt"
-            mount -o $efi_mount_opts /dev/disk/by-label/efi /os/boot/efi/
+            mount -o $efi_mount_opts /dev/$xda*1 /os/boot/efi/
 
-            # 如果镜像有 efi 分区
+            # 复制文件
             if [ -n "$efi_part" ]; then
-                # 复制文件
                 echo Copying efi partition
                 mount -o ro /dev/$efi_part /nbd-efi/
                 cp -a /nbd-efi/* /os/boot/efi/
-
-                # 复制其uuid
-                apk add mtools
-                mlabel -N "$(echo $efi_part_uuid | sed 's/-//')" -i /dev/$xda*1
-            else
-                efi_part_uuid=$(lsblk /dev/$xda*1 -no UUID)
             fi
         fi
-
-        # 挂载伪文件系统
-        mount_pseudo_fs /os/
 
         # 取消挂载 nbd
         umount /nbd/ /nbd-boot/ /nbd-efi/ || true
         qemu_nbd -d /dev/nbd0
+
+        # 如果镜像有efi分区，复制其uuid
+        # 如果有相同uuid的fat分区，则无法挂载
+        # 所以要先复制efi分区，断开nbd再复制uuid
+        if is_efi && [ -n "$efi_part_uuid" ]; then
+            umount /os/boot/efi/
+            apk add mtools
+            mlabel -N "$(echo $efi_part_uuid | sed 's/-//')" -i /dev/$xda*1
+            update_part /dev/$xda
+            mount -o $efi_mount_opts /dev/$xda*1 /os/boot/efi/
+        fi
+
+        # 挂载伪文件系统
+        mount_pseudo_fs /os/
 
         # 创建 swap
         rm -rf /installer/*
@@ -586,6 +594,7 @@ install_cloud_image() {
         if is_efi; then
             # centos 要创建efi条目
             if ! grep /boot/efi /os/etc/fstab; then
+                efi_part_uuid=$(lsblk /dev/$xda*1 -no UUID)
                 echo "UUID=$efi_part_uuid /boot/efi vfat $efi_mount_opts 0 0" >>/os/etc/fstab
             fi
         else
