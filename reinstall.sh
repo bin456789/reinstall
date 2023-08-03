@@ -761,6 +761,11 @@ if ! (is_use_cloud_image || is_use_dd); then
     check_ram
 fi
 
+# alpine --ci 参数无效
+if [ "$distro" = alpine ] && is_use_cloud_image; then
+    error_and_exit "can't install alpine with cloud image"
+fi
+
 # 检查硬件架构
 # x86强制使用x64
 basearch=$(uname -m)
