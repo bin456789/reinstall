@@ -788,6 +788,15 @@ EOF
         dd if=/first-1M of=/dev/$xda
         update_part /dev/$xda
 
+        # 修复 vultr 512m debian 10/11 generic/genericcloud 首次启动 kernel panic
+        if [ "$distro" = debian ]; then
+            apk add parted
+            if parted /dev/$xda -s print 2>&1 | grep 'Not all of the space'; then
+                printf "fix" | parted /dev/$xda print ---pretend-input-tty
+                printf "yes" | parted /dev/$xda resizepart 1 100% ---pretend-input-tty
+                update_part /dev/$xda
+            fi
+        fi
 
         modify_dd_os
     fi
