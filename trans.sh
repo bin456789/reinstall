@@ -498,6 +498,34 @@ create_swap() {
     fi
 }
 
+disable_selinux_kdump() {
+    os_dir=$1
+    releasever=$(awk -F: '{ print $5 }' <$os_dir/etc/system-release-cpe)
+
+    if ! chroot $os_dir command -v grubby; then
+        if [ "$releasever" = 7 ]; then
+            chroot $os_dir yum -y --disablerepo=* --enablerepo=base,updates grubby
+        else
+            chroot $os_dir dnf -y --disablerepo=* --enablerepo=baseos --setopt=install_weak_deps=False grubby
+        fi
+    fi
+
+    # selinux
+    sed -i 's/^SELINUX=enforcing/SELINUX=disabled/g' $os_dir/etc/selinux/config
+    # https://access.redhat.com/solutions/3176
+    if [ "$releasever" -ge 9 ]; then
+        chroot $os_dir grubby --update-kernel ALL --args selinux=0
+    fi
+
+    # kdump
+    chroot $os_dir grubby --update-kernel ALL --args crashkernel=no
+    if [ "$releasever" -eq 7 ]; then
+        # el7 上面那条 grubby 命令不能设置 /etc/default/grub
+        sed -iE 's/crashkernel=[^ "]*/crashkernel=no/' $os_dir/etc/default/grub
+    fi
+    rm -rf $os_dir/etc/systemd/system/multi-user.target.wants/kdump.service
+}
+
 install_cloud_image() {
     apk add qemu-img lsblk
 
@@ -592,6 +620,9 @@ install_cloud_image() {
         mv /os/etc/resolv.conf /os/etc/resolv.conf.orig
         cp /etc/resolv.conf /os/etc/resolv.conf
 
+        # selinux kdump
+        disable_selinux_kdump /os
+
         # cloud-init
         download_cloud_init_config /os
 
@@ -609,15 +640,6 @@ install_cloud_image() {
         else
             # 删除 efi 条目
             sed -i '/[[:blank:]]\/boot\/efi[[:blank:]]/d' /os/etc/fstab
-        fi
-
-        # selinux
-        use_selinux=false
-        if $use_selinux; then
-            touch /os/.autorelabel
-        else
-            # TODO: 还有cmdline el9
-            sed -i 's/^SELINUX=enforcing/SELINUX=disabled/g' /os/etc/selinux/config
         fi
 
         distro_full=$(awk -F: '{ print $3 }' </os/etc/system-release-cpe)
