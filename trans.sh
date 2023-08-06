@@ -449,6 +449,15 @@ EOF
 }
 
 modify_dd_os() {
+    find_and_mount() {
+        mount_point=$1
+
+        mount_dev=$(awk "\$2==\"$mount_point\" {print \$1}" $os_dir/etc/fstab)
+        if [ -n "$mount_dev" ]; then
+            mount $mount_dev $os_dir$mount_point
+        fi
+    }
+
     apk add lsblk
     mkdir -p /os
     # 按分区容量大到小，依次寻找系统分区
@@ -470,10 +479,10 @@ modify_dd_os() {
 
     download_cloud_init_config $os_dir
     if [ -f $os_dir/etc/redhat-release ]; then
+        find_and_mount /boot
+        find_and_mount /boot/efi
         disable_selinux_kdump $os_dir
     fi
-
-    umount /os
 }
 
 install_cloud_image_by_dd() {
