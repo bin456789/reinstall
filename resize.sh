@@ -21,9 +21,8 @@ update_part() {
 # ubuntu grownpart
 
 # 找出主硬盘
-# xda=$(lsblk -dn -o NAME | grep -E 'nvme0n1|.da')
 # shellcheck disable=SC2010
-xda=$(ls /dev/ | grep -Ex 'sda|hda|xda|vda|xvda|nvme0n1')
+xda=$(mount | awk '$3=="/" {print $1}' | grep -Eo 'sda|hda|xda|vda|xvda|nvme0n1')
 
 # 删除 installer 分区
 installer_num=$(readlink -f /dev/disk/by-label/installer | grep -o '[0-9]*$')
@@ -55,6 +54,7 @@ update_part /dev/$xda
 case $part_fstype in
 xfs) xfs_growfs / ;;
 ext*) resize2fs /dev/$xda$part_num ;;
+btrfs) btrfs filesystem resize max / ;;
 esac
 update_part /dev/$xda
 
