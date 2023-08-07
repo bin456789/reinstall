@@ -1,5 +1,6 @@
 #cloud-config
 datasource_list: [NoCloud]
+timezone: Asia/Shanghai
 disable_root: false
 ssh_pwauth: true
 users:
@@ -18,4 +19,6 @@ runcmd:
   # arch 没有 /etc/ssh/sshd_config.d/ 文件夹
   - echo "PermitRootLogin yes" >/etc/ssh/sshd_config.d/01-permitrootlogin.conf || echo "PermitRootLogin yes" >>/etc/ssh/sshd_config
   - systemctl restart sshd
-  - echo -e '\nDone' >/dev/tty0
+  # ubuntu 镜像运行 echo -e '\nDone' ，-e 会被显示出来
+  - echo >/dev/tty0
+  - echo Done >/dev/tty0
