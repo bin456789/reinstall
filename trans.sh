@@ -131,6 +131,22 @@ setup_lighttpd() {
     rc-service lighttpd start
 }
 
+get_ttys() {
+    prefix=$1
+    str=
+    for tty in tty0 ttyS0 ttyAMA0; do
+        dev_tty=/dev/$tty
+        if [ -e $dev_tty ] && echo >$dev_tty 2>/dev/null; then
+            if [ -z "$str" ]; then
+                str="$prefix$tty"
+            else
+                str="$str $prefix$tty"
+            fi
+        fi
+    done
+    echo $str
+}
+
 setup_tty_and_log() {
     cat <<EOF >/reinstall.html
 <!DOCTYPE html>
@@ -151,12 +167,8 @@ setup_tty_and_log() {
 EOF
     # 显示输出到前台
     # script -f /dev/tty0
-    for t in /dev/tty0 /dev/ttyS0 /dev/ttyAMA0; do
-        if [ -e $t ] && echo >$t 2>/dev/null; then
-            ttys="$ttys $t"
-        fi
-    done
-    exec > >(tee -a $ttys /reinstall.html) 2>&1
+    dev_ttys=$(get_ttys /dev/)
+    exec > >(tee -a $dev_ttys /reinstall.html) 2>&1
 }
 
 extract_env_from_cmdline() {
@@ -1134,6 +1146,7 @@ install_redhat_ubuntu() {
     # shellcheck disable=SC2154
     if [ "$distro" = "ubuntu" ]; then
         download $iso /os/installer/ubuntu.iso
+        console_cmdline=$(get_ttys console=)
 
         # 正常写法应该是 ds="nocloud-net;s=https://xxx/" 但是甲骨文云的ds更优先，自己的ds根本无访问记录
         # $seed 是 https://xxx/
@@ -1144,7 +1157,7 @@ install_redhat_ubuntu() {
             # rmmod tpm
             search --no-floppy --label --set=root installer
             loopback loop /ubuntu.iso
-            linux (loop)/casper/vmlinuz iso-scan/filename=/ubuntu.iso autoinstall noprompt noeject cloud-config-url=$ks $extra_cmdline ---
+            linux (loop)/casper/vmlinuz iso-scan/filename=/ubuntu.iso autoinstall noprompt noeject cloud-config-url=$ks $extra_cmdline --- $console_cmdline
             initrd (loop)/casper/initrd
         }
 EOF

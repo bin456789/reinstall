@@ -861,7 +861,7 @@ build_cmdline() {
         cmdline="alpine_repo=$nextos_repo modloop=$nextos_modloop $extra_cmdline $finalos_cmdline"
     else
         if [ $distro = debian ]; then
-            cmdline="lowmem=+1 lowmem/low=1 auto=true priority=critical url=$nextos_ks"
+            cmdline="lowmem=+1 lowmem/low=1 auto=true priority=critical url=$nextos_ks $extra_cmdline"
         else
             # redhat
             cmdline="root=live:$nextos_squashfs inst.ks=$nextos_ks $extra_cmdline"
