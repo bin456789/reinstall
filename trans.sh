@@ -195,6 +195,13 @@ qemu_nbd() {
     sleep 5
 }
 
+mod_motd() {
+    cat <<EOF >/etc/motd
+Reinstalling...
+Run "tail -f /reinstall.html" to view logs.
+EOF
+}
+
 # 可能脚本不是首次运行，先清理之前的残留
 clear_previous() {
     {
@@ -1204,6 +1211,7 @@ xda=$(ls /dev/ | grep -Ex 'sda|hda|xda|vda|xvda|nvme0n1')
 
 # shellcheck disable=SC2154
 if [ "$distro" != "alpine" ]; then
+    mod_motd
     setup_nginx_if_enough_ram
     add_community_repo
 fi
