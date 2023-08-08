@@ -66,10 +66,14 @@ download() {
         fi
     fi
     # 先用 aria2 下载
+    # aria2 下载 fedora 官方镜像链接会将meta4文件下载下来，而且占用了指定文件名，造成重命名失效。而且无法指定目录
+    # https://download.opensuse.org/distribution/leap/15.5/appliances/openSUSE-Leap-15.5-Minimal-VM.x86_64-kvm-and-xen.qcow2
+    # https://aria2.github.io/manual/en/html/aria2c.html#cmdoption-o
     if ! (command -v aria2c && aria2c -x4 --allow-overwrite=true $url $save); then
-        # 出错再用 curl
-        [ -z $file ] && save="-O" || save="-o $file"
-        curl -L $url $save
+        # 出错再用 wget
+        # alpine 的 busybox 没有 curl
+        [ -z $file ] && save="" || save="-O $file"
+        wget $url $save
     fi
 }
 
