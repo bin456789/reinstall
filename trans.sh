@@ -374,11 +374,13 @@ create_part() {
         mkfs.ext4 -F -L os /dev/$xda*1        #1 os
         mkfs.ext4 -F -L installer /dev/$xda*2 #2 installer
     else
+        # 安装红帽系或ubuntu
         # 对于红帽系是临时分区表，安装时除了 installer 分区，其他分区会重建为默认的大小
         # 对于ubuntu是最终分区表，因为 ubuntu 的安装器不能调整个别分区，只能重建整个分区表
+        # installer 2g分区用fat格式刚好塞得下ubuntu-22.04.3 iso，而ext4塞不下或者需要改参数
+        apk add dosfstools
         if is_efi; then
             # efi
-            apk add dosfstools
             parted /dev/$xda -s -- \
                 mklabel gpt \
                 mkpart '" "' fat32 1MiB 1025MiB \
@@ -386,9 +388,9 @@ create_part() {
                 mkpart '" "' ext4 -2GiB 100% \
                 set 1 boot on
             update_part /dev/$xda
-            mkfs.fat -n efi /dev/$xda*1           #1 efi
-            mkfs.ext4 -F -L os /dev/$xda*2        #2 os
-            mkfs.ext4 -F -L installer /dev/$xda*3 #3 installer
+            mkfs.fat -n efi /dev/$xda*1       #1 efi
+            mkfs.ext4 -F -L os /dev/$xda*2    #2 os
+            mkfs.fat -n installer /dev/$xda*3 #3 installer
         elif is_xda_gt_2t; then
             # bios > 2t
             parted /dev/$xda -s -- \
@@ -398,9 +400,9 @@ create_part() {
                 mkpart '" "' ext4 -2GiB 100% \
                 set 1 bios_grub on
             update_part /dev/$xda
-            echo                                  #1 bios_boot
-            mkfs.ext4 -F -L os /dev/$xda*2        #2 os
-            mkfs.ext4 -F -L installer /dev/$xda*3 #3 installer
+            echo                              #1 bios_boot
+            mkfs.ext4 -F -L os /dev/$xda*2    #2 os
+            mkfs.fat -n installer /dev/$xda*3 #3 installer
         else
             # bios
             parted /dev/$xda -s -- \
@@ -409,14 +411,15 @@ create_part() {
                 mkpart primary ext4 -2GiB 100% \
                 set 1 boot on
             update_part /dev/$xda
-            mkfs.ext4 -F -L os /dev/$xda*1        #1 os
-            mkfs.ext4 -F -L installer /dev/$xda*2 #2 installer
+            mkfs.ext4 -F -L os /dev/$xda*1    #1 os
+            mkfs.fat -n installer /dev/$xda*2 #2 installer
         fi
         update_part /dev/$xda
 
         # centos 7 无法加载alpine格式化的ext4
         # 要关闭这个属性
-        if [ "$distro" = centos ]; then
+        # 目前改用fat格式，不用设置这个
+        if false && [ "$distro" = centos ]; then
             apk add e2fsprogs-extra
             tune2fs -O ^metadata_csum_seed /dev/disk/by-label/installer
         fi
