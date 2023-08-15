@@ -2,6 +2,8 @@
 # 顺序 early-commands > 安装系统 > late-commands > 重启进入系统 > cloud-init: runcmd > cloud-init: 其他
 autoinstall:
   version: 1
+  apt:
+    fallback: offline-install
   source:
     id: ubuntu-server-minimal
     search_drivers: false
