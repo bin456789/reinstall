@@ -219,9 +219,68 @@ install_alpine() {
     rm -f /etc/local.d/trans.start
     rm -f /etc/runlevels/default/local
 
+    # 添加 virt-what 用到的社区仓库
+    add_community_repo
+
+    # 保存默认应用列表
+    if [ ! -e /tmp/world.orig ]; then
+        cp /etc/apk/world /tmp/world.orig
+    fi
+
+    # 如果是 vm 就用 virt 内核
+    apk add virt-what
+    if [ -n "$(virt-what)" ]; then
+        kernel_opt="-k virt"
+    fi
+
     # 网络
-    setup-interfaces -a # 生成 /etc/network/interfaces
+    # 坑1 udhcpc下，ip -4 addr 无法知道是否是 dhcp
+    # 坑2 udhcpc不支持dhcpv6
+    # 坑3 安装 dhcpcd，会强制使用dhcpv6，即使ra m=0，解决方法是配置文件设置auto
     rc-update add networking boot
+
+    # 生成 ipv4 配置
+    if udhcpc -i eth0 -f -q -n; then
+        # 生成dhcpv4配置
+        setup-interfaces -a
+    else
+        # 如果当前有ipv4地址，则会生成静态配置
+        # 如果当前没有ipv4地址，则会生成dhcpv4配置
+        echo | setup-interfaces
+    fi
+
+    # 生成 ipv6 配置
+    apk add ndisc6
+    ra=$(rdisc6 eth0)
+    echo "$ra" | cat -n
+    echo "$ra" | grep 'Autonomous address conf' | grep Yes && is_slaac=true || is_slaac=false
+    echo "$ra" | grep 'Stateful address conf' | grep Yes && is_dhcpv6=true || is_dhcpv6=false
+
+    # 删除临时安装的软件，不然会带到新系统
+    # shellcheck disable=SC2046
+    apk del $(diff /tmp/world.orig /etc/apk/world | grep '^+' | sed '1d' | sed 's/^+//' | xargs)
+
+    if $is_slaac; then
+        echo 'iface eth0 inet6 auto' >>/etc/network/interfaces
+    fi
+
+    if $is_dhcpv6; then
+        apk add dhcpcd
+        echo 'iface eth0 inet6 dhcp' >>/etc/network/interfaces
+    fi
+
+    if ! $is_slaac && ! $is_dhcpv6; then
+        ipv6_addr=$(ip -6 addr show scope global dev eth0 | grep inet6 | head -1 | awk '{print $2}')
+        ipv6_gateway=$(ip -6 route show default dev eth0 | awk '{print $3}')
+        if [ -n "$ipv6_addr" ]; then
+            cat <<EOF >>/etc/network/interfaces
+iface eth0 inet6 static
+    address $ipv6_addr
+    gateway $ipv6_gateway
+EOF
+        fi
+    fi
+    cat -n /etc/network/interfaces
 
     # 设置
     setup-keymap us us
@@ -241,18 +300,6 @@ install_alpine() {
     # acpid | default
     # crond | default
     # seedrng | boot
-
-    # 添加 virt-what 用到的社区仓库
-    add_community_repo
-
-    # 如果是 vm 就用 virt 内核
-    cp /etc/apk/world /tmp/world.old
-    apk add virt-what
-    if [ -n "$(virt-what)" ]; then
-        kernel_opt="-k virt"
-    fi
-    # 删除 virt-what 和依赖，不然会带到新系统
-    apk del "$(diff /tmp/world.old /etc/apk/world | grep '^+' | sed '1d' | sed 's/^+//')"
 
     # 重置为官方仓库配置
     true >/etc/apk/repositories

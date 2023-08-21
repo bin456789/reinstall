@@ -596,6 +596,28 @@ is_efi() {
     fi
 }
 
+collect_netconf() {
+    if is_in_windows; then
+        # TODO:
+        echo
+    else
+        # TODO: 多网卡 单网卡多IP
+        nic_name=$(ip -o addr show scope global | head -1 | awk '{print $2}')
+        mac_addr=$(ip addr show scope global | grep link/ether | head -1 | awk '{print $2}')
+        ipv4_addr=$(ip -4 addr show scope global | grep inet | head -1 | awk '{print $2}')
+        ipv6_addr=$(ip -6 addr show scope global | grep inet6 | head -1 | awk '{print $2}')
+
+        ipv4_gateway=$(ip -4 route show default dev $nic_name | awk '{print $3}')
+        ipv6_gateway=$(ip -6 route show default dev $nic_name | awk '{print $3}')
+
+        echo 1 $mac_addr
+        echo 2 $ipv4_addr
+        echo 3 $ipv4_gateway
+        echo 4 $ipv6_addr
+        echo 5 $ipv6_gateway
+    fi
+}
+
 install_grub_win() {
     grub_cfg=$1 # /cygdrive/$c/grub.cfg
 
@@ -897,6 +919,7 @@ mod_alpine_initrd() {
 
     # 预先下载脚本
     curl -Lo $tmp_dir/trans.start $confhome/trans.sh
+    curl -Lo $tmp_dir/alpine-network.sh $confhome/alpine-network.sh
 
     # virt 内核添加 ipv6 模块
     if virt_dir=$(ls -d $tmp_dir/lib/modules/*-virt 2>/dev/null); then
@@ -916,23 +939,45 @@ mod_alpine_initrd() {
         fi
     fi
 
-    # hack 运行 trans.start
+    # hack 1 添加 ipv6 模块
+    line_num=$(grep -E -n 'configure_ip\(\)' init | cut -d: -f1)
+    cat <<EOF | sed -i "${line_num}r /dev/stdin" init
+        depmod
+        modprobe ipv6
+EOF
+
+    # hack 2 udhcpc添加 -n 参数，中断静态ipv4时dhcp无限请求
+    # shellcheck disable=SC2016
+    sed -i '/$MOCK udhcpc/s/.*/& -n || true/' init
+
+    # hack 3 网络配置
+    collect_netconf
+    line_num=$(grep -E -n 'MAC_ADDRESS=' init | cut -d: -f1)
+    cat <<EOF | sed -i "${line_num}r /dev/stdin" init
+        source /alpine-network.sh \
+        "$mac_addr" "$ipv4_addr" "$ipv4_gateway" "$ipv6_addr" "$ipv6_gateway" \
+        "$(is_in_china && echo true || echo false)"
+EOF
+
+    # hack 4 运行 trans.start
     # exec /bin/busybox switch_root $switch_root_opts $sysroot $chart_init "$KOPT_init" $KOPT_init_args # 3.17
     # exec              switch_root $switch_root_opts $sysroot $chart_init "$KOPT_init" $KOPT_init_args # 3.18
     line_num=$(grep -E -n '^exec (/bin/busybox )?switch_root' init | cut -d: -f1)
     line_num=$((line_num - 1))
     # 1. alpine arm initramfs 时间问题 要添加 --no-check-certificate
-    # 2. 神奇的 aws t4g arm 会出现bad header错误， 但甲骨文arm就正常，所以只能预先下载
+    # 2. aws t4g arm 如果没设置console=ttyx，在initramfs里面wget https会出现bad header错误，chroot后正常
     # Connecting to raw.githubusercontent.com (185.199.108.133:443)
     # 60C0BB2FFAFF0000:error:0A00009C:SSL routines:ssl3_get_record:http request:ssl/record/ssl3_record.c:345:
     # ssl_client: SSL_connect
     # wget: bad header line: �
     cat <<EOF | sed -i "${line_num}r /dev/stdin" init
+        # echo "wget --no-check-certificate -O- $confhome/trans.sh | /bin/ash" >\$sysroot/etc/local.d/trans.start
         # wget --no-check-certificate -O \$sysroot/etc/local.d/trans.start $confhome/trans.sh
         cp /trans.start \$sysroot/etc/local.d/trans.start
         chmod a+x \$sysroot/etc/local.d/trans.start
         ln -s /etc/init.d/local \$sysroot/etc/runlevels/default/
 EOF
+
     # 重建
     # 注意要用 cpio -H newc 不要用 cpio -c ，不同版本的 -c 作用不一样，很坑
     # -c    Use the old portable (ASCII) archive format
