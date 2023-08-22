@@ -23,14 +23,14 @@ fi
 # 检测是否有 dhcpv4
 has_ipv4=false
 dhcpv4=false
-ip -4 addr show scope global | grep inet && dhcpv4=true && has_ipv4=true
+ip -4 addr show scope global dev eth0 | grep inet && dhcpv4=true && has_ipv4=true
 
 # 检测是否有 slaac
 has_ipv6=false
 slaac=false
 for i in $(seq 10 -1 0); do
     echo waiting slaac for ${i}s
-    ip -6 addr show scope global | grep inet6 && slaac=true && has_ipv6=true && break
+    ip -6 addr show scope global dev eth0 | grep inet6 && slaac=true && has_ipv6=true && break
     sleep 1
 done
 
@@ -91,3 +91,10 @@ if $ipv6_has_internet && ! grep ':' /etc/resolv.conf; then
     echo "nameserver $ipv6_dns1" >>/etc/resolv.conf
     echo "nameserver $ipv6_dns2" >>/etc/resolv.conf
 fi
+
+# 传参给 trans.start
+has_ipv4=true && echo 1>/dev/has_dhcpv4 || echo 0 >/sys/has_dhcpv4
+echo $ipv4_addr >/dev/ipv4_addr
+echo $ipv4_gateway >/dev/ipv4_gateway
+echo $ipv6_addr >/dev/ipv6_addr
+echo $ipv6_gateway >/dev/ipv6_gateway

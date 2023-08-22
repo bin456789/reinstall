@@ -214,6 +214,10 @@ clear_previous() {
     } 2>/dev/null || true
 }
 
+get_netconf() {
+    [ -e /dev/$1 ] && cat /dev/$1
+}
+
 install_alpine() {
     # 还原改动，不然本脚本会被复制到新系统
     rm -f /etc/local.d/trans.start
@@ -237,24 +241,45 @@ install_alpine() {
     # 坑1 udhcpc下，ip -4 addr 无法知道是否是 dhcp
     # 坑2 udhcpc不支持dhcpv6
     # 坑3 安装 dhcpcd，会强制使用dhcpv6，即使ra m=0，解决方法是配置文件设置auto
-    rc-update add networking boot
+
+    # 生成 lo 配置
+    cat <<EOF >/etc/network/interfaces
+auto lo
+iface lo inet loopback
+EOF
 
     # 生成 ipv4 配置
-    if udhcpc -i eth0 -f -q -n; then
-        # 生成dhcpv4配置
-        setup-interfaces -a
+    echo >>/etc/network/interfaces
+    # dhcpv4
+    if [ "$(get_netconf has_dhcpv4)" = 1 ]; then
+        cat <<EOF >/etc/network/interfaces
+auto eth0
+iface eth0 inet dhcp
+EOF
     else
-        # 如果当前有ipv4地址，则会生成静态配置
-        # 如果当前没有ipv4地址，则会生成dhcpv4配置
-        echo | setup-interfaces
+        # static
+        ipv4_addr=$(get_netconf ipv4_addr)
+        ipv4_gateway=$(get_netconf ipv4_gateway)
+        if [ -n "$ipv4_addr" ]; then
+            cat <<EOF >>/etc/network/interfaces
+auto eth0
+iface eth0 inet4 static
+    address $ipv4_addr
+    gateway $ipv4_gateway
+EOF
+        fi
     fi
 
     # 生成 ipv6 配置
+    echo >>/etc/network/interfaces
     apk add ndisc6
-    ra=$(rdisc6 eth0)
-    echo "$ra" | cat -n
-    echo "$ra" | grep 'Autonomous address conf' | grep Yes && is_slaac=true || is_slaac=false
-    echo "$ra" | grep 'Stateful address conf' | grep Yes && is_dhcpv6=true || is_dhcpv6=false
+    is_slaac=false
+    is_dhcpv6=false
+    if ra=$(rdisc6 eth0); then
+        echo "$ra" | cat -n
+        echo "$ra" | grep 'Autonomous address conf' | grep Yes && is_slaac=true
+        echo "$ra" | grep 'Stateful address conf' | grep Yes && is_dhcpv6=true
+    fi
 
     # 删除临时安装的软件，不然会带到新系统
     # shellcheck disable=SC2046
@@ -270,8 +295,8 @@ install_alpine() {
     fi
 
     if ! $is_slaac && ! $is_dhcpv6; then
-        ipv6_addr=$(ip -6 addr show scope global dev eth0 | grep inet6 | head -1 | awk '{print $2}')
-        ipv6_gateway=$(ip -6 route show default dev eth0 | awk '{print $3}')
+        ipv6_addr=$(get_netconf ipv6_addr)
+        ipv6_gateway=$(get_netconf ipv6_gateway)
         if [ -n "$ipv6_addr" ]; then
             cat <<EOF >>/etc/network/interfaces
 iface eth0 inet6 static
@@ -280,7 +305,10 @@ iface eth0 inet6 static
 EOF
         fi
     fi
+
+    ip addr
     cat -n /etc/network/interfaces
+    rc-update add networking boot
 
     # 设置
     setup-keymap us us
