@@ -77,9 +77,9 @@ fi
 
 # 如果ipv4/ipv6不联网，则删除该协议的dns
 if $ipv4_has_internet && ! $ipv6_has_internet; then
-    sed -i '/:/d' /etc/resolv.conf
+    sed -i '/^[[:blank:]]*nameserver[[:blank:]].*:/d' /etc/resolv.conf
 elif ! $ipv4_has_internet && $ipv6_has_internet; then
-    sed -i '/\./d' /etc/resolv.conf
+    sed -i '/^[[:blank:]]*nameserver[[:blank:]].*\./d' /etc/resolv.conf
 fi
 
 # 如果联网了，但没获取到默认 DNS，则添加我们的 DNS

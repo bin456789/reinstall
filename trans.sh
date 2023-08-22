@@ -279,6 +279,7 @@ EOF
         echo "$ra" | cat -n
         echo "$ra" | grep 'Autonomous address conf' | grep Yes && is_slaac=true
         echo "$ra" | grep 'Stateful address conf' | grep Yes && is_dhcpv6=true
+        ra_dns=$(echo "$ra" | grep 'Recursive DNS server' | cut -d: -f2- | xargs)
     fi
 
     # 删除临时安装的软件，不然会带到新系统
@@ -304,6 +305,13 @@ iface eth0 inet6 static
     gateway $ipv6_gateway
 EOF
         fi
+    fi
+
+    # udhcpc/dhcpcd + slaac，不会自动写入ra dns
+    # 如果有ra dns，则删除自己添加的dns，再添加ra dns
+    if [ -n "$ra_dns" ]; then
+        sed -i '/^[[:blank:]]*nameserver[[:blank:]].*:/d' /etc/resolv.conf
+        echo "nameserver $ra_dns" >>/etc/resolv.conf
     fi
 
     ip addr
