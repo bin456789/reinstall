@@ -20,40 +20,57 @@ else
     ipv6_dns2='2001:4860:4860::8888'
 fi
 
+get_ipv4_entry() {
+    ip -4 addr show scope global dev eth0 | grep inet
+}
+
+get_ipv6_entry() {
+    ip -6 addr show scope global dev eth0 | grep inet6
+}
+
+is_have_ipv4() {
+    [ -n "$(get_ipv4_entry)" ]
+}
+
+is_have_ipv6() {
+    [ -n "$(get_ipv6_entry)" ]
+}
+
+# 开启 eth0
+ip link set dev eth0 up
+
 # 检测是否有 dhcpv4
-has_ipv4=false
-dhcpv4=false
-ip -4 addr show scope global dev eth0 | grep inet && dhcpv4=true && has_ipv4=true
+# 由于还没设置静态ip，所以有条目表示有 dhcpv4
+get_ipv4_entry && dhcpv4=true || dhcpv4=false
+
+# 检测是否有 dhcpv6
+# dhcpv4 肯定是 /128
+get_ipv6_entry | grep /128 && dhcpv6=true || dhcpv6=false
 
 # 检测是否有 slaac
-has_ipv6=false
 slaac=false
 for i in $(seq 10 -1 0); do
-    echo waiting slaac for ${i}s
-    ip -6 addr show scope global dev eth0 | grep inet6 && slaac=true && has_ipv6=true && break
+    echo "waiting slaac for ${i}s"
+    get_ipv6_entry | grep -v /128 && slaac=true && break
     sleep 1
 done
 
 # 设置静态地址
-# udhcpc不支持dhcpv6，所以如果网络是 dhcpv6，也先设置成静态
-ip link set dev eth0 up
-if ! $has_ipv4 && [ -n "$ipv4_addr" ]; then
+if ! is_have_ipv4 && [ -n "$ipv4_addr" ]; then
     ip -4 addr add $ipv4_addr dev eth0
     ip -4 route add default via $ipv4_gateway
-    has_ipv4=true
 fi
-if ! $has_ipv6 && [ -n "$ipv6_addr" ]; then
+if ! is_have_ipv6 && [ -n "$ipv6_addr" ]; then
     ip -6 addr add $ipv6_addr dev eth0
     ip -6 route add default via $ipv6_gateway
-    has_ipv6=true
 fi
 
 # 检查 ipv4/ipv6 是否连接联网
 ipv4_has_internet=false
 ipv6_has_internet=false
 for i in $(seq 10); do
-    $has_ipv4 && ipv4_test_complete=false || ipv4_test_complete=true
-    $has_ipv6 && ipv6_test_complete=false || ipv6_test_complete=true
+    is_have_ipv4 && ipv4_test_complete=false || ipv4_test_complete=true
+    is_have_ipv6 && ipv6_test_complete=false || ipv6_test_complete=true
 
     if ! $ipv4_test_complete && nslookup www.qq.com $ipv4_dns1; then
         ipv4_has_internet=true
@@ -71,8 +88,10 @@ for i in $(seq 10); do
 done
 
 # 等待 udhcpc 创建 /etc/resolv.conf
-if { $dhcpv4 || $slaac; } && [ ! -e /etc/resolv.conf ]; then
-    sleep 3
+# 好像只有 dhcpv4 会创建 resolv.conf
+if { $dhcpv4 || $dhcpv6 || $slaac; } && [ ! -e /etc/resolv.conf ]; then
+    echo "waiting for /etc/resolv.conf"
+    sleep 5
 fi
 
 # 如果ipv4/ipv6不联网，则删除该协议的dns
@@ -93,7 +112,7 @@ if $ipv6_has_internet && ! grep ':' /etc/resolv.conf; then
 fi
 
 # 传参给 trans.start
-has_ipv4=true && echo 1>/dev/has_dhcpv4 || echo 0 >/sys/has_dhcpv4
+$dhcpv4 && echo 1 >/dev/dhcpv4 || echo 0 >/dev/dhcpv4
 echo $ipv4_addr >/dev/ipv4_addr
 echo $ipv4_gateway >/dev/ipv4_gateway
 echo $ipv6_addr >/dev/ipv6_addr

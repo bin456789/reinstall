@@ -251,8 +251,8 @@ EOF
     # 生成 ipv4 配置
     echo >>/etc/network/interfaces
     # dhcpv4
-    if [ "$(get_netconf has_dhcpv4)" = 1 ]; then
-        cat <<EOF >/etc/network/interfaces
+    if [ "$(get_netconf dhcpv4)" = 1 ]; then
+        cat <<EOF >>/etc/network/interfaces
 auto eth0
 iface eth0 inet dhcp
 EOF
@@ -271,7 +271,6 @@ EOF
     fi
 
     # 生成 ipv6 配置
-    echo >>/etc/network/interfaces
     apk add ndisc6
     is_slaac=false
     is_dhcpv6=false

@@ -946,11 +946,35 @@ mod_alpine_initrd() {
         modprobe ipv6
 EOF
 
-    # hack 2 udhcpc添加 -n 参数，中断静态ipv4时dhcp无限请求
+    # hack 2
+    # udhcpc 添加 -n 参数，请求dhcp失败后退出
+    # 使用同样参数运行 udhcpc6
+    # TODO: digitalocean -i eth1?
     # shellcheck disable=SC2016
-    sed -i '/$MOCK udhcpc/s/.*/& -n || true/' init
+    orig_cmd="$(grep '$MOCK udhcpc' init)"
+    mod_cmd4="$orig_cmd -n || true"
+    mod_cmd6="${mod_cmd4//udhcpc/udhcpc6}"
+    sed -i "/\$MOCK udhcpc/c$mod_cmd4 \n $mod_cmd6" init
 
-    # hack 3 网络配置
+    # hack 3 /usr/share/udhcpc/default.script
+    # 脚本被调用的顺序
+    # udhcpc:  deconfig
+    # udhcpc:  bound
+    # udhcpc6: deconfig
+    # udhcpc6: bound
+    line_num=$(grep -E -n 'deconfig\|renew\|bound' usr/share/udhcpc/default.script | cut -d: -f1)
+    cat <<EOF | sed -i "${line_num}r /dev/stdin" usr/share/udhcpc/default.script
+        if [ "\$1" = deconfig ]; then
+            return
+        fi
+        if [ "\$1" = bound ] && [ -n "\$ipv6" ]; then
+            ip -6 addr add \$ipv6 dev \$interface
+            ip link set dev \$interface up
+            return
+        fi
+EOF
+
+    # hack 4 网络配置
     collect_netconf
     line_num=$(grep -E -n 'MAC_ADDRESS=' init | cut -d: -f1)
     cat <<EOF | sed -i "${line_num}r /dev/stdin" init
@@ -959,7 +983,7 @@ EOF
         "$(is_in_china && echo true || echo false)"
 EOF
 
-    # hack 4 运行 trans.start
+    # hack 5 运行 trans.start
     # exec /bin/busybox switch_root $switch_root_opts $sysroot $chart_init "$KOPT_init" $KOPT_init_args # 3.17
     # exec              switch_root $switch_root_opts $sysroot $chart_init "$KOPT_init" $KOPT_init_args # 3.18
     line_num=$(grep -E -n '^exec (/bin/busybox )?switch_root' init | cut -d: -f1)
