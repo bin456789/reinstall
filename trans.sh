@@ -391,6 +391,8 @@ EOF
     # 如果是 vm 就用 virt 内核
     if is_virt; then
         kernel_opt="-k virt"
+    else
+        kernel_opt="-k lts"
     fi
 
     # 重置为官方仓库配置
@@ -1350,6 +1352,7 @@ fi
 
 setup_tty_and_log
 clear_previous
+add_community_repo
 
 # 找到主硬盘
 # shellcheck disable=SC2010
@@ -1359,7 +1362,6 @@ xda=$(ls /dev/ | grep -Ex 'sda|hda|xda|vda|xvda|nvme0n1')
 if [ "$distro" != "alpine" ]; then
     mod_motd
     setup_nginx_if_enough_ram
-    add_community_repo
 fi
 
 # shellcheck disable=SC2154
