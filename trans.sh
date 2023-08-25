@@ -220,25 +220,64 @@ clear_previous() {
     } 2>/dev/null || true
 }
 
-get_netconf() {
-    [ -e /dev/$1 ] && cat /dev/$1
+get_virt_to() {
+    if [ -z "$_virt" ]; then
+        apk add virt-what
+        _virt="$(virt-what)"
+        apk del virt-what
+    fi
+    eval "$1='$_virt'"
+}
+
+is_virt() {
+    get_virt_to virt
+    [ -n "$virt" ]
+}
+
+get_ra_to() {
+    if [ -z "$_ra" ]; then
+        apk add ndisc6
+        _ra="$(rdisc6 eth0)"
+        apk del ndisc6
+    fi
+    eval "$1='$_ra'"
+}
+
+get_netconf_to() {
+    case "$1" in
+    slaac | dhcpv6 | rdnss) get_ra_to ra ;;
+    esac
+
+    # shellcheck disable=SC2154
+    case "$1" in
+    slaac) echo "$ra" | grep 'Autonomous address conf' | grep Yes && res=1 || res=0 ;;
+    dhcpv6) echo "$ra" | grep 'Stateful address conf' | grep Yes && res=1 || res=0 ;;
+    rdnss) res=$(echo "$ra" | grep 'Recursive DNS server' | cut -d: -f2- | xargs) ;;
+    *) [ -e /dev/$1 ] && res=$(cat /dev/$1) ;;
+    esac
+
+    eval "$1='$res'"
+}
+
+is_dhcpv4() {
+    get_netconf_to dhcpv4
+    # shellcheck disable=SC2154
+    [ "$dhcpv4" = 1 ]
+}
+
+is_slaac() {
+    get_netconf_to slaac
+    # shellcheck disable=SC2154
+    [ "$slaac" = 1 ]
+}
+
+is_dhcpv6() {
+    get_netconf_to dhcpv6
+    # shellcheck disable=SC2154
+    [ "$dhcpv6" = 1 ]
 }
 
 install_alpine() {
-    # 添加 virt-what 用到的社区仓库
-    add_community_repo
-
-    # 保存默认应用列表
-    if [ ! -e /tmp/world.orig ]; then
-        cp /etc/apk/world /tmp/world.orig
-    fi
-
-    # 如果是 vm 就用 virt 内核
-    apk add virt-what
-    if [ -n "$(virt-what)" ]; then
-        kernel_opt="-k virt"
-    fi
-
     # 网络
     # 坑1 udhcpc下，ip -4 addr 无法知道是否是 dhcp
     # 坑2 udhcpc不支持dhcpv6
@@ -253,25 +292,11 @@ install_alpine() {
     # 2 自带rdnss支持
     # 3 唯一要做的是关闭隐私保护
 
-    # 检测 ipv6
-    apk add ndisc6
-    is_slaac=false
-    is_dhcpv6=false
-    if ra=$(rdisc6 eth0); then
-        echo "$ra" | cat -n
-        echo "$ra" | grep 'Autonomous address conf' | grep Yes && is_slaac=true
-        echo "$ra" | grep 'Stateful address conf' | grep Yes && is_dhcpv6=true
-        rdnss=$(echo "$ra" | grep 'Recursive DNS server' | cut -d: -f2- | xargs)
-    fi
-
-    # 删除临时安装的软件，不然会带到新系统
-    # shellcheck disable=SC2046
-    apk del $(diff /tmp/world.orig /etc/apk/world | grep '^+' | sed '1d' | sed 's/^+//' | xargs)
-
     # 安装 dhcpcd
     apk add dhcpcd
     sed -i '/^slaac private/s/^/#/' /etc/dhcpcd.conf
     sed -i '/^#slaac hwaddr/s/^#//' /etc/dhcpcd.conf
+    rc-update add networking boot
 
     # 生成 lo配置 + eth0头部
     cat <<EOF >/etc/network/interfaces
@@ -282,14 +307,13 @@ auto eth0
 EOF
 
     # 生成 ipv4 配置
-    if [ "$(get_netconf dhcpv4)" = 1 ]; then
-        # dhcpv4
+    if is_dhcpv4; then
         echo "iface eth0 inet dhcp" >>/etc/network/interfaces
     else
-        # static
-        ipv4_addr=$(get_netconf ipv4_addr)
-        ipv4_gateway=$(get_netconf ipv4_gateway)
+        get_netconf_to ipv4_addr
+        get_netconf_to ipv4_gateway
         if [ -n "$ipv4_addr" ]; then
+            # shellcheck disable=SC2154
             cat <<EOF >>/etc/network/interfaces
 iface eth0 inet static
     address $ipv4_addr
@@ -301,20 +325,21 @@ EOF
     # 生成 ipv6 配置
     # slaac 或者 dhcpv6，实测不用写配置
     if false; then
-        if $is_slaac; then
+        if is_slaac; then
             echo 'iface eth0 inet6 auto' >>/etc/network/interfaces
         fi
 
-        if $is_dhcpv6; then
+        if is_dhcpv6; then
             echo 'iface eth0 inet6 dhcp' >>/etc/network/interfaces
         fi
     fi
 
     # 静态
-    if ! $is_slaac && ! $is_dhcpv6; then
-        ipv6_addr=$(get_netconf ipv6_addr)
-        ipv6_gateway=$(get_netconf ipv6_gateway)
+    if ! is_slaac && ! is_dhcpv6; then
+        get_netconf_to ipv6_addr
+        get_netconf_to ipv6_gateway
         if [ -n "$ipv6_addr" ]; then
+            # shellcheck disable=SC2154
             cat <<EOF >>/etc/network/interfaces
 iface eth0 inet6 static
     address $ipv6_addr
@@ -322,6 +347,7 @@ iface eth0 inet6 static
 EOF
             # 如果有rdnss，则删除自己添加的dns，再添加rdnss
             # 也有可能 dhcpcd 会自动设置，但没环境测试
+            get_netconf_to rdnss
             if [ -n "$rdnss" ]; then
                 sed -i '/^[[:blank:]]*nameserver[[:blank:]].*:/d' /etc/resolv.conf
                 echo "nameserver $rdnss" >>/etc/resolv.conf
@@ -329,9 +355,14 @@ EOF
         fi
     fi
 
-    ip addr
+    # 显示网络配置
+    echo
+    ip addr | cat -n
+    echo
+    echo "$ra" | cat -n
+    echo
     cat -n /etc/network/interfaces
-    rc-update add networking boot
+    echo
 
     # 设置
     setup-keymap us us
@@ -344,13 +375,23 @@ EOF
     # 但是从initramfs chroot到真正的系统后，是能识别rtc硬件的
     # 所以我们手动改用hwclock修复这个问题
     rc-update del swclock boot || true
-    rc-update add hwclock boot || true
+    rc-update add hwclock boot
 
     # 通过 setup-alpine 安装会多启用几个服务
     # https://github.com/alpinelinux/alpine-conf/blob/c5131e9a038b09881d3d44fb35e86851e406c756/setup-alpine.in#L189
     # acpid | default
     # crond | default
     # seedrng | boot
+    if [ -e /dev/input/event0 ]; then
+        rc-update add acpid
+    fi
+    rc-update add crond
+    rc-update add seedrng boot
+
+    # 如果是 vm 就用 virt 内核
+    if is_virt; then
+        kernel_opt="-k virt"
+    fi
 
     # 重置为官方仓库配置
     true >/etc/apk/repositories
