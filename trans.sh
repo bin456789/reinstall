@@ -219,10 +219,6 @@ get_netconf() {
 }
 
 install_alpine() {
-    # 还原改动，不然本脚本会被复制到新系统
-    rm -f /etc/local.d/trans.start
-    rm -f /etc/runlevels/default/local
-
     # 添加 virt-what 用到的社区仓库
     add_community_repo
 
@@ -240,7 +236,36 @@ install_alpine() {
     # 网络
     # 坑1 udhcpc下，ip -4 addr 无法知道是否是 dhcp
     # 坑2 udhcpc不支持dhcpv6
-    # 坑3 安装 dhcpcd，会强制使用dhcpv6，即使ra m=0，解决方法是配置文件设置auto
+    # 坑3 dhcpcd的slaac默认开了隐私保护，造成ip和后台面板不一致
+
+    # slaac方案1: udhcpc + rdnssd
+    # slaac方案2: dhcpcd + 关闭隐私保护
+    # dhcpv6方案: dhcpcd
+
+    # 综合使用dhcpcd方案
+    # 1 无需改动/etc/network/interfaces，自动根据ra使用slaac和dhcpv6
+    # 2 自带rdnss支持
+    # 3 唯一要做的是关闭隐私保护
+
+    # 检测 ipv6
+    apk add ndisc6
+    is_slaac=false
+    is_dhcpv6=false
+    if ra=$(rdisc6 eth0); then
+        echo "$ra" | cat -n
+        echo "$ra" | grep 'Autonomous address conf' | grep Yes && is_slaac=true
+        echo "$ra" | grep 'Stateful address conf' | grep Yes && is_dhcpv6=true
+        rdnss=$(echo "$ra" | grep 'Recursive DNS server' | cut -d: -f2- | xargs)
+    fi
+
+    # 删除临时安装的软件，不然会带到新系统
+    # shellcheck disable=SC2046
+    apk del $(diff /tmp/world.orig /etc/apk/world | grep '^+' | sed '1d' | sed 's/^+//' | xargs)
+
+    # 安装 dhcpcd
+    apk add dhcpcd
+    sed -i '/^slaac private/s/^/#/' /etc/dhcpcd.conf
+    sed -i '/^#slaac hwaddr/s/^#//' /etc/dhcpcd.conf
 
     # 生成 lo 配置
     cat <<EOF >/etc/network/interfaces
@@ -250,8 +275,8 @@ EOF
 
     # 生成 ipv4 配置
     echo >>/etc/network/interfaces
-    # dhcpv4
     if [ "$(get_netconf dhcpv4)" = 1 ]; then
+        # dhcpv4
         cat <<EOF >>/etc/network/interfaces
 auto eth0
 iface eth0 inet dhcp
@@ -271,29 +296,18 @@ EOF
     fi
 
     # 生成 ipv6 配置
-    apk add ndisc6
-    is_slaac=false
-    is_dhcpv6=false
-    if ra=$(rdisc6 eth0); then
-        echo "$ra" | cat -n
-        echo "$ra" | grep 'Autonomous address conf' | grep Yes && is_slaac=true
-        echo "$ra" | grep 'Stateful address conf' | grep Yes && is_dhcpv6=true
-        ra_dns=$(echo "$ra" | grep 'Recursive DNS server' | cut -d: -f2- | xargs)
+    # slaac 或者 dhcpv6，实测不用写配置
+    if false; then
+        if $is_slaac; then
+            echo 'iface eth0 inet6 auto' >>/etc/network/interfaces
+        fi
+
+        if $is_dhcpv6; then
+            echo 'iface eth0 inet6 dhcp' >>/etc/network/interfaces
+        fi
     fi
 
-    # 删除临时安装的软件，不然会带到新系统
-    # shellcheck disable=SC2046
-    apk del $(diff /tmp/world.orig /etc/apk/world | grep '^+' | sed '1d' | sed 's/^+//' | xargs)
-
-    if $is_slaac; then
-        echo 'iface eth0 inet6 auto' >>/etc/network/interfaces
-    fi
-
-    if $is_dhcpv6; then
-        apk add dhcpcd
-        echo 'iface eth0 inet6 dhcp' >>/etc/network/interfaces
-    fi
-
+    # 静态
     if ! $is_slaac && ! $is_dhcpv6; then
         ipv6_addr=$(get_netconf ipv6_addr)
         ipv6_gateway=$(get_netconf ipv6_gateway)
@@ -303,14 +317,13 @@ iface eth0 inet6 static
     address $ipv6_addr
     gateway $ipv6_gateway
 EOF
+            # 如果有rdnss，则删除自己添加的dns，再添加rdnss
+            # 也有可能 dhcpcd 会自动设置，但没环境测试
+            if [ -n "$rdnss" ]; then
+                sed -i '/^[[:blank:]]*nameserver[[:blank:]].*:/d' /etc/resolv.conf
+                echo "nameserver $rdnss" >>/etc/resolv.conf
+            fi
         fi
-    fi
-
-    # udhcpc/dhcpcd + slaac，不会自动写入ra dns
-    # 如果有ra dns，则删除自己添加的dns，再添加ra dns
-    if [ -n "$ra_dns" ]; then
-        sed -i '/^[[:blank:]]*nameserver[[:blank:]].*:/d' /etc/resolv.conf
-        echo "nameserver $ra_dns" >>/etc/resolv.conf
     fi
 
     ip addr
@@ -339,6 +352,10 @@ EOF
     # 重置为官方仓库配置
     true >/etc/apk/repositories
     setup-apkrepos -1
+
+    # 还原改动，不然本脚本会被复制到新系统
+    rm -f /etc/local.d/trans.start
+    rm -f /etc/runlevels/default/local
 
     # 安装到硬盘
     # alpine默认使用 syslinux (efi 环境除外)，这里强制使用 grub，方便用脚本再次重装
