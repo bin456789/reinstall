@@ -273,28 +273,25 @@ install_alpine() {
     sed -i '/^slaac private/s/^/#/' /etc/dhcpcd.conf
     sed -i '/^#slaac hwaddr/s/^#//' /etc/dhcpcd.conf
 
-    # 生成 lo 配置
+    # 生成 lo配置 + eth0头部
     cat <<EOF >/etc/network/interfaces
 auto lo
 iface lo inet loopback
+
+auto eth0
 EOF
 
     # 生成 ipv4 配置
-    echo >>/etc/network/interfaces
     if [ "$(get_netconf dhcpv4)" = 1 ]; then
         # dhcpv4
-        cat <<EOF >>/etc/network/interfaces
-auto eth0
-iface eth0 inet dhcp
-EOF
+        echo "iface eth0 inet dhcp" >>/etc/network/interfaces
     else
         # static
         ipv4_addr=$(get_netconf ipv4_addr)
         ipv4_gateway=$(get_netconf ipv4_gateway)
         if [ -n "$ipv4_addr" ]; then
             cat <<EOF >>/etc/network/interfaces
-auto eth0
-iface eth0 inet4 static
+iface eth0 inet static
     address $ipv4_addr
     gateway $ipv4_gateway
 EOF
