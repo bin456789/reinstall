@@ -156,9 +156,15 @@ test_url() {
 }
 
 add_community_repo_for_alpine() {
-    if ! grep -x 'http.*/community' /etc/apk/repositories; then
-        alpine_ver=$(cut -d. -f1,2 </etc/alpine-release)
-        echo http://dl-cdn.alpinelinux.org/alpine/v$alpine_ver/community >>/etc/apk/repositories
+    # 先检查原来的repo是不是egde
+    if grep -x 'http.*/edge/main' /etc/apk/repositories; then
+        alpine_ver=edge
+    else
+        alpine_ver=v$(cut -d. -f1,2 </etc/alpine-release)
+    fi
+
+    if ! grep -x "http.*/$alpine_ver/community" /etc/apk/repositories; then
+        echo http://dl-cdn.alpinelinux.org/alpine/$alpine_ver/community >>/etc/apk/repositories
     fi
 }
 
