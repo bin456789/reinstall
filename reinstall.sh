@@ -260,6 +260,12 @@ setos() {
                 eval ${step}_initrd=$mirror/initrd.gz
             fi
             eval ${step}_ks=$confhome/debian.cfg
+
+            is_virt && flavour=-cloud
+            # 甲骨文 debian 10 amd64 cloud 内核 vnc 没有显示
+            [ "$releasever" -eq 10 ] && [ "$basearch_alt" = amd64 ] && flavour=
+            # shellcheck disable=SC2034
+            kernel=linux-image$flavour-$basearch_alt
         fi
     }
 
@@ -861,7 +867,7 @@ build_finalos_cmdline() {
 }
 
 build_extra_cmdline() {
-    for key in localtest confhome sleep cloud_image; do
+    for key in localtest confhome sleep cloud_image kernel; do
         value=${!key}
         if [ -n "$value" ]; then
             extra_cmdline+=" extra.$key='$value'"
