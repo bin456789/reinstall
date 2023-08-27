@@ -526,10 +526,10 @@ install_pkg() {
             pkg=
             case $cmd in
             unsquashfs) command -v zypper && pkg=squashfs || pkg=squashfs-tools ;;
-            lsmem) pkg=util-linux ;;
+            lsmem | lsblk) pkg=util-linux ;;
             nslookup | dig)
                 { command -v apk && pkg="bind-tools"; } ||
-                    { command -v apt && pkg="bind9-dnsutils"; } ||
+                    { command -v apt && pkg="dnsutils"; } ||
                     { command -v pacman && pkg="bind"; } ||
                     { command -v yum dnf zypper && pkg="bind-utils"; }
                 ;;
