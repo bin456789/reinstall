@@ -1307,6 +1307,23 @@ install_redhat_ubuntu() {
         download $iso /os/installer/ubuntu.iso
         console_cmdline=$(get_ttys console=)
 
+        apk add dmidecode
+        dmi=$(dmidecode)
+        # https://github.com/systemd/systemd/blob/main/src/basic/virt.c
+        # https://github.com/canonical/cloud-init/blob/main/tools/ds-identify
+        # http://git.annexia.org/?p=virt-what.git;a=blob;f=virt-what.in;hb=HEAD
+        if echo "$dmi" | grep -Eiw "amazon|ec2"; then
+            kernel=aws
+        elif echo "$dmi" | grep -Eiw "Google Compute Engine|GoogleCloud"; then
+            kernel=gcp
+        elif echo "$dmi" | grep -Eiw "OracleCloud"; then
+            kernel=oracle
+        elif echo "$dmi" | grep -Eiw "7783-7084-3265-9085-8269-3286-77"; then
+            kernel=azure
+        else
+            kernel=generic
+        fi
+
         # 正常写法应该是 ds="nocloud-net;s=https://xxx/" 但是甲骨文云的ds更优先，自己的ds根本无访问记录
         # $seed 是 https://xxx/
         cat <<EOF >$grub_cfg
@@ -1316,7 +1333,7 @@ install_redhat_ubuntu() {
             # rmmod tpm
             search --no-floppy --label --set=root installer
             loopback loop /ubuntu.iso
-            linux (loop)/casper/vmlinuz iso-scan/filename=/ubuntu.iso autoinstall noprompt noeject cloud-config-url=$ks $extra_cmdline --- $console_cmdline
+            linux (loop)/casper/vmlinuz iso-scan/filename=/ubuntu.iso autoinstall noprompt noeject cloud-config-url=$ks $extra_cmdline extra.kernel=$kernel --- $console_cmdline
             initrd (loop)/casper/initrd
         }
 EOF
