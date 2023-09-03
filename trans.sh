@@ -141,20 +141,12 @@ setup_lighttpd() {
     rc-service lighttpd start
 }
 
+# 最后一个 tty 是主tty，显示的信息最多
+# 有些平台例如 aws/gcp 只能截图，不能输入（没有鼠标）
+# 所以如果有显示器且有鼠标，tty0 放最后面，否则 tty0 放前面
 get_ttys() {
     prefix=$1
-    str=
-    for tty in tty0 ttyS0 ttyAMA0; do
-        dev_tty=/dev/$tty
-        if [ -e $dev_tty ] && echo >$dev_tty 2>/dev/null; then
-            if [ -z "$str" ]; then
-                str="$prefix$tty"
-            else
-                str="$str $prefix$tty"
-            fi
-        fi
-    done
-    echo $str
+    wget $confhome/ttys.sh -O- | sh -s $prefix
 }
 
 setup_tty_and_log() {
@@ -390,9 +382,9 @@ EOF
 
     # 如果是 vm 就用 virt 内核
     if is_virt; then
-        kernel_opt="-k virt"
+        kernel_flavor="virt"
     else
-        kernel_opt="-k lts"
+        kernel_flavor="lts"
     fi
 
     # 重置为官方仓库配置
@@ -405,8 +397,10 @@ EOF
 
     # 安装到硬盘
     # alpine默认使用 syslinux (efi 环境除外)，这里强制使用 grub，方便用脚本再次重装
+    KERNELOPTS="$(get_ttys console=)"
+    export KERNELOPTS
     export BOOTLOADER="grub"
-    printf 'y' | setup-disk -m sys $kernel_opt -s 0 /dev/$xda
+    printf 'y' | setup-disk -m sys -k $kernel_flavor -s 0 /dev/$xda
 }
 
 # shellcheck disable=SC2154

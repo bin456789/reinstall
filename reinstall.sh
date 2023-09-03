@@ -882,6 +882,16 @@ build_extra_cmdline() {
     fi
 }
 
+echo_tmp_ttys() {
+    # 由于 windows 下无法测试各tty是否有效
+    # 这里的 tty 只临时使用，非最终系统的 tty
+    if is_in_windows; then
+        echo "console=ttyS0,115200n8 console=tty0"
+    else
+        curl -L $confhome/ttys.sh | sh -s "console="
+    fi
+}
+
 # shellcheck disable=SC2154
 build_cmdline() {
     if [ -n "$finalos_cmdline" ]; then
@@ -1064,7 +1074,7 @@ menuentry "reinstall" {
     insmod lvm
     insmod xfs
     search --no-floppy --file --set=root /reinstall-vmlinuz
-    linux$efi /reinstall-vmlinuz $cmdline
+    linux$efi /reinstall-vmlinuz $(echo_tmp_ttys) $cmdline
     initrd$efi /reinstall-initrd
 }
 EOF
