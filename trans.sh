@@ -612,7 +612,7 @@ network:
       gateway4: $ipv4_gateway @ipv4_gateway
       gateway6: $ipv6_gateway @ipv6_gateway
       nameservers:
-        addresses: [@dns_addrs]
+        addresses: @dns_addrs
 EOF
 
     if is_dhcpv4 || [ -z "$ipv4_addr" ]; then
@@ -637,20 +637,13 @@ EOF
         dns6_list=$(echo "$dns_list" | grep ':' || true)
     fi
 
-    unset dns_str
-    is_first=true
+    is_have_dns=false
     for cur in $dns4_list $dns6_list; do
-        if $is_first; then
-            is_first=false
-        else
-            dns_str="$dns_str, "
-        fi
-        dns_str="$dns_str$cur"
+        is_have_dns=true
+        echo "          - $cur" >>$ci_file
     done
 
-    if [ -n "$dns_str" ]; then
-        sed -i "s/@dns_addrs/$dns_str/" $ci_file
-    else
+    if ! $is_have_dns; then
         sed -i '/nameservers:/d' $ci_file
         sed -i '/@dns_addrs/d' $ci_file
     fi
