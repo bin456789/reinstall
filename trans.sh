@@ -584,6 +584,80 @@ mount_pseudo_fs() {
     fi
 }
 
+create_cloud_init_network_config() {
+    ci_file=$1
+
+    get_netconf_to mac_addr
+    get_netconf_to ipv4_addr
+    get_netconf_to ipv4_gateway
+    get_netconf_to ipv6_addr
+    get_netconf_to ipv6_gateway
+
+    # shellcheck disable=SC2154
+    is_dhcpv4 && dhcp4=true || dhcp4=false
+    (is_dhcpv6 || is_slaac) && dhcp6=true || dhcp6=false
+    cat <<EOF >>$ci_file
+network:
+  version: 2
+  ethernets:
+    eth0:
+      match:
+        macaddress: "$mac_addr"
+      dhcp4: $dhcp4
+      dhcp6: $dhcp6
+      addresses:
+        - $ipv4_addr @ipv4_addr
+        - $ipv6_addr @ipv6_addr
+      gateway4: $ipv4_gateway @ipv4_gateway
+      gateway6: $ipv6_gateway @ipv6_gateway
+      nameservers:
+        addresses: [@dns_addrs]
+EOF
+
+    if is_dhcpv4 || [ -z "$ipv4_addr" ]; then
+        sed -i '/@ipv4/d' $ci_file
+    fi
+
+    if is_slaac || is_dhcpv6 || [ -z "$ipv6_addr" ]; then
+        sed -i '/@ipv6/d' $ci_file
+    fi
+
+    if ! grep '@ipv._addr' $ci_file; then
+        sed -i '/addresses:/d' $ci_file
+    fi
+
+    # dns
+    dns_list=$(grep '^nameserver' /etc/resolv.conf | awk '{print $2}')
+    unset dns4_list dns6_list
+    if ! is_dhcpv4; then
+        dns4_list=$(echo "$dns_list" | grep '\.' || true)
+    fi
+    if ! (is_slaac || is_dhcpv6); then
+        dns6_list=$(echo "$dns_list" | grep ':' || true)
+    fi
+
+    unset dns_str
+    is_first=true
+    for cur in $dns4_list $dns6_list; do
+        if $is_first; then
+            is_first=false
+        else
+            dns_str="$dns_str, "
+        fi
+        dns_str="$dns_str$cur"
+    done
+
+    if [ -n "$dns_str" ]; then
+        sed -i "s/@dns_addrs/$dns_str/" $ci_file
+    else
+        sed -i '/nameservers:/d' $ci_file
+        sed -i '/@dns_addrs/d' $ci_file
+    fi
+
+    sed -Ei "s/@(ip|dns).*//" $ci_file
+
+}
+
 download_cloud_init_config() {
     os_dir=$1
     ci_file=$os_dir/etc/cloud/cloud.cfg.d/99_nocloud.cfg
@@ -611,6 +685,9 @@ swap:
 EOF
         fi
     fi
+
+    create_cloud_init_network_config $ci_file
+    cat -n $ci_file
 }
 
 modify_dd_os() {
