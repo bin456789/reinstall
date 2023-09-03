@@ -95,10 +95,12 @@ if { $dhcpv4 || $dhcpv6 || $slaac; } && [ ! -e /etc/resolv.conf ]; then
 fi
 
 # 如果ipv4/ipv6不联网，则删除该协议的dns
-if $ipv4_has_internet && ! $ipv6_has_internet; then
-    sed -i '/^[[:blank:]]*nameserver[[:blank:]].*:/d' /etc/resolv.conf
-elif ! $ipv4_has_internet && $ipv6_has_internet; then
-    sed -i '/^[[:blank:]]*nameserver[[:blank:]].*\./d' /etc/resolv.conf
+if [ -e /etc/resolv.conf ]; then
+    if $ipv4_has_internet && ! $ipv6_has_internet; then
+        sed -i '/^[[:blank:]]*nameserver[[:blank:]].*:/d' /etc/resolv.conf
+    elif ! $ipv4_has_internet && $ipv6_has_internet; then
+        sed -i '/^[[:blank:]]*nameserver[[:blank:]].*\./d' /etc/resolv.conf
+    fi
 fi
 
 # 如果联网了，但没获取到默认 DNS，则添加我们的 DNS
@@ -113,6 +115,7 @@ fi
 
 # 传参给 trans.start
 $dhcpv4 && echo 1 >/dev/dhcpv4 || echo 0 >/dev/dhcpv4
+echo $mac_addr >/dev/mac_addr
 echo $ipv4_addr >/dev/ipv4_addr
 echo $ipv4_gateway >/dev/ipv4_gateway
 echo $ipv6_addr >/dev/ipv6_addr
