@@ -245,7 +245,7 @@ get_netconf_to() {
     slaac) echo "$ra" | grep 'Autonomous address conf' | grep Yes && res=1 || res=0 ;;
     dhcpv6) echo "$ra" | grep 'Stateful address conf' | grep Yes && res=1 || res=0 ;;
     rdnss) res=$(echo "$ra" | grep 'Recursive DNS server' | cut -d: -f2- | xargs) ;;
-    *) [ -e /dev/$1 ] && res=$(cat /dev/$1) ;;
+    *) res=$(cat /dev/$1) ;;
     esac
 
     eval "$1='$res'"
