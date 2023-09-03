@@ -998,11 +998,11 @@ EOF
 
     # hack 4 网络配置
     collect_netconf
+    is_in_china && is_in_china=true || is_in_china=false
     line_num=$(grep -E -n 'MAC_ADDRESS=' init | cut -d: -f1)
     cat <<EOF | sed -i "${line_num}r /dev/stdin" init
         source /alpine-network.sh \
-        "$mac_addr" "$ipv4_addr" "$ipv4_gateway" "$ipv6_addr" "$ipv6_gateway" \
-        "$(is_in_china && echo true || echo false)"
+        "$mac_addr" "$ipv4_addr" "$ipv4_gateway" "$ipv6_addr" "$ipv6_gateway" "$is_in_china"
 EOF
 
     # hack 5 运行 trans.start
