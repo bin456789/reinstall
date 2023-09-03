@@ -341,7 +341,7 @@ setos() {
         if grep -q 15\.4 <<<"$releasever"; then
             openstack=-OpenStack
         fi
-        eval ${step}_img=https://mirrors.kernel.org/opensuse/$dir/appliances/openSUSE-$releasever-Minimal-VM.$basearch$openstack-Cloud.qcow2
+        eval ${step}_img=https://mirror.fcix.net/opensuse/$dir/appliances/openSUSE-$releasever-Minimal-VM.$basearch$openstack-Cloud.qcow2
         # eval ${step}_img=https://download.opensuse.org/$dir/appliances/openSUSE-$releasever-Minimal-VM.$basearch-Cloud.qcow2
     }
 
