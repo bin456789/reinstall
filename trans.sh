@@ -229,7 +229,8 @@ is_virt() {
 get_ra_to() {
     if [ -z "$_ra" ]; then
         apk add ndisc6
-        _ra="$(rdisc6 eth0)"
+        # 有时会重复收取，所以设置收一份后退出
+        _ra="$(rdisc6 -1 eth0)"
         apk del ndisc6
     fi
     eval "$1='$_ra'"
