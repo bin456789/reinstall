@@ -48,6 +48,8 @@ get_ipv4_entry && dhcpv4=true || dhcpv4=false
 get_ipv6_entry | grep /128 && dhcpv6=true || dhcpv6=false
 
 # 检测是否有 slaac
+# 也可以有地址就行，不管是slaac或者dhcpv6
+# 因为会在trans里判断
 slaac=false
 for i in $(seq 10 -1 0); do
     echo "waiting slaac for ${i}s"
@@ -68,10 +70,9 @@ fi
 # 检查 ipv4/ipv6 是否连接联网
 ipv4_has_internet=false
 ipv6_has_internet=false
-for i in $(seq 10); do
-    is_have_ipv4 && ipv4_test_complete=false || ipv4_test_complete=true
-    is_have_ipv6 && ipv6_test_complete=false || ipv6_test_complete=true
-
+is_have_ipv4 && ipv4_test_complete=false || ipv4_test_complete=true
+is_have_ipv6 && ipv6_test_complete=false || ipv6_test_complete=true
+for i in $(seq 5); do
     if ! $ipv4_test_complete && nslookup www.qq.com $ipv4_dns1; then
         ipv4_has_internet=true
         ipv4_test_complete=true
@@ -94,11 +95,20 @@ if { $dhcpv4 || $dhcpv6 || $slaac; } && [ ! -e /etc/resolv.conf ]; then
     sleep 5
 fi
 
-# 如果ipv4/ipv6不联网，则删除该协议的dns
-if [ -e /etc/resolv.conf ]; then
-    if $ipv4_has_internet && ! $ipv6_has_internet; then
+# 如果有ipv6地址，但ipv6没网络
+# alpine只会用ipv6下载apk，而不用会ipv4下载
+# 所以要删除不联网协议的ip和dns
+
+# 甲骨文云管理面板添加ipv6地址然后取消
+# 依然会分配ipv6地址，但ipv6没网络
+if $ipv4_has_internet && ! $ipv6_has_internet; then
+    ip -6 addr flush scope global dev eth0
+    if [ -e /etc/resolv.conf ]; then
         sed -i '/^[[:blank:]]*nameserver[[:blank:]].*:/d' /etc/resolv.conf
-    elif ! $ipv4_has_internet && $ipv6_has_internet; then
+    fi
+elif ! $ipv4_has_internet && $ipv6_has_internet; then
+    ip -4 addr flush scope global dev eth0
+    if [ -e /etc/resolv.conf ]; then
         sed -i '/^[[:blank:]]*nameserver[[:blank:]].*\./d' /etc/resolv.conf
     fi
 fi
