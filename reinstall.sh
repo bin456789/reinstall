@@ -1041,19 +1041,31 @@ build_cmdline
 info 'create grub config'
 # linux grub
 if ! is_in_windows; then
-    # 找出主配置文件（含有menuentry|blscfg）
-    # 如果是efi，先搜索efi目录
-    # arch云镜像efi分区挂载在/efi
-    if is_efi; then
-        for dir in /boot/efi /efi; do
-            [ -d $dir ] && efi_dir+=" $dir"
-        done
+    if command -v update-grub; then
+        grub_cfg=$(grep -o '[^ ]*grub.cfg' "$(which update-grub)")
+    else
+        # 找出主配置文件（含有menuentry|blscfg）
+        # 如果是efi，先搜索efi目录
+        # arch云镜像efi分区挂载在/efi
+        if is_efi; then
+            for dir in /boot/efi /efi; do
+                [ -d $dir ] && efi_dir+=" $dir"
+            done
+        fi
+        grub_cfg=$(
+            find $efi_dir /boot/grub* \
+                -type f -name grub.cfg \
+                -exec grep -E -l 'menuentry|blscfg' {} \;
+        )
+
+        if [ "$(wc -l <<<"$grub_cfg")" -gt 1 ]; then
+            error_and_exit 'find multi grub.cfg files.'
+        fi
     fi
-    grub_cfg=$(
-        find $efi_dir /boot/grub* \
-            -type f -name grub.cfg \
-            -exec grep -E -l 'menuentry|blscfg' {} \; | xargs -0 | head -1
-    )
+
+    # 有些机子例如hython debian的grub.cfg少了40_custom 41_custom
+    # 所以先重新生成 grub.cfg
+    $(command -v grub-mkconfig grub2-mkconfig) -o $grub_cfg
 
     # 在x86 efi机器上，不同版本的 grub 可能用 linux 或 linuxefi 加载内核
     # 通过检测原有的条目有没有 linuxefi 字样就知道当前 grub 用哪一种
