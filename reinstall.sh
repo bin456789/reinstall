@@ -586,11 +586,16 @@ check_ram() {
     debian) ram_installer=384 ;;
     *) ram_installer=1024 ;;
     esac
+
     ram_cloud_image=512
+
+    case "$distro" in
+    opensuse | arch) cloud_image=1 ;;
+    esac
 
     # ram 足够就用普通方法安装，否则如果内存大于512就用 cloud image
     # TODO: 测试 256 384 内存
-    if [ $ram_size -lt $ram_cloud_image ]; then
+    if [ ! "$cloud_image" = 1 ] && [ $ram_size -lt $ram_installer ]; then
         if [ $ram_size -ge $ram_cloud_image ]; then
             info "RAM < $ram_installer MB. Switch to cloud image mode"
             cloud_image=1
