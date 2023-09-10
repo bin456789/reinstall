@@ -477,23 +477,34 @@ is_distro_like_redhat() {
 # 检查是否为正确的系统名
 verify_os_string() {
     for os in \
-        'centos-7|8|9' \
-        'alma-8|9' \
-        'rocky-8|9' \
-        'fedora-37|38' \
-        'ubuntu-20.04|22.04' \
-        'alpine-3.16|3.17|3.18' \
-        'debian-10|11|12' \
-        'opensuse-15|15.4|15.5|tumbleweed' \
-        'arch-' \
-        'windows-' \
-        'dd-'; do
-        ds=$(echo $os | cut -d- -f1)
-        vers=$(echo $os | cut -d- -f2 | sed 's \. \\\. g')
-        finalos=$(echo "$@" | tr '[:upper:]' '[:lower:]' | sed -n -E "s,^($ds)[ :-]?($vers)$,\1:\2,p")
+        'centos   7|8|9' \
+        'alma     8|9' \
+        'rocky    8|9' \
+        'fedora   37|38' \
+        'debian   10|11|12' \
+        'ubuntu   20.04|22.04' \
+        'alpine   3.16|3.17|3.18' \
+        'opensuse 15|15.4|15.5|tumbleweed' \
+        'arch' \
+        'windows' \
+        'dd'; do
+        ds=$(awk '{print $1}' <<<"$os")
+        vers=$(awk '{print $2}' <<<"$os" | sed 's \. \\\. g')
+        finalos=$(echo "$@" | tr '[:upper:]' '[:lower:]' | sed -n -E "s,^($ds)[ :-]?(|$vers)$,\1:\2,p")
         if [ -n "$finalos" ]; then
             distro=$(echo $finalos | cut -d: -f1)
             releasever=$(echo $finalos | cut -d: -f2)
+            if [ -z "$releasever" ]; then
+                # 默认版本号
+                if grep -q '|' <<<$os; then
+                    if [ "$distro" = opensuse ]; then
+                        field='NF-1'
+                    else
+                        field='NF'
+                    fi
+                    releasever=$(awk '{print $2}' <<<$os | awk -F'|' "{print \$($field)}")
+                fi
+            fi
             return
         fi
     done
