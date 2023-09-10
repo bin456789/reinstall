@@ -46,7 +46,8 @@ error_and_exit() {
 }
 
 curl() {
-    command curl --connect-timeout 5 --retry 3 --retry-delay 0 "$@"
+    # 添加 -f, --fail，不然 404 退出码也为0
+    command curl --connect-timeout 5 --retry 2 --retry-delay 1 -f "$@"
 }
 
 is_in_china() {
@@ -131,8 +132,8 @@ test_url() {
     echo $url
 
     tmp_file=/tmp/reinstall-img-test
-    http_code=$(command curl --connect-timeout 5 --retry 3 -Ls -r 0-1048575 -w "%{http_code}" -o $tmp_file $url)
-    if [ "$http_code" != 200 ] && [ "$http_code" != 206 ]; then
+
+    if ! curl -r 0-1048575 -Lo $tmp_file $url; then
         error "$url not accessible"
         return 1
     fi
@@ -148,8 +149,8 @@ test_url() {
         real_type=$(file -b $tmp_file | sed 's/^# //' | cut -d' ' -f1 | tr '[:upper:]' '[:lower:]')
         [ -n "$var_to_eval" ] && eval $var_to_eval=$real_type
 
-        if ! echo $expect_type | grep -wo "$real_type"; then
-            error "$url expect: $expect_type. real: $real_type."
+        if ! grep -wo "$real_type" <<<"$expect_type"; then
+            error "$url expected: $expect_type. actual: $real_type."
             return 1
         fi
     fi
