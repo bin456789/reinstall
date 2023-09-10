@@ -714,10 +714,16 @@ modify_dd_os() {
     fi
 
     download_cloud_init_config $os_dir
+
     if [ -f $os_dir/etc/redhat-release ]; then
         find_and_mount /boot
         find_and_mount /boot/efi
         disable_selinux_kdump $os_dir
+    elif grep opensuse-tumbleweed $os_dir/etc/os-release; then
+        cp -f /etc/resolv.conf $os_dir/etc/resolv.conf
+        mount_pseudo_fs $os_dir
+        chroot $os_dir zypper install -y wicked
+        rm -f $os_dir/etc/resolv.conf
     fi
 }
 

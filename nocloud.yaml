@@ -17,7 +17,8 @@ chpasswd:
       type: text
 runcmd:
   # arch 没有 /etc/ssh/sshd_config.d/ 文件夹
-  - echo "PermitRootLogin yes" >/etc/ssh/sshd_config.d/01-permitrootlogin.conf || echo "PermitRootLogin yes" >>/etc/ssh/sshd_config
+  # opensuse tumbleweed 有 /etc/ssh/sshd_config.d/ 文件夹，但没有 /etc/ssh/sshd_config，但有/usr/etc/ssh/sshd_config
+  - grep 'Include.*/etc/ssh/sshd_config.d' /etc/sshd_config && echo "PermitRootLogin yes" >/etc/ssh/sshd_config.d/01-permitrootlogin.conf || echo "PermitRootLogin yes" >>/etc/ssh/sshd_config
   - systemctl restart sshd
   # ubuntu 镜像运行 echo -e '\nDone' ，-e 会被显示出来
   - echo >/dev/tty0

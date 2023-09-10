@@ -8,17 +8,17 @@ this_script=$(realpath $0)
 
 usage_and_exit() {
     cat <<EOF
-Usage: reinstall.sh centos-7/8/9
-                    alma-8/9
-                    rocky-8/9
-                    fedora-37/38
-                    ubuntu-20.04/22.04
-                    alpine-3.16/3.17/3.18
-                    debian-10/11/12
-                    opensuse-15.4/15.5
+Usage: reinstall.sh centos   7|8|9
+                    alma     8|9
+                    rocky    8|9
+                    fedora   37|38
+                    debian   10|11|12
+                    ubuntu   20.04|22.04
+                    alpine   3.16|3.17|3.18
+                    opensuse 15.4|15.5|tumbleweed
                     arch
-                    windows --iso=xxx --image-name=xxx
-                    dd      --img=xxx
+                    dd       --img=xxx
+                    windows  --iso=xxx --image-name=xxx
 EOF
     exit 1
 }
@@ -330,27 +330,44 @@ setos() {
 
     setos_opensuse() {
         cloud_image=1
-        if grep -iq Tumbleweed <<<"$releasever"; then
-            dir=tumbleweed
-            releasever=Tumbleweed
+
+        # aria2 有 mata4 问题
+        # https://download.opensuse.org/
+
+        # 清华源缺少 aarch64 tumbleweed appliances
+        # https://mirrors.tuna.tsinghua.edu.cn/opensuse/ports/aarch64/tumbleweed/appliances/
+        #           https://mirrors.nju.edu.cn/opensuse/ports/aarch64/tumbleweed/appliances/
+
+        if is_in_china; then
+            mirror=https://mirrors.nju.edu.cn/opensuse
         else
-            if ! grep -q '\.' <<<"$releasever"; then
-                releasever=$(curl https://download.opensuse.org/download/distribution/leap/?json |
-                    grep -oP "(?<=\"name\":\")$releasever\.[0-9]*" | tail -1)
+            mirror=https://mirror.fcix.net/opensuse
+        fi
+
+        if grep -iq Tumbleweed <<<"$releasever"; then
+            # Tumbleweed
+            releasever=Tumbleweed
+            if [ "$basearch" = aarch64 ]; then
+                dir=ports/aarch64/tumbleweed/appliances
+            else
+                dir=tumbleweed/appliances
             fi
-            dir=distribution/leap/$releasever
+        else
+            # 常规版本
+            # 如果用户输入的版本号是 15，需要查询小版本号
+            if ! grep -q '\.' <<<"$releasever"; then
+                releasever=$(curl -L https://download.opensuse.org/download/distribution/openSUSE-stable/appliances/boxes/?json |
+                    grep -oP "(?<=\"name\":\"Leap-)$releasever\.[0-9]*" | head -1)
+            fi
+            if [ "$releasever" = 15.4 ]; then
+                openstack=-OpenStack
+            fi
+            dir=distribution/leap/$releasever/appliances
             releasever=Leap-$releasever
         fi
 
-        # cloud image
         # 有专门的kvm镜像，openSUSE-Leap-15.5-Minimal-VM.x86_64-kvm-and-xen.qcow2，但里面没有cloud-init
-        # TODO: aria2 mata4问题
-        # TODO: Tumbleweed 网络问题/ssh主文件incloud子目录问题
-        if grep -q 15\.4 <<<"$releasever"; then
-            openstack=-OpenStack
-        fi
-        eval ${step}_img=https://mirror.fcix.net/opensuse/$dir/appliances/openSUSE-$releasever-Minimal-VM.$basearch$openstack-Cloud.qcow2
-        # eval ${step}_img=https://download.opensuse.org/$dir/appliances/openSUSE-$releasever-Minimal-VM.$basearch-Cloud.qcow2
+        eval ${step}_img=$mirror/$dir/openSUSE-$releasever-Minimal-VM.$basearch$openstack-Cloud.qcow2
     }
 
     setos_windows() {

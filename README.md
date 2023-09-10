@@ -9,6 +9,7 @@
 - 支持使用官方 iso 重装到 Windows (不支持 ARM)
 - 支持从 Windows 重装到 Linux
 - 原系统分区支持 lvm / btrfs
+- 自动选择国内外安装源
 - 使用 dd 或云镜像时有高贵的进度条，可通过 ssh/vnc/web/串行控制台 查看
 - 有很多注释
 
@@ -21,15 +22,15 @@
     curl -O https://ghproxy.com/https://raw.githubusercontent.com/bin456789/reinstall/main/reinstall.sh
 
 ### 安装 Linux：
-    bash reinstall.sh centos-7/8/9       (centos-8/9 为 stream 版本)
-                      alma-8/9
-                      rocky-8/9
-                      fedora-37/38
-                      ubuntu-20.04/22.04
-                      alpine-3.16/3.17/3.18
-                      debian-10/11/12
-                      opensuse-15.4/15.5 (只支持云镜像)
-                      arch               (只支持云镜像)
+    bash reinstall.sh centos   7|8|9 (8|9 为 stream 版本)
+                      alma     8|9
+                      rocky    8|9
+                      fedora   37|38
+                      debian   10|11|12
+                      ubuntu   20.04|22.04
+                      alpine   3.16|3.17|3.18
+                      opensuse 15.4|15.5|tumbleweed (只支持云镜像)
+                      arch     (只支持云镜像)
                       
     可选参数:         --ci 强制使用云镜像
 
