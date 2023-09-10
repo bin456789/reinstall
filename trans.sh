@@ -1364,13 +1364,15 @@ install_redhat_ubuntu() {
         extra_cmdline="$extra_cmdline $(echo $var | sed -E "s/(extra\.[^=]*)=(.*)/\1='\2'/")"
     done
 
+    # 安装红帽系时，只有最后一个有安装界面显示
+    # https://anaconda-installer.readthedocs.io/en/latest/boot-options.html#console
+    console_cmdline=$(get_ttys console=)
     grub_cfg=/os/boot/grub/grub.cfg
 
     # 新版grub不区分linux/linuxefi
     # shellcheck disable=SC2154
     if [ "$distro" = "ubuntu" ]; then
         download $iso /os/installer/ubuntu.iso
-        console_cmdline=$(get_ttys console=)
 
         apk add dmidecode
         dmi=$(dmidecode)
@@ -1411,7 +1413,7 @@ EOF
         set timeout=5
         menuentry "reinstall" {
             search --no-floppy --label --set=root os
-            linux /vmlinuz inst.stage2=hd:LABEL=installer:/install.img inst.ks=$ks $extra_cmdline
+            linux /vmlinuz inst.stage2=hd:LABEL=installer:/install.img inst.ks=$ks $extra_cmdline $console_cmdline
             initrd /initrd.img
         }
 EOF
@@ -1432,6 +1434,10 @@ if [ "$sleep" = 1 ]; then
     exit
 fi
 
+if [ "$distro" != "alpine" ]; then
+    mod_motd
+fi
+
 setup_tty_and_log
 clear_previous
 add_community_repo
@@ -1439,10 +1445,7 @@ add_community_repo
 # 找到主硬盘
 # shellcheck disable=SC2010
 xda=$(ls /dev/ | grep -Ex 'sda|hda|xda|vda|xvda|nvme0n1')
-
-# shellcheck disable=SC2154
 if [ "$distro" != "alpine" ]; then
-    mod_motd
     setup_nginx_if_enough_ram
 fi
 

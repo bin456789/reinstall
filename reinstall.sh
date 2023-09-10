@@ -79,6 +79,7 @@ is_use_cloud_image() {
 is_use_dd() {
     [ "$distro" = dd ]
 }
+
 is_os_in_btrfs() {
     mount | grep -w 'on / type btrfs'
 }
@@ -93,16 +94,17 @@ get_os_part() {
 }
 
 cp_to_btrfs_root() {
-    files=$*
     mount_dir=/tmp/reinstall-btrfs-root
     if ! grep -q $mount_dir /proc/mounts; then
         mkdir -p $mount_dir
         mount "$(get_os_part)" $mount_dir -t btrfs -o subvol=/
     fi
-    cp -rf $files /tmp/reinstall-btrfs-root
+    cp -rf "$@" /tmp/reinstall-btrfs-root
 }
 
 is_host_has_ipv4_and_ipv6() {
+    host=$1
+
     install_pkg dig
     # dig会显示cname结果，cname结果以.结尾，grep -v '\.$' 用于去除 cname 结果
     res=$(dig +short $host A $host AAAA | grep -v '\.$')
@@ -275,11 +277,11 @@ setos() {
             # cloud image
             # TODO: Minimal 镜像
             if is_in_china; then
-                ci_mirror=https://mirror.nju.edu.cn/ubuntu-cloud-images/releases
+                ci_mirror=https://mirror.nju.edu.cn/ubuntu-cloud-images
             else
-                ci_mirror=https://cloud-images.ubuntu.com/releases/$releasever/release
+                ci_mirror=https://cloud-images.ubuntu.com
             fi
-            eval ${step}_img=$ci_mirror/ubuntu-$releasever-server-cloudimg-$basearch_alt.img
+            eval ${step}_img=$ci_mirror/releases/$releasever/release/ubuntu-$releasever-server-cloudimg-$basearch_alt.img
         else
             # 传统安装
             if [ "$localtest" = 1 ]; then
@@ -456,16 +458,11 @@ setos() {
     }
 
     eval ${step}_distro=$distro
-    case "$distro" in
-    ubuntu) setos_ubuntu ;;
-    alpine) setos_alpine ;;
-    debian) setos_debian ;;
-    arch) setos_arch ;;
-    opensuse) setos_opensuse ;;
-    windows) setos_windows ;;
-    dd) setos_dd ;;
-    *) setos_redhat ;;
-    esac
+    if is_distro_like_redhat $distro; then
+        setos_redhat
+    else
+        setos_$distro
+    fi
 }
 
 is_distro_like_redhat() {
