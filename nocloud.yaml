@@ -23,3 +23,4 @@ runcmd:
   # ubuntu 镜像运行 echo -e '\nDone' ，-e 会被显示出来
   - echo >/dev/tty0
   - echo Done >/dev/tty0
+  - touch /etc/cloud/cloud-init.disabled
