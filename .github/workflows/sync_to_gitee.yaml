@@ -1,0 +1,15 @@
+name: 同步到 Gitee
+on: [push, workflow_dispatch]
+jobs:
+  sync:
+    runs-on: ubuntu-latest
+    steps:
+      - name: 同步到 Gitee
+        uses: Yikun/hub-mirror-action@master
+        with:
+          src: github/bin456789
+          dst: gitee/bin456789
+          static_list: "reinstall"
+          force_update: true
+          dst_key: ${{ secrets.GITEE_PRIVATE_KEY }}
+          dst_token: ${{ secrets.GITEE_TOKEN }}
