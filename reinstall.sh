@@ -116,16 +116,6 @@ get_host_by_url() {
     cut -d/ -f3 <<<$1
 }
 
-set_github_proxy() {
-    case "$confhome" in
-    http*://raw.githubusercontent.com/*)
-        if is_in_china; then
-            confhome=https://ghproxy.com/$confhome
-        fi
-        ;;
-    esac
-}
-
 test_url() {
     url=$1
     expect_type=$2
@@ -845,8 +835,11 @@ case "$basearch" in
 "aarch64") basearch_alt=arm64 ;;
 esac
 
-# 设置 github 国内代理
-set_github_proxy
+# 国内使用 gitee
+if [ "$confhome" = https://raw.githubusercontent.com/bin456789/reinstall/main ] &&
+    is_in_china; then
+    confhome=https://gitee.com/bin456789/reinstall/raw/main
+fi
 
 # 以下目标系统不需要进入alpine
 # debian

@@ -19,7 +19,7 @@
     curl -O https://raw.githubusercontent.com/bin456789/reinstall/main/reinstall.sh
 
 ### 下载 (国内)：
-    curl -O https://ghproxy.com/https://raw.githubusercontent.com/bin456789/reinstall/main/reinstall.sh
+    curl -O https://gitee.com/bin456789/reinstall/raw/main/reinstall.sh
 
 ### 安装 Linux：
     bash reinstall.sh centos   7|8|9 (8|9 为 stream 版本)
