@@ -981,7 +981,7 @@ mod_alpine_initrd() {
         curl -Lo $modloop_file $nextos_modloop
         if is_in_windows; then
             # cygwin 没有 unsquashfs
-            7z e $modloop_file ipv6.ko -r -y -oa$ipv6_dir
+            7z e $modloop_file ipv6.ko -r -y -o$ipv6_dir
         else
             install_pkg unsquashfs
             mkdir_clear $modloop_dir
