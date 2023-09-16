@@ -555,57 +555,74 @@ verify_os_string() {
     usage_and_exit
 }
 
-apt_install() {
-    [ -z "$apk_updated" ] && apt update && apk_updated=1
-    apt install -y $pkgs
-}
-
 install_pkg() {
-    cmds=$*
-
     is_in_windows && return
 
-    need_install=false
-    for cmd in $cmds; do
-        if ! command -v $cmd >/dev/null; then
-            need_install=true
-            break
+    for cmd in "$@"; do
+        if ! command -v $cmd ||
+            # gentoo 默认编译的 unsquashfs 不支持 xz
+            { [ "$cmd" = unsquashfs ] &&
+                command -v emerge &&
+                ! unsquashfs |& grep -w xz &&
+                echo "unsquashfs not supported xz. need rebuild."; }; then
+
+            if ! find_pkg_mgr; then
+                error_and_exit "Can't find compatible package manager. Please manually install $cmd."
+            fi
+            cmd_to_pkg
+            install_pkg_real
         fi
     done
 
-    if $need_install; then
-        if is_in_alpine; then
-            add_community_repo_for_alpine
+    find_pkg_mgr() {
+        if [ -z "$pkg_mgr" ]; then
+            # command -v 有先后顺序，dnf放yum前面
+            if ! pkg_mgr=$(command -v dnf yum apt pacman zypper emerge apk | head -1 | awk -F/ '{print $NF}' | grep .); then
+                return 1
+            fi
         fi
-        # cmds to pkgs
-        for cmd in $cmds; do
-            pkg=
-            case $cmd in
-            unsquashfs) command -v zypper && pkg=squashfs || pkg=squashfs-tools ;;
-            lsmem | lsblk) pkg=util-linux ;;
-            nslookup | dig)
-                { command -v apk && pkg="bind-tools"; } ||
-                    { command -v apt && pkg="dnsutils"; } ||
-                    { command -v pacman && pkg="bind"; } ||
-                    { command -v yum dnf zypper && pkg="bind-utils"; }
-                ;;
-            *) pkg=$cmd ;;
-            esac
-            pkgs+=" $pkg"
-        done
+    }
 
-        # command -v 有先后顺序，dnf放yum前面
-        pkg_mgr=$(command -v dnf yum apt pacman zypper apk | head -1 | awk -F/ '{print $NF}')
-        case $pkg_mgr in
-        dnf) dnf install -y --setopt=install_weak_deps=False $pkgs ;;
-        yum) yum install -y $pkgs ;;
-        apk) apk add $pkgs ;;
-        apt) apt_install $pkgs ;;
-        pacman) pacman -Syu --noconfirm --needed $pkgs ;;
-        zypper) zypper install -y $pkgs ;;
-        *) error_and_exit "Unexpected package manager: $pkg_mgr" ;;
+    cmd_to_pkg() {
+        unset USE
+        case $cmd in
+        lsmem | lsblk) pkg="util-linux" ;;
+        unsquashfs)
+            case "$pkg_mgr" in
+            zypper) pkg="squashfs" ;;
+            emerge) pkg="squashfs-tools" && export USE="lzma" ;;
+            *) pkg="squashfs-tools" ;;
+            esac
+            ;;
+        nslookup | dig)
+            case "$pkg_mgr" in
+            apt) pkg="dnsutils" ;;
+            pacman) pkg="bind" ;;
+            apk | emerge) pkg="bind-tools" ;;
+            yum | dnf | zypper) pkg="bind-utils" ;;
+            esac
+            ;;
+        *) pkg=$cmd ;;
         esac
-    fi
+    }
+
+    install_pkg_real() {
+        case $pkg_mgr in
+        dnf) dnf install -y --setopt=install_weak_deps=False $pkg ;;
+        yum) yum install -y $pkg ;;
+        emerge) emerge --oneshot $pkg ;;
+        pacman) pacman -Syu --noconfirm --needed $pkg ;;
+        zypper) zypper install -y $pkg ;;
+        apk)
+            add_community_repo_for_alpine
+            apk add $pkg
+            ;;
+        apt)
+            [ -z "$apk_updated" ] && apt update && apk_updated=1
+            apt install -y $pkg
+            ;;
+        esac
+    }
 }
 
 check_ram() {
