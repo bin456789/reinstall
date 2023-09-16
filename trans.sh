@@ -1,16 +1,30 @@
 #!/bin/ash
 # shellcheck shell=dash
-# shellcheck disable=SC3047,SC3036,SC3010,SC3001
+# shellcheck disable=SC2086,SC3047,SC3036,SC3010,SC3001
 # alpine 默认使用 busybox ash
 
 # 命令出错终止运行，将进入到登录界面，防止失联
 set -eE
-trap 'error line $LINENO return $?' ERR
-this_script=$(realpath $0)
+trap 'trap_err $LINENO $?' ERR
 
-catch() {
-    if [ "$1" != "0" ]; then
-        error "Error $1 occurred on $2"
+# 复制本脚本到 /tmp/trans.sh，用于打印错误
+# 也有可能从管道运行，这时删除 /tmp/trans.sh
+case "$0" in
+*trans.*) cp -f "$0" /tmp/trans.sh ;;
+*) rm -f /tmp/trans.sh ;;
+esac
+
+# 还原改动，不然本脚本会被复制到新系统
+rm -f /etc/local.d/trans.start
+rm -f /etc/runlevels/default/local
+
+trap_err() {
+    line_no=$1
+    ret_no=$2
+
+    error "Line $line_no return $ret_no"
+    if [ -f "/tmp/trans.sh" ]; then
+        sed -n "$line_no"p /tmp/trans.sh
     fi
 }
 
@@ -18,10 +32,6 @@ error() {
     color='\e[31m'
     plain='\e[0m'
     echo -e "${color}Error: $*${plain}"
-    # 如果从trap调用，显示错误行
-    if [ "$1" = line ]; then
-        sed -n "$2"p $this_script
-    fi
 }
 
 error_and_exit() {
@@ -40,11 +50,6 @@ add_community_repo() {
     if ! grep -x "http.*/$alpine_ver/community" /etc/apk/repositories; then
         echo http://dl-cdn.alpinelinux.org/alpine/$alpine_ver/community >>/etc/apk/repositories
     fi
-}
-
-cp() {
-    # 防止 alias cp='cp -i'
-    command cp "$@"
 }
 
 download() {
@@ -146,6 +151,7 @@ setup_lighttpd() {
 # 所以如果有显示器且有鼠标，tty0 放最后面，否则 tty0 放前面
 get_ttys() {
     prefix=$1
+    # shellcheck disable=SC2154
     wget $confhome/ttys.sh -O- | sh -s $prefix
 }
 
@@ -270,6 +276,21 @@ is_dhcpv6() {
     [ "$dhcpv6" = 1 ]
 }
 
+insert_into_file() {
+    file=$1
+    location=$2
+    regex_to_find=$3
+
+    line_num=$(grep -E -n "$regex_to_find" "$file" | cut -d: -f1)
+    if [ "$location" = before ]; then
+        line_num=$((line_num - 1))
+    elif ! [ "$location" = after ]; then
+        return 1
+    fi
+
+    sed -i "${line_num}r /dev/stdin" "$file"
+}
+
 install_alpine() {
     # 网络
     # 坑1 udhcpc下，ip -4 addr 无法知道是否是 dhcp
@@ -392,10 +413,6 @@ EOF
     true >/etc/apk/repositories
     setup-apkrepos -1
 
-    # 还原改动，不然本脚本会被复制到新系统
-    rm -f /etc/local.d/trans.start
-    rm -f /etc/runlevels/default/local
-
     # 安装到硬盘
     # alpine默认使用 syslinux (efi 环境除外)，这里强制使用 grub，方便用脚本再次重装
     KERNELOPTS="$(get_ttys console=)"
@@ -448,6 +465,7 @@ create_part() {
     wipefs -a /dev/$xda
 
     # xda*1 星号用于 nvme0n1p1 的字母 p
+    # shellcheck disable=SC2154
     if [ "$distro" = windows ]; then
         apk add ntfs-3g-progs virt-what wimlib rsync dos2unix
         # 虽然ntfs3不需要fuse，但wimmount需要，所以还是要保留
@@ -465,6 +483,7 @@ create_part() {
                 set 2 msftres on \
                 set 3 msftdata on
             update_part /dev/$xda
+
             mkfs.fat -n efi /dev/$xda*1              #1 efi
             echo                                     #2 msr
             mkfs.ext4 -F -L os /dev/$xda*3           #3 os
@@ -477,42 +496,40 @@ create_part() {
                 mkpart primary ntfs -6GiB 100% \
                 set 1 boot on
             update_part /dev/$xda
+
             mkfs.ext4 -F -L os /dev/$xda*1           #1 os
             mkfs.ntfs -f -F -L installer /dev/$xda*2 #2 installer
         fi
-    elif is_use_cloud_image && { [ "$distro" = centos ] || [ "$distro" = alma ] || [ "$distro" = rocky ]; }; then
-        apk add dosfstools e2fsprogs
-        if is_efi; then
-            parted /dev/$xda -s -- \
-                mklabel gpt \
-                mkpart '" "' fat32 1MiB 601MiB \
-                mkpart '" "' xfs 601MiB -2GiB \
-                mkpart '" "' ext4 -2GiB 100% \
-                set 1 esp on
-            update_part /dev/$xda
-            mkfs.fat -n efi /dev/$xda*1           #1 efi
-            echo                                  #2 os 用目标系统的格式化工具
-            mkfs.ext4 -F -L installer /dev/$xda*3 #3 installer
-        else
-            parted /dev/$xda -s -- \
-                mklabel gpt \
-                mkpart '" "' ext4 1MiB 2MiB \
-                mkpart '" "' xfs 2MiB -2GiB \
-                mkpart '" "' ext4 -2GiB 100% \
-                set 1 bios_grub on
-            update_part /dev/$xda
-            echo                                  #1 bios_boot
-            echo                                  #2 os 用目标系统的格式化工具
-            mkfs.ext4 -F -L installer /dev/$xda*3 #3 installer
-        fi
     elif is_use_cloud_image; then
-        parted /dev/$xda -s -- \
-            mklabel gpt \
-            mkpart '" "' ext4 1MiB -2GiB \
-            mkpart '" "' ext4 -2GiB 100%
-        update_part /dev/$xda
-        mkfs.ext4 -F -L os /dev/$xda*1        #1 os
-        mkfs.ext4 -F -L installer /dev/$xda*2 #2 installer
+        # 这几个系统不使用dd，而是复制文件，因为dd这几个系统的qcow2需要10g硬盘
+        if { [ "$distro" = centos ] || [ "$distro" = alma ] || [ "$distro" = rocky ]; }; then
+            apk add dosfstools e2fsprogs
+            if is_efi; then
+                parted /dev/$xda -s -- \
+                    mklabel gpt \
+                    mkpart '" "' fat32 1MiB 601MiB \
+                    mkpart '" "' xfs 601MiB -2GiB \
+                    mkpart '" "' ext4 -2GiB 100% \
+                    set 1 esp on
+                update_part /dev/$xda
+
+                mkfs.fat -n efi /dev/$xda*1           #1 efi
+                echo                                  #2 os 用目标系统的格式化工具
+                mkfs.ext4 -F -L installer /dev/$xda*3 #3 installer
+            else
+                parted /dev/$xda -s -- \
+                    mklabel gpt \
+                    mkpart '" "' ext4 1MiB 2MiB \
+                    mkpart '" "' xfs 2MiB -2GiB \
+                    mkpart '" "' ext4 -2GiB 100% \
+                    set 1 bios_grub on
+                update_part /dev/$xda
+
+                echo                                  #1 bios_boot
+                echo                                  #2 os 用目标系统的格式化工具
+                mkfs.ext4 -F -L installer /dev/$xda*3 #3 installer
+            fi
+        fi
     else
         # 安装红帽系或ubuntu
         # 对于红帽系是临时分区表，安装时除了 installer 分区，其他分区会重建为默认的大小
@@ -528,6 +545,7 @@ create_part() {
                 mkpart '" "' ext4 -2GiB 100% \
                 set 1 boot on
             update_part /dev/$xda
+
             mkfs.fat -n efi /dev/$xda*1       #1 efi
             mkfs.ext4 -F -L os /dev/$xda*2    #2 os
             mkfs.fat -n installer /dev/$xda*3 #3 installer
@@ -540,6 +558,7 @@ create_part() {
                 mkpart '" "' ext4 -2GiB 100% \
                 set 1 bios_grub on
             update_part /dev/$xda
+
             echo                              #1 bios_boot
             mkfs.ext4 -F -L os /dev/$xda*2    #2 os
             mkfs.fat -n installer /dev/$xda*3 #3 installer
@@ -551,6 +570,7 @@ create_part() {
                 mkpart primary ext4 -2GiB 100% \
                 set 1 boot on
             update_part /dev/$xda
+
             mkfs.ext4 -F -L os /dev/$xda*1    #1 os
             mkfs.fat -n installer /dev/$xda*2 #2 installer
         fi
@@ -571,17 +591,13 @@ create_part() {
 mount_pseudo_fs() {
     os_dir=$1
 
-    if [[ "$os_dir" != "*/" ]]; then
-        os_dir=$os_dir/
-    fi
-
     # https://wiki.archlinux.org/title/Chroot#Using_chroot
-    mount -t proc /proc ${os_dir}proc/
-    mount -t sysfs /sys ${os_dir}sys/
-    mount --rbind /dev ${os_dir}dev/
-    mount --rbind /run ${os_dir}run/
+    mount -t proc /proc $os_dir/proc/
+    mount -t sysfs /sys $os_dir/sys/
+    mount --rbind /dev $os_dir/dev/
+    mount --rbind /run $os_dir/run/
     if is_efi; then
-        mount --rbind /sys/firmware/efi/efivars ${os_dir}sys/firmware/efi/efivars/
+        mount --rbind /sys/firmware/efi/efivars $os_dir/sys/firmware/efi/efivars/
     fi
 }
 
@@ -668,8 +684,7 @@ download_cloud_init_config() {
     if ! grep -w swap $os_dir/etc/fstab; then
         # btrfs
         if mount | grep 'on /os type btrfs'; then
-            line_num=$(grep -E -n '^runcmd:' $ci_file | cut -d: -f1)
-            cat <<EOF | sed -i "${line_num}r /dev/stdin" $ci_file
+            insert_into_file $ci_file after '^runcmd:' <<EOF
   - btrfs filesystem mkswapfile --size 1G /swapfile
   - swapon /swapfile
   - echo "/swapfile none swap defaults 0 0" >> /etc/fstab
@@ -719,11 +734,15 @@ modify_dd_os() {
 
     download_cloud_init_config $os_dir
 
+    # 为红帽系禁用 selinux kdump
     if [ -f $os_dir/etc/redhat-release ]; then
         find_and_mount /boot
         find_and_mount /boot/efi
         disable_selinux_kdump $os_dir
-    elif grep opensuse-tumbleweed $os_dir/etc/os-release; then
+    fi
+
+    # opensuse tumbleweed 需安装 wicked
+    if grep opensuse-tumbleweed $os_dir/etc/os-release; then
         cp -f /etc/resolv.conf $os_dir/etc/resolv.conf
         mount_pseudo_fs $os_dir
         chroot $os_dir zypper install -y wicked
@@ -1007,7 +1026,7 @@ EOF
             fi
 
             # 显示分区
-            lsblk /dev/nbd0
+            lsblk -o NAME,SIZE,FSTYPE,LABEL /dev/nbd0
 
             # 将前1M dd到内存
             dd if=/dev/nbd0 of=/first-1M bs=1M count=1
@@ -1244,10 +1263,9 @@ install_windows() {
     sed -i "s|%arch%|$arch|; s|%image_name%|$image_name|; s|%locale%|$locale|" /tmp/Autounattend.xml
 
     # 修改应答文件，分区配置
-    line_num=$(grep -E -n '<ModifyPartitions>' /tmp/Autounattend.xml | cut -d: -f1)
     if is_efi; then
         sed -i "s|%installto_partitionid%|3|" /tmp/Autounattend.xml
-        cat <<EOF | sed -i "${line_num}r /dev/stdin" /tmp/Autounattend.xml
+        insert_into_file /tmp/Autounattend.xml after '<ModifyPartitions>' <<EOF
             <ModifyPartition wcm:action="add">
                 <Order>1</Order>
                 <PartitionID>1</PartitionID>
@@ -1265,7 +1283,7 @@ install_windows() {
 EOF
     else
         sed -i "s|%installto_partitionid%|1|" /tmp/Autounattend.xml
-        cat <<EOF | sed -i "${line_num}r /dev/stdin" /tmp/Autounattend.xml
+        insert_into_file /tmp/Autounattend.xml after '<ModifyPartitions>' <<EOF
             <ModifyPartition wcm:action="add">
                 <Order>1</Order>
                 <PartitionID>1</PartitionID>

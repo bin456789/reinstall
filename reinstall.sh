@@ -1,10 +1,20 @@
 #!/bin/bash
+# shellcheck disable=SC2086
+
 set -eE
 confhome=https://raw.githubusercontent.com/bin456789/reinstall/main
 localtest_confhome=http://192.168.253.1
 
-trap 'error line $LINENO return $?' ERR
-this_script=$(realpath $0)
+this_script=$(realpath "$0")
+trap 'trap_err $LINENO $?' ERR
+
+trap_err() {
+    line_no=$1
+    ret_no=$2
+
+    error "Line $line_no return $ret_no"
+    sed -n "$line_no"p "$this_script"
+}
 
 usage_and_exit() {
     cat <<EOF
@@ -24,20 +34,23 @@ EOF
 }
 
 info() {
-    color='\e[32m'
-    plain='\e[0m'
-    upper=$(echo "$@" | tr '[:lower:]' '[:upper:]')
-    echo -e "$color***** $upper *****$plain"
+    upper=$(echo "$*" | tr '[:lower:]' '[:upper:]')
+    echo_color_text '\e[32m' "***** $upper *****"
+}
+
+warn() {
+    echo_color_text '\e[33m' "Warn: $*"
 }
 
 error() {
-    color='\e[31m'
-    plain='\e[0m'
-    echo -e "${color}Error: $*${plain}"
-    # 如果从trap调用，显示错误行
-    if [ "$1" = line ]; then
-        sed -n "$2"p $this_script
-    fi
+    echo_color_text '\e[31m' "Error: $*"
+}
+
+echo_color_text() {
+    color="$1"
+    shift
+    plain="\e[0m"
+    echo -e "$color$*$plain"
 }
 
 error_and_exit() {
@@ -66,10 +79,6 @@ is_in_windows() {
 
 is_in_alpine() {
     [ -f /etc/alpine-release ]
-}
-
-is_in_arch() {
-    [ -f /etc/arch-release ]
 }
 
 is_use_cloud_image() {
@@ -114,6 +123,21 @@ is_host_has_ipv4_and_ipv6() {
 
 get_host_by_url() {
     cut -d/ -f3 <<<$1
+}
+
+insert_into_file() {
+    file=$1
+    location=$2
+    regex_to_find=$3
+
+    line_num=$(grep -E -n "$regex_to_find" "$file" | cut -d: -f1)
+    if [ "$location" = before ]; then
+        line_num=$((line_num - 1))
+    elif ! [ "$location" = after ]; then
+        return 1
+    fi
+
+    sed -i "${line_num}r /dev/stdin" "$file"
 }
 
 test_url() {
@@ -991,8 +1015,7 @@ mod_alpine_initrd() {
     fi
 
     # hack 1 添加 ipv6 模块
-    line_num=$(grep -E -n 'configure_ip\(\)' init | cut -d: -f1)
-    cat <<EOF | sed -i "${line_num}r /dev/stdin" init
+    insert_into_file init after 'configure_ip\(\)' <<EOF
         depmod
         modprobe ipv6
 EOF
@@ -1013,8 +1036,7 @@ EOF
     # udhcpc:  bound
     # udhcpc6: deconfig
     # udhcpc6: bound
-    line_num=$(grep -E -n 'deconfig\|renew\|bound' usr/share/udhcpc/default.script | cut -d: -f1)
-    cat <<EOF | sed -i "${line_num}r /dev/stdin" usr/share/udhcpc/default.script
+    insert_into_file usr/share/udhcpc/default.script after 'deconfig\|renew\|bound' <<EOF
         if [ "\$1" = deconfig ]; then
             return
         fi
@@ -1028,8 +1050,7 @@ EOF
     # hack 4 网络配置
     collect_netconf
     is_in_china && is_in_china=true || is_in_china=false
-    line_num=$(grep -E -n 'MAC_ADDRESS=' init | cut -d: -f1)
-    cat <<EOF | sed -i "${line_num}r /dev/stdin" init
+    insert_into_file init after 'MAC_ADDRESS=' <<EOF
         source /alpine-network.sh \
         "$mac_addr" "$ipv4_addr" "$ipv4_gateway" "$ipv6_addr" "$ipv6_gateway" "$is_in_china"
 EOF
@@ -1037,15 +1058,13 @@ EOF
     # hack 5 运行 trans.start
     # exec /bin/busybox switch_root $switch_root_opts $sysroot $chart_init "$KOPT_init" $KOPT_init_args # 3.17
     # exec              switch_root $switch_root_opts $sysroot $chart_init "$KOPT_init" $KOPT_init_args # 3.18
-    line_num=$(grep -E -n '^exec (/bin/busybox )?switch_root' init | cut -d: -f1)
-    line_num=$((line_num - 1))
     # 1. alpine arm initramfs 时间问题 要添加 --no-check-certificate
     # 2. aws t4g arm 如果没设置console=ttyx，在initramfs里面wget https会出现bad header错误，chroot后正常
     # Connecting to raw.githubusercontent.com (185.199.108.133:443)
     # 60C0BB2FFAFF0000:error:0A00009C:SSL routines:ssl3_get_record:http request:ssl/record/ssl3_record.c:345:
     # ssl_client: SSL_connect
     # wget: bad header line: �
-    cat <<EOF | sed -i "${line_num}r /dev/stdin" init
+    insert_into_file init before '^exec (/bin/busybox )?switch_root' <<EOF
         # echo "wget --no-check-certificate -O- $confhome/trans.sh | /bin/ash" >\$sysroot/etc/local.d/trans.start
         # wget --no-check-certificate -O \$sysroot/etc/local.d/trans.start $confhome/trans.sh
         cp /trans.start \$sysroot/etc/local.d/trans.start
