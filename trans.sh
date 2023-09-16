@@ -589,6 +589,10 @@ create_cloud_init_network_config() {
     ci_file=$1
 
     get_netconf_to mac_addr
+
+    # TODO: 没在windows下获取网络信息,先跳过cloud-init网络，不然网络不通
+    [ -z "$mac_addr" ] && return
+
     get_netconf_to ipv4_addr
     get_netconf_to ipv4_gateway
     get_netconf_to ipv6_addr
