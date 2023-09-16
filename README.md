@@ -31,8 +31,9 @@
                       alpine   3.16|3.17|3.18
                       opensuse 15.4|15.5|tumbleweed (只支持云镜像)
                       arch     (只支持云镜像)
-                      
-    可选参数:         --ci 强制使用云镜像
+                      gentoo   (只支持 amd64 云镜像)
+
+    可选参数:          --ci     强制使用云镜像
 
 ### 安装 Windows：
     bash reinstall.sh windows \
@@ -57,7 +58,7 @@ https://raw.githubusercontent.com/bin456789/reinstall/main/reinstall.sh
         --iso=https://example.com/en-us_windows_10_enterprise_ltsc_2021_x64_dvd_d289cf96.iso \
         --image-name='Windows 10 Enterprise LTSC 2021'
 ### 参数:
-`--iso` 不需要提前添加 virtio/xen/aws nitro 驱动
+`--iso` 官方原版镜像，不需要提前添加 virtio/xen/aws nitro 驱动
 
 `--image-name` 一个 iso 里会有一个或多个映像，此参数用于指定要安装的映像
 
@@ -88,10 +89,11 @@ https://raw.githubusercontent.com/bin456789/reinstall/main/reinstall.sh
 | ---- | ---- |  ---- |
 | Debian | 384M | 512M |
 | Ubuntu | 1G | 512M |
-| 红帽系 | 1G | 512M |
-| Alpine | ? | 不支持 |
-| openSUSE | 不支持 | 512M |
-| Arch | 不支持 | 512M |
+| CentOS / Alma / Rocky / Fedora | 1G | 512M |
+| Alpine | 512M? | - |
+| openSUSE | 暂不支持 | 512M |
+| Arch | 暂不支持 | 512M |
+| Gentoo | 暂不支持 | 512M |
 | Windows | 1G | - |
 
 ## 网络要求:
@@ -102,10 +104,10 @@ https://raw.githubusercontent.com/bin456789/reinstall/main/reinstall.sh
 要求有 IPv4、DHCPv4 !!!!!
 
 ## 默认密码:
-| 用户名  | 密码 |
-| ---- | ---- |
-| root | 123@@@ |
-| administrator | 123@@@ |
+| 系统 | 用户名 | 密码 |
+| ---- | ---- | ---- |
+| Linux | root | 123@@@ |
+| Windows| administrator | 123@@@ |
 
 ## TODO:
 - 静态 IP / IPV6

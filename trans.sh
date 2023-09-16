@@ -529,6 +529,17 @@ create_part() {
                 echo                                  #2 os 用目标系统的格式化工具
                 mkfs.ext4 -F -L installer /dev/$xda*3 #3 installer
             fi
+        else
+            # gentoo 的镜像解压后是 3.5g，因此设置 installer 分区 1g，这样才能在5g硬盘上安装
+            [ "$distro" = gentoo ] && installer_part_size=1GiB || installer_part_size=2GiB
+            parted /dev/$xda -s -- \
+                mklabel gpt \
+                mkpart '" "' ext4 1MiB -$installer_part_size \
+                mkpart '" "' ext4 -$installer_part_size 100%
+            update_part /dev/$xda
+
+            mkfs.ext4 -F -L os /dev/$xda*1        #1 os
+            mkfs.ext4 -F -L installer /dev/$xda*2 #2 installer
         fi
     else
         # 安装红帽系或ubuntu
@@ -747,6 +758,41 @@ modify_dd_os() {
         mount_pseudo_fs $os_dir
         chroot $os_dir zypper install -y wicked
         rm -f $os_dir/etc/resolv.conf
+    fi
+
+    # gentoo
+    if [ -f $os_dir/etc/gentoo-release ]; then
+        # 挂载伪文件系统
+        mount_pseudo_fs $os_dir
+
+        # 在这里修改密码，而不是用cloud-init，因为我们的默认密码太弱
+        sed -i 's/enforce=everyone/enforce=none/' $os_dir/etc/security/passwdqc.conf
+        echo 'root:123@@@' | chroot $os_dir chpasswd >/dev/null
+        sed -i 's/enforce=none/enforce=everyone/' $os_dir/etc/security/passwdqc.conf
+
+        # 下载仓库，选择 profile
+        if false && [ ! -d $os_dir/var/db/repos/gentoo/ ]; then
+            cp -f /etc/resolv.conf $os_dir/etc/resolv.conf
+
+            chroot $os_dir emerge-webrsync
+            profile=$(chroot $os_dir eselect profile list | grep '/[0-9\.]*/systemd (stable)' | awk '{print $2}')
+            chroot $os_dir eselect profile set $profile
+        fi
+
+        # 删除 resolv.conf，不然 systemd-resolved 无法创建软链接
+        rm -f $os_dir/etc/resolv.conf
+
+        # 启用网络服务
+        chroot $os_dir systemctl enable systemd-networkd
+        chroot $os_dir systemctl enable systemd-resolved
+
+        # systemd-networkd 有时不会运行
+        # https://bugs.gentoo.org/910404 补丁好像没用
+        # https://github.com/systemd/systemd/issues/27718#issuecomment-1564877478
+        # 临时的解决办法是运行 networkctl，如果启用了systemd-networkd服务，会运行服务
+        insert_into_file $os_dir/lib/systemd/system/systemd-logind.service after '\[Service\]' <<EOF
+ExecStartPost=-networkctl
+EOF
     fi
 }
 
@@ -982,7 +1028,7 @@ EOF
         parted /dev/$xda -s rm 3
 
     else
-        # debian ubuntu arch opensuse
+        # debian ubuntu arch opensuse gentoo
         if true; then
             modprobe nbd
             qemu_nbd -c /dev/nbd0 $qcow_file
@@ -1062,13 +1108,23 @@ EOF
         dd if=/first-1M of=/dev/$xda
         update_part /dev/$xda
 
-        # 修复 vultr 512m debian 10/11 generic/genericcloud 首次启动 kernel panic
-        if [ "$distro" = debian ]; then
+        # 提前扩容
+        # 1 修复 vultr 512m debian 10/11 generic/genericcloud 首次启动 kernel panic
+        # 2 修复 gentoo websync 时空间不足
+        if [ "$distro" = debian ] || [ "$distro" = gentoo ]; then
             apk add parted
             if parted /dev/$xda -s print 2>&1 | grep 'Not all of the space'; then
                 printf "fix" | parted /dev/$xda print ---pretend-input-tty
-                printf "yes" | parted /dev/$xda resizepart 1 100% ---pretend-input-tty
+                # TODO: 获取 ext4 分区编号
+                [ "$distro" = debian ] && system_part_num=1 || system_part_num=3
+                printf "yes" | parted /dev/$xda resizepart $system_part_num 100% ---pretend-input-tty
                 update_part /dev/$xda
+
+                if [ "$distro" = gentoo ]; then
+                    apk add e2fsprogs-extra
+                    e2fsck -p -f /dev/$xda$system_part_num
+                    resize2fs /dev/$xda$system_part_num
+                fi
             fi
         fi
 

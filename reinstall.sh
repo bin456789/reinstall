@@ -27,6 +27,7 @@ Usage: reinstall.sh centos   7|8|9
                     alpine   3.16|3.17|3.18
                     opensuse 15.4|15.5|tumbleweed
                     arch
+                    gentoo
                     dd       --img=xxx
                     windows  --iso=xxx --image-name=xxx
 EOF
@@ -353,6 +354,22 @@ setos() {
         eval ${step}_img=$ci_mirror/images/latest/Arch-Linux-x86_64-cloudimg.qcow2
     }
 
+    setos_gentoo() {
+        cloud_image=1
+        if is_in_china; then
+            ci_mirror=https://mirrors.tuna.tsinghua.edu.cn/gentoo
+        else
+            ci_mirror=https://distfiles.gentoo.org
+        fi
+
+        if [ "$basearch_alt" = arm64 ]; then
+            error_and_exit 'Not support arm64 for gentoo cloud image.'
+        fi
+
+        # openrc 镜像没有附带兼容 cloud-init 的网络管理器
+        eval ${step}_img=$ci_mirror/experimental/$basearch_alt/openstack/gentoo-openstack-$basearch_alt-systemd-latest.qcow2
+    }
+
     setos_opensuse() {
         cloud_image=1
 
@@ -528,6 +545,7 @@ verify_os_string() {
         'alpine   3.16|3.17|3.18' \
         'opensuse 15|15.4|15.5|tumbleweed' \
         'arch' \
+        'gentoo' \
         'windows' \
         'dd'; do
         ds=$(awk '{print $1}' <<<"$os")
@@ -663,7 +681,7 @@ check_ram() {
     ram_cloud_image=512
 
     case "$distro" in
-    opensuse | arch) cloud_image=1 ;;
+    opensuse | arch | gentoo) cloud_image=1 ;;
     esac
 
     # ram 足够就用普通方法安装，否则如果内存大于512就用 cloud image
