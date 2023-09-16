@@ -1,9 +1,8 @@
-name: test
-
+name: 运行主程序
 on: [push, workflow_dispatch]
-
 jobs:
-  test:
+  run:
+    name: 运行主程序
     strategy:
       fail-fast: false
       matrix:
@@ -15,13 +14,10 @@ jobs:
             command: ./reinstall.bat --debug
     runs-on: ${{ matrix.os }}
     steps:
-      - name: Disable Git autocrlf
-        run: |
+      - run: |
           git config --global core.autocrlf false
-      - name: Checkout
-        uses: actions/checkout@v3
-      - name: Run Script
-        shell: bash # https://github.com/actions/runner-images/issues/6668
+      - uses: actions/checkout@v4
+      - shell: bash # https://github.com/actions/runner-images/issues/6668
         run: |
           ${{ matrix.command }} centos 7
           ${{ matrix.command }} alma-8
@@ -41,6 +37,7 @@ jobs:
           ${{ matrix.command }} debian --ci
           ${{ matrix.command }} opensuse
           ${{ matrix.command }} arch
+          ${{ matrix.command }} gentoo
 
           # 测试失败例子
           ! ${{ matrix.command }} wrong-os
