@@ -141,17 +141,29 @@ insert_into_file() {
 }
 
 test_url() {
-    url=$1
-    expect_type=$2
-    var_to_eval=$3
+    test_url_real false "$@"
+}
+
+test_url_grace() {
+    test_url_real true "$@"
+}
+
+test_url_real() {
+    grace=$1
+    url=$2
+    expect_type=$3
+    var_to_eval=$4
     info test url
     echo $url
 
-    tmp_file=/tmp/reinstall-img-test
+    failed() {
+        $grace && return 1
+        error_and_exit "$@"
+    }
 
-    if ! curl -r 0-1048575 -Lo $tmp_file $url; then
-        error "$url not accessible"
-        return 1
+    tmp_file=/tmp/reinstall-img-test
+    if ! curl -r 0-1048575 -Lo "$tmp_file" "$url"; then
+        failed "$url not accessible"
     fi
 
     if [ -n "$expect_type" ]; then
@@ -166,8 +178,7 @@ test_url() {
         [ -n "$var_to_eval" ] && eval $var_to_eval=$real_type
 
         if ! grep -wo "$real_type" <<<"$expect_type"; then
-            error "$url expected: $expect_type. actual: $real_type."
-            return 1
+            failed "$url expected: $expect_type. actual: $real_type."
         fi
     fi
 }
@@ -470,7 +481,7 @@ setos() {
                 for cur_mirror in $(curl -L $mirrorlist | sed "/^#/d" | sed "s,\$basearch,$basearch,"); do
                     host=$(get_host_by_url $cur_mirror)
                     if is_host_has_ipv4_and_ipv6 $host &&
-                        test_url ${cur_mirror}images/pxeboot/vmlinuz; then
+                        test_url_grace ${cur_mirror}images/pxeboot/vmlinuz; then
                         mirror=$cur_mirror
                         break
                     fi
