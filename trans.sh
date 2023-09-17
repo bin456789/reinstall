@@ -771,7 +771,7 @@ modify_dd_os() {
         sed -i 's/enforce=none/enforce=everyone/' $os_dir/etc/security/passwdqc.conf
 
         # 下载仓库，选择 profile
-        if false && [ ! -d $os_dir/var/db/repos/gentoo/ ]; then
+        if [ ! -d $os_dir/var/db/repos/gentoo/ ]; then
             cp -f /etc/resolv.conf $os_dir/etc/resolv.conf
 
             chroot $os_dir emerge-webrsync
