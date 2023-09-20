@@ -576,10 +576,11 @@ install_pkg() {
     is_in_windows && return
 
     for cmd in "$@"; do
-        if ! command -v $cmd ||
+        # 用 which 而不是 command -v，因为 command -v 把脚本中的function也算在内
+        if ! which $cmd >/dev/null ||
             # gentoo 默认编译的 unsquashfs 不支持 xz
             { [ "$cmd" = unsquashfs ] &&
-                command -v emerge &&
+                which emerge >/dev/null &&
                 ! unsquashfs |& grep -w xz &&
                 echo "unsquashfs not supported xz. need rebuild."; }; then
 
