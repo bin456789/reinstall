@@ -437,7 +437,6 @@ setos() {
     setos_redhat() {
         if is_use_cloud_image; then
             # ci
-            [ "$distro" = "centos" ] && [ "$releasever" = "7" ] && stream_suffix="" || stream_suffix="-stream"
             if is_in_china; then
                 case $distro in
                 "centos") ci_mirror="https://mirror.nju.edu.cn/centos-cloud/centos" ;;
@@ -456,8 +455,8 @@ setos() {
             case $distro in
             "centos")
                 case $releasever in
-                "7") ci_image=$ci_mirror/$releasever$stream_suffix/images/CentOS-7-$basearch-GenericCloud.qcow2 ;;
-                "8" | "9") ci_image=$ci_mirror/$releasever$stream_suffix/$basearch/images/CentOS-Stream-GenericCloud-$releasever-latest.$basearch.qcow2 ;;
+                "7") ci_image=$ci_mirror/$releasever/images/CentOS-7-$basearch-GenericCloud.qcow2 ;;
+                "8" | "9") ci_image=$ci_mirror/$releasever-stream/$basearch/images/CentOS-Stream-GenericCloud-$releasever-latest.$basearch.qcow2 ;;
                 esac
                 ;;
             "alma")

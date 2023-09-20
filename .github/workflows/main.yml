@@ -26,7 +26,7 @@ jobs:
           ${{ matrix.command }} ubuntu
           ${{ matrix.command }} debian 12
           ${{ matrix.command }} alpine
-          ${{ matrix.command }} dd --img=https://cdn.kernel.org/pub/linux/kernel/v6.x/linux-6.3.8.tar.xz
+          ${{ matrix.command }} dd --img=https://download.opensuse.org/tumbleweed/appliances/openSUSE-MicroOS.x86_64-SelfInstall.raw.xz
 
           # 测试 cloud image
           ${{ matrix.command }} centos --ci

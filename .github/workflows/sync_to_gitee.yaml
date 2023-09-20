@@ -5,7 +5,7 @@ jobs:
     name: 同步到 Gitee
     runs-on: ubuntu-latest
     steps:
-      - uses: Yikun/hub-mirror-action@master
+      - uses: Yikun/hub-mirror-action@v1.3
         with:
           src: github/bin456789
           dst: gitee/bin456789

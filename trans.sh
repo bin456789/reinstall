@@ -188,9 +188,7 @@ extract_env_from_cmdline() {
                 value=$(echo $line | cut -d= -f2-)
                 eval "$key='$value'"
             fi
-        done <<EOF
-$(xargs -n1 </proc/cmdline | grep "^$prefix" | sed "s/^$prefix\.//")
-EOF
+        done < <(xargs -n1 </proc/cmdline | grep "^$prefix" | sed "s/^$prefix\.//")
     done
 }
 
@@ -691,7 +689,7 @@ download_cloud_init_config() {
     download $confhome/nocloud.yaml $ci_file
 
     # swapfile
-    # 如果分区表中已经有swap就跳过，例如arch
+    # 如果分区表中已经有swapfile就跳过，例如arch
     if ! grep -w swap $os_dir/etc/fstab; then
         # btrfs
         if mount | grep 'on /os type btrfs'; then

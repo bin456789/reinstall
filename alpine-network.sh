@@ -61,12 +61,12 @@ fi
 
 # 设置静态地址
 if ! is_have_ipv4 && [ -n "$ipv4_addr" ]; then
-    ip -4 addr add $ipv4_addr dev eth0
-    ip -4 route add default via $ipv4_gateway
+    ip -4 addr add "$ipv4_addr" dev eth0
+    ip -4 route add default via "$ipv4_gateway"
 fi
 if ! is_have_ipv6 && [ -n "$ipv6_addr" ]; then
-    ip -6 addr add $ipv6_addr dev eth0
-    ip -6 route add default via $ipv6_gateway
+    ip -6 addr add "$ipv6_addr" dev eth0
+    ip -6 route add default via "$ipv6_gateway"
 fi
 
 # 检查 ipv4/ipv6 是否连接联网
@@ -127,8 +127,8 @@ fi
 
 # 传参给 trans.start
 $dhcpv4 && echo 1 >/dev/dhcpv4 || echo 0 >/dev/dhcpv4
-echo $mac_addr >/dev/mac_addr
-echo $ipv4_addr >/dev/ipv4_addr
-echo $ipv4_gateway >/dev/ipv4_gateway
-echo $ipv6_addr >/dev/ipv6_addr
-echo $ipv6_gateway >/dev/ipv6_gateway
+echo "$mac_addr" >/dev/mac_addr
+echo "$ipv4_addr" >/dev/ipv4_addr
+echo "$ipv4_gateway" >/dev/ipv4_gateway
+echo "$ipv6_addr" >/dev/ipv6_addr
+echo "$ipv6_gateway" >/dev/ipv6_gateway
