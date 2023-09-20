@@ -904,10 +904,13 @@ case "$basearch" in
 "aarch64") basearch_alt=arm64 ;;
 esac
 
-# 国内使用 gitee
-if [ "$confhome" = https://raw.githubusercontent.com/bin456789/reinstall/main ] &&
+# 设置国内代理
+# gitee 不支持ipv6
+# jsdelivr 有12小时缓存
+# https://github.com/XIU2/UserScript/blob/master/GithubEnhanced-High-Speed-Download.user.js#L31
+if [[ "$confhome" == http*://raw.githubusercontent.com/* ]] &&
     is_in_china; then
-    confhome=https://gitee.com/bin456789/reinstall/raw/main
+    confhome=https://ghps.cc/$confhome
 fi
 
 # 以下目标系统不需要进入alpine
