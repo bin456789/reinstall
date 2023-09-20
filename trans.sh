@@ -290,6 +290,44 @@ insert_into_file() {
 }
 
 install_alpine() {
+    hack_lowram=true
+    if $hack_lowram; then
+        # 预先加载需要的模块
+        if rc-service modloop status; then
+            modules="ext4 vfat nls_utf8 nls_cp437 crc32c"
+            for mod in $modules; do
+                modprobe $mod
+            done
+        fi
+
+        # 删除 modloop ，释放内存
+        rc-service modloop stop
+        rm -f /lib/modloop-lts /lib/modloop-virt
+
+        # 复制一份原版，防止再次运行时出错
+        if [ -e /sbin/setup-disk.orig ]; then
+            cp -f /sbin/setup-disk.orig /sbin/setup-disk
+        else
+            cp -f /sbin/setup-disk /sbin/setup-disk.orig
+        fi
+
+        # 格式化系统分区、mount 后立即开启 swap
+        # shellcheck disable=SC2016
+        insert_into_file /sbin/setup-disk after 'mount -t \$ROOTFS \$root_dev "\$SYSROOT"' <<EOF
+            fallocate -l 1G /mnt/swapfile
+            chmod 0600 /mnt/swapfile
+            mkswap /mnt/swapfile
+            swapon /mnt/swapfile
+            rc-update add swap boot
+EOF
+
+        # 安装完成后写入 swapfile 到 fstab
+        # shellcheck disable=SC2016
+        insert_into_file /sbin/setup-disk after 'install_mounted_root "\$SYSROOT" "\$disks"' <<EOF
+            echo "/swapfile swap swap defaults 0 0" >>/mnt/etc/fstab
+EOF
+    fi
+
     # 网络
     # 坑1 udhcpc下，ip -4 addr 无法知道是否是 dhcp
     # 坑2 udhcpc不支持dhcpv6

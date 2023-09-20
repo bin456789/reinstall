@@ -673,7 +673,7 @@ check_ram() {
     fi
 
     case "$distro" in
-    alpine) ram_installer=0 ;; # 未测试
+    alpine) ram_installer=256 ;; # 192 无法启动 netboot
     debian) ram_installer=384 ;;
     *) ram_installer=1024 ;;
     esac
