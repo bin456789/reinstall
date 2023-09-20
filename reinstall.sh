@@ -704,26 +704,39 @@ is_efi() {
     fi
 }
 
+# TODO: 多网卡 单网卡多IP
 collect_netconf() {
     if is_in_windows; then
-        # TODO:
-        echo
+        echo_conf() {
+            grep -w "$1" <<<"$netconf" | awk '{ print $2 }'
+        }
+        curl -L $confhome/windows-get-netconf.ps1 -o /tmp/windows-get-netconf.ps1
+        ps1="$(cygpath -w /tmp/windows-get-netconf.ps1)"
+        netconf=$(
+            powershell -nologo -noprofile -NonInteractive \
+                -ExecutionPolicy bypass \
+                -File "$ps1" |
+                sed 's/://'
+        )
+        mac_addr=$(echo_conf MACAddress)
+        ipv4_addr=$(echo_conf IPAddress4)
+        ipv6_addr=$(echo_conf IPAddress6)
+        ipv4_gateway=$(echo_conf DefaultIPGateway4)
+        ipv6_gateway=$(echo_conf DefaultIPGateway6)
     else
-        # TODO: 多网卡 单网卡多IP
         nic_name=$(ip -o addr show scope global | head -1 | awk '{print $2}')
         mac_addr=$(ip addr show scope global | grep link/ether | head -1 | awk '{print $2}')
         ipv4_addr=$(ip -4 addr show scope global | grep inet | head -1 | awk '{print $2}')
         ipv6_addr=$(ip -6 addr show scope global | grep inet6 | head -1 | awk '{print $2}')
-
         ipv4_gateway=$(ip -4 route show default dev $nic_name | awk '{print $3}')
         ipv6_gateway=$(ip -6 route show default dev $nic_name | awk '{print $3}')
-
-        echo 1 $mac_addr
-        echo 2 $ipv4_addr
-        echo 3 $ipv4_gateway
-        echo 4 $ipv6_addr
-        echo 5 $ipv6_gateway
     fi
+
+    echo 1 $mac_addr
+    echo 2 $ipv4_addr
+    echo 3 $ipv4_gateway
+    echo 4 $ipv6_addr
+    echo 5 $ipv6_gateway
 }
 
 install_grub_win() {

@@ -653,7 +653,8 @@ create_cloud_init_network_config() {
 
     get_netconf_to mac_addr
 
-    # TODO: 没在windows下获取网络信息,先跳过cloud-init网络，不然网络不通
+    # TODO: 没获取到mac/ipv4或者ipv6就先跳过cloud-init网络
+    # 不然cloud-init配置文件有问题，网络不通
     [ -z "$mac_addr" ] && return
 
     get_netconf_to ipv4_addr
