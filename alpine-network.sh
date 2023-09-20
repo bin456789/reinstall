@@ -47,15 +47,17 @@ get_ipv4_entry && dhcpv4=true || dhcpv4=false
 # dhcpv4 肯定是 /128
 get_ipv6_entry | grep /128 && dhcpv6=true || dhcpv6=false
 
-# 检测是否有 slaac
-# 也可以有地址就行，不管是slaac或者dhcpv6
+# 等待slaac
+# 有ipv6地址就跳过，不管是slaac或者dhcpv6
 # 因为会在trans里判断
 slaac=false
-for i in $(seq 10 -1 0); do
-    echo "waiting slaac for ${i}s"
-    get_ipv6_entry | grep -v /128 && slaac=true && break
-    sleep 1
-done
+if ! get_ipv6_entry; then
+    for i in $(seq 10 -1 0); do
+        echo "waiting slaac for ${i}s"
+        get_ipv6_entry | grep -v /128 && slaac=true && break
+        sleep 1
+    done
+fi
 
 # 设置静态地址
 if ! is_have_ipv4 && [ -n "$ipv4_addr" ]; then
