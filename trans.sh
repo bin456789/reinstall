@@ -1348,6 +1348,36 @@ install_windows() {
         download https://fedorapeople.org/groups/virt/virtio-win/direct-downloads/$dir/virtio-win.iso $drv/virtio-win.iso
         mkdir -p $drv/virtio
         mount $drv/virtio-win.iso $drv/virtio
+
+        apk add dmidecode
+        dmi=$(dmidecode)
+
+        if echo "$dmi" | grep -Eiw "Google Compute Engine|GoogleCloud"; then
+            gce_repo=https://packages.cloud.google.com/yuck
+            download $gce_repo/repos/google-compute-engine-stable/index /tmp/gce.json
+            # gga 好像只是用于调节后台vnc分辨率
+            for name in gvnic gga; do
+                mkdir -p $drv/gce/$name
+                link=$(grep -o "/pool/.*-google-compute-engine-driver-$name\.goo" /tmp/gce.json)
+                wget $gce_repo$link -O- | tar -xzf- -C $drv/gce/$name
+            done
+
+            # 没有 vista 驱动
+            # 没有专用的 win11 驱动
+            case $(echo "$image_name" | tr '[:upper:]' '[:lower:]') in
+            'windows server 2022'*) sys_gce=win10.0 ;;
+            'windows server 2019'*) sys_gce=win10.0 ;;
+            'windows server 2016'*) sys_gce=win10.0 ;;
+            'windows server 2012 R2'*) sys_gce=win6.3 ;;
+            'windows server 2012'*) sys_gce=win6.2 ;;
+            'windows server 2008 R2'*) sys_gce=win6.1 ;;
+            'windows 11'*) sys_gce=win10.0 ;;
+            'windows 10'*) sys_gce=win10.0 ;;
+            'windows 8.1'*) sys_gce=win6.3 ;;
+            'windows 8'*) sys_gce=win6.2 ;;
+            'windows 7'*) sys_gce=win6.1 ;;
+            esac
+        fi
     fi
 
     # 修改应答文件
@@ -1399,23 +1429,29 @@ EOF
 
     cp_drivers() {
         src=$1
-        dist=$2
-        path=$3
+        path=$2
+
         [ -n "$path" ] && filter="-ipath $path" || filter=""
         find $src \
             $filter \
             -type f \
             -not -iname "*.pdb" \
             -not -iname "dpinst.exe" \
-            -exec /bin/cp -rfv {} $dist \;
+            -exec cp -rfv {} /wim/drivers \;
     }
 
     # 添加驱动
     mkdir -p /wim/drivers
 
-    [ -d $drv/virtio ] && cp_drivers $drv/virtio /wim/drivers "*/$sys/$arch/*"
-    [ -d $drv/aws ] && cp_drivers $drv/aws /wim/drivers
-    [ -d $drv/xen ] && cp_drivers $drv/xen /wim/drivers "*/$arch_xen/*"
+    [ -d $drv/virtio ] && cp_drivers $drv/virtio "*/$sys/$arch/*"
+    [ -d $drv/aws ] && cp_drivers $drv/aws
+    [ -d $drv/xen ] && cp_drivers $drv/xen "*/$arch_xen/*"
+    [ -d $drv/gce ] && {
+        [ "$arch_wim" = x86 ] && gvnic_suffix=-32 || gvnic_suffix=
+        cp_drivers $drv/gce/gvnic "*/$sys_gce$gvnic_suffix/*"
+        # gga 驱动不分32/64位
+        cp_drivers $drv/gce/gga "*/$sys_gce/*"
+    }
 
     # win7 要添加 bootx64.efi 到 efi 目录
     [ $arch = amd64 ] && boot_efi=bootx64.efi || boot_efi=bootaa64.efi
