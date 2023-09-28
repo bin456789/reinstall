@@ -577,10 +577,10 @@ install_pkg() {
 
     for cmd in "$@"; do
         # 用 which 而不是 command -v，因为 command -v 把脚本中的function也算在内
-        if ! which $cmd >/dev/null ||
+        if ! which $cmd >/dev/null 2>&1 ||
             # gentoo 默认编译的 unsquashfs 不支持 xz
             { [ "$cmd" = unsquashfs ] &&
-                which emerge >/dev/null &&
+                which emerge >/dev/null 2>&1 &&
                 ! unsquashfs |& grep -w xz &&
                 echo "unsquashfs not supported xz. need rebuild."; }; then
 
