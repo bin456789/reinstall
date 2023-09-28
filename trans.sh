@@ -1240,6 +1240,15 @@ install_windows() {
         echo $image_name | grep -iEw '^Windows (7|Server 2008 R2)'
     }
 
+    is_win11() {
+        echo $image_name | grep -iEw '^Windows 11'
+    }
+
+    # 跳过 win11 硬件限制
+    if is_win11; then
+        wiminfo "$install_wim" "$image_name" --image-property WINDOWS/INSTALLATIONTYPE=Server
+    fi
+
     # 变量名     使用场景
     # arch_uname uname -m                      x86_64  aarch64
     # arch_wim   wiminfo                  x86  x86_64  ARM64
