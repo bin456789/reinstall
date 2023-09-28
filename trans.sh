@@ -539,8 +539,8 @@ create_part() {
             # bios
             parted /dev/$xda -s -- \
                 mklabel msdos \
-                mkpart primary ntfs 1MiB -${part_size}GiB \
-                mkpart primary ntfs -${part_size}GiB 100% \
+                mkpart primary ntfs 1MiB -${part_size}MiB \
+                mkpart primary ntfs -${part_size}MiB 100% \
                 set 1 boot on
             update_part /dev/$xda
 
