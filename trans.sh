@@ -503,6 +503,17 @@ create_part() {
     # xda*1 星号用于 nvme0n1p1 的字母 p
     # shellcheck disable=SC2154
     if [ "$distro" = windows ]; then
+        if ! wget --spider -S $iso 2>/tmp/headers.log; then
+            error_and_exit "Can't access Windows iso."
+        fi
+
+        # 按1.1倍iso容量计算分区大小
+        part_size=$(grep 'Content-Length:' /tmp/headers.log | awk '{print int($2*1.1/1024/1024)}')
+        if [ -z "$part_size" ]; then
+            # 默认值，最大的iso 23h2 需要7g
+            part_size=$((7 * 1024))
+        fi
+
         apk add ntfs-3g-progs virt-what wimlib rsync dos2unix
         # 虽然ntfs3不需要fuse，但wimmount需要，所以还是要保留
         modprobe fuse ntfs3
@@ -513,8 +524,8 @@ create_part() {
                 mklabel gpt \
                 mkpart '" "' fat32 1MiB 1025MiB \
                 mkpart '" "' fat32 1025MiB 1041MiB \
-                mkpart '" "' ext4 1041MiB -6GiB \
-                mkpart '" "' ntfs -6GiB 100% \
+                mkpart '" "' ext4 1041MiB -${part_size}MiB \
+                mkpart '" "' ntfs -${part_size}MiB 100% \
                 set 1 boot on \
                 set 2 msftres on \
                 set 3 msftdata on
@@ -528,8 +539,8 @@ create_part() {
             # bios
             parted /dev/$xda -s -- \
                 mklabel msdos \
-                mkpart primary ntfs 1MiB -6GiB \
-                mkpart primary ntfs -6GiB 100% \
+                mkpart primary ntfs 1MiB -${part_size}GiB \
+                mkpart primary ntfs -${part_size}GiB 100% \
                 set 1 boot on
             update_part /dev/$xda
 
