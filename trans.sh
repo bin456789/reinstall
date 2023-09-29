@@ -1327,13 +1327,12 @@ install_windows() {
         # xen
         # 有 x86 x64，没arm64驱动
         # https://xenbits.xenproject.org/pvdrivers/win/
-        ver='9.0.0'
         # 在 aws t2 上测试，安装 xenbus 会蓝屏，装了其他7个驱动后，能进系统但没网络
         # 但 aws 应该用aws官方xen驱动，所以测试仅供参考
         parts='xenbus xencons xenhid xeniface xennet xenvbd xenvif xenvkbd'
         mkdir -p $drv/xen/
         for part in $parts; do
-            download https://xenbits.xenproject.org/pvdrivers/win/$ver/$part.tar $drv/$part.tar
+            download https://xenbits.xenproject.org/pvdrivers/win/$part.tar $drv/$part.tar
             tar -xf $drv/$part.tar -C $drv/xen/
         done
 
