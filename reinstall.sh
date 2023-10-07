@@ -210,7 +210,7 @@ is_virt() {
         # aws t4g debian 11 systemd-detect-virt 为 none，即使装了dmidecode
         # virt-what: 未装 deidecode时结果为空，装了deidecode后结果为aws
         # 所以综合两个命令的结果来判断
-        if command -v systemd-detect-virt && systemd-detect-virt; then
+        if is_have_cmd systemd-detect-virt && systemd-detect-virt; then
             return 0
         fi
         # debian 安装 virt-what 不会自动安装 dmidecode，因此结果有误
@@ -572,32 +572,25 @@ verify_os_string() {
     usage_and_exit
 }
 
+get_cmd_path() {
+    # arch 云镜像不带 which
+    # command -v 包括脚本里面的方法
+    type -f -p $1
+}
+
+is_have_cmd() {
+    get_cmd_path $1 >/dev/null 2>&1
+}
+
 install_pkg() {
     is_in_windows && return
 
-    for cmd in "$@"; do
-        # 用 which 而不是 command -v，因为 command -v 把脚本中的function也算在内
-        if ! which $cmd >/dev/null 2>&1 ||
-            # gentoo 默认编译的 unsquashfs 不支持 xz
-            { [ "$cmd" = unsquashfs ] &&
-                which emerge >/dev/null 2>&1 &&
-                ! unsquashfs |& grep -w xz &&
-                echo "unsquashfs not supported xz. need rebuild."; }; then
-
-            if ! find_pkg_mgr; then
-                error_and_exit "Can't find compatible package manager. Please manually install $cmd."
-            fi
-            cmd_to_pkg
-            install_pkg_real
-        fi
-    done
-
     find_pkg_mgr() {
         if [ -z "$pkg_mgr" ]; then
-            # command -v 有先后顺序，dnf放yum前面
-            if ! pkg_mgr=$(command -v dnf yum apt pacman zypper emerge apk | head -1 | awk -F/ '{print $NF}' | grep .); then
-                return 1
-            fi
+            for c in dnf yum apt pacman zypper emerge apk; do
+                is_have_cmd $c && pkg_mgr=$c && return
+            done
+            return 1
         fi
     }
 
@@ -641,6 +634,23 @@ install_pkg() {
             ;;
         esac
     }
+
+    for cmd in "$@"; do
+        if ! is_have_cmd $cmd ||
+            {
+                # gentoo 默认编译的 unsquashfs 不支持 xz
+                [ "$cmd" = unsquashfs ] &&
+                    is_have_cmd emerge &&
+                    ! unsquashfs |& grep -w xz &&
+                    echo "unsquashfs not supported xz. need rebuild."
+            }; then
+            if ! find_pkg_mgr; then
+                error_and_exit "Can't find compatible package manager. Please manually install $cmd."
+            fi
+            cmd_to_pkg
+            install_pkg_real
+        fi
+    done
 }
 
 check_ram() {
@@ -1151,8 +1161,8 @@ build_cmdline
 info 'create grub config'
 # linux grub
 if ! is_in_windows; then
-    if command -v update-grub; then
-        grub_cfg=$(grep -o '[^ ]*grub.cfg' "$(which update-grub)")
+    if is_have_cmd update-grub; then
+        grub_cfg=$(grep -o '[^ ]*grub.cfg' "$(get_cmd_path update-grub)")
     else
         # 找出主配置文件（含有menuentry|blscfg）
         # 如果是efi，先搜索efi目录
