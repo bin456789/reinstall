@@ -811,11 +811,11 @@ install_grub_win() {
         # bios
         info install grub for bios
 
-        # bootmgr 加载 gr2ldr 有64k限制
-        # 解决方法1 gr2ldr.mbr + gr2ldr
+        # bootmgr 加载 g2ldr 有64k限制
+        # 解决方法1 g2ldr.mbr + g2ldr
         # 解决方法2 生成少于64K的 g2ldr + 动态模块
 
-        # gr2ldr.mbr
+        # g2ldr.mbr
         curl -LO http://ftp.cn.debian.org/debian/tools/win32-loader/stable/win32-loader.exe
         7z x win32-loader.exe 'g2ldr.mbr' -o/tmp/win32-loader -r -y -bso0
         find /tmp/win32-loader -name 'g2ldr.mbr' -exec cp {} /cygdrive/$c/ \;

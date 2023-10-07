@@ -35,10 +35,10 @@
                       ubuntu   20.04|22.04
                       alpine   3.16|3.17|3.18
                       opensuse 15.4|15.5|tumbleweed (只支持云镜像)
-                      arch     (只支持云镜像)
+                      arch     (只支持 amd64 云镜像)
                       gentoo   (只支持 amd64 云镜像)
 
-    可选参数:         --ci     强制使用云镜像
+    可选参数:          --ci     强制使用云镜像
 
 ### 安装 Windows
 
