@@ -3,7 +3,6 @@
 
 set -eE
 confhome=https://raw.githubusercontent.com/bin456789/reinstall/main
-localtest_confhome=http://192.168.253.1
 
 this_script=$(realpath "$0")
 trap 'trap_err $LINENO $?' ERR
@@ -238,24 +237,16 @@ setos() {
             fi
         fi
 
-        if [ "$localtest" = 1 ]; then
-            mirror=$confhome/alpine-netboot-3.18.0-x86_64/boot
-            eval ${step}_vmlinuz=$mirror/vmlinuz-$flavour
-            eval ${step}_initrd=$mirror/initramfs-$flavour
-            eval ${step}_repo=http://mirrors.tuna.tsinghua.edu.cn/alpine/v$releasever/main
-            eval ${step}_modloop=$mirror/modloop-$flavour
+        # 不要用https 因为甲骨文云arm initramfs阶段不会从硬件同步时钟，导致访问https出错
+        if is_in_china; then
+            mirror=http://mirrors.tuna.tsinghua.edu.cn/alpine/v$releasever
         else
-            # 不要用https 因为甲骨文云arm initramfs阶段不会从硬件同步时钟，导致访问https出错
-            if is_in_china; then
-                mirror=http://mirrors.tuna.tsinghua.edu.cn/alpine/v$releasever
-            else
-                mirror=http://dl-cdn.alpinelinux.org/alpine/v$releasever
-            fi
-            eval ${step}_vmlinuz=$mirror/releases/$basearch/netboot/vmlinuz-$flavour
-            eval ${step}_initrd=$mirror/releases/$basearch/netboot/initramfs-$flavour
-            eval ${step}_repo=$mirror/main
-            eval ${step}_modloop=$mirror/releases/$basearch/netboot/modloop-$flavour
+            mirror=http://dl-cdn.alpinelinux.org/alpine/v$releasever
         fi
+        eval ${step}_vmlinuz=$mirror/releases/$basearch/netboot/vmlinuz-$flavour
+        eval ${step}_initrd=$mirror/releases/$basearch/netboot/initramfs-$flavour
+        eval ${step}_repo=$mirror/main
+        eval ${step}_modloop=$mirror/releases/$basearch/netboot/modloop-$flavour
     }
 
     setos_debian() {
@@ -279,20 +270,14 @@ setos() {
             eval ${step}_img=$ci_mirror/cloud/$codename/latest/debian-$releasever-$ci_type-$basearch_alt.qcow2
         else
             # 传统安装
-            if [ "$localtest" = 1 ]; then
-                mirror=$confhome/debian/install.amd
-                eval ${step}_vmlinuz=$mirror/vmlinuz
-                eval ${step}_initrd=$mirror/initrd.gz
+            if is_in_china; then
+                hostname=ftp.cn.debian.org
             else
-                if is_in_china; then
-                    hostname=ftp.cn.debian.org
-                else
-                    hostname=deb.debian.org
-                fi
-                mirror=http://$hostname/debian/dists/$codename/main/installer-$basearch_alt/current/images/netboot/debian-installer/$basearch_alt
-                eval ${step}_vmlinuz=$mirror/linux
-                eval ${step}_initrd=$mirror/initrd.gz
+                hostname=deb.debian.org
             fi
+            mirror=http://$hostname/debian/dists/$codename/main/installer-$basearch_alt/current/images/netboot/debian-installer/$basearch_alt
+            eval ${step}_vmlinuz=$mirror/linux
+            eval ${step}_initrd=$mirror/initrd.gz
             eval ${step}_ks=$confhome/debian.cfg
 
             is_virt && flavour=-cloud
@@ -315,20 +300,16 @@ setos() {
             eval ${step}_img=$ci_mirror/releases/$releasever/release/ubuntu-$releasever-server-cloudimg-$basearch_alt.img
         else
             # 传统安装
-            if [ "$localtest" = 1 ]; then
-                mirror=$confhome/
+            if is_in_china; then
+                case "$basearch" in
+                "x86_64") mirror=https://mirrors.tuna.tsinghua.edu.cn/ubuntu-releases/$releasever ;;
+                "aarch64") mirror=https://mirrors.tuna.tsinghua.edu.cn/ubuntu-cdimage/releases/$releasever/release ;;
+                esac
             else
-                if is_in_china; then
-                    case "$basearch" in
-                    "x86_64") mirror=https://mirrors.tuna.tsinghua.edu.cn/ubuntu-releases/$releasever ;;
-                    "aarch64") mirror=https://mirrors.tuna.tsinghua.edu.cn/ubuntu-cdimage/releases/$releasever/release ;;
-                    esac
-                else
-                    case "$basearch" in
-                    "x86_64") mirror=https://releases.ubuntu.com/$releasever ;;
-                    "aarch64") mirror=https://cdimage.ubuntu.com/releases/$releasever/release ;;
-                    esac
-                fi
+                case "$basearch" in
+                "x86_64") mirror=https://releases.ubuntu.com/$releasever ;;
+                "aarch64") mirror=https://cdimage.ubuntu.com/releases/$releasever/release ;;
+                esac
             fi
 
             # iso
@@ -477,38 +458,34 @@ setos() {
             eval ${step}_img=${ci_image}
         else
             # 传统安装
-            if [ "$localtest" = 1 ]; then
-                mirror=$confhome/$releasever/
-            else
-                case $distro in
-                "centos")
-                    case $releasever in
-                    "7") mirrorlist="http://mirrorlist.centos.org/?release=7&arch=$basearch&repo=os" ;;
-                    "8") mirrorlist="http://mirrorlist.centos.org/?release=8-stream&arch=$basearch&repo=BaseOS" ;;
-                    "9") mirrorlist="https://mirrors.centos.org/mirrorlist?repo=centos-baseos-9-stream&arch=$basearch" ;;
-                    esac
-                    ;;
-                "alma") mirrorlist="https://mirrors.almalinux.org/mirrorlist/$releasever/baseos" ;;
-                "rocky") mirrorlist="https://mirrors.rockylinux.org/mirrorlist?arch=$basearch&repo=BaseOS-$releasever" ;;
-                "fedora") mirrorlist="https://mirrors.fedoraproject.org/mirrorlist?arch=$basearch&repo=fedora-$releasever" ;;
+            case $distro in
+            "centos")
+                case $releasever in
+                "7") mirrorlist="http://mirrorlist.centos.org/?release=7&arch=$basearch&repo=os" ;;
+                "8") mirrorlist="http://mirrorlist.centos.org/?release=8-stream&arch=$basearch&repo=BaseOS" ;;
+                "9") mirrorlist="https://mirrors.centos.org/mirrorlist?repo=centos-baseos-9-stream&arch=$basearch" ;;
                 esac
+                ;;
+            "alma") mirrorlist="https://mirrors.almalinux.org/mirrorlist/$releasever/baseos" ;;
+            "rocky") mirrorlist="https://mirrors.rockylinux.org/mirrorlist?arch=$basearch&repo=BaseOS-$releasever" ;;
+            "fedora") mirrorlist="https://mirrors.fedoraproject.org/mirrorlist?arch=$basearch&repo=fedora-$releasever" ;;
+            esac
 
-                # rocky/centos9 需要删除第一行注释， alma 需要替换$basearch
-                for cur_mirror in $(curl -L $mirrorlist | sed "/^#/d" | sed "s,\$basearch,$basearch,"); do
-                    host=$(get_host_by_url $cur_mirror)
-                    if is_host_has_ipv4_and_ipv6 $host &&
-                        test_url_grace ${cur_mirror}images/pxeboot/vmlinuz; then
-                        mirror=$cur_mirror
-                        break
-                    fi
-                done
-
-                if [ -z "$mirror" ]; then
-                    error_and_exit "All mirror failed."
+            # rocky/centos9 需要删除第一行注释， alma 需要替换$basearch
+            for cur_mirror in $(curl -L $mirrorlist | sed "/^#/d" | sed "s,\$basearch,$basearch,"); do
+                host=$(get_host_by_url $cur_mirror)
+                if is_host_has_ipv4_and_ipv6 $host &&
+                    test_url_grace ${cur_mirror}images/pxeboot/vmlinuz; then
+                    mirror=$cur_mirror
+                    break
                 fi
+            done
 
-                eval "${step}_mirrorlist='${mirrorlist}'"
+            if [ -z "$mirror" ]; then
+                error_and_exit "All mirror failed."
             fi
+
+            eval "${step}_mirrorlist='${mirrorlist}'"
 
             eval ${step}_ks=$confhome/redhat.cfg
             eval ${step}_vmlinuz=${mirror}images/pxeboot/vmlinuz
@@ -847,7 +824,7 @@ if ! is_in_windows; then
 fi
 
 # 整理参数
-if ! opts=$(getopt -n $0 -o "" --long localtest,debug,sleep:,iso:,image-name:,img:,ci,cloud-image -- "$@"); then
+if ! opts=$(getopt -n $0 -o "" --long debug,sleep:,iso:,image-name:,img:,ci,cloud-image -- "$@"); then
     usage_and_exit
 fi
 
@@ -855,11 +832,6 @@ eval set -- "$opts"
 # shellcheck disable=SC2034
 while true; do
     case "$1" in
-    --localtest)
-        localtest=1
-        confhome=$localtest_confhome
-        shift
-        ;;
     --debug)
         set -x
         shift
@@ -993,7 +965,7 @@ build_finalos_cmdline() {
 }
 
 build_extra_cmdline() {
-    for key in localtest confhome sleep cloud_image kernel; do
+    for key in confhome sleep cloud_image kernel; do
         value=${!key}
         if [ -n "$value" ]; then
             extra_cmdline+=" extra.$key='$value'"
