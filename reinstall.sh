@@ -726,7 +726,8 @@ collect_netconf() {
             powershell -nologo -noprofile -NonInteractive \
                 -ExecutionPolicy bypass \
                 -File "$ps1" |
-                sed 's/://'
+                sed 's/://' |
+                sed 's/\r//' # 删除 windows \r 换行符
         )
         mac_addr=$(echo_conf MACAddress)
         ipv4_addr=$(echo_conf IPAddress4)
