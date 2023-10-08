@@ -1008,13 +1008,7 @@ build_extra_cmdline() {
 }
 
 echo_tmp_ttys() {
-    # 由于 windows 下无法测试各tty是否有效
-    # 这里的 tty 只临时使用，非最终系统的 tty
-    if is_in_windows; then
-        echo "console=ttyS0,115200n8 console=tty0"
-    else
-        curl -L $confhome/ttys.sh | sh -s "console="
-    fi
+    curl -L $confhome/ttys.sh | sh -s "console="
 }
 
 # shellcheck disable=SC2154
