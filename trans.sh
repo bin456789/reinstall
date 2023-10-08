@@ -155,6 +155,19 @@ get_ttys() {
     wget $confhome/ttys.sh -O- | sh -s $prefix
 }
 
+get_xda() {
+    # 排除只读盘，vda 放前面
+    # 有的机器有sda和vda，vda是主硬盘，另一个盘是只读
+    for _xda in vda xda sda hda xvda nvme0n1; do
+        if [ -e "/sys/class/block/$_xda/ro" ] &&
+            [ "$(cat /sys/class/block/$_xda/ro)" = 0 ]; then
+            echo $_xda
+            return
+        fi
+    done
+    return 1
+}
+
 setup_tty_and_log() {
     cat <<EOF >/reinstall.html
 <!DOCTYPE html>
@@ -1619,8 +1632,8 @@ clear_previous
 add_community_repo
 
 # 找到主硬盘
-# shellcheck disable=SC2010
-xda=$(ls /dev/ | grep -Ex 'sda|hda|xda|vda|xvda|nvme0n1')
+xda=$(get_xda)
+
 if [ "$distro" != "alpine" ]; then
     setup_nginx_if_enough_ram
 fi
