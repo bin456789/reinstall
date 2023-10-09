@@ -521,7 +521,8 @@ create_part() {
         fi
 
         # 按iso容量计算分区大小，512m用于驱动和文件系统自身占用
-        part_size=$(grep 'Content-Length:' /tmp/headers.log | awk '{print int($2/1024/1024+512)}')
+        # 网址重定向可能得到多个 Content-Length, 选最后一个
+        part_size=$(grep 'Content-Length:' /tmp/headers.log | tail -1 | awk '{print int($2/1024/1024+512)}')
         if [ -z "$part_size" ]; then
             # 默认值，最大的iso 23h2 需要7g
             part_size=$((7 * 1024))
