@@ -20,51 +20,37 @@ else
     ipv6_dns2='2001:4860:4860::8888'
 fi
 
-get_ipv4_entry() {
-    ip -4 addr show scope global dev eth0 | grep inet
-}
-
-get_ipv6_entry() {
-    ip -6 addr show scope global dev eth0 | grep inet6
-}
-
 is_have_ipv4() {
-    [ -n "$(get_ipv4_entry)" ]
+    ip -4 addr show scope global dev eth0 | grep -q inet
 }
 
 is_have_ipv6() {
-    [ -n "$(get_ipv6_entry)" ]
+    ip -6 addr show scope global dev eth0 | grep -q inet6
 }
 
 # 开启 eth0
 ip link set dev eth0 up
 
-# 检测是否有 dhcpv4
-# 由于还没设置静态ip，所以有条目表示有 dhcpv4
-get_ipv4_entry && dhcpv4=true || dhcpv4=false
-
-# 检测是否有 dhcpv6
-# dhcpv4 肯定是 /128
-get_ipv6_entry | grep /128 && dhcpv6=true || dhcpv6=false
-
 # 等待slaac
 # 有ipv6地址就跳过，不管是slaac或者dhcpv6
 # 因为会在trans里判断
-slaac=false
-if ! get_ipv6_entry; then
-    for i in $(seq 10 -1 0); do
-        echo "waiting slaac for ${i}s"
-        get_ipv6_entry | grep -v /128 && slaac=true && break
-        sleep 1
-    done
-fi
+for i in $(seq 10 -1 0); do
+    is_have_ipv6 && break
+    echo "waiting slaac for ${i}s"
+    sleep 1
+done
+
+# 记录是否有动态地址
+# 由于还没设置静态ip，所以有条目表示有动态地址
+is_have_ipv4 && dhcpv4=true || dhcpv4=false
+is_have_ipv6 && dhcpv6_or_slaac=true || dhcpv6_or_slaac=false
 
 # 设置静态地址
-if ! is_have_ipv4 && [ -n "$ipv4_addr" ]; then
+if ! is_have_ipv4 && [ -n "$ipv4_addr" ] && [ -n "$ipv4_gateway" ]; then
     ip -4 addr add "$ipv4_addr" dev eth0
     ip -4 route add default via "$ipv4_gateway"
 fi
-if ! is_have_ipv6 && [ -n "$ipv6_addr" ]; then
+if ! is_have_ipv6 && [ -n "$ipv6_addr" ] && [ -n "$ipv6_gateway" ]; then
     ip -6 addr add "$ipv6_addr" dev eth0
     ip -6 route add default via "$ipv6_gateway"
 fi
@@ -72,47 +58,49 @@ fi
 # 检查 ipv4/ipv6 是否连接联网
 ipv4_has_internet=false
 ipv6_has_internet=false
-is_have_ipv4 && ipv4_test_complete=false || ipv4_test_complete=true
-is_have_ipv6 && ipv6_test_complete=false || ipv6_test_complete=true
-for i in $(seq 5); do
-    if ! $ipv4_test_complete && nslookup www.qq.com $ipv4_dns1; then
-        ipv4_has_internet=true
-        ipv4_test_complete=true
-    fi
-    if ! $ipv6_test_complete && nslookup www.qq.com $ipv6_dns1; then
-        ipv6_has_internet=true
-        ipv6_test_complete=true
-    fi
 
-    if $ipv4_test_complete && $ipv6_test_complete; then
-        break
-    fi
-    sleep 1
+is_need_test_ipv4() {
+    is_have_ipv4 && ! $ipv4_has_internet
+}
+
+is_need_test_ipv6() {
+    is_have_ipv6 && ! $ipv6_has_internet
+}
+
+echo 'Testing Internet Connection...'
+
+for i in $(seq 5); do
+    {
+        if is_need_test_ipv4 && nslookup www.qq.com $ipv4_dns1; then
+            ipv4_has_internet=true
+        fi
+        if is_need_test_ipv6 && nslookup www.qq.com $ipv6_dns1; then
+            ipv6_has_internet=true
+        fi
+        if ! is_need_test_ipv4 && ! is_need_test_ipv6; then
+            break
+        fi
+        sleep 1
+    } >/dev/null 2>&1
 done
 
 # 等待 udhcpc 创建 /etc/resolv.conf
 # 好像只有 dhcpv4 会创建 resolv.conf
-if { $dhcpv4 || $dhcpv6 || $slaac; } && [ ! -e /etc/resolv.conf ]; then
+if { $dhcpv4 || $dhcpv6_or_slaac; } && [ ! -e /etc/resolv.conf ]; then
     echo "waiting for /etc/resolv.conf"
     sleep 5
 fi
 
-# 如果有ipv6地址，但ipv6没网络
-# alpine只会用ipv6下载apk，而不用会ipv4下载
-# 所以要删除不联网协议的ip和dns
-
-# 甲骨文云管理面板添加ipv6地址然后取消
-# 依然会分配ipv6地址，但ipv6没网络
+# 要删除不联网协议的ip，因为
+# 1 甲骨文云管理面板添加ipv6地址然后取消
+#   依然会分配ipv6地址，但ipv6没网络
+#   此时alpine只会用ipv6下载apk，而不用会ipv4下载
+# 2 有ipv4地址但没有ipv4网关的情况(vultr)，aria2会用ipv4下载
 if $ipv4_has_internet && ! $ipv6_has_internet; then
+    echo 0 >/proc/sys/net/ipv6/conf/eth0/accept_ra
     ip -6 addr flush scope global dev eth0
-    if [ -e /etc/resolv.conf ]; then
-        sed -i '/^[[:blank:]]*nameserver[[:blank:]].*:/d' /etc/resolv.conf
-    fi
 elif ! $ipv4_has_internet && $ipv6_has_internet; then
     ip -4 addr flush scope global dev eth0
-    if [ -e /etc/resolv.conf ]; then
-        sed -i '/^[[:blank:]]*nameserver[[:blank:]].*\./d' /etc/resolv.conf
-    fi
 fi
 
 # 如果联网了，但没获取到默认 DNS，则添加我们的 DNS
@@ -127,6 +115,7 @@ fi
 
 # 传参给 trans.start
 $dhcpv4 && echo 1 >/dev/dhcpv4 || echo 0 >/dev/dhcpv4
+$is_in_china && echo 1 >/dev/is_in_china || echo 0 >/dev/is_in_china
 echo "$mac_addr" >/dev/mac_addr
 echo "$ipv4_addr" >/dev/ipv4_addr
 echo "$ipv4_gateway" >/dev/ipv4_gateway
