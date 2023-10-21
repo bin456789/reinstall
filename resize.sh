@@ -22,7 +22,8 @@ update_part() {
 
 # 找出主硬盘
 # shellcheck disable=SC2010
-xda=$(mount | awk '$3=="/" {print $1}' | grep -Eo 'sda|hda|xda|vda|xvda|nvme0n1')
+root_drive=$(mount | awk '$3=="/" {print $1}')
+xda=$(lsblk -r --inverse "$root_drive" | grep -w disk | awk '{print $1}')
 
 # 删除 installer 分区
 installer_num=$(readlink -f /dev/disk/by-label/installer | grep -o '[0-9]*$')
