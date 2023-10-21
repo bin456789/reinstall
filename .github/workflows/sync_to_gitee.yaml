@@ -3,6 +3,7 @@ on: [push, workflow_dispatch]
 jobs:
   sync:
     name: 同步到 Gitee
+    if: ${{ github.repository == 'bin456789/reinstall' }}
     runs-on: ubuntu-latest
     steps:
       - uses: Yikun/hub-mirror-action@v1.3
