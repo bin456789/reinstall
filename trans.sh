@@ -747,10 +747,11 @@ EOF
 
 download_cloud_init_config() {
     os_dir=$1
-    ci_file=$os_dir/etc/cloud/cloud.cfg.d/99_nocloud.cfg
 
-    # shellcheck disable=SC2154
-    download $confhome/nocloud.yaml $ci_file
+    ci_file=$os_dir/etc/cloud/cloud.cfg.d/99_nocloud.cfg
+    download $confhome/cloud-init.yaml $ci_file
+    # 删除注释行，除了第一行
+    sed -i '1!{/^[[:space:]]*#/d}' $ci_file
 
     # swapfile
     # 如果分区表中已经有swapfile就跳过，例如arch
