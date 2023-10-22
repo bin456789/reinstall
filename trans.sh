@@ -719,7 +719,7 @@ create_cloud_init_network_config() {
 
     # shellcheck disable=SC2154
     is_dhcpv4 && dhcp4=true || dhcp4=false
-    (is_dhcpv6 || is_slaac) && dhcp6=true || dhcp6=false
+    { is_dhcpv6 || is_slaac; } && dhcp6=true || dhcp6=false
     cat <<EOF >>$ci_file
 network:
   version: 2
@@ -756,7 +756,7 @@ EOF
     if ! is_dhcpv4; then
         dns4_list=$(echo "$dns_list" | grep '\.' || true)
     fi
-    if ! (is_slaac || is_dhcpv6); then
+    if ! { is_slaac || is_dhcpv6; }; then
         dns6_list=$(echo "$dns_list" | grep ':' || true)
     fi
 
