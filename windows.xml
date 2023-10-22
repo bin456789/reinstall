@@ -98,18 +98,13 @@
                     <Order>4</Order>
                     <Path>net user Administrator /active:yes</Path>
                 </RunSynchronousCommand>
-                <!-- workaround esd 里面没有这个文件，先touch -->
                 <RunSynchronousCommand wcm:action="add">
                     <Order>5</Order>
-                    <Path>cmd /c type nul >>C:\resize.bat</Path>
+                    <Path>cmd /c "if exist %SystemDrive%\windows-resize.bat (call %SystemDrive%\windows-resize.bat)"</Path>
                 </RunSynchronousCommand>
                 <RunSynchronousCommand wcm:action="add">
                     <Order>6</Order>
-                    <Path>C:\resize.bat</Path>
-                </RunSynchronousCommand>
-                <RunSynchronousCommand wcm:action="add">
-                    <Order>7</Order>
-                    <Path>cmd /c "del C:\resize.bat"</Path>
+                    <Path>cmd /c "if exist %SystemDrive%\windows-set-netconf.bat (call %SystemDrive%\windows-set-netconf.bat)"</Path>
                 </RunSynchronousCommand>
             </RunSynchronous>
         </component>

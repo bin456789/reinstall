@@ -17,7 +17,7 @@ if not !errorlevel! == 0 (
 )
 
 :: pkgs 改动了才重新运行 Cygwin 安装程序
-set pkgs="curl,cpio,p7zip,bind-utils"
+set pkgs="curl,cpio,p7zip,bind-utils,ipcalc"
 set tags=%tmp%\cygwin-installed-!pkgs!
 if not exist !tags! (
     :: 检查是否国内
@@ -75,7 +75,7 @@ exit /b !errorlevel!
 
 
 :download
-:: coreutil 会被 windows Defender 报毒
+:: certutil 会被 windows Defender 报毒
 :: certutil -urlcache -f -split %~1 %~2
 bitsadmin /transfer "%~3" /priority foreground %~1 %~2
 exit /b !errorlevel!

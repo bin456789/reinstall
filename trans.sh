@@ -330,19 +330,54 @@ is_dhcpv6() {
     [ "$dhcpv6" = 1 ]
 }
 
+to_upper() {
+    tr '[:lower:]' '[:upper:]'
+}
+
+to_lower() {
+    tr '[:upper:]' '[:lower:]'
+}
+
+unix2dos() {
+    target=$1
+
+    # 先原地unix2dos，出错再用复制，可最大限度保留文件权限
+    if ! command unix2dos $target 2>/tmp/error.log; then
+        # 出错后删除 unix2dos 创建的临时文件
+        rm "$(awk -F: '{print $2}' /tmp/error.log | xargs)"
+        tmp=$(mktemp)
+        cp $target $tmp
+        command unix2dos $tmp
+        cp $tmp $target
+        rm $tmp
+    fi
+}
+
 insert_into_file() {
     file=$1
     location=$2
     regex_to_find=$3
 
-    line_num=$(grep -E -n "$regex_to_find" "$file" | cut -d: -f1)
-    if [ "$location" = before ]; then
-        line_num=$((line_num - 1))
-    elif ! [ "$location" = after ]; then
-        return 1
-    fi
+    if [ "$location" = HEAD ]; then
+        in=$(mktemp)
+        cat /dev/stdin >$in
+        echo -e "0r $in \n w \n q" | ed $file >/dev/null
+    else
+        line_num=$(grep -E -n "$regex_to_find" "$file" | cut -d: -f1)
 
-    sed -i "${line_num}r /dev/stdin" "$file"
+        found_count=$(echo "$line_num" | wc -l)
+        if [ ! "$found_count" -eq 1 ]; then
+            return 1
+        fi
+
+        case "$location" in
+        before) line_num=$((line_num - 1)) ;;
+        after) ;;
+        *) return 1 ;;
+        esac
+
+        sed -i "${line_num}r /dev/stdin" "$file"
+    fi
 }
 
 install_alpine() {
@@ -812,34 +847,108 @@ EOF
     cat -n $ci_file
 }
 
-modify_dd_os() {
+modify_windows() {
+    # https://learn.microsoft.com/zh-cn/windows-hardware/manufacture/desktop/windows-setup-states
+    # https://learn.microsoft.com/zh-cn/troubleshoot/azure/virtual-machines/reset-local-password-without-agent
+    # https://learn.microsoft.com/zh-cn/windows-hardware/manufacture/desktop/add-a-custom-script-to-windows-setup
+
+    # 判断用 SetupComplete 还是组策略
+    state_ini=/os/Windows/Setup/State/State.ini
+    cat $state_ini
+    if grep -q IMAGE_STATE_COMPLETE $state_ini; then
+        use_gpo=true
+    else
+        use_gpo=false
+    fi
+
+    # 下载共同的子脚本
+    # 可能 unattend.xml 已经设置了ExtendOSPartition，不过运行resize没副作用
+    bats="windows-resize.bat windows-set-netconf.bat"
+    download $confhome/windows-resize.bat /os/windows-resize.bat
+    create_win_set_netconf_script /os/windows-set-netconf.bat
+
+    if $use_gpo; then
+        # 使用组策略
+        gpt_ini=/os/Windows/System32/GroupPolicy/gpt.ini
+        scripts_ini=/os/Windows/System32/GroupPolicy/Machine/Scripts/scripts.ini
+        mkdir -p "$(dirname $scripts_ini)"
+
+        # 备份 ini
+        for file in $gpt_ini $scripts_ini; do
+            if [ -f $file ]; then
+                cp $file $file.orig
+            fi
+        done
+
+        # gpt.ini
+        cat >$gpt_ini <<EOF
+[General]
+gPCFunctionalityVersion=2
+gPCMachineExtensionNames=[{42B5FAAE-6536-11D2-AE5A-0000F87571E3}{40B6664F-4972-11D1-A7CA-0000F87571E3}]
+Version=1
+EOF
+        unix2dos $gpt_ini
+
+        # scripts.ini
+        if ! [ -e $scripts_ini ]; then
+            touch $scripts_ini
+        fi
+
+        if ! grep -F '[Startup]' $scripts_ini; then
+            echo '[Startup]' >>$scripts_ini
+        fi
+
+        # 注意没用 pipefail 的话，错误码取自最后一个管道
+        if num=$(grep -Eo '^[0-9]+' $scripts_ini | sort -n | tail -1 | grep .); then
+            num=$((num + 1))
+        else
+            num=0
+        fi
+
+        bats="$bats windows-del-gpo.bat"
+        for bat in $bats; do
+            echo "${num}CmdLine=%SystemDrive%\\$bat" >>$scripts_ini
+            echo "${num}Parameters=" >>$scripts_ini
+            num=$((num + 1))
+        done
+        cat $scripts_ini
+        unix2dos $scripts_ini
+
+        # windows-del-gpo.bat
+        download $confhome/windows-del-gpo.bat /os/windows-del-gpo.bat
+    else
+        # 使用 SetupComplete
+        setup_complete=/os/Windows/Setup/Scripts/SetupComplete.cmd
+        mkdir -p "$(dirname $setup_complete)"
+
+        # 添加到 C:\Setup\Scripts\SetupComplete.cmd 最前面
+        # call 防止子 bat 删除自身后中断主脚本
+        my_setup_complete=$(mktemp)
+        for bat in $bats; do
+            echo "if exist %SystemDrive%\\$bat (call %SystemDrive%\\$bat)" >>$my_setup_complete
+        done
+
+        if [ -f $setup_complete ]; then
+            # 直接插入而不是覆盖，可以保留权限，虽然没什么影响
+            insert_into_file $setup_complete HEAD <$my_setup_complete
+        else
+            cp $my_setup_complete $setup_complete
+        fi
+
+        unix2dos $setup_complete
+    fi
+}
+
+modify_linux() {
+    os_dir=$1
+
     find_and_mount() {
         mount_point=$1
-
         mount_dev=$(awk "\$2==\"$mount_point\" {print \$1}" $os_dir/etc/fstab)
         if [ -n "$mount_dev" ]; then
             mount $mount_dev $os_dir$mount_point
         fi
     }
-
-    apk add lsblk
-    mkdir -p /os
-    # 按分区容量大到小，依次寻找系统分区
-    for part in $(lsblk /dev/$xda --sort SIZE -no NAME | sed '$d' | tac); do
-        # btrfs挂载的是默认子卷，如果没有默认子卷，挂载的是根目录
-        # fedora 云镜像没有默认子卷，且系统在root子卷中
-        if mount /dev/$part /os; then
-            if etc_dir=$({ ls -d /os/etc || ls -d /os/*/etc; } 2>/dev/null); then
-                os_dir=$(dirname $etc_dir)
-                break
-            fi
-            umount /os
-        fi
-    done
-
-    if [ -z "$os_dir" ]; then
-        error_and_exit "can't find os partition"
-    fi
 
     download_cloud_init_config $os_dir
 
@@ -894,12 +1003,39 @@ EOF
     fi
 }
 
-install_cloud_image_by_dd() {
-    apk add util-linux udev hdparm curl
+modify_os_on_disk() {
+    apk add util-linux udev hdparm lsblk
     rc-service udev start
-    install_dd
     update_part /dev/$xda
-    modify_dd_os
+
+    mkdir -p /os
+    # 按分区容量大到小，依次寻找系统分区
+    for part in $(lsblk /dev/$xda --sort SIZE -no NAME | sed '$d' | tac); do
+        # btrfs挂载的是默认子卷，如果没有默认子卷，挂载的是根目录
+        # fedora 云镜像没有默认子卷，且系统在root子卷中
+        if mount -o ro /dev/$part /os; then
+            if etc_dir=$({ ls -d /os/etc/ || ls -d /os/*/etc/; } 2>/dev/null); then
+                os_dir=$(dirname $etc_dir)
+                # 重新挂载为读写
+                mount -o remount,rw /os
+                modify_linux $os_dir
+                return
+            fi
+
+            # find 有时会报 I/O error
+            if ls -d /os/*/ | grep -i '/windows/' 2>/dev/null; then
+                # 重新挂载为读写、忽略大小写
+                umount /os
+                apk add ntfs-3g
+                mount.lowntfs-3g /dev/$part /os -o ignore_case
+                modify_windows /os
+                return
+            fi
+
+            umount_os
+        fi
+    done
+    error_and_exit "Can't find os partition."
 }
 
 create_swap() {
@@ -1247,6 +1383,62 @@ mount_part() {
     mount $mount_args /dev/disk/by-label/installer /os/installer
 }
 
+get_dns_list_for_win() {
+    case "$1" in
+    4) sign='\.' ;;
+    6) sign=':' ;;
+    *) return 1 ;;
+    esac
+
+    if dns_list=$(grep '^nameserver' /etc/resolv.conf | awk '{print $2}' | grep "$sign"); then
+        i=0
+        for dns in $dns_list; do
+            i=$((i + 1))
+            echo "set ipv${1}_dns$i=$dns"
+        done
+    fi
+}
+
+create_win_set_netconf_script() {
+    target=$1
+
+    if is_staticv4 || is_staticv6; then
+        get_netconf_to mac_addr
+        echo "set mac_addr=$mac_addr" >$target
+
+        # 生成静态 ipv4 配置
+        if is_staticv4; then
+            get_netconf_to ipv4_addr
+            get_netconf_to ipv4_gateway
+            ipv4_dns_list="$(get_dns_list_for_win 4)"
+            cat <<EOF >>$target
+set ipv4_addr=$ipv4_addr
+set ipv4_gateway=$ipv4_gateway
+$ipv4_dns_list
+EOF
+        fi
+
+        # 生成静态 ipv6 配置
+        if is_staticv6; then
+            get_netconf_to ipv6_addr
+            get_netconf_to ipv6_gateway
+            ipv6_dns_list="$(get_dns_list_for_win 6)"
+            cat <<EOF >>$target
+set ipv6_addr=$ipv6_addr
+set ipv6_gateway=$ipv6_gateway
+$ipv6_dns_list
+EOF
+        fi
+
+        cat -n $target
+    fi
+
+    # 脚本还有关闭ipv6隐私id的功能，所以不能省略
+    # 合并脚本
+    wget $confhome/windows-set-netconf.bat -O- >>$target
+    unix2dos $target
+}
+
 install_windows() {
     # shellcheck disable=SC2154
     download $iso /os/windows.iso
@@ -1542,7 +1734,8 @@ EOF
     # TODO: 由于esd文件无法修改，要将resize.bat放到boot.wim
     if [[ "$install_wim" = "*.wim" ]]; then
         wimmountrw $install_wim "$image_name" /wim/
-        download $confhome/resize.bat /wim/resize.bat
+        download $confhome/windows-resize.bat /wim/windows-resize.bat
+        create_win_set_netconf_script /wim/windows-set-netconf.bat
         wimunmount --commit /wim/
     fi
 
