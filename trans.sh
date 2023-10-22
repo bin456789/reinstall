@@ -1080,293 +1080,293 @@ disable_selinux_kdump() {
     rm -rf $os_dir/etc/systemd/system/multi-user.target.wants/kdump.service
 }
 
-install_cloud_image() {
+download_qcow() {
     apk add qemu-img lsblk
 
     mkdir -p /installer
     mount /dev/disk/by-label/installer /installer
     qcow_file=/installer/cloud_image.qcow2
     download $img $qcow_file
+}
 
-    # centos/alma/rocky cloud image系统分区是8~9g xfs，而我们的目标是能在5g硬盘上运行，因此改成复制系统文件
-    if [ "$distro" = "centos" ] || [ "$distro" = "alma" ] || [ "$distro" = "rocky" ]; then
-        yum() {
-            if [ "$releasever" = 7 ]; then
-                chroot /os/ yum -y --disablerepo=* --enablerepo=base,updates "$@"
-            else
-                chroot /os/ dnf -y --disablerepo=* --enablerepo=baseos --setopt=install_weak_deps=False "$@"
-            fi
-        }
-
-        modprobe nbd
-        qemu_nbd -c /dev/nbd0 $qcow_file
-
-        # TODO: 改成循环mount找出os+fstab查找剩余分区？
-        os_part=$(lsblk /dev/nbd0p*[0-9] --sort SIZE -no NAME,FSTYPE | grep xfs | tail -1 | cut -d' ' -f1)
-        efi_part=$(lsblk /dev/nbd0p*[0-9] --sort SIZE -no NAME,FSTYPE | grep fat | tail -1 | cut -d' ' -f1)
-        boot_part=$(lsblk /dev/nbd0p*[0-9] --sort SIZE -no NAME,FSTYPE | grep xfs | sed '$d' | tail -1 | cut -d' ' -f1)
-
-        os_part_uuid=$(lsblk /dev/$os_part -no UUID)
-        if [ -n "$efi_part" ]; then
-            efi_part_uuid=$(lsblk /dev/$efi_part -no UUID)
-        fi
-
-        mkdir -p /nbd /nbd-boot /nbd-efi /os
-
-        # 使用目标系统的格式化程序
-        # centos8 如果用alpine格式化xfs，grub2-mkconfig和grub2里面都无法识别xfs分区
-        mount -o nouuid /dev/$os_part /nbd/
-        mount_pseudo_fs /nbd/
-        chroot /nbd mkfs.xfs -f -m uuid=$os_part_uuid /dev/$xda*2
-        umount -R /nbd/
-
-        # 复制系统
-        echo Copying os partition
-        mount -o ro,nouuid /dev/$os_part /nbd/
-        mount -o noatime /dev/$xda*2 /os/
-        cp -a /nbd/* /os/
-
-        # 复制boot分区，如果有
-        if [ -n "$boot_part" ]; then
-            echo Copying boot partition
-            mount -o ro,nouuid /dev/$boot_part /nbd-boot/
-            cp -a /nbd-boot/* /os/boot/
-        fi
-
-        # efi 分区
-        efi_mount_opts="defaults,uid=0,gid=0,umask=077,shortname=winnt"
-        if is_efi; then
-            # 挂载 efi
-            mkdir -p /os/boot/efi/
-            mount -o $efi_mount_opts /dev/$xda*1 /os/boot/efi/
-
-            # 复制文件
-            if [ -n "$efi_part" ]; then
-                echo Copying efi partition
-                mount -o ro /dev/$efi_part /nbd-efi/
-                cp -a /nbd-efi/* /os/boot/efi/
-            fi
-        fi
-
-        # 取消挂载 nbd
-        umount /nbd/ /nbd-boot/ /nbd-efi/ || true
-        qemu_nbd -d /dev/nbd0
-
-        # 如果镜像有efi分区，复制其uuid
-        # 如果有相同uuid的fat分区，则无法挂载
-        # 所以要先复制efi分区，断开nbd再复制uuid
-        if is_efi && [ -n "$efi_part_uuid" ]; then
-            umount /os/boot/efi/
-            apk add mtools
-            mlabel -N "$(echo $efi_part_uuid | sed 's/-//')" -i /dev/$xda*1
-            update_part /dev/$xda
-            mount -o $efi_mount_opts /dev/$xda*1 /os/boot/efi/
-        fi
-
-        # 挂载伪文件系统
-        mount_pseudo_fs /os/
-
-        # 创建 swap
-        rm -rf /installer/*
-        create_swap /installer/swapfile
-
-        # resolv.conf
-        mv /os/etc/resolv.conf /os/etc/resolv.conf.orig
-        cp /etc/resolv.conf /os/etc/resolv.conf
-
-        # selinux kdump
-        disable_selinux_kdump /os
-
-        # cloud-init
-        download_cloud_init_config /os
-
-        # fstab 删除 boot 分区
-        # alma/rocky 镜像本身有boot分区，但我们不需要
-        sed -i '/[[:blank:]]\/boot[[:blank:]]/d' /os/etc/fstab
-
-        # fstab 添加 efi 分区
-        if is_efi; then
-            # centos 要创建efi条目
-            if ! grep /boot/efi /os/etc/fstab; then
-                efi_part_uuid=$(lsblk /dev/$xda*1 -no UUID)
-                echo "UUID=$efi_part_uuid /boot/efi vfat $efi_mount_opts 0 0" >>/os/etc/fstab
-            fi
+install_qcow_el() {
+    yum() {
+        if [ "$releasever" = 7 ]; then
+            chroot /os/ yum -y --disablerepo=* --enablerepo=base,updates "$@"
         else
-            # 删除 efi 条目
-            sed -i '/[[:blank:]]\/boot\/efi[[:blank:]]/d' /os/etc/fstab
+            chroot /os/ dnf -y --disablerepo=* --enablerepo=baseos --setopt=install_weak_deps=False "$@"
         fi
+    }
 
-        distro_full=$(awk -F: '{ print $3 }' </os/etc/system-release-cpe)
-        releasever=$(awk -F: '{ print $5 }' </os/etc/system-release-cpe)
+    modprobe nbd
+    qemu_nbd -c /dev/nbd0 $qcow_file
 
-        remove_grub_conflict_files() {
-            # bios 和 efi 转换前先删除
+    # TODO: 改成循环mount找出os+fstab查找剩余分区？
+    os_part=$(lsblk /dev/nbd0p*[0-9] --sort SIZE -no NAME,FSTYPE | grep xfs | tail -1 | cut -d' ' -f1)
+    efi_part=$(lsblk /dev/nbd0p*[0-9] --sort SIZE -no NAME,FSTYPE | grep fat | tail -1 | cut -d' ' -f1)
+    boot_part=$(lsblk /dev/nbd0p*[0-9] --sort SIZE -no NAME,FSTYPE | grep xfs | sed '$d' | tail -1 | cut -d' ' -f1)
 
-            # bios转efi出错
-            # centos7是bios镜像，/boot/grub2/grubenv 是真身
-            # 安装grub-efi时，grubenv 会改成指向efi分区grubenv软连接
-            # 如果安装grub-efi前没有删除原来的grubenv，原来的grubenv将不变，新建的软连接将变成 grubenv.rpmnew
-            # 后续grubenv的改动无法同步到efi分区，会造成grub2-setdefault失效
+    os_part_uuid=$(lsblk /dev/$os_part -no UUID)
+    if [ -n "$efi_part" ]; then
+        efi_part_uuid=$(lsblk /dev/$efi_part -no UUID)
+    fi
 
-            # efi转bios出错
-            # 如果是指向efi目录的软连接（例如el8），先删除它，否则 grub2-install 会报错
-            rm -rf /os/boot/grub2/grubenv /os/boot/grub2/grub.cfg
-        }
+    mkdir -p /nbd /nbd-boot /nbd-efi /os
 
-        # 安装 efi 引导
-        # 只有centos镜像没有efi，其他系统镜像已经从efi分区复制了文件
-        if [ "$distro" = "centos" ] && is_efi; then
-            remove_grub_conflict_files
-            [ "$(uname -m)" = x86_64 ] && arch=x64 || arch=aa64
-            yum install efibootmgr grub2-efi-$arch grub2-efi-$arch-modules shim-$arch
+    # 使用目标系统的格式化程序
+    # centos8 如果用alpine格式化xfs，grub2-mkconfig和grub2里面都无法识别xfs分区
+    mount -o nouuid /dev/$os_part /nbd/
+    mount_pseudo_fs /nbd/
+    chroot /nbd mkfs.xfs -f -m uuid=$os_part_uuid /dev/$xda*2
+    umount -R /nbd/
+
+    # 复制系统
+    echo Copying os partition
+    mount -o ro,nouuid /dev/$os_part /nbd/
+    mount -o noatime /dev/$xda*2 /os/
+    cp -a /nbd/* /os/
+
+    # 复制boot分区，如果有
+    if [ -n "$boot_part" ]; then
+        echo Copying boot partition
+        mount -o ro,nouuid /dev/$boot_part /nbd-boot/
+        cp -a /nbd-boot/* /os/boot/
+    fi
+
+    # efi 分区
+    efi_mount_opts="defaults,uid=0,gid=0,umask=077,shortname=winnt"
+    if is_efi; then
+        # 挂载 efi
+        mkdir -p /os/boot/efi/
+        mount -o $efi_mount_opts /dev/$xda*1 /os/boot/efi/
+
+        # 复制文件
+        if [ -n "$efi_part" ]; then
+            echo Copying efi partition
+            mount -o ro /dev/$efi_part /nbd-efi/
+            cp -a /nbd-efi/* /os/boot/efi/
         fi
+    fi
 
-        # 安装 bios 引导
-        if ! is_efi; then
-            remove_grub_conflict_files
-            yum install grub2-pc grub2-pc-modules
-            chroot /os/ grub2-install /dev/$xda
+    # 取消挂载 nbd
+    umount /nbd/ /nbd-boot/ /nbd-efi/ || true
+    qemu_nbd -d /dev/nbd0
+
+    # 如果镜像有efi分区，复制其uuid
+    # 如果有相同uuid的fat分区，则无法挂载
+    # 所以要先复制efi分区，断开nbd再复制uuid
+    if is_efi && [ -n "$efi_part_uuid" ]; then
+        umount /os/boot/efi/
+        apk add mtools
+        mlabel -N "$(echo $efi_part_uuid | sed 's/-//')" -i /dev/$xda*1
+        update_part /dev/$xda
+        mount -o $efi_mount_opts /dev/$xda*1 /os/boot/efi/
+    fi
+
+    # 挂载伪文件系统
+    mount_pseudo_fs /os/
+
+    # 创建 swap
+    rm -rf /installer/*
+    create_swap /installer/swapfile
+
+    # resolv.conf
+    mv /os/etc/resolv.conf /os/etc/resolv.conf.orig
+    cp /etc/resolv.conf /os/etc/resolv.conf
+
+    # selinux kdump
+    disable_selinux_kdump /os
+
+    # cloud-init
+    download_cloud_init_config /os
+
+    # fstab 删除 boot 分区
+    # alma/rocky 镜像本身有boot分区，但我们不需要
+    sed -i '/[[:blank:]]\/boot[[:blank:]]/d' /os/etc/fstab
+
+    # fstab 添加 efi 分区
+    if is_efi; then
+        # centos 要创建efi条目
+        if ! grep /boot/efi /os/etc/fstab; then
+            efi_part_uuid=$(lsblk /dev/$xda*1 -no UUID)
+            echo "UUID=$efi_part_uuid /boot/efi vfat $efi_mount_opts 0 0" >>/os/etc/fstab
         fi
+    else
+        # 删除 efi 条目
+        sed -i '/[[:blank:]]\/boot\/efi[[:blank:]]/d' /os/etc/fstab
+    fi
 
-        # blscfg 启动项
-        # rocky/alma镜像是独立的boot分区，但我们不是
-        # 因此要添加boot目录
-        if [ -d /os/boot/loader/entries/ ] && ! grep -q 'initrd /boot/' /os/boot/loader/entries/*.conf; then
-            sed -i -E 's,((linux|initrd) /),\1boot/,g' /os/boot/loader/entries/*.conf
-        fi
+    distro_full=$(awk -F: '{ print $3 }' </os/etc/system-release-cpe)
+    releasever=$(awk -F: '{ print $5 }' </os/etc/system-release-cpe)
 
-        # efi 分区 grub.cfg
-        # https://github.com/rhinstaller/anaconda/blob/346b932a26a19b339e9073c049b08bdef7f166c3/pyanaconda/modules/storage/bootloader/efi.py#L198
-        if is_efi && [ "$releasever" -ge 9 ]; then
-            cat <<EOF >/os/boot/efi/EFI/$distro_full/grub.cfg
+    remove_grub_conflict_files() {
+        # bios 和 efi 转换前先删除
+
+        # bios转efi出错
+        # centos7是bios镜像，/boot/grub2/grubenv 是真身
+        # 安装grub-efi时，grubenv 会改成指向efi分区grubenv软连接
+        # 如果安装grub-efi前没有删除原来的grubenv，原来的grubenv将不变，新建的软连接将变成 grubenv.rpmnew
+        # 后续grubenv的改动无法同步到efi分区，会造成grub2-setdefault失效
+
+        # efi转bios出错
+        # 如果是指向efi目录的软连接（例如el8），先删除它，否则 grub2-install 会报错
+        rm -rf /os/boot/grub2/grubenv /os/boot/grub2/grub.cfg
+    }
+
+    # 安装 efi 引导
+    # 只有centos镜像没有efi，其他系统镜像已经从efi分区复制了文件
+    if [ "$distro" = "centos" ] && is_efi; then
+        remove_grub_conflict_files
+        [ "$(uname -m)" = x86_64 ] && arch=x64 || arch=aa64
+        yum install efibootmgr grub2-efi-$arch grub2-efi-$arch-modules shim-$arch
+    fi
+
+    # 安装 bios 引导
+    if ! is_efi; then
+        remove_grub_conflict_files
+        yum install grub2-pc grub2-pc-modules
+        chroot /os/ grub2-install /dev/$xda
+    fi
+
+    # blscfg 启动项
+    # rocky/alma镜像是独立的boot分区，但我们不是
+    # 因此要添加boot目录
+    if [ -d /os/boot/loader/entries/ ] && ! grep -q 'initrd /boot/' /os/boot/loader/entries/*.conf; then
+        sed -i -E 's,((linux|initrd) /),\1boot/,g' /os/boot/loader/entries/*.conf
+    fi
+
+    # efi 分区 grub.cfg
+    # https://github.com/rhinstaller/anaconda/blob/346b932a26a19b339e9073c049b08bdef7f166c3/pyanaconda/modules/storage/bootloader/efi.py#L198
+    if is_efi && [ "$releasever" -ge 9 ]; then
+        cat <<EOF >/os/boot/efi/EFI/$distro_full/grub.cfg
                     search --no-floppy --fs-uuid --set=dev $os_part_uuid
                     set prefix=(\$dev)/boot/grub2
                     export \$prefix
                     configfile \$prefix/grub.cfg
 EOF
-        fi
+    fi
 
-        # 主 grub.cfg
-        if is_efi && [ "$releasever" -le 8 ]; then
-            chroot /os/ grub2-mkconfig -o /boot/efi/EFI/$distro_full/grub.cfg
-        else
-            chroot /os/ grub2-mkconfig -o /boot/grub2/grub.cfg
-        fi
-
-        # 还原 resolv.conf
-        mv /os/etc/resolv.conf.orig /os/etc/resolv.conf
-
-        # 删除installer分区，重启后cloud init会自动扩容
-        swapoff -a
-        umount /installer
-        parted /dev/$xda -s rm 3
-
+    # 主 grub.cfg
+    if is_efi && [ "$releasever" -le 8 ]; then
+        chroot /os/ grub2-mkconfig -o /boot/efi/EFI/$distro_full/grub.cfg
     else
-        # debian ubuntu arch opensuse gentoo
-        if true; then
-            modprobe nbd
-            qemu_nbd -c /dev/nbd0 $qcow_file
+        chroot /os/ grub2-mkconfig -o /boot/grub2/grub.cfg
+    fi
 
-            # 检查最后一个分区是否是 btrfs
-            # 即使awk结果为空，返回值也是0，加上 grep . 检查是否结果为空
-            if part_num=$(parted /dev/nbd0 -s print | awk NF | tail -1 | grep btrfs | awk '{print $1}' | grep .); then
-                apk add btrfs-progs
-                mkdir -p /mnt/btrfs
-                mount /dev/nbd0p$part_num /mnt/btrfs
+    # 还原 resolv.conf
+    mv /os/etc/resolv.conf.orig /os/etc/resolv.conf
 
-                # 回收空数据块
-                btrfs device usage /mnt/btrfs
-                btrfs balance start -dusage=0 /mnt/btrfs
-                btrfs device usage /mnt/btrfs
+    # 删除installer分区，重启后cloud init会自动扩容
+    swapoff -a
+    umount /installer
+    parted /dev/$xda -s rm 3
+}
 
-                # 计算可以缩小的空间
-                free_bytes=$(btrfs device usage /mnt/btrfs -b | grep Unallocated: | awk '{print $2}')
-                reserve_bytes=$((100 * 1024 * 1024)) # 预留 100M 可用空间
-                skrink_bytes=$((free_bytes - reserve_bytes))
+dd_qcow() {
+    if true; then
+        modprobe nbd
+        qemu_nbd -c /dev/nbd0 $qcow_file
 
-                if [ $skrink_bytes -gt 0 ]; then
-                    # 缩小文件系统
-                    btrfs filesystem resize -$skrink_bytes /mnt/btrfs
-                    # 缩小分区
-                    part_start=$(parted /dev/nbd0 -s 'unit b print' | awk "\$1==$part_num {print \$2}" | sed 's/B//')
-                    part_size=$(btrfs filesystem usage /mnt/btrfs -b | grep 'Device size:' | awk '{print $3}')
-                    part_end=$((part_start + part_size))
-                    umount /mnt/btrfs
-                    printf "yes" | parted /dev/nbd0 resizepart $part_num ${part_end}B ---pretend-input-tty
+        # 检查最后一个分区是否是 btrfs
+        # 即使awk结果为空，返回值也是0，加上 grep . 检查是否结果为空
+        if part_num=$(parted /dev/nbd0 -s print | awk NF | tail -1 | grep btrfs | awk '{print $1}' | grep .); then
+            apk add btrfs-progs
+            mkdir -p /mnt/btrfs
+            mount /dev/nbd0p$part_num /mnt/btrfs
 
-                    # 缩小 qcow2
-                    qemu_nbd -d /dev/nbd0
-                    qemu-img resize --shrink $qcow_file $part_end
+            # 回收空数据块
+            btrfs device usage /mnt/btrfs
+            btrfs balance start -dusage=0 /mnt/btrfs
+            btrfs device usage /mnt/btrfs
 
-                    # 重新连接
-                    qemu_nbd -c /dev/nbd0 $qcow_file
-                else
-                    umount /mnt/btrfs
-                fi
-            fi
+            # 计算可以缩小的空间
+            free_bytes=$(btrfs device usage /mnt/btrfs -b | grep Unallocated: | awk '{print $2}')
+            reserve_bytes=$((100 * 1024 * 1024)) # 预留 100M 可用空间
+            skrink_bytes=$((free_bytes - reserve_bytes))
 
-            # 显示分区
-            lsblk -o NAME,SIZE,FSTYPE,LABEL /dev/nbd0
+            if [ $skrink_bytes -gt 0 ]; then
+                # 缩小文件系统
+                btrfs filesystem resize -$skrink_bytes /mnt/btrfs
+                # 缩小分区
+                part_start=$(parted /dev/nbd0 -s 'unit b print' | awk "\$1==$part_num {print \$2}" | sed 's/B//')
+                part_size=$(btrfs filesystem usage /mnt/btrfs -b | grep 'Device size:' | awk '{print $3}')
+                part_end=$((part_start + part_size))
+                umount /mnt/btrfs
+                printf "yes" | parted /dev/nbd0 resizepart $part_num ${part_end}B ---pretend-input-tty
 
-            # 将前1M dd到内存
-            dd if=/dev/nbd0 of=/first-1M bs=1M count=1
+                # 缩小 qcow2
+                qemu_nbd -d /dev/nbd0
+                qemu-img resize --shrink $qcow_file $part_end
 
-            # 将1M之后 dd到硬盘
-            # shellcheck disable=SC2194
-            case 3 in
-            1)
-                # BusyBox dd
-                dd if=/dev/nbd0 of=/dev/$xda bs=1M skip=1 seek=1
-                ;;
-            2)
-                # 用原版 dd status=progress，但没有进度和剩余时间
-                apk add coreutils
-                dd if=/dev/nbd0 of=/dev/$xda bs=1M skip=1 seek=1 status=progress
-                ;;
-            3)
-                # 用 pv
-                apk add pv
-                pv -f /dev/nbd0 | dd of=/dev/$xda bs=1M skip=1 seek=1 iflag=fullblock
-                ;;
-            esac
-
-            qemu_nbd -d /dev/nbd0
-        else
-            # 将前1M dd到内存，将1M之后 dd到硬盘
-            qemu-img dd if=$qcow_file of=/first-1M bs=1M count=1
-            qemu-img dd if=$qcow_file of=/dev/disk/by-label/os bs=1M skip=1
-        fi
-
-        # 将前1M从内存 dd 到硬盘
-        umount /installer/
-        dd if=/first-1M of=/dev/$xda
-        update_part /dev/$xda
-
-        # 提前扩容
-        # 1 修复 vultr 512m debian 10/11 generic/genericcloud 首次启动 kernel panic
-        # 2 修复 gentoo websync 时空间不足
-        if [ "$distro" = debian ] || [ "$distro" = gentoo ]; then
-            apk add parted
-            if parted /dev/$xda -s print 2>&1 | grep 'Not all of the space'; then
-                printf "fix" | parted /dev/$xda print ---pretend-input-tty
-                # TODO: 获取 ext4 分区编号
-                [ "$distro" = debian ] && system_part_num=1 || system_part_num=3
-                printf "yes" | parted /dev/$xda resizepart $system_part_num 100% ---pretend-input-tty
-                update_part /dev/$xda
-
-                if [ "$distro" = gentoo ]; then
-                    apk add e2fsprogs-extra
-                    e2fsck -p -f /dev/$xda$system_part_num
-                    resize2fs /dev/$xda$system_part_num
-                fi
+                # 重新连接
+                qemu_nbd -c /dev/nbd0 $qcow_file
+            else
+                umount /mnt/btrfs
             fi
         fi
 
-        modify_dd_os
+        # 显示分区
+        lsblk -o NAME,SIZE,FSTYPE,LABEL /dev/nbd0
+
+        # 将前1M dd到内存
+        dd if=/dev/nbd0 of=/first-1M bs=1M count=1
+
+        # 将1M之后 dd到硬盘
+        # shellcheck disable=SC2194
+        case 3 in
+        1)
+            # BusyBox dd
+            dd if=/dev/nbd0 of=/dev/$xda bs=1M skip=1 seek=1
+            ;;
+        2)
+            # 用原版 dd status=progress，但没有进度和剩余时间
+            apk add coreutils
+            dd if=/dev/nbd0 of=/dev/$xda bs=1M skip=1 seek=1 status=progress
+            ;;
+        3)
+            # 用 pv
+            apk add pv
+            pv -f /dev/nbd0 | dd of=/dev/$xda bs=1M skip=1 seek=1 iflag=fullblock
+            ;;
+        esac
+
+        qemu_nbd -d /dev/nbd0
+    else
+        # 将前1M dd到内存，将1M之后 dd到硬盘
+        qemu-img dd if=$qcow_file of=/first-1M bs=1M count=1
+        qemu-img dd if=$qcow_file of=/dev/disk/by-label/os bs=1M skip=1
+    fi
+
+    # 将前1M从内存 dd 到硬盘
+    umount /installer/
+    dd if=/first-1M of=/dev/$xda
+    update_part /dev/$xda
+
+}
+
+resize_after_install_cloud_image() {
+    # 提前扩容
+    # 1 修复 vultr 512m debian 10/11 generic/genericcloud 首次启动 kernel panic
+    # 2 修复 gentoo websync 时空间不足
+    if [ "$distro" = debian ] || [ "$distro" = gentoo ]; then
+        apk add parted
+        if parted /dev/$xda -s print 2>&1 | grep 'Not all of the space'; then
+            printf "fix" | parted /dev/$xda print ---pretend-input-tty
+            # TODO: 获取 ext4 分区编号
+            [ "$distro" = debian ] && system_part_num=1 || system_part_num=3
+            printf "yes" | parted /dev/$xda resizepart $system_part_num 100% ---pretend-input-tty
+            update_part /dev/$xda
+
+            if [ "$distro" = gentoo ]; then
+                apk add e2fsprogs-extra
+                e2fsck -p -f /dev/$xda$system_part_num
+                resize2fs /dev/$xda$system_part_num
+            fi
+        fi
     fi
 }
 
-mount_part() {
+mount_part_for_install_mode() {
     # 挂载主分区
     mkdir -p /os
     mount /dev/disk/by-label/os /os
@@ -1866,21 +1866,39 @@ if [ "$distro" != "alpine" ]; then
     setup_nginx_if_enough_ram
 fi
 
-# shellcheck disable=SC2154
+# dd qemu 切换成云镜像模式，暂时没用到
+if [ "$distro" = "dd" ] && [ "$img_type" = "qemu" ]; then
+    cloud_image=1
+fi
+
 if [ "$distro" = "alpine" ]; then
     install_alpine
-elif [ "$distro" = "dd" ]; then
-    install_dd
+elif [ "$distro" = "dd" ] && [ "$img_type" != "qemu" ]; then
+    dd_gzip_xz
+    modify_os_on_disk
 elif is_use_cloud_image; then
-    if [ "$img_type" = "xz" ] || [ "$img_type" = "gzip" ]; then
-        install_cloud_image_by_dd
-    else
+    if [ "$img_type" = "qemu" ]; then
         create_part
-        install_cloud_image
+        download_qcow
+        # 这几个系统云镜像系统盘是8~9g xfs，而我们的目标是能在5g硬盘上运行，因此改成复制系统文件
+        if [ "$distro" = centos ] || [ "$distro" = alma ] || [ "$distro" = rocky ]; then
+            install_qcow_el
+        else
+            # debian ubuntu fedora opensuse arch gentoo
+            dd_qcow
+            resize_after_install_cloud_image
+            modify_os_on_disk
+        fi
+    else
+        # gzip xz 格式的云镜像，暂时没用到
+        dd_gzip_xz
+        resize_after_install_cloud_image
+        modify_os_on_disk
     fi
 else
+    # 安装模式: windows windows ubuntu 红帽
     create_part
-    mount_part
+    mount_part_for_install_mode
     if [ "$distro" = "windows" ]; then
         install_windows
     else
