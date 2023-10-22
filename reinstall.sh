@@ -549,16 +549,9 @@ verify_os_name() {
         if [ -n "$finalos" ]; then
             distro=$(echo $finalos | cut -d: -f1)
             releasever=$(echo $finalos | cut -d: -f2)
-            if [ -z "$releasever" ]; then
-                # 默认版本号
-                if grep -q '|' <<<$os; then
-                    if [ "$distro" = opensuse ]; then
-                        field='NF-1'
-                    else
-                        field='NF'
-                    fi
-                    releasever=$(awk '{print $2}' <<<$os | awk -F'|' "{print \$($field)}")
-                fi
+            # 默认版本号
+            if [ -z "$releasever" ] && grep -q '|' <<<$os; then
+                releasever=$(awk '{print $2}' <<<$os | awk -F'|' '{print $NF}')
             fi
             return
         fi
