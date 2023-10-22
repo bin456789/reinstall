@@ -34,7 +34,7 @@ EOF
 }
 
 info() {
-    upper=$(echo "$*" | tr '[:lower:]' '[:upper:]')
+    upper=$(to_upper <<<"$@")
     echo_color_text '\e[32m' "***** $upper *****"
 }
 
@@ -60,17 +60,19 @@ error_and_exit() {
 
 curl() {
     # 添加 -f, --fail，不然 404 退出码也为0
-    command curl --connect-timeout 5 --retry 2 --retry-delay 1 -f "$@"
+    # 32位 cygwin 已停止更新，证书可能有问题，先添加 --insecure
+    command curl --insecure --connect-timeout 5 --retry 2 --retry-delay 1 -f "$@"
 }
 
 is_in_china() {
     if [ -z $_is_in_china ]; then
         # https://geoip.fedoraproject.org/city # 不支持 ipv6
         # https://geoip.ubuntu.com/lookup # 不支持 ipv6
-        curl -L http://www.cloudflare.com/cdn-cgi/trace | grep -qx 'loc=CN'
-        _is_in_china=$?
+        curl -L http://www.cloudflare.com/cdn-cgi/trace |
+            grep -qx 'loc=CN' && _is_in_china=true ||
+            _is_in_china=false
     fi
-    return $_is_in_china
+    $_is_in_china
 }
 
 is_in_windows() {
@@ -125,17 +127,27 @@ get_host_by_url() {
     cut -d/ -f3 <<<$1
 }
 
+get_function_content() {
+    declare -f "$1" | sed '1d;2d;$d'
+}
+
 insert_into_file() {
     file=$1
     location=$2
     regex_to_find=$3
 
     line_num=$(grep -E -n "$regex_to_find" "$file" | cut -d: -f1)
-    if [ "$location" = before ]; then
-        line_num=$((line_num - 1))
-    elif ! [ "$location" = after ]; then
+
+    found_count=$(echo "$line_num" | wc -l)
+    if [ ! "$found_count" -eq 1 ]; then
         return 1
     fi
+
+    case "$location" in
+    before) line_num=$((line_num - 1)) ;;
+    after) ;;
+    *) return 1 ;;
+    esac
 
     sed -i "${line_num}r /dev/stdin" "$file"
 }
@@ -182,7 +194,7 @@ test_url_real() {
 
         # 有些 file 版本输出的是 # ISO 9660 CD-ROM filesystem data ，要去掉开头的井号
         install_pkg file
-        real_type=$(file -b $tmp_file | sed 's/^# //' | cut -d' ' -f1 | tr '[:upper:]' '[:lower:]')
+        real_type=$(file -b $tmp_file | sed 's/^# //' | cut -d' ' -f1 | to_lower)
         [ -n "$var_to_eval" ] && eval $var_to_eval=$real_type
 
         if ! grep -wo "$real_type" <<<"$expect_type"; then
@@ -230,12 +242,13 @@ is_virt() {
         for name in ComputerSystem BIOS BaseBoard; do
             wmic $name | grep -Eiw $vmstr && return 0
         done
-        wmic /namespace:'\\root\cimv2' PATH Win32_Fan | head -1 | grep -q -v Name
+        wmic /namespace:'\\root\cimv2' PATH Win32_Fan 2>/dev/null | head -1 | grep -q -v Name
     else
-        # aws t4g debian 11 systemd-detect-virt 为 none，即使装了dmidecode
+        # aws t4g debian 11
+        # systemd-detect-virt: 为 none，即使装了dmidecode
         # virt-what: 未装 deidecode时结果为空，装了deidecode后结果为aws
         # 所以综合两个命令的结果来判断
-        if is_have_cmd systemd-detect-virt && systemd-detect-virt; then
+        if is_have_cmd systemd-detect-virt && systemd-detect-virt -v; then
             return 0
         fi
         # debian 安装 virt-what 不会自动安装 dmidecode，因此结果有误
@@ -306,7 +319,7 @@ setos() {
             eval ${step}_initrd=$mirror/initrd.gz
             eval ${step}_ks=$confhome/debian.cfg
 
-            is_virt && flavour=-cloud
+            is_virt && flavour=-cloud || flavour=
             # 甲骨文 debian 10 amd64 cloud 内核 vnc 没有显示
             [ "$releasever" -eq 10 ] && [ "$basearch_alt" = amd64 ] && flavour=
             # shellcheck disable=SC2034
@@ -545,7 +558,7 @@ verify_os_name() {
         'dd'; do
         ds=$(awk '{print $1}' <<<"$os")
         vers=$(awk '{print $2}' <<<"$os" | sed 's \. \\\. g')
-        finalos=$(echo "$@" | tr '[:upper:]' '[:lower:]' | sed -n -E "s,^($ds)[ :-]?(|$vers)$,\1:\2,p")
+        finalos=$(echo "$@" | to_lower | sed -n -E "s,^($ds)[ :-]?(|$vers)$,\1:\2,p")
         if [ -n "$finalos" ]; then
             distro=$(echo $finalos | cut -d: -f1)
             releasever=$(echo $finalos | cut -d: -f2)
@@ -581,6 +594,7 @@ verify_os_args() {
 get_cmd_path() {
     # arch 云镜像不带 which
     # command -v 包括脚本里面的方法
+    # ash 无效
     type -f -p $1
 }
 
@@ -1177,16 +1191,20 @@ EOF
     # udhcpc:  bound
     # udhcpc6: deconfig
     # udhcpc6: bound
-    insert_into_file usr/share/udhcpc/default.script after 'deconfig\|renew\|bound' <<EOF
-        if [ "\$1" = deconfig ]; then
+    # shellcheck disable=SC2154
+    udhcpc() {
+        if [ "$1" = deconfig ]; then
             return
         fi
-        if [ "\$1" = bound ] && [ -n "\$ipv6" ]; then
-            ip -6 addr add \$ipv6 dev \$interface
-            ip link set dev \$interface up
+        if [ "$1" = bound ] && [ -n "$ipv6" ]; then
+            ip -6 addr add "$ipv6" dev "$interface"
+            ip link set dev "$interface" up
             return
         fi
-EOF
+    }
+
+    get_function_content udhcpc |
+        insert_into_file usr/share/udhcpc/default.script after 'deconfig\|renew\|bound'
 
     # hack 4 网络配置
     collect_netconf

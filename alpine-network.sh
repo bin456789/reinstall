@@ -87,7 +87,7 @@ done
 # 等待 udhcpc 创建 /etc/resolv.conf
 # 好像只有 dhcpv4 会创建 resolv.conf
 if { $dhcpv4 || $dhcpv6_or_slaac; } && [ ! -e /etc/resolv.conf ]; then
-    echo "waiting for /etc/resolv.conf"
+    echo "Waiting for /etc/resolv.conf..."
     sleep 5
 fi
 

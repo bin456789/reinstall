@@ -100,11 +100,13 @@ download() {
 
 update_part() {
     {
+        set +e
         hdparm -z $1
         partprobe $1
         partx -u $1
         udevadm settle
         echo 1 >/sys/block/${1#/dev/}/device/rescan
+        set -e
     } 2>/dev/null || true
 }
 
@@ -168,6 +170,7 @@ get_ttys() {
 get_xda() {
     # 排除只读盘，vda 放前面
     # 有的机器有sda和vda，vda是主硬盘，另一个盘是只读
+    # TODO: 找出容量最大的？
     for _xda in vda xda sda hda xvda nvme0n1; do
         if [ -e "/sys/class/block/$_xda/ro" ] &&
             [ "$(cat /sys/class/block/$_xda/ro)" = 0 ]; then
@@ -240,11 +243,13 @@ EOF
 clear_previous() {
     {
         # TODO: fuser and kill
+        set +e
         qemu_nbd -d /dev/nbd0
         swapoff -a
         # alpine 自带的umount没有-R，除非安装了util-linux
         umount -R /iso /wim /installer /os/installer /os /nbd /nbd-boot /nbd-efi /mnt
         umount /iso /wim /installer /os/installer /os /nbd /nbd-boot /nbd-efi /mnt
+        set -e
     } 2>/dev/null || true
 }
 
@@ -274,7 +279,7 @@ get_ra_to() {
 
 get_netconf_to() {
     case "$1" in
-    slaac | dhcpv6 | rdnss) get_ra_to ra ;;
+    slaac | dhcpv6 | rdnss | is_in_china) get_ra_to ra ;;
     esac
 
     # shellcheck disable=SC2154
@@ -286,6 +291,12 @@ get_netconf_to() {
     esac
 
     eval "$1='$res'"
+}
+
+is_in_china() {
+    get_netconf_to is_in_china
+    # shellcheck disable=SC2154
+    [ "$is_in_china" = 1 ]
 }
 
 # 有 dhcpv4 不等于有网关，例如 vultr 纯 ipv6
@@ -545,8 +556,26 @@ EOF
     printf 'y' | setup-disk -m sys -k $kernel_flavor -s 0 /dev/$xda
 }
 
+get_http_file_size_to() {
+    var_name=$1
+    url=$2
+
+    size=''
+    if wget --spider -S $url -o /tmp/headers.log; then
+        # 网址重定向可能得到多个 Content-Length, 选最后一个
+        set -o pipefail
+        if size=$(grep 'Content-Length:' /tmp/headers.log |
+            tail -1 | awk '{print $2}'); then
+            eval "$var_name='$size'"
+        fi
+        set +o pipefail
+    else
+        error_and_exit "Can't access $url"
+    fi
+}
+
 # shellcheck disable=SC2154
-install_dd() {
+dd_gzip_xz() {
     case "$img_type" in
     gzip) prog=gzip ;;
     xz) prog=xz ;;
@@ -568,7 +597,7 @@ is_xda_gt_2t() {
 create_part() {
     # 目标系统非 alpine 和 dd
     # 脚本开始
-    apk add util-linux aria2 grub udev hdparm e2fsprogs curl parted
+    apk add util-linux udev hdparm e2fsprogs parted
 
     # 打开dev才能刷新分区名
     rc-service udev start
@@ -581,24 +610,22 @@ create_part() {
     partx -d /dev/$xda || true
 
     # 清除分区签名
-    wipefs -a /dev/$xda
+    # TODO: 先检测iso链接/各种链接
+    # wipefs -a /dev/$xda
 
     # xda*1 星号用于 nvme0n1p1 的字母 p
     # shellcheck disable=SC2154
     if [ "$distro" = windows ]; then
-        if ! wget --spider -S $iso 2>/tmp/headers.log; then
-            error_and_exit "Can't access Windows iso."
-        fi
-
-        # 按iso容量计算分区大小，512m用于驱动和文件系统自身占用
-        # 网址重定向可能得到多个 Content-Length, 选最后一个
-        part_size=$(grep 'Content-Length:' /tmp/headers.log | tail -1 | awk '{print int($2/1024/1024+512)}')
-        if [ -z "$part_size" ]; then
+        get_http_file_size_to size_bytes $iso
+        if [ -n "$size_bytes" ]; then
+            # 按iso容量计算分区大小，512m用于驱动和文件系统自身占用
+            part_size="$((size_bytes / 1024 / 1024 + 512))MiB"
+        else
             # 默认值，最大的iso 23h2 需要7g
-            part_size=$((7 * 1024))
+            part_size="$((7 * 1024))MiB"
         fi
 
-        apk add ntfs-3g-progs virt-what wimlib rsync dos2unix
+        apk add ntfs-3g-progs virt-what wimlib rsync
         # 虽然ntfs3不需要fuse，但wimmount需要，所以还是要保留
         modprobe fuse ntfs3
         if is_efi; then
@@ -608,8 +635,8 @@ create_part() {
                 mklabel gpt \
                 mkpart '" "' fat32 1MiB 1025MiB \
                 mkpart '" "' fat32 1025MiB 1041MiB \
-                mkpart '" "' ext4 1041MiB -${part_size}MiB \
-                mkpart '" "' ntfs -${part_size}MiB 100% \
+                mkpart '" "' ext4 1041MiB -${part_size} \
+                mkpart '" "' ntfs -${part_size} 100% \
                 set 1 boot on \
                 set 2 msftres on \
                 set 3 msftdata on
@@ -623,8 +650,8 @@ create_part() {
             # bios
             parted /dev/$xda -s -- \
                 mklabel msdos \
-                mkpart primary ntfs 1MiB -${part_size}MiB \
-                mkpart primary ntfs -${part_size}MiB 100% \
+                mkpart primary ntfs 1MiB -${part_size} \
+                mkpart primary ntfs -${part_size} 100% \
                 set 1 boot on
             update_part /dev/$xda
 
@@ -661,6 +688,7 @@ create_part() {
                 mkfs.ext4 -F -L installer /dev/$xda*3 #3 installer
             fi
         else
+            # 最大的 qcow2 是 centos8，1.8g
             # gentoo 的镜像解压后是 3.5g，因此设置 installer 分区 1g，这样才能在5g硬盘上安装
             [ "$distro" = gentoo ] && installer_part_size=1GiB || installer_part_size=2GiB
             parted /dev/$xda -s -- \
@@ -1264,7 +1292,7 @@ EOF
 
 dd_qcow() {
     if true; then
-        modprobe nbd
+        modprobe nbd nbds_max=1
         qemu_nbd -c /dev/nbd0 $qcow_file
 
         # 检查最后一个分区是否是 btrfs
@@ -1326,6 +1354,7 @@ dd_qcow() {
         3)
             # 用 pv
             apk add pv
+            echo "Start DD Cloud Image..."
             pv -f /dev/nbd0 | dd of=/dev/$xda bs=1M skip=1 seek=1 iflag=fullblock
             ;;
         esac
@@ -1498,7 +1527,7 @@ install_windows() {
     # arch_xen   xen驱动                  x86  x64
 
     # 将 wim 的 arch 转为驱动和应答文件的 arch
-    arch_wim=$(wiminfo $install_wim 1 | grep Architecture: | awk '{print $2}' | tr '[:upper:]' '[:lower:]')
+    arch_wim=$(wiminfo $install_wim 1 | grep Architecture: | awk '{print $2}' | to_lower)
     case "$arch_wim" in
     x86)
         arch=x86
@@ -1533,7 +1562,6 @@ install_windows() {
         # aws nitro
         # 只有 x64 位驱动
         # https://docs.aws.amazon.com/zh_cn/AWSEC2/latest/WindowsGuide/migrating-latest-types.html
-        apk add unzip
         if is_win7_or_win2008r2; then
             download https://s3.amazonaws.com/ec2-windows-drivers-downloads/NVMe/1.3.2/AWSNVMe.zip $drv/AWSNVMe.zip
             download https://s3.amazonaws.com/ec2-windows-drivers-downloads/ENA/x64/2.2.3/AwsEnaNetworkDriver.zip $drv/AwsEnaNetworkDriver.zip
@@ -1550,7 +1578,7 @@ install_windows() {
         # 只有 64 位驱动
         # 未测试
         # https://docs.aws.amazon.com/zh_cn/AWSEC2/latest/WindowsGuide/Upgrading_PV_drivers.html
-        apk add unzip msitools
+        apk add msitools
 
         if is_win7_or_win2008r2; then
             download https://s3.amazonaws.com/ec2-windows-drivers-downloads/AWSPV/8.3.5/AWSPVDriver.zip $drv/AWSPVDriver.zip
@@ -1583,7 +1611,7 @@ install_windows() {
         # virtio
         # x86 x64 arm64 都有
         # https://fedorapeople.org/groups/virt/virtio-win/direct-downloads/stable-virtio/
-        case $(echo "$image_name" | tr '[:upper:]' '[:lower:]') in
+        case $(echo "$image_name" | to_lower) in
         'windows server 2022'*) sys=2k22 ;;
         'windows server 2019'*) sys=2k19 ;;
         'windows server 2016'*) sys=2k16 ;;
@@ -1626,7 +1654,7 @@ install_windows() {
 
             # 没有 vista 驱动
             # 没有专用的 win11 驱动
-            case $(echo "$image_name" | tr '[:upper:]' '[:lower:]') in
+            case $(echo "$image_name" | to_lower) in
             'windows server 2022'*) sys_gce=win10.0 ;;
             'windows server 2019'*) sys_gce=win10.0 ;;
             'windows server 2016'*) sys_gce=win10.0 ;;
@@ -1842,7 +1870,8 @@ EOF
 
 # 脚本入口
 # arm要手动从硬件同步时间，避免访问https出错
-hwclock -s
+# do 机器第二次运行会报错
+hwclock -s || true
 
 # 设置密码，安装并打开 ssh
 echo root:123@@@ | chpasswd
