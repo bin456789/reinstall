@@ -52,40 +52,50 @@ add_community_repo() {
     fi
 }
 
+# busybox 的 wget 没有重试功能
+wget() {
+    for i in 1 2 3; do
+        command wget "$@" && return
+    done
+}
+
+is_have_cmd() {
+    command -v "$1" >/dev/null
+}
+
 download() {
     url=$1
-    file=$2
+    path=$2
     echo $url
 
-    # 阿里云禁止 axel 下载
-    # axel https://mirrors.aliyun.com/alpine/latest-stable/releases/x86_64/alpine-netboot-3.17.0-x86_64.tar.gz
-    # Initializing download: https://mirrors.aliyun.com/alpine/latest-stable/releases/x86_64/alpine-netboot-3.17.0-x86_64.tar.gz
-    # HTTP/1.1 403 Forbidden
-
+    # 阿里云源禁止 axel 下载，检测 user-agent
+    # 有ipv4地址无ipv4网关的情况下，aria2可能会用ipv4下载，而不是ipv6
     # axel 在 lightsail 上会占用大量cpu
-    # 构造 aria2 参数
-    # 没有指定文件名的情况
-    if [ -z $file ]; then
-        save=""
-    else
-        # 文件名是绝对路径
-        if [[ "$file" = "/*" ]]; then
-            save="-d / -o $file"
-        else
-            # 文件名是相对路径
-            save="-o $file"
-        fi
-    fi
-    # 先用 aria2 下载
     # aria2 下载 fedora 官方镜像链接会将meta4文件下载下来，而且占用了指定文件名，造成重命名失效。而且无法指定目录
     # https://download.opensuse.org/distribution/leap/15.5/appliances/openSUSE-Leap-15.5-Minimal-VM.x86_64-kvm-and-xen.qcow2
     # https://aria2.github.io/manual/en/html/aria2c.html#cmdoption-o
-    if ! (command -v aria2c && aria2c -x4 --allow-overwrite=true $url $save); then
-        # 出错再用 wget
-        # alpine 的 busybox 没有 curl
-        [ -z $file ] && save="" || save="-O $file"
-        wget $url $save
+
+    # 构造 aria2 参数
+    # 没有指定文件名的情况
+    if [ -z "$path" ]; then
+        save=""
+    else
+        # 文件名是绝对路径
+        if [[ "$path" = "/*" ]]; then
+            save="-d / -o $path"
+        else
+            # 文件名是相对路径
+            save="-o $path"
+        fi
     fi
+
+    # stdbuf 在 coreutils 包里面
+    if ! is_have_cmd aria2c; then
+        apk add aria2 coreutils
+    fi
+
+    # 默认 --max-tries 5
+    stdbuf -o0 -e0 aria2c -x4 --allow-overwrite=true --summary-interval=0 $save $url
 }
 
 update_part() {
@@ -505,18 +515,13 @@ install_dd() {
     case "$img_type" in
     gzip) prog=gzip ;;
     xz) prog=xz ;;
+    *) error_and_exit 'Not supported' ;;
     esac
 
-    if [ -n "$prog" ]; then
-        # alpine busybox 自带 gzip xz，但官方版也许性能更好
-        # wget -O- $img | $prog -dc >/dev/$xda
-        apk add curl $prog
-        # curl -L $img | $prog -dc | dd of=/dev/$xda bs=1M
-        curl -L $img | $prog -dc >/dev/$xda
-        sync
-    else
-        error_and_exit 'Not supported'
-    fi
+    # alpine busybox 自带 gzip xz，但官方版也许性能更好
+    # 用官方 wget，一来带进度条，二来自带重试
+    apk add wget $prog
+    command wget $img -O- --tries=3 --progress=bar:force | $prog -dc >/dev/$xda
 }
 
 is_xda_gt_2t() {
