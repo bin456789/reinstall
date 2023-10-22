@@ -204,6 +204,24 @@ add_community_repo_for_alpine() {
     fi
 }
 
+assert_not_in_container() {
+    _error_and_exit() {
+        error_and_exit "Not Supported OS in Container.\nPlease use https://github.com/LloydAsp/OsMutation"
+    }
+
+    is_in_windows && return
+
+    if is_have_cmd systemd-detect-virt; then
+        if systemd-detect-virt -c >/dev/null; then
+            _error_and_exit
+        fi
+    else
+        if [ -d /proc/vz ] || grep container=lxc /proc/1/environ; then
+            _error_and_exit
+        fi
+    fi
+}
+
 is_virt() {
     if is_in_windows; then
         # https://github.com/systemd/systemd/blob/main/src/basic/virt.c
@@ -875,8 +893,8 @@ while true; do
     esac
 done
 
-# 验证目标系统字符串
-verify_os_string "$@"
+# 不支持容器虚拟化
+assert_not_in_container
 
 # win系统盘
 if is_in_windows; then
