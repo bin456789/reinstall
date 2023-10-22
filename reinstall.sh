@@ -362,7 +362,7 @@ setos() {
         #           https://mirrors.nju.edu.cn/opensuse/ports/aarch64/tumbleweed/appliances/
 
         if is_in_china; then
-            mirror=https://mirrors.nju.edu.cn/opensuse
+            mirror=https://mirrors.ustc.edu.cn/opensuse
         else
             mirror=https://mirror.fcix.net/opensuse
         fi
