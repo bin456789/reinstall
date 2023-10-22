@@ -278,10 +278,34 @@ get_netconf_to() {
     eval "$1='$res'"
 }
 
+# 有 dhcpv4 不等于有网关，例如 vultr 纯 ipv6
+# 没有 dhcpv4 不等于是静态ip，可能是没有 ip
 is_dhcpv4() {
     get_netconf_to dhcpv4
     # shellcheck disable=SC2154
     [ "$dhcpv4" = 1 ]
+}
+
+is_staticv4() {
+    if ! is_dhcpv4; then
+        get_netconf_to ipv4_addr
+        get_netconf_to ipv4_gateway
+        if [ -n "$ipv4_addr" ] && [ -n "$ipv4_gateway" ]; then
+            return 0
+        fi
+    fi
+    return 1
+}
+
+is_staticv6() {
+    if ! is_slaac && ! is_dhcpv6; then
+        get_netconf_to ipv6_addr
+        get_netconf_to ipv6_gateway
+        if [ -n "$ipv6_addr" ] && [ -n "$ipv6_gateway" ]; then
+            return 0
+        fi
+    fi
+    return 1
 }
 
 is_slaac() {
@@ -378,51 +402,48 @@ iface lo inet loopback
 auto eth0
 EOF
 
-    # 生成 ipv4 配置
-    if is_dhcpv4; then
-        echo "iface eth0 inet dhcp" >>/etc/network/interfaces
-    else
+    if is_staticv4; then
+        # 静态 ipv4
         get_netconf_to ipv4_addr
         get_netconf_to ipv4_gateway
-        if [ -n "$ipv4_addr" ]; then
-            # shellcheck disable=SC2154
-            cat <<EOF >>/etc/network/interfaces
+        # shellcheck disable=SC2154
+        cat <<EOF >>/etc/network/interfaces
 iface eth0 inet static
     address $ipv4_addr
     gateway $ipv4_gateway
 EOF
-        fi
+    else
+        # 动态 ipv4
+        echo "iface eth0 inet dhcp" >>/etc/network/interfaces
     fi
 
-    # 生成 ipv6 配置
-    # slaac 或者 dhcpv6，实测不用写配置
-    if false; then
-        if is_slaac; then
-            echo 'iface eth0 inet6 auto' >>/etc/network/interfaces
-        fi
-
-        if is_dhcpv6; then
-            echo 'iface eth0 inet6 dhcp' >>/etc/network/interfaces
-        fi
-    fi
-
-    # 静态
-    if ! is_slaac && ! is_dhcpv6; then
+    if is_staticv6; then
+        # 静态 ipv6
         get_netconf_to ipv6_addr
         get_netconf_to ipv6_gateway
-        if [ -n "$ipv6_addr" ]; then
-            # shellcheck disable=SC2154
-            cat <<EOF >>/etc/network/interfaces
+        # shellcheck disable=SC2154
+        cat <<EOF >>/etc/network/interfaces
 iface eth0 inet6 static
     address $ipv6_addr
     gateway $ipv6_gateway
 EOF
-            # 如果有rdnss，则删除自己添加的dns，再添加rdnss
-            # 也有可能 dhcpcd 会自动设置，但没环境测试
-            get_netconf_to rdnss
-            if [ -n "$rdnss" ]; then
-                sed -i '/^[[:blank:]]*nameserver[[:blank:]].*:/d' /etc/resolv.conf
-                echo "nameserver $rdnss" >>/etc/resolv.conf
+        # 如果有rdnss，则删除自己添加的dns，再添加rdnss
+        # 也有可能 dhcpcd 会自动设置，但没环境测试
+        get_netconf_to rdnss
+        if [ -n "$rdnss" ]; then
+            sed -i '/^[[:blank:]]*nameserver[[:blank:]].*:/d' /etc/resolv.conf
+            echo "nameserver $rdnss" >>/etc/resolv.conf
+        fi
+    else
+        # 动态 ipv6
+        # 实测不用写配置
+        if false; then
+            if is_slaac; then
+                echo 'iface eth0 inet6 auto' >>/etc/network/interfaces
+            fi
+
+            if is_dhcpv6; then
+                echo 'iface eth0 inet6 dhcp' >>/etc/network/interfaces
             fi
         fi
     fi
