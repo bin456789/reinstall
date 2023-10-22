@@ -162,9 +162,17 @@ test_url_real() {
     }
 
     tmp_file=/tmp/reinstall-img-test
-    if ! curl -r 0-1048575 -Lo "$tmp_file" "$url"; then
-        failed "$url not accessible"
-    fi
+
+    # 有的服务器不支持 range，curl会下载整个文件
+    # 用 dd 限制下载 1M
+    # 并过滤 curl 23 错误（dd限制了空间）
+    # 也可用 ulimit -f 但好像 cygwin 不支持
+    curl -Lr 0-1048575 "$url" \
+        1> >(dd bs=1M count=1 of=$tmp_file iflag=fullblock 2>/dev/null) \
+        2> >(grep -v 'curl: (23)' >&2) ||
+        if [ ! $? -eq 23 ]; then
+            failed "$url not accessible"
+        fi
 
     if [ -n "$expect_type" ]; then
         # gzip的mime有很多种写法
