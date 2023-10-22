@@ -798,19 +798,29 @@ collect_netconf() {
             break
         done
     else
-        nic_name=$(ip -o addr show scope global | head -1 | awk '{print $2}')
-        mac_addr=$(ip addr show scope global | grep link/ether | head -1 | awk '{print $2}')
-        ipv4_addr=$(ip -4 addr show scope global | grep inet | head -1 | awk '{print $2}')
-        ipv6_addr=$(ip -6 addr show scope global | grep inet6 | head -1 | awk '{print $2}')
-        ipv4_gateway=$(ip -4 route show default dev $nic_name | awk '{print $3}')
-        ipv6_gateway=$(ip -6 route show default dev $nic_name | awk '{print $3}')
+        # linux
+        # 通过默认网关得到默认网卡
+        for v in 4 6; do
+            if ethx=$(ip -$v route show default | head -1 | awk '{print $5}' | grep .); then
+                mac_addr=$(ip link show dev $ethx | grep link/ether | head -1 | awk '{print $2}')
+                break
+            fi
+        done
+
+        for v in 4 6; do
+            if ip -$v route show default dev $ethx | head -1 | grep -q .; then
+                eval ipv${v}_gateway="$(ip -$v route show default dev $ethx | head -1 | awk '{print $3}')"
+                eval ipv${v}_addr="$(ip -$v -o addr show scope global dev $ethx | head -1 | awk '{print $4}')"
+            fi
+        done
     fi
 
-    echo 1 $mac_addr
-    echo 2 $ipv4_addr
-    echo 3 $ipv4_gateway
-    echo 4 $ipv6_addr
-    echo 5 $ipv6_gateway
+    info "Network Info"
+    echo "MAC  Address: $mac_addr"
+    echo "IPv4 Address: $ipv4_addr"
+    echo "IPv4 Gateway: $ipv4_gateway"
+    echo "IPv6 Address: $ipv6_addr"
+    echo "IPv6 Gateway: $ipv6_gateway"
 }
 
 install_grub_win() {
