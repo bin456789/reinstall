@@ -1347,8 +1347,7 @@ install_windows() {
         unzip -o -d $drv/aws/ $drv/AWSNVMe.zip
         unzip -o -d $drv/aws/ $drv/AwsEnaNetworkDriver.zip
 
-    elif virt-what | grep aws &&
-        virt-what | grep xen &&
+    elif virt-what | grep xen &&
         [ "$arch_wim" = x86_64 ]; then
         # aws xen
         # 只有 64 位驱动
@@ -1367,10 +1366,12 @@ install_windows() {
         mkdir -p $drv/aws/
         cp -rf $drv/.Drivers/* $drv/aws/
 
-    elif virt-what | grep xen &&
+    elif false && virt-what | grep xen &&
         [ "$arch_wim" != arm64 ]; then
         # xen
         # 有 x86 x64，没arm64驱动
+        # 没签名，暂时用aws的驱动代替
+        # https://lore.kernel.org/xen-devel/E1qKMmq-00035B-SS@xenbits.xenproject.org/
         # https://xenbits.xenproject.org/pvdrivers/win/
         # 在 aws t2 上测试，安装 xenbus 会蓝屏，装了其他7个驱动后，能进系统但没网络
         # 但 aws 应该用aws官方xen驱动，所以测试仅供参考
