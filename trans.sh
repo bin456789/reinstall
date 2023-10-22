@@ -1352,8 +1352,8 @@ resize_after_install_cloud_image() {
         apk add parted
         if parted /dev/$xda -s print 2>&1 | grep 'Not all of the space'; then
             printf "fix" | parted /dev/$xda print ---pretend-input-tty
-            # TODO: 获取 ext4 分区编号
-            [ "$distro" = debian ] && system_part_num=1 || system_part_num=3
+
+            system_part_num=$(parted /dev/$xda -m print | tail -1 | cut -d: -f1)
             printf "yes" | parted /dev/$xda resizepart $system_part_num 100% ---pretend-input-tty
             update_part /dev/$xda
 
