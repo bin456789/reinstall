@@ -720,26 +720,83 @@ is_efi() {
     fi
 }
 
+to_upper() {
+    tr '[:lower:]' '[:upper:]'
+}
+
+to_lower() {
+    tr '[:upper:]' '[:lower:]'
+}
+
+del_cr() {
+    sed 's/\r//g'
+}
+
 # TODO: 多网卡 单网卡多IP
 collect_netconf() {
     if is_in_windows; then
-        echo_conf() {
-            grep -w "$1" <<<"$netconf" | awk '{ print $2 }'
+        convert_net_str_to_array() {
+            config=$1
+            key=$2
+            var=$3
+            IFS=',' read -r -a "${var?}" <<<"$(grep "$key=" <<<"$config" | cut -d= -f2 | sed 's/[{}"]//g')"
         }
-        curl -L $confhome/windows-get-netconf.ps1 -o /tmp/windows-get-netconf.ps1
-        ps1="$(cygpath -w /tmp/windows-get-netconf.ps1)"
-        netconf=$(
-            powershell -nologo -noprofile -NonInteractive \
-                -ExecutionPolicy bypass \
-                -File "$ps1" |
-                sed 's/://' |
-                sed 's/\r//' # 删除 windows \r 换行符
-        )
-        mac_addr=$(echo_conf MACAddress)
-        ipv4_addr=$(echo_conf IPAddress4)
-        ipv6_addr=$(echo_conf IPAddress6)
-        ipv4_gateway=$(echo_conf DefaultIPGateway4)
-        ipv6_gateway=$(echo_conf DefaultIPGateway6)
+
+        # 部分机器精简了 powershell
+        # 所以不要用 powershell 获取网络信息
+        ids=$(wmic nic where "PhysicalAdapter=true and MACAddress is not null and PNPDeviceID like '%VEN_%&DEV_%'" get InterfaceIndex | del_cr | sed '1d')
+        for id in $ids; do
+            config=$(wmic nicconfig where "InterfaceIndex='$id'" get MACAddress,IPAddress,IPSubnet,DefaultIPGateway /format:list | del_cr)
+            # 排除 IP/子网/网关为空的
+            if grep -q '=$' <<<"$config"; then
+                continue
+            fi
+
+            mac_addr=$(grep "MACAddress=" <<<"$config" | cut -d= -f2 | to_lower)
+            convert_net_str_to_array "$config" IPAddress ips
+            convert_net_str_to_array "$config" IPSubnet subnets
+            convert_net_str_to_array "$config" DefaultIPGateway gateways
+
+            # IPv4
+            # shellcheck disable=SC2154
+            for ((i = 0; i < ${#ips[@]}; i++)); do
+                ip=${ips[i]}
+                subnet=${subnets[i]}
+                if [[ "$ip" = *.* ]]; then
+                    cidr=$(ipcalc -b "$ip/$subnet" | grep Network: | cut -d/ -f2 | xargs)
+                    ipv4_addr="$ip/$cidr"
+                    break
+                fi
+            done
+
+            # IPv6
+            ipv6_type_list=$(cmd /c "chcp 437 & netsh interface ipv6 show address $id normal")
+            for ((i = 0; i < ${#ips[@]}; i++)); do
+                ip=${ips[i]}
+                cidr=${subnets[i]}
+                if [[ "$ip" = *:* ]]; then
+                    ipv6_type=$(grep "$ip" <<<"$ipv6_type_list" | awk '{print $1}')
+                    # 还有类型 Temporary，不过有 Temporary 肯定还有 Public，因此不用
+                    if [ "$ipv6_type" = Public ] ||
+                        [ "$ipv6_type" = Manual ]; then
+                        ipv6_addr="$ip/$cidr"
+                        break
+                    fi
+                fi
+            done
+
+            # 网关
+            # shellcheck disable=SC2154
+            for gateway in "${gateways[@]}"; do
+                if [[ "$gateway" = *.* ]]; then
+                    ipv4_gateway="$gateway"
+                elif [[ "$gateway" = *:* ]]; then
+                    ipv6_gateway="$gateway"
+                fi
+            done
+
+            break
+        done
     else
         nic_name=$(ip -o addr show scope global | head -1 | awk '{print $2}')
         mac_addr=$(ip addr show scope global | grep link/ether | head -1 | awk '{print $2}')
