@@ -211,9 +211,18 @@ qemu_nbd() {
 }
 
 mod_motd() {
+    # 安装后 alpine 后要恢复默认
+    if [ "$distro" = alpine ]; then
+        cp /etc/motd /etc/motd.orig
+        # shellcheck disable=SC2016
+        echo 'mv /etc/motd.orig /etc/motd' |
+            insert_into_file /sbin/setup-disk after 'mount -t \$ROOTFS \$root_dev "\$SYSROOT"'
+    fi
+
     cat <<EOF >/etc/motd
 Reinstalling...
-Run "tail -f /reinstall.html" to view logs.
+To view logs run:
+tail -fn+1 /reinstall.html
 EOF
 }
 
@@ -1625,10 +1634,7 @@ if [ "$sleep" = 1 ]; then
     exit
 fi
 
-if [ "$distro" != "alpine" ]; then
-    mod_motd
-fi
-
+mod_motd
 setup_tty_and_log
 clear_previous
 add_community_repo
