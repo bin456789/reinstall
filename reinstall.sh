@@ -420,23 +420,12 @@ setos() {
     }
 
     setos_windows() {
-        if [ -z "$iso" ] || [ -z "$image_name" ]; then
-            error_and_exit "Install Windows need --iso --image-name"
-        fi
-        # 防止常见错误
-        # --image-name 肯定大于等于3个单词
-        if [ "$(echo "$image_name" | wc -w)" -lt 3 ]; then
-            error_and_exit "--image-name wrong."
-        fi
         eval "${step}_iso='$iso'"
         eval "${step}_image_name='$image_name'"
     }
 
     # shellcheck disable=SC2154
     setos_dd() {
-        if [ -z "$img" ]; then
-            error_and_exit "dd need --img"
-        fi
         eval "${step}_img='$img'"
         eval "${step}_img_type='$img_type'"
     }
@@ -536,7 +525,11 @@ is_distro_like_redhat() {
 }
 
 # 检查是否为正确的系统名
-verify_os_string() {
+verify_os_name() {
+    if [ -z "$*" ]; then
+        usage_and_exit
+    fi
+
     for os in \
         'centos   7|8|9' \
         'alma     8|9' \
@@ -573,6 +566,23 @@ verify_os_string() {
 
     error "Please specify a proper os"
     usage_and_exit
+}
+
+verify_os_args() {
+    case "$distro" in
+    dd) [ -n "$img" ] || error_and_exit "dd need --img" ;;
+    windows)
+        if [ -z "$iso" ] || [ -z "$image_name" ]; then
+            error_and_exit "Install Windows need --iso and --image-name"
+        fi
+        # 防止常见错误
+        # --image-name 肯定大于等于3个单词
+        if [ "$(echo "$image_name" | wc -w)" -lt 3 ] ||
+            [[ "$(to_lower <<<"$image_name")" != windows* ]]; then
+            error_and_exit "--image-name wrong."
+        fi
+        ;;
+    esac
 }
 
 get_cmd_path() {
@@ -895,6 +905,12 @@ done
 
 # 不支持容器虚拟化
 assert_not_in_container
+
+# 检查目标系统名
+verify_os_name "$@"
+
+# 检查必须的参数
+verify_os_args
 
 # win系统盘
 if is_in_windows; then
