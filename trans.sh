@@ -1060,7 +1060,7 @@ modify_os_on_disk() {
                 return
             fi
 
-            umount_os
+            umount /os
         fi
     done
     error_and_exit "Can't find os partition."
