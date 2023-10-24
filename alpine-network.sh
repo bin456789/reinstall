@@ -48,11 +48,11 @@ is_have_ipv6 && dhcpv6_or_slaac=true || dhcpv6_or_slaac=false
 # 设置静态地址
 if ! is_have_ipv4 && [ -n "$ipv4_addr" ] && [ -n "$ipv4_gateway" ]; then
     ip -4 addr add "$ipv4_addr" dev eth0
-    ip -4 route add default via "$ipv4_gateway"
+    ip -4 route add default dev eth0 via "$ipv4_gateway" onlink
 fi
 if ! is_have_ipv6 && [ -n "$ipv6_addr" ] && [ -n "$ipv6_gateway" ]; then
     ip -6 addr add "$ipv6_addr" dev eth0
-    ip -6 route add default via "$ipv6_gateway"
+    ip -6 route add default dev eth0 via "$ipv6_gateway" onlink
 fi
 
 # 检查 ipv4/ipv6 是否连接联网
