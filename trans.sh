@@ -1032,9 +1032,16 @@ EOF
 }
 
 modify_os_on_disk() {
+    only_process=$1
+
     apk add util-linux udev hdparm lsblk
     rc-service udev start
     update_part /dev/$xda
+
+    # dd linux 的时候不用修改硬盘内容
+    if [ "$distro" = "dd" ] && ! lsblk -f /dev/$xda | grep ntfs; then
+        return
+    fi
 
     mkdir -p /os
     # 按分区容量大到小，依次寻找系统分区
@@ -1042,24 +1049,25 @@ modify_os_on_disk() {
         # btrfs挂载的是默认子卷，如果没有默认子卷，挂载的是根目录
         # fedora 云镜像没有默认子卷，且系统在root子卷中
         if mount -o ro /dev/$part /os; then
-            if etc_dir=$({ ls -d /os/etc/ || ls -d /os/*/etc/; } 2>/dev/null); then
-                os_dir=$(dirname $etc_dir)
-                # 重新挂载为读写
-                mount -o remount,rw /os
-                modify_linux $os_dir
-                return
+            if [ "$only_process" = linux ]; then
+                if etc_dir=$({ ls -d /os/etc/ || ls -d /os/*/etc/; } 2>/dev/null); then
+                    os_dir=$(dirname $etc_dir)
+                    # 重新挂载为读写
+                    mount -o remount,rw /os
+                    modify_linux $os_dir
+                    return
+                fi
+            elif [ "$only_process" = windows ]; then
+                # find 有时会报 I/O error
+                if ls -d /os/*/ | grep -i '/windows/' 2>/dev/null; then
+                    # 重新挂载为读写、忽略大小写
+                    umount /os
+                    apk add ntfs-3g
+                    mount.lowntfs-3g /dev/$part /os -o ignore_case
+                    modify_windows /os
+                    return
+                fi
             fi
-
-            # find 有时会报 I/O error
-            if ls -d /os/*/ | grep -i '/windows/' 2>/dev/null; then
-                # 重新挂载为读写、忽略大小写
-                umount /os
-                apk add ntfs-3g
-                mount.lowntfs-3g /dev/$part /os -o ignore_case
-                modify_windows /os
-                return
-            fi
-
             umount /os
         fi
     done
@@ -1904,7 +1912,7 @@ if [ "$distro" = "alpine" ]; then
     install_alpine
 elif [ "$distro" = "dd" ] && [ "$img_type" != "qemu" ]; then
     dd_gzip_xz
-    modify_os_on_disk
+    modify_os_on_disk windows
 elif is_use_cloud_image; then
     if [ "$img_type" = "qemu" ]; then
         create_part
@@ -1916,13 +1924,13 @@ elif is_use_cloud_image; then
             # debian ubuntu fedora opensuse arch gentoo
             dd_qcow
             resize_after_install_cloud_image
-            modify_os_on_disk
+            modify_os_on_disk linux
         fi
     else
         # gzip xz 格式的云镜像，暂时没用到
         dd_gzip_xz
         resize_after_install_cloud_image
-        modify_os_on_disk
+        modify_os_on_disk linux
     fi
 else
     # 安装模式: windows windows ubuntu 红帽
