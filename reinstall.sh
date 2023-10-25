@@ -212,7 +212,8 @@ add_community_repo_for_alpine() {
     fi
 
     if ! grep -x "http.*/$alpine_ver/community" /etc/apk/repositories; then
-        echo http://dl-cdn.alpinelinux.org/alpine/$alpine_ver/community >>/etc/apk/repositories
+        is_in_china && mirror=mirrors.tuna.tsinghua.edu.cn || mirror=dl-cdn.alpinelinux.org
+        echo https://$mirror/alpine/$alpine_ver/community >>/etc/apk/repositories
     fi
 }
 
