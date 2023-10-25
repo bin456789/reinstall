@@ -904,7 +904,8 @@ install_grub_win() {
         # 解决方法2 生成少于64K的 g2ldr + 动态模块
 
         # g2ldr.mbr
-        curl -LO http://ftp.cn.debian.org/debian/tools/win32-loader/stable/win32-loader.exe
+        is_in_china && host=ftp.cn.debian.org || host=deb.debian.org
+        curl -LO http://$host/debian/tools/win32-loader/stable/win32-loader.exe
         7z x win32-loader.exe 'g2ldr.mbr' -o/tmp/win32-loader -r -y -bso0
         find /tmp/win32-loader -name 'g2ldr.mbr' -exec cp {} /cygdrive/$c/ \;
 
