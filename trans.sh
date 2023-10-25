@@ -1216,6 +1216,14 @@ install_qcow_el() {
     # cloud-init
     download_cloud_init_config /os
 
+    # 为 centos 7 ci 安装 NetworkManager
+    # 1. 能够自动配置 onlink 网关
+    # 2. 解决 cloud-init 关闭了 ra，因为 nm 无视内核 ra 设置
+    if grep 'centos:7' /os/etc/system-release-cpe; then
+        yum install -y NetworkManager
+        chroot /os/ systemctl enable NetworkManager
+    fi
+
     # fstab 删除 boot 分区
     # alma/rocky 镜像本身有boot分区，但我们不需要
     sed -i '/[[:blank:]]\/boot[[:blank:]]/d' /os/etc/fstab
