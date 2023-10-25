@@ -1307,6 +1307,12 @@ else
         cp_to_btrfs_root /reinstall-vmlinuz
         cp_to_btrfs_root /reinstall-initrd
     fi
+
+    # 有的机器开启了 kexec，例如腾讯云轻量 debian，要禁用
+    if [ -f /etc/default/kexec ]; then
+        sed -i 's/LOAD_KEXEC=true/LOAD_KEXEC=false/' /etc/default/kexec
+    fi
+
     $(command -v grub-reboot grub2-reboot) reinstall
 fi
 
