@@ -1,0 +1,105 @@
+<!DOCTYPE html>
+<html>
+
+<head>
+    <title>Reinstall Logs</title>
+    <style>
+        body {
+            margin: 0;
+            padding: 0;
+            overflow: hidden;
+        }
+
+        #log-container {
+            height: calc(100vh - 20px);
+            padding: 10px;
+            overflow-y: scroll;
+            white-space: pre;
+        }
+
+        #scroll-to-bottom {
+            position: fixed;
+            bottom: 24px;
+            right: 24px;
+            background-color: #007bff;
+            color: #fff;
+            border: none;
+            cursor: pointer;
+            display: none;
+            width: 48px;
+            height: 48px;
+            border-radius: 50%;
+        }
+
+        #scroll-to-bottom svg {
+            fill: #fff;
+        }
+    </style>
+</head>
+
+<body>
+    <div id="log-container"></div>
+    <button id="scroll-to-bottom">
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24">
+            <path d="M5 10l7 7 7-7H5z" />
+        </svg>
+    </button>
+
+    <script>
+        const logContainer = document.getElementById('log-container');
+        const scrollToBottomButton = document.getElementById('scroll-to-bottom');
+        let shouldScrollToBottom = true;
+        let logFetchInterval;
+
+        async function getLogContent() {
+            try {
+                const response = await fetch('reinstall.log', {
+                    cache: 'no-store'
+                });
+
+                if (response.ok) {
+                    const logContent = await response.text();
+                    logContainer.textContent = logContent;
+
+                    if (shouldScrollToBottom) {
+                        logContainer.scrollTop = logContainer.scrollHeight;
+                    }
+
+                    if (logContent.includes("Error:")) {
+                        clearInterval(logFetchInterval);
+                        alert("Error occurred.");
+                    }
+
+                } else {
+                    console.error('Failed to fetch log file.');
+                }
+
+            } catch (error) {
+                console.error('An error occurred: ' + error.message);
+            }
+
+            finally {
+                logFetchInterval = setTimeout(getLogContent, 2000);
+            }
+        }
+
+        scrollToBottomButton.addEventListener('click', () => {
+            logContainer.scrollTop = logContainer.scrollHeight;
+        });
+
+        logContainer.addEventListener('scroll', () => {
+            const isAtBottom = Math.ceil(logContainer.scrollTop + logContainer.clientHeight) >= logContainer.scrollHeight;
+            if (isAtBottom) {
+                scrollToBottomButton.style.display = 'none';
+            } else {
+                scrollToBottomButton.style.display = 'block';
+            }
+
+            shouldScrollToBottom = isAtBottom;
+        });
+
+        getLogContent();
+    </script>
+</body>
+
+</html>

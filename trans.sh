@@ -120,20 +120,10 @@ is_use_cloud_image() {
 
 setup_nginx() {
     apk add nginx
-    cat <<EOF >/etc/nginx/http.d/default.conf
-        server {
-            listen 80 default_server;
-            listen [::]:80 default_server;
+    # shellcheck disable=SC2154
+    wget $confhome/logviewer.html -O /logviewer.html
+    wget $confhome/logviewer-nginx.conf -O /etc/nginx/http.d/default.conf
 
-            location = / {
-                root /;
-                try_files /reinstall.html /reinstall.html;
-                # types {
-                #     text/plain log;
-                # }
-            }
-        }
-EOF
     # rc-service nginx start
     if pgrep nginx >/dev/null; then
         nginx -s reload
@@ -182,27 +172,10 @@ get_xda() {
 }
 
 setup_tty_and_log() {
-    cat <<EOF >/reinstall.html
-<!DOCTYPE html>
-<html lang="en">
-
-<head>
-    <meta http-equiv="refresh" content="2">
-</head>
-
-<body>
-    <script>
-        window.onload = function() {
-            // history.scrollRestoration = "manual";
-            window.scrollTo(0, document.body.scrollHeight);
-        }
-    </script>
-    <pre>
-EOF
     # 显示输出到前台
     # script -f /dev/tty0
     dev_ttys=$(get_ttys /dev/)
-    exec > >(tee -a $dev_ttys /reinstall.html) 2>&1
+    exec > >(tee -a $dev_ttys /reinstall.log) 2>&1
 }
 
 extract_env_from_cmdline() {
@@ -235,7 +208,7 @@ mod_motd() {
     cat <<EOF >/etc/motd
 Reinstalling...
 To view logs run:
-tail -fn+1 /reinstall.html
+tail -fn+1 /reinstall.log
 EOF
 }
 
