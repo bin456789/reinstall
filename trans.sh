@@ -759,62 +759,60 @@ create_cloud_init_network_config() {
     get_netconf_to ipv6_addr
     get_netconf_to ipv6_gateway
 
-    # shellcheck disable=SC2154
-    is_dhcpv4 && dhcp4=true || dhcp4=false
-    { is_dhcpv6 || is_slaac; } && dhcp6=true || dhcp6=false
-    cat <<EOF >>$ci_file
-network:
-  version: 2
-  ethernets:
-    eth0:
-      match:
-        macaddress: "$mac_addr"
-      dhcp4: $dhcp4
-      dhcp6: $dhcp6
-      addresses:
-        - $ipv4_addr @ipv4_addr
-        - $ipv6_addr @ipv6_addr
-      gateway4: $ipv4_gateway @ipv4_gateway
-      gateway6: $ipv6_gateway @ipv6_gateway
-      nameservers:
-        addresses: @dns_addrs
-EOF
-
-    if is_dhcpv4 || [ -z "$ipv4_addr" ]; then
-        sed -i '/@ipv4/d' $ci_file
-    fi
-
-    if is_slaac || is_dhcpv6 || [ -z "$ipv6_addr" ]; then
-        sed -i '/@ipv6/d' $ci_file
-    fi
-
-    if ! grep '@ipv._addr' $ci_file; then
-        sed -i '/addresses:/d' $ci_file
-    fi
-
-    # dns
+    apk add yq
     dns_list=$(grep '^nameserver' /etc/resolv.conf | awk '{print $2}')
-    unset dns4_list dns6_list
-    if ! is_dhcpv4; then
-        dns4_list=$(echo "$dns_list" | grep '\.' || true)
+
+    # 头部
+    yq -i "
+        .network.version=1 |
+        .network.config[0].type=\"physical\" |
+        .network.config[0].name=\"eth0\" |
+        .network.config[0].mac_address=\"$mac_addr\"  |
+        .network.config[1].type=\"nameserver\"
+        " $ci_file
+
+    # ipv4
+    if is_dhcpv4; then
+        yq -i ".network.config[0].subnets += [{\"type\": \"dhcp\"}]" $ci_file
+
+    elif [ -n "$ipv4_addr" ] && [ -n "$ipv4_gateway" ]; then
+        yq -i "
+            .network.config[0].subnets += [{
+                \"type\": \"static\",
+                \"address\": \"$ipv4_addr\",
+                \"gateway\": \"$ipv4_gateway\" }]
+                " $ci_file
+
+        if dns4_list=$(echo "$dns_list" | grep '\.'); then
+            for cur in $dns4_list; do
+                yq -i ".network.config[1].address += [\"$cur\"]" $ci_file
+            done
+        fi
     fi
-    if ! { is_slaac || is_dhcpv6; }; then
-        dns6_list=$(echo "$dns_list" | grep ':' || true)
+
+    # ipv6
+    if is_slaac; then
+        yq -i ".network.config[0].subnets += [{\"type\": \"ipv6_slaac\"}]" $ci_file
+
+    elif is_dhcpv6; then
+        yq -i ".network.config[0].subnets += [{\"type\": \"ipv6_dhcpv6-stateful\"}]" $ci_file
+
+    elif [ -n "$ipv6_addr" ] && [ -n "$ipv6_gateway" ]; then
+        # centos7 不认识 static6，但可改成 static，作用相同
+        # https://github.com/canonical/cloud-init/commit/dacdd30080bd8183d1f1c1dc9dbcbc8448301529
+        yq -i "
+            .network.config[0].subnets += [{
+                \"type\": \"static\",
+                \"address\": \"$ipv6_addr\",
+                \"gateway\": \"$ipv6_gateway\" }]
+            " $ci_file
+
+        if dns6_list=$(echo "$dns_list" | grep ':'); then
+            for cur in $dns6_list; do
+                yq -i ".network.config[1].address += [\"$cur\"]" $ci_file
+            done
+        fi
     fi
-
-    is_have_dns=false
-    for cur in $dns4_list $dns6_list; do
-        is_have_dns=true
-        echo "          - $cur" >>$ci_file
-    done
-
-    if ! $is_have_dns; then
-        sed -i '/nameservers:/d' $ci_file
-        sed -i '/@dns_addrs/d' $ci_file
-    fi
-
-    sed -Ei "s/@(ip|dns).*//" $ci_file
-
 }
 
 download_cloud_init_config() {
