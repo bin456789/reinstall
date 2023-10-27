@@ -205,15 +205,15 @@ test_url_real() {
 
 add_community_repo_for_alpine() {
     # 先检查原来的repo是不是egde
-    if grep -x 'http.*/edge/main' /etc/apk/repositories; then
+    if grep -q '^http.*/edge/main$' /etc/apk/repositories; then
         alpine_ver=edge
     else
         alpine_ver=v$(cut -d. -f1,2 </etc/alpine-release)
     fi
 
-    if ! grep -x "http.*/$alpine_ver/community" /etc/apk/repositories; then
-        is_in_china && mirror=mirrors.tuna.tsinghua.edu.cn || mirror=dl-cdn.alpinelinux.org
-        echo https://$mirror/alpine/$alpine_ver/community >>/etc/apk/repositories
+    if ! grep -q "^http.*/$alpine_ver/community$" /etc/apk/repositories; then
+        mirror=$(grep '^http.*/main$' /etc/apk/repositories | sed 's,/[^/]*/main$,,' | head -1)
+        echo $mirror/$alpine_ver/community >>/etc/apk/repositories
     fi
 }
 
