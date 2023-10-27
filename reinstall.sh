@@ -651,7 +651,7 @@ install_pkg() {
             ;;
         apt)
             [ -z "$apk_updated" ] && apt update && apk_updated=1
-            apt install -y $pkg
+            DEBIAN_FRONTEND=noninteractive apt install -y $pkg
             ;;
         esac
     }
