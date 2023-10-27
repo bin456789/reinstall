@@ -20,12 +20,28 @@ else
     ipv6_dns2='2001:4860:4860::8888'
 fi
 
-is_have_ipv4() {
+is_have_ipv4_addr() {
     ip -4 addr show scope global dev eth0 | grep -q inet
 }
 
-is_have_ipv6() {
+is_have_ipv6_addr() {
     ip -6 addr show scope global dev eth0 | grep -q inet6
+}
+
+is_have_ipv4_gateway() {
+    ip -4 route show default dev eth0 | grep -q .
+}
+
+is_have_ipv6_gateway() {
+    ip -6 route show default dev eth0 | grep -q .
+}
+
+is_have_ipv4() {
+    is_have_ipv4_addr && is_have_ipv4_gateway
+}
+
+is_have_ipv6() {
+    is_have_ipv6_addr && is_have_ipv6_gateway
 }
 
 # 开启 eth0
@@ -34,7 +50,8 @@ ip link set dev eth0 up
 # 等待slaac
 # 有ipv6地址就跳过，不管是slaac或者dhcpv6
 # 因为会在trans里判断
-for i in $(seq 10 -1 0); do
+# 这里等待5秒就够了，因为之前尝试获取dhcp6也用了一段时间
+for i in $(seq 5 -1 0); do
     is_have_ipv6 && break
     echo "waiting slaac for ${i}s"
     sleep 1
@@ -42,17 +59,30 @@ done
 
 # 记录是否有动态地址
 # 由于还没设置静态ip，所以有条目表示有动态地址
-is_have_ipv4 && dhcpv4=true || dhcpv4=false
-is_have_ipv6 && dhcpv6_or_slaac=true || dhcpv6_or_slaac=false
+is_have_ipv4_addr && dhcpv4=true || dhcpv4=false
+is_have_ipv6_addr && dhcpv6_or_slaac=true || dhcpv6_or_slaac=false
 
 # 设置静态地址
-if ! is_have_ipv4 && [ -n "$ipv4_addr" ] && [ -n "$ipv4_gateway" ]; then
-    ip -4 addr add "$ipv4_addr" dev eth0
-    ip -4 route add default dev eth0 via "$ipv4_gateway" onlink
+if [ -n "$ipv4_addr" ] && [ -n "$ipv4_gateway" ]; then
+    if ! is_have_ipv4_addr; then
+        ip -4 addr add "$ipv4_addr" dev eth0
+    fi
+
+    if ! is_have_ipv4_gateway; then
+        # 如果 dhcp 无法设置onlink网关，那么在这里设置
+        ip -4 route add default via "$ipv4_gateway" dev eth0 onlink
+    fi
 fi
-if ! is_have_ipv6 && [ -n "$ipv6_addr" ] && [ -n "$ipv6_gateway" ]; then
-    ip -6 addr add "$ipv6_addr" dev eth0
-    ip -6 route add default dev eth0 via "$ipv6_gateway" onlink
+
+if [ -n "$ipv6_addr" ] && [ -n "$ipv6_gateway" ]; then
+    if ! is_have_ipv6_addr; then
+        ip -6 addr add "$ipv6_addr" dev eth0
+    fi
+
+    if ! is_have_ipv6_gateway; then
+        # 如果 dhcp 无法设置onlink网关，那么在这里设置
+        ip -6 route add default via "$ipv6_gateway" dev eth0 onlink
+    fi
 fi
 
 # 检查 ipv4/ipv6 是否连接联网

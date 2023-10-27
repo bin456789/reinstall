@@ -1208,6 +1208,9 @@ EOF
     get_function_content udhcpc |
         insert_into_file usr/share/udhcpc/default.script after 'deconfig\|renew\|bound'
 
+    # 允许设置 ipv4 onlink 网关
+    sed -Ei 's,(0\.0\.0\.0\/0),"\1 onlink",' usr/share/udhcpc/default.script
+
     # hack 4 网络配置
     collect_netconf
     is_in_china && is_in_china=true || is_in_china=false
