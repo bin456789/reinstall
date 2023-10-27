@@ -1179,7 +1179,6 @@ install_qcow_el() {
     create_swap /installer/swapfile
 
     # resolv.conf
-    mv /os/etc/resolv.conf /os/etc/resolv.conf.orig
     cp /etc/resolv.conf /os/etc/resolv.conf
 
     # selinux kdump
@@ -1269,8 +1268,8 @@ EOF
         chroot /os/ grub2-mkconfig -o /boot/grub2/grub.cfg
     fi
 
-    # 还原 resolv.conf
-    mv /os/etc/resolv.conf.orig /os/etc/resolv.conf
+    # 不删除可能网络管理器不会写入dns
+    rm -f /os/etc/resolv.conf
 
     # 删除installer分区，重启后cloud init会自动扩容
     swapoff -a
