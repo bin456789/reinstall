@@ -7,7 +7,7 @@ is_in_windows() {
 
 # 最后一个 tty 是主 tty，显示的信息最全
 is_first=true
-for tty in tty0 ttyS0 ttyAMA0; do
+for tty in ttyS0 ttyAMA0 tty0; do
     # hytron 有ttyS0 但无法写入
     # cygwin 没有 tty0，所以 windows 下 tty0 免检
     if { [ "$tty" = tty0 ] && is_in_windows; } || stty -g -F "/dev/$tty" >/dev/null 2>&1; then
