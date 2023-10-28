@@ -245,6 +245,7 @@ get_ra_to() {
     if [ -z "$_ra" ]; then
         apk add ndisc6
         # 有时会重复收取，所以设置收一份后退出
+        echo "Gathering network info..."
         _ra="$(rdisc6 -1 eth0)"
         apk del ndisc6
     fi
@@ -253,7 +254,7 @@ get_ra_to() {
 
 get_netconf_to() {
     case "$1" in
-    slaac | dhcpv6 | rdnss | is_in_china) get_ra_to ra ;;
+    slaac | dhcpv6 | rdnss | other) get_ra_to ra ;;
     esac
 
     # shellcheck disable=SC2154
@@ -261,6 +262,7 @@ get_netconf_to() {
     slaac) echo "$ra" | grep 'Autonomous address conf' | grep Yes && res=1 || res=0 ;;
     dhcpv6) echo "$ra" | grep 'Stateful address conf' | grep Yes && res=1 || res=0 ;;
     rdnss) res=$(echo "$ra" | grep 'Recursive DNS server' | cut -d: -f2- | xargs) ;;
+    other) echo "$ra" | grep 'Stateful other conf' | grep Yes && res=1 || res=0 ;;
     *) res=$(cat /dev/$1) ;;
     esac
 
@@ -313,6 +315,34 @@ is_dhcpv6() {
     get_netconf_to dhcpv6
     # shellcheck disable=SC2154
     [ "$dhcpv6" = 1 ]
+}
+
+is_have_ipv6() {
+    is_slaac || is_dhcpv6 || is_staticv6
+}
+
+is_enable_other_flag() {
+    get_netconf_to other
+    # shellcheck disable=SC2154
+    [ "$other" = 1 ]
+}
+
+is_have_rdnss() {
+    get_netconf_to rdnss
+    [ -n "$rdnss" ]
+}
+
+is_need_manual_set_dnsv6() {
+    # 有没有可能是静态但是有 rdnss？
+    is_have_ipv6 && ! is_have_rdnss && ! is_dhcpv6 && ! is_enable_other_flag
+}
+
+get_current_dns_v4() {
+    grep '^nameserver' /etc/resolv.conf | awk '{print $2}' | grep '\.'
+}
+
+get_current_dns_v6() {
+    grep '^nameserver' /etc/resolv.conf | awk '{print $2}' | grep ':'
 }
 
 to_upper() {
@@ -432,50 +462,53 @@ iface lo inet loopback
 auto eth0
 EOF
 
-    if is_staticv4; then
-        # 静态 ipv4
+    # ipv4
+    if is_dhcpv4; then
+        echo "iface eth0 inet dhcp" >>/etc/network/interfaces
+
+    elif is_staticv4; then
         get_netconf_to ipv4_addr
         get_netconf_to ipv4_gateway
-        # shellcheck disable=SC2154
         cat <<EOF >>/etc/network/interfaces
 iface eth0 inet static
     address $ipv4_addr
     gateway $ipv4_gateway
 EOF
-    else
-        # 动态 ipv4
-        echo "iface eth0 inet dhcp" >>/etc/network/interfaces
+        # dns
+        if list=$(get_current_dns_v4); then
+            for dns in $list; do
+                cat <<EOF >>/etc/network/interfaces
+    dns-nameserver $dns
+EOF
+            done
+        fi
     fi
 
-    if is_staticv6; then
-        # 静态 ipv6
+    # ipv6
+    if is_slaac; then
+        echo 'iface eth0 inet6 auto' >>/etc/network/interfaces
+
+    elif is_dhcpv6; then
+        echo 'iface eth0 inet6 dhcp' >>/etc/network/interfaces
+
+    elif is_staticv6; then
         get_netconf_to ipv6_addr
         get_netconf_to ipv6_gateway
-        # shellcheck disable=SC2154
         cat <<EOF >>/etc/network/interfaces
 iface eth0 inet6 static
     address $ipv6_addr
     gateway $ipv6_gateway
 EOF
-        # 如果有rdnss，则删除自己添加的dns，再添加rdnss
-        # 也有可能 dhcpcd 会自动设置，但没环境测试
-        get_netconf_to rdnss
-        if [ -n "$rdnss" ]; then
-            sed -i '/^[[:blank:]]*nameserver[[:blank:]].*:/d' /etc/resolv.conf
-            echo "nameserver $rdnss" >>/etc/resolv.conf
-        fi
-    else
-        # 动态 ipv6
-        # 实测不用写配置
-        if false; then
-            if is_slaac; then
-                echo 'iface eth0 inet6 auto' >>/etc/network/interfaces
-            fi
+    fi
 
-            if is_dhcpv6; then
-                echo 'iface eth0 inet6 dhcp' >>/etc/network/interfaces
-            fi
-        fi
+    # dns
+    # 有 ipv6 但需设置 dns
+    if is_need_manual_set_dnsv6 && list=$(get_current_dns_v6); then
+        for dns in $list; do
+            cat <<EOF >>/etc/network/interfaces
+    dns-nameserver $dns
+EOF
+        done
     fi
 
     # 显示网络配置
@@ -749,20 +782,8 @@ create_cloud_init_network_config() {
     ci_file=$1
 
     get_netconf_to mac_addr
-
-    # TODO: 没获取到mac/ipv4或者ipv6就先跳过cloud-init网络
-    # 不然cloud-init配置文件有问题，网络不通
-    [ -z "$mac_addr" ] && return
-
-    get_netconf_to ipv4_addr
-    get_netconf_to ipv4_gateway
-    get_netconf_to ipv6_addr
-    get_netconf_to ipv6_gateway
-
     apk add yq
-    dns_list=$(grep '^nameserver' /etc/resolv.conf | awk '{print $2}')
 
-    # 头部
     yq -i "
         .network.version=1 |
         .network.config[0].type=\"physical\" |
@@ -775,7 +796,10 @@ create_cloud_init_network_config() {
     if is_dhcpv4; then
         yq -i ".network.config[0].subnets += [{\"type\": \"dhcp\"}]" $ci_file
 
-    elif [ -n "$ipv4_addr" ] && [ -n "$ipv4_gateway" ]; then
+    elif is_staticv4; then
+        get_netconf_to ipv4_addr
+        get_netconf_to ipv4_gateway
+
         yq -i "
             .network.config[0].subnets += [{
                 \"type\": \"static\",
@@ -783,7 +807,7 @@ create_cloud_init_network_config() {
                 \"gateway\": \"$ipv4_gateway\" }]
                 " $ci_file
 
-        if dns4_list=$(echo "$dns_list" | grep '\.'); then
+        if dns4_list=$(get_current_dns_v4); then
             for cur in $dns4_list; do
                 yq -i ".network.config[1].address += [\"$cur\"]" $ci_file
             done
@@ -792,12 +816,19 @@ create_cloud_init_network_config() {
 
     # ipv6
     if is_slaac; then
-        yq -i ".network.config[0].subnets += [{\"type\": \"ipv6_slaac\"}]" $ci_file
+        if is_enable_other_flag; then
+            type=ipv6_dhcpv6-stateless
+        else
+            type=ipv6_slaac
+        fi
+        yq -i ".network.config[0].subnets += [{\"type\": \"$type\"}]" $ci_file
 
     elif is_dhcpv6; then
         yq -i ".network.config[0].subnets += [{\"type\": \"ipv6_dhcpv6-stateful\"}]" $ci_file
 
-    elif [ -n "$ipv6_addr" ] && [ -n "$ipv6_gateway" ]; then
+    elif is_staticv6; then
+        get_netconf_to ipv6_addr
+        get_netconf_to ipv6_gateway
         # centos7 不认识 static6，但可改成 static，作用相同
         # https://github.com/canonical/cloud-init/commit/dacdd30080bd8183d1f1c1dc9dbcbc8448301529
         yq -i "
@@ -806,12 +837,13 @@ create_cloud_init_network_config() {
                 \"address\": \"$ipv6_addr\",
                 \"gateway\": \"$ipv6_gateway\" }]
             " $ci_file
+    fi
 
-        if dns6_list=$(echo "$dns_list" | grep ':'); then
-            for cur in $dns6_list; do
-                yq -i ".network.config[1].address += [\"$cur\"]" $ci_file
-            done
-        fi
+    # 有 ipv6，且 rdnss 为空，手动添加 dns
+    if is_need_manual_set_dnsv6 && dns6_list=$(get_current_dns_v6); then
+        for cur in $dns6_list; do
+            yq -i ".network.config[1].address += [\"$cur\"]" $ci_file
+        done
     fi
 }
 
@@ -957,6 +989,17 @@ modify_linux() {
         find_and_mount /boot
         find_and_mount /boot/efi
         disable_selinux_kdump $os_dir
+    fi
+
+    # debian 10/11 默认不支持 rdnss，要安装 rdnssd 或者 nm
+    if [ -f $os_dir/etc/debian_version ] && grep -E '^(10|11)' $os_dir/etc/debian_version; then
+        mv $os_dir/etc/resolv.conf $os_dir/etc/resolv.conf.orig
+        cp -f /etc/resolv.conf $os_dir/etc/resolv.conf
+        mount_pseudo_fs $os_dir
+        chroot $os_dir apt update
+        chroot $os_dir apt install -y rdnssd
+        # 不会自动建立链接，因此不能删除
+        mv $os_dir/etc/resolv.conf.orig $os_dir/etc/resolv.conf
     fi
 
     # opensuse tumbleweed 需安装 wicked
@@ -1400,13 +1443,7 @@ mount_part_for_install_mode() {
 }
 
 get_dns_list_for_win() {
-    case "$1" in
-    4) sign='\.' ;;
-    6) sign=':' ;;
-    *) return 1 ;;
-    esac
-
-    if dns_list=$(grep '^nameserver' /etc/resolv.conf | awk '{print $2}' | grep "$sign"); then
+    if dns_list=$(get_current_dns_v$1); then
         i=0
         for dns in $dns_list; do
             i=$((i + 1))
@@ -1418,7 +1455,7 @@ get_dns_list_for_win() {
 create_win_set_netconf_script() {
     target=$1
 
-    if is_staticv4 || is_staticv6; then
+    if is_staticv4 || is_staticv6 || is_need_manual_set_dnsv6; then
         get_netconf_to mac_addr
         echo "set mac_addr=$mac_addr" >$target
 
@@ -1438,10 +1475,15 @@ EOF
         if is_staticv6; then
             get_netconf_to ipv6_addr
             get_netconf_to ipv6_gateway
-            ipv6_dns_list="$(get_dns_list_for_win 6)"
             cat <<EOF >>$target
 set ipv6_addr=$ipv6_addr
 set ipv6_gateway=$ipv6_gateway
+EOF
+        fi
+
+        # 有 ipv6 但需设置 dns
+        if is_need_manual_set_dnsv6 && ipv6_dns_list="$(get_dns_list_for_win 6)"; then
+            cat <<EOF >>$target
 $ipv6_dns_list
 EOF
         fi
@@ -1924,4 +1966,7 @@ fi
 if [ "$sleep" = 2 ]; then
     exit
 fi
+
+# 等几秒让 web ssh 输出全部内容
+sleep 5
 reboot
