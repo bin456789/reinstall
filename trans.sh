@@ -1704,6 +1704,16 @@ install_windows() {
     locale=$(wiminfo $install_wim | grep 'Default Language' | head -1 | awk '{print $NF}')
     sed -i "s|%arch%|$arch|; s|%image_name%|$image_name|; s|%locale%|$locale|" /tmp/Autounattend.xml
 
+    # sda 只读，放的是 cloud-init 配置，通常 win 有驱动，能识别
+    # 而 vda/nvme/xen 加载驱动后才能识别，所以这时 disk_id 应该为 1
+    if [ -e "/sys/class/block/sda/ro" ] &&
+        [ "$(cat /sys/class/block/sda/ro)" = 0 ]; then
+        disk_id=1
+    else
+        disk_id=0
+    fi
+    sed -i "s|%disk_id%|$disk_id|" /tmp/Autounattend.xml
+
     # 修改应答文件，分区配置
     if is_efi; then
         sed -i "s|%installto_partitionid%|3|" /tmp/Autounattend.xml
