@@ -434,6 +434,16 @@ EOF
 EOF
     fi
 
+    # scaleway block volume optimal_io_size 是 4M
+    # setup-disk 用 cfdisk 从 1M 开始分区
+    # 但 cfdisk 只能按 optimal_io_size 对齐分区，因此报错
+    # 将 start 置空，则自动对齐到 optimal_io_size
+    # https://oss.oracle.com/~mkp/docs/linux-advanced-storage.pdf
+    if [ -f /sys/block/$xda/queue/optimal_io_size ] &&
+        [ "$(cat /sys/block/$xda/queue/optimal_io_size)" -gt $((1024 * 1024)) ]; then
+        sed -i 's/start=1M/start=/' /sbin/setup-disk
+    fi
+
     # 网络
     # 坑1 udhcpc下，ip -4 addr 无法知道是否是 dhcp
     # 坑2 udhcpc不支持dhcpv6
