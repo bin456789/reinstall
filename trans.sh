@@ -1960,7 +1960,7 @@ printf '\nyes' | setup-sshd
 
 extract_env_from_cmdline
 # shellcheck disable=SC2154
-if [ "$sleep" = 1 ]; then
+if [ "$hold" = 1 ]; then
     exit
 fi
 
@@ -2015,10 +2015,13 @@ else
         install_redhat_ubuntu
     fi
 fi
-if [ "$sleep" = 2 ]; then
+if [ "$hold" = 2 ]; then
     exit
 fi
 
-# 等几秒让 web ssh 输出全部内容
+# 让 web ssh 输出全部内容
+for i in $(seq 10); do
+    echo
+done
 sleep 5
 reboot

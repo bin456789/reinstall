@@ -936,7 +936,7 @@ if ! is_in_windows; then
 fi
 
 # 整理参数
-if ! opts=$(getopt -n $0 -o "" --long debug,sleep:,iso:,image-name:,img:,ci,cloud-image -- "$@"); then
+if ! opts=$(getopt -n $0 -o "" --long debug,hold:,sleep:,iso:,image-name:,img:,ci,cloud-image -- "$@"); then
     usage_and_exit
 fi
 
@@ -952,8 +952,8 @@ while true; do
         cloud_image=1
         shift
         ;;
-    --sleep)
-        sleep=$2
+    --hold | --sleep)
+        hold=$2
         shift 2
         ;;
     --img)
@@ -1083,7 +1083,7 @@ build_finalos_cmdline() {
 }
 
 build_extra_cmdline() {
-    for key in confhome sleep cloud_image kernel; do
+    for key in confhome hold cloud_image kernel; do
         value=${!key}
         if [ -n "$value" ]; then
             extra_cmdline+=" extra.$key='$value'"

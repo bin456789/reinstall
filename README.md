@@ -66,6 +66,14 @@ bash reinstall.sh dd --img=https://example.com/xxx.xz
 
 支持自动配置静态 IP、扩展系统盘
 
+### 重启到 Alpine 救援系统（不运行重装）
+
+可用 ssh 连接，进行手动 DD、修改分区等操作
+
+```bash
+bash reinstall.sh alpine --hold=1
+```
+
 ## Windows 下使用
 
 下载（链接另存为）放到同一目录
