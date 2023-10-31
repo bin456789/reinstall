@@ -328,13 +328,42 @@ is_enable_other_flag() {
 }
 
 is_have_rdnss() {
+    # rdnss 可能有几个
     get_netconf_to rdnss
     [ -n "$rdnss" ]
 }
 
+is_windows() {
+    for dir in /os /wim; do
+        [ -d $dir/Windows/System32 ] && return 0
+    done
+    return 1
+}
+
+is_windows_support_rdnss() {
+    apk add pev
+    for dir in /os /wim; do
+        dll=$dir/Windows/System32/kernel32.dll
+        # 15063 或之后才支持 rdnss
+        if [ -f $dll ]; then
+            build_ver="$(peres -v $dll | grep 'Product Version:' | cut -d. -f3)"
+            echo "Windows Build Version: $build_ver"
+            if [ "$build_ver" -ge 15063 ]; then
+                return 0
+            else
+                return 1
+            fi
+        fi
+    done
+    error_and_exit "Not found kernel32.dll"
+}
+
 is_need_manual_set_dnsv6() {
     # 有没有可能是静态但是有 rdnss？
-    is_have_ipv6 && ! is_have_rdnss && ! is_dhcpv6 && ! is_enable_other_flag
+    is_have_ipv6 &&
+        ! is_dhcpv6 &&
+        ! is_enable_other_flag &&
+        { ! is_have_rdnss || { is_have_rdnss && is_windows && ! is_windows_support_rdnss; }; }
 }
 
 get_current_dns_v4() {
@@ -512,7 +541,7 @@ EOF
     fi
 
     # dns
-    # 有 ipv6 但需设置 dns
+    # 有 ipv6 但需设置 dns 的情况
     if is_need_manual_set_dnsv6 && list=$(get_current_dns_v6); then
         for dns in $list; do
             cat <<EOF >>/etc/network/interfaces
@@ -849,7 +878,7 @@ create_cloud_init_network_config() {
             " $ci_file
     fi
 
-    # 有 ipv6，且 rdnss 为空，手动添加 dns
+    # 有 ipv6 但需设置 dns 的情况
     if is_need_manual_set_dnsv6 && dns6_list=$(get_current_dns_v6); then
         for cur in $dns6_list; do
             yq -i ".network.config[1].address += [\"$cur\"]" $ci_file
@@ -1491,7 +1520,7 @@ set ipv6_gateway=$ipv6_gateway
 EOF
         fi
 
-        # 有 ipv6 但需设置 dns
+        # 有 ipv6 但需设置 dns 的情况
         if is_need_manual_set_dnsv6 && ipv6_dns_list="$(get_dns_list_for_win 6)"; then
             cat <<EOF >>$target
 $ipv6_dns_list
