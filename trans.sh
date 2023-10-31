@@ -591,8 +591,11 @@ EOF
     fi
 
     # 重置为官方仓库配置
-    true >/etc/apk/repositories
-    setup-apkrepos -1
+    # 国内机可能无法访问mirror列表而报错
+    if false; then
+        true >/etc/apk/repositories
+        setup-apkrepos -1
+    fi
 
     # 安装到硬盘
     # alpine默认使用 syslinux (efi 环境除外)，这里强制使用 grub，方便用脚本再次重装
