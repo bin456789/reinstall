@@ -48,7 +48,7 @@ if not exist !tags! (
     )
 
     :: 下载 Cygwin
-    call :download http://www.cygwin.com/setup-!arch!.exe %tmp%\setup-cygwin.exe "Download Cygwin"
+    call :download http://www.cygwin.com/setup-!arch!.exe %tmp%\setup-cygwin.exe
 
     :: 安装 Cygwin
     set site=!mirror!!dir!
@@ -64,7 +64,7 @@ if not exist !tags! (
 
 :: 下载 reinstall.sh
 if not exist reinstall.sh (
-    call :download %confhome%/reinstall.sh %~dp0reinstall.sh "Download reinstall.sh"
+    call :download %confhome%/reinstall.sh %~dp0reinstall.sh
 )
 
 :: 运行 reinstall.sh
@@ -82,7 +82,9 @@ exit /b !errorlevel!
 
 
 :download
+:: bits 要求有 Content-Length 才能下载
+:: https://learn.microsoft.com/en-us/windows/win32/bits/http-requirements-for-bits-downloads
 :: certutil 会被 windows Defender 报毒
-:: certutil -urlcache -f -split %~1 %~2
-bitsadmin /transfer "%~3" /priority foreground %~1 %~2
+echo Download: %~1 %~2
+certutil -urlcache -f -split %~1 %~2
 exit /b !errorlevel!
