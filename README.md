@@ -58,13 +58,13 @@ bash reinstall.sh windows \
 
 ### DD
 
-```bash
-bash reinstall.sh dd --img=https://example.com/xxx.xz
-```
-
 支持 gzip、xz 格式
 
 支持自动配置静态 IP、扩展系统盘
+
+```bash
+bash reinstall.sh dd --img=https://example.com/xxx.xz
+```
 
 ### 重启到 Alpine 救援系统（不运行重装）
 
@@ -76,16 +76,40 @@ bash reinstall.sh alpine --hold=1
 
 ## Windows 下使用
 
-下载（链接另存为）放到同一目录
+管理员权限打开 `cmd` 窗口
 
-<https://raw.githubusercontent.com/bin456789/reinstall/main/reinstall.bat>
+如果打开的是 `powershell` 窗口，先进入 `cmd`
 
-<https://raw.githubusercontent.com/bin456789/reinstall/main/reinstall.sh>
+### 下载
 
-管理员权限打开 `cmd` / `powershell` 窗口，先运行 `cmd`（重要），再运行：
+```batch
+certutil -urlcache -f -split https://raw.githubusercontent.com/bin456789/reinstall/main/reinstall.bat
+```
 
-```bat
-reinstall.bat centos-7 (或其他操作，所有功能均可在 Windows 下使用)
+### 下载（国内）
+
+```batch
+certutil -urlcache -f -split https://ghps.cc/https://raw.githubusercontent.com/bin456789/reinstall/main/reinstall.bat
+```
+
+### 如果无法下载
+
+- 关闭 Windows Defender 实时保护
+
+- 系统的 SSL 根证书没更新
+
+  可用`链接另存为`，或者`远程桌面`复制以下两个文件
+
+  <https://raw.githubusercontent.com/bin456789/reinstall/main/reinstall.bat>
+
+  <https://raw.githubusercontent.com/bin456789/reinstall/main/reinstall.sh>
+
+### 使用
+
+可将 centos-7 换成其他，所有功能均可在 Windows 下使用
+
+```batch
+reinstall.bat centos-7
 ```
 
 ## Windows iso 安装

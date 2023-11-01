@@ -12,26 +12,33 @@ cd /d %~dp0
 :: 检查是否有管理员权限
 openfiles 1>nul 2>&1
 if not !errorlevel! == 0 (
-    echo "Please run as administrator!"
+    echo Please run as administrator^^!
     exit 1
 )
+
+:: 检查是否国内
+if not exist %tmp%\geoip (
+    call :download https://www.cloudflare.com/cdn-cgi/trace %tmp%\geoip
+)
+findstr /c:"loc=CN" %tmp%\geoip >nul
+if !errorlevel! == 0 (
+    set mirror=http://mirror.nju.edu.cn
+
+    echo !confhome! | findstr /c:"://raw.githubusercontent.com/" >nul
+    if !errorlevel! == 0 (
+        set confhome=https://ghps.cc/!confhome!
+    )
+) else (
+    set mirror=http://mirrors.kernel.org
+)
+
 
 :: pkgs 改动了才重新运行 Cygwin 安装程序
 set pkgs="curl,cpio,p7zip,bind-utils,ipcalc"
 set tags=%tmp%\cygwin-installed-!pkgs!
 if not exist !tags! (
-    :: 检查是否国内
-    :: 在括号里面，:: 下一行不能是空行!!!!!
-    call :download http://www.cloudflare.com/cdn-cgi/trace %tmp%\geoip "Check Location"
-    findstr "loc=CN" %tmp%\geoip >nul
-    if !errorlevel! == 0 (
-        set host=http://mirror.nju.edu.cn
-    ) else (
-        set host=http://mirrors.kernel.org
-    )
-
     :: 检查32/64位
-    wmic os get osarchitecture | findstr 64 >nul
+    wmic os get osarchitecture | findstr /c:"64" >nul
     if !errorlevel! == 0 (
         set arch=x86_64
         set dir=/sourceware/cygwin
@@ -44,7 +51,7 @@ if not exist !tags! (
     call :download http://www.cygwin.com/setup-!arch!.exe %tmp%\setup-cygwin.exe "Download Cygwin"
 
     :: 安装 Cygwin
-    set site=!host!!dir!
+    set site=!mirror!!dir!
     %tmp%\setup-cygwin.exe --allow-unsupported-windows^
                             --quiet-mode^
                             --only-site^
