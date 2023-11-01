@@ -311,11 +311,13 @@ setos() {
         else
             # 传统安装
             if is_in_china; then
-                hostname=ftp.cn.debian.org
+                # 部分国内机无法访问 ftp.cn.debian.org
+                deb_hostname=mirrors.tuna.tsinghua.edu.cn
             else
-                hostname=deb.debian.org
+                deb_hostname=deb.debian.org
             fi
-            mirror=http://$hostname/debian/dists/$codename/main/installer-$basearch_alt/current/images/netboot/debian-installer/$basearch_alt
+
+            mirror=http://$deb_hostname/debian/dists/$codename/main/installer-$basearch_alt/current/images/netboot/debian-installer/$basearch_alt
             eval ${step}_vmlinuz=$mirror/linux
             eval ${step}_initrd=$mirror/initrd.gz
             eval ${step}_ks=$confhome/debian.cfg
@@ -325,6 +327,7 @@ setos() {
             [ "$releasever" -eq 10 ] && [ "$basearch_alt" = amd64 ] && flavour=
             # shellcheck disable=SC2034
             kernel=linux-image$flavour-$basearch_alt
+
         fi
     }
 
@@ -1083,7 +1086,7 @@ build_finalos_cmdline() {
 }
 
 build_extra_cmdline() {
-    for key in confhome hold cloud_image kernel; do
+    for key in confhome hold cloud_image kernel deb_hostname; do
         value=${!key}
         if [ -n "$value" ]; then
             extra_cmdline+=" extra.$key='$value'"
