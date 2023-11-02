@@ -98,14 +98,15 @@
                     <Order>4</Order>
                     <Path>net user Administrator /active:yes</Path>
                 </RunSynchronousCommand>
-                <RunSynchronousCommand wcm:action="add">
+                <!-- win7 在此阶段找不到网卡 -->
+                <!-- <RunSynchronousCommand wcm:action="add">
                     <Order>5</Order>
                     <Path>cmd /c "if exist %SystemDrive%\windows-resize.bat (call %SystemDrive%\windows-resize.bat)"</Path>
                 </RunSynchronousCommand>
                 <RunSynchronousCommand wcm:action="add">
                     <Order>6</Order>
                     <Path>cmd /c "if exist %SystemDrive%\windows-set-netconf.bat (call %SystemDrive%\windows-set-netconf.bat)"</Path>
-                </RunSynchronousCommand>
+                </RunSynchronousCommand> -->
             </RunSynchronous>
         </component>
         <component name="Microsoft-Windows-TerminalServices-LocalSessionManager" processorArchitecture="%arch%" publicKeyToken="31bf3856ad364e35" language="neutral" versionScope="nonSxS" xmlns:wcm="http://schemas.microsoft.com/WMIConfig/2002/State" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance">

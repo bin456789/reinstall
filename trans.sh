@@ -922,12 +922,14 @@ EOF
 }
 
 modify_windows() {
+    os_dir=$1
+
     # https://learn.microsoft.com/zh-cn/windows-hardware/manufacture/desktop/windows-setup-states
     # https://learn.microsoft.com/zh-cn/troubleshoot/azure/virtual-machines/reset-local-password-without-agent
     # https://learn.microsoft.com/zh-cn/windows-hardware/manufacture/desktop/add-a-custom-script-to-windows-setup
 
     # 判断用 SetupComplete 还是组策略
-    state_ini=/os/Windows/Setup/State/State.ini
+    state_ini=$os_dir/Windows/Setup/State/State.ini
     cat $state_ini
     if grep -q IMAGE_STATE_COMPLETE $state_ini; then
         use_gpo=true
@@ -938,13 +940,13 @@ modify_windows() {
     # 下载共同的子脚本
     # 可能 unattend.xml 已经设置了ExtendOSPartition，不过运行resize没副作用
     bats="windows-resize.bat windows-set-netconf.bat"
-    download $confhome/windows-resize.bat /os/windows-resize.bat
-    create_win_set_netconf_script /os/windows-set-netconf.bat
+    download $confhome/windows-resize.bat $os_dir/windows-resize.bat
+    create_win_set_netconf_script $os_dir/windows-set-netconf.bat
 
     if $use_gpo; then
         # 使用组策略
-        gpt_ini=/os/Windows/System32/GroupPolicy/gpt.ini
-        scripts_ini=/os/Windows/System32/GroupPolicy/Machine/Scripts/scripts.ini
+        gpt_ini=$os_dir/Windows/System32/GroupPolicy/gpt.ini
+        scripts_ini=$os_dir/Windows/System32/GroupPolicy/Machine/Scripts/scripts.ini
         mkdir -p "$(dirname $scripts_ini)"
 
         # 备份 ini
@@ -989,10 +991,10 @@ EOF
         unix2dos $scripts_ini
 
         # windows-del-gpo.bat
-        download $confhome/windows-del-gpo.bat /os/windows-del-gpo.bat
+        download $confhome/windows-del-gpo.bat $os_dir/windows-del-gpo.bat
     else
         # 使用 SetupComplete
-        setup_complete=/os/Windows/Setup/Scripts/SetupComplete.cmd
+        setup_complete=$os_dir/Windows/Setup/Scripts/SetupComplete.cmd
         mkdir -p "$(dirname $setup_complete)"
 
         # 添加到 C:\Setup\Scripts\SetupComplete.cmd 最前面
@@ -1843,8 +1845,14 @@ EOF
     # TODO: 由于esd文件无法修改，要将resize.bat放到boot.wim
     if [[ "$install_wim" = "*.wim" ]]; then
         wimmountrw $install_wim "$image_name" /wim/
-        download $confhome/windows-resize.bat /wim/windows-resize.bat
-        create_win_set_netconf_script /wim/windows-set-netconf.bat
+        if false; then
+            # 使用 Autounattend.xml
+            # win7 在此阶段找不到网卡
+            download $confhome/windows-resize.bat /wim/windows-resize.bat
+            create_win_set_netconf_script /wim/windows-set-netconf.bat
+        else
+            modify_windows /wim
+        fi
         wimunmount --commit /wim/
     fi
 
