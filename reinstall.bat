@@ -69,7 +69,8 @@ if not exist reinstall.sh (
 
 :: 运行 reinstall.sh
 :: 方法1:
-for /f %%a in ('%SystemDrive%\cygwin\bin\cygpath -ua .') do set thisdir=%%a
+:: 在c盘根目录下执行 cygpath -ua . 会得到 /cygdrive/c，因此末尾要有 /
+for /f %%a in ('%SystemDrive%\cygwin\bin\cygpath -ua ./') do set thisdir=%%a
 %SystemDrive%\cygwin\bin\bash -l -c "%thisdir%reinstall.sh %*"
 
 :: 方法2:
