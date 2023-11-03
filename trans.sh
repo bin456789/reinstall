@@ -82,7 +82,7 @@ download() {
         save=""
     else
         # 文件名是绝对路径
-        if [[ "$path" = "/*" ]]; then
+        if [[ "$path" = '/*' ]]; then
             save="-d / -o $path"
         else
             # 文件名是相对路径
@@ -1843,7 +1843,7 @@ EOF
     # installer分区盘符不一定是D盘
     # 所以复制 resize.bat 到 install.wim
     # TODO: 由于esd文件无法修改，要将resize.bat放到boot.wim
-    if [[ "$install_wim" = "*.wim" ]]; then
+    if [[ "$install_wim" = '*.wim' ]]; then
         wimmountrw $install_wim "$image_name" /wim/
         if false; then
             # 使用 Autounattend.xml
