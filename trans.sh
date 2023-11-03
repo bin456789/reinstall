@@ -1462,8 +1462,8 @@ resize_after_install_cloud_image() {
 
             if [ "$distro" = gentoo ]; then
                 apk add e2fsprogs-extra
-                e2fsck -p -f /dev/$xda$system_part_num
-                resize2fs /dev/$xda$system_part_num
+                e2fsck -p -f /dev/$xda*$system_part_num
+                resize2fs /dev/$xda*$system_part_num
             fi
         fi
     fi
