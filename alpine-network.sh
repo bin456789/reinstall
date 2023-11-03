@@ -102,9 +102,11 @@ echo 'Testing Internet Connection...'
 for i in $(seq 5); do
     {
         if is_need_test_ipv4 && nslookup www.qq.com $ipv4_dns1; then
+            echo "IPv4 has internet."
             ipv4_has_internet=true
         fi
         if is_need_test_ipv6 && nslookup www.qq.com $ipv6_dns1; then
+            echo "IPv6 has internet."
             ipv6_has_internet=true
         fi
         if ! is_need_test_ipv4 && ! is_need_test_ipv6; then

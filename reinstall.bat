@@ -13,7 +13,7 @@ cd /d %~dp0
 openfiles 1>nul 2>&1
 if not !errorlevel! == 0 (
     echo Please run as administrator^^!
-    exit 1
+    exit /b
 )
 
 :: 检查是否国内
@@ -59,7 +59,7 @@ if not exist !tags! (
                             --root %SystemDrive%\cygwin^
                             --local-package-dir %tmp%\cygwin-local-package-dir^
                             --packages !pkgs!^
-    && echo >!tags!
+    && type nul >!tags!
 )
 
 :: 下载 reinstall.sh

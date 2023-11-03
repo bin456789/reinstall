@@ -248,6 +248,13 @@ get_ra_to() {
         echo "Gathering network info..."
         _ra="$(rdisc6 -1 eth0)"
         apk del ndisc6
+
+        # 显示网络配置
+        echo
+        echo "$_ra" | cat -n
+        echo
+        ip addr | cat -n
+        echo
     fi
     eval "$1='$_ra'"
 }
@@ -551,10 +558,6 @@ EOF
     fi
 
     # 显示网络配置
-    echo
-    ip addr | cat -n
-    echo
-    echo "$ra" | cat -n
     echo
     cat -n /etc/network/interfaces
     echo
