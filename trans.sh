@@ -1754,7 +1754,7 @@ install_windows() {
     # sda 只读，放的是 cloud-init 配置，通常 win 有驱动，能识别
     # 而 vda/nvme/xen 加载驱动后才能识别，所以这时 disk_id 应该为 1
     if [ -e "/sys/class/block/sda/ro" ] &&
-        [ "$(cat /sys/class/block/sda/ro)" = 0 ]; then
+        [ "$(cat /sys/class/block/sda/ro)" = 1 ]; then
         disk_id=1
     else
         disk_id=0
