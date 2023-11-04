@@ -781,7 +781,7 @@ collect_netconf() {
                 ip=${ips[i]}
                 subnet=${subnets[i]}
                 if [[ "$ip" = *.* ]]; then
-                    cidr=$(ipcalc -b "$ip/$subnet" | grep Network: | cut -d/ -f2 | xargs)
+                    cidr=$(ipcalc -b "$ip/$subnet" | grep Netmask: | awk '{print $NF}')
                     ipv4_addr="$ip/$cidr"
                     break
                 fi
@@ -794,8 +794,10 @@ collect_netconf() {
                 cidr=${subnets[i]}
                 if [[ "$ip" = *:* ]]; then
                     ipv6_type=$(grep "$ip" <<<"$ipv6_type_list" | awk '{print $1}')
+                    # Public 是 slaac
                     # 还有类型 Temporary，不过有 Temporary 肯定还有 Public，因此不用
                     if [ "$ipv6_type" = Public ] ||
+                        [ "$ipv6_type" = Dhcp ] ||
                         [ "$ipv6_type" = Manual ]; then
                         ipv6_addr="$ip/$cidr"
                         break
