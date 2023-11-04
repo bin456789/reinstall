@@ -808,9 +808,9 @@ collect_netconf() {
             # 网关
             # shellcheck disable=SC2154
             for gateway in "${gateways[@]}"; do
-                if [[ "$gateway" = *.* ]]; then
+                if [ -n "$ipv4_addr" ] && [[ "$gateway" = *.* ]]; then
                     ipv4_gateway="$gateway"
-                elif [[ "$gateway" = *:* ]]; then
+                elif [ -n "$ipv6_addr" ] && [[ "$gateway" = *:* ]]; then
                     ipv6_gateway="$gateway"
                 fi
             done
