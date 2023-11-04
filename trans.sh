@@ -1090,6 +1090,13 @@ modify_linux() {
         insert_into_file $os_dir/lib/systemd/system/systemd-logind.service after '\[Service\]' <<EOF
 ExecStartPost=-networkctl
 EOF
+
+        # 如果创建了 cloud-init.disabled，重启后网络不受 networkd 管理
+        # 因为网卡名变回了 ens3 而不是 eth0
+        # 因此要删除 networkd 的网卡名匹配
+        insert_into_file $ci_file after '^runcmd:' <<EOF
+  - sed -i '/^Name=/d' /etc/systemd/network/10-cloud-init-eth*.network
+EOF
     fi
 }
 
