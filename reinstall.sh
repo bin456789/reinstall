@@ -1300,6 +1300,7 @@ echo $custom_cfg
 cat <<EOF | tee $custom_cfg
 set timeout=5
 menuentry "reinstall" {
+    load_video
     insmod lvm
     insmod xfs
     search --no-floppy --file --set=root /reinstall-vmlinuz
