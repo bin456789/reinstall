@@ -11,10 +11,9 @@
         }
 
         #log-container {
-            height: calc(100vh - 20px);
-            padding: 10px;
+            height: calc(100vh - 24px);
+            padding: 12px;
             overflow-y: scroll;
-            white-space: pre;
         }
 
         #scroll-to-bottom {
@@ -38,7 +37,7 @@
 </head>
 
 <body>
-    <div id="log-container"></div>
+    <pre id="log-container"></pre>
     <button id="scroll-to-bottom">
         <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24">
             <path d="M5 10l7 7 7-7H5z" />
@@ -59,7 +58,8 @@
 
                 if (response.ok) {
                     const logContent = await response.text();
-                    logContainer.textContent = logContent;
+                    // 修复 wget 换行符为 \r 导致不换行
+                    logContainer.textContent = logContent.replace(/[\r\n]+/g, "\n");;
 
                     if (shouldScrollToBottom) {
                         logContainer.scrollTop = logContainer.scrollHeight;
