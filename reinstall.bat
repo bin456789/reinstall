@@ -16,6 +16,12 @@ if not !errorlevel! == 0 (
     exit /b
 )
 
+:: 有时 %tmp% 带会话 id，且文件夹不存在
+:: https://learn.microsoft.com/troubleshoot/windows-server/shell-experience/temp-folder-with-logon-session-id-deleted
+if not exist %tmp% (
+    md %tmp%
+)
+
 :: 检查是否国内
 if not exist %tmp%\geoip (
     call :download https://www.cloudflare.com/cdn-cgi/trace %tmp%\geoip
