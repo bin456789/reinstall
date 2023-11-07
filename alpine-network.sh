@@ -20,6 +20,10 @@ else
     ipv6_dns2='2001:4860:4860::8888'
 fi
 
+get_first_ipv4_addr() {
+    ip -4 -o addr show scope global dev eth0 | head -1 | awk '{print $4}'
+}
+
 is_have_ipv4_addr() {
     ip -4 addr show scope global dev eth0 | grep -q inet
 }
@@ -62,28 +66,35 @@ done
 is_have_ipv4_addr && dhcpv4=true || dhcpv4=false
 is_have_ipv6_addr && dhcpv6_or_slaac=true || dhcpv6_or_slaac=false
 
-# 设置静态地址
-if [ -n "$ipv4_addr" ] && [ -n "$ipv4_gateway" ]; then
-    if ! is_have_ipv4_addr; then
-        ip -4 addr add "$ipv4_addr" dev eth0
-    fi
+add_missing_ipv4_config() {
+    if [ -n "$ipv4_addr" ] && [ -n "$ipv4_gateway" ]; then
+        if ! is_have_ipv4_addr; then
+            ip -4 addr add "$ipv4_addr" dev eth0
+        fi
 
-    if ! is_have_ipv4_gateway; then
-        # 如果 dhcp 无法设置onlink网关，那么在这里设置
-        ip -4 route add default via "$ipv4_gateway" dev eth0 onlink
+        if ! is_have_ipv4_gateway; then
+            # 如果 dhcp 无法设置onlink网关，那么在这里设置
+            ip -4 route add default via "$ipv4_gateway" dev eth0 onlink
+        fi
     fi
-fi
+}
 
-if [ -n "$ipv6_addr" ] && [ -n "$ipv6_gateway" ]; then
-    if ! is_have_ipv6_addr; then
-        ip -6 addr add "$ipv6_addr" dev eth0
-    fi
+add_missing_ipv6_config() {
+    if [ -n "$ipv6_addr" ] && [ -n "$ipv6_gateway" ]; then
+        if ! is_have_ipv6_addr; then
+            ip -6 addr add "$ipv6_addr" dev eth0
+        fi
 
-    if ! is_have_ipv6_gateway; then
-        # 如果 dhcp 无法设置onlink网关，那么在这里设置
-        ip -6 route add default via "$ipv6_gateway" dev eth0 onlink
+        if ! is_have_ipv6_gateway; then
+            # 如果 dhcp 无法设置onlink网关，那么在这里设置
+            ip -6 route add default via "$ipv6_gateway" dev eth0 onlink
+        fi
     fi
-fi
+}
+
+# 设置静态地址，或者设置udhcpc无法设置的网关
+add_missing_ipv4_config
+add_missing_ipv6_config
 
 # 检查 ipv4/ipv6 是否连接联网
 ipv4_has_internet=false
@@ -97,24 +108,41 @@ is_need_test_ipv6() {
     is_have_ipv6 && ! $ipv6_has_internet
 }
 
-echo 'Testing Internet Connection...'
+test_internet() {
+    echo 'Testing Internet Connection...'
 
-for i in $(seq 5); do
-    {
-        if is_need_test_ipv4 && nslookup www.qq.com $ipv4_dns1; then
-            echo "IPv4 has internet."
-            ipv4_has_internet=true
-        fi
-        if is_need_test_ipv6 && nslookup www.qq.com $ipv6_dns1; then
-            echo "IPv6 has internet."
-            ipv6_has_internet=true
-        fi
-        if ! is_need_test_ipv4 && ! is_need_test_ipv6; then
-            break
-        fi
-        sleep 1
-    } >/dev/null 2>&1
-done
+    for i in $(seq 5); do
+        {
+            if is_need_test_ipv4 && nslookup www.qq.com $ipv4_dns1; then
+                echo "IPv4 has internet."
+                ipv4_has_internet=true
+            fi
+            if is_need_test_ipv6 && nslookup www.qq.com $ipv6_dns1; then
+                echo "IPv6 has internet."
+                ipv6_has_internet=true
+            fi
+            if ! is_need_test_ipv4 && ! is_need_test_ipv6; then
+                break
+            fi
+            sleep 1
+        } >/dev/null 2>&1
+    done
+}
+
+test_internet
+
+# 处理云电脑 dhcp 获取的地址无法上网
+if $dhcpv4 && ! $ipv4_has_internet &&
+    ! [ "$ipv4_addr" = "$(get_first_ipv4_addr)" ]; then
+    echo "DHCPv4 can't access Internet. And not match static IPv4."
+    ip -4 addr flush scope global dev eth0
+    ip -4 route flush dev eth0
+    add_missing_ipv4_config
+    test_internet
+    if $ipv4_has_internet; then
+        dhcpv4=false
+    fi
+fi
 
 # 等待 udhcpc 创建 /etc/resolv.conf
 # 好像只有 dhcpv4 会创建 resolv.conf
