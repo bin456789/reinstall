@@ -953,7 +953,7 @@ install_grub_win() {
     info download grub
     grub_ver=2.06
     is_in_china && grub_url=https://mirrors.tuna.tsinghua.edu.cn/gnu/grub/grub-$grub_ver-for-windows.zip ||
-        grub_url=https://ftp.gnu.org/gnu/grub/grub-$grub_ver-for-windows.zip
+        grub_url=https://mirror.fcix.net/gnu/grub/grub-$grub_ver-for-windows.zip
     echo $grub_url
     curl -Lo /tmp/grub.zip $grub_url
     # unzip -qo /tmp/grub.zip
