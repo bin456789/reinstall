@@ -802,7 +802,7 @@ collect_netconf() {
             config=$1
             key=$2
             var=$3
-            IFS=',' read -r -a "${var?}" <<<"$(grep "$key=" <<<"$config" | cut -d= -f2 | sed 's/[{}"]//g')"
+            IFS=',' read -r -a "${var?}" <<<"$(grep "$key=" <<<"$config" | cut -d= -f2 | sed 's/[{}\"]//g')"
         }
 
         # 部分机器精简了 powershell

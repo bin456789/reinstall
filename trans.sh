@@ -1203,7 +1203,7 @@ install_qcow_el() {
         fi
     }
 
-    modprobe nbd
+    modprobe nbd nbds_max=1
     qemu_nbd -c /dev/nbd0 $qcow_file
 
     # TODO: 改成循环mount找出os+fstab查找剩余分区？
@@ -1555,7 +1555,7 @@ install_windows() {
     # shellcheck disable=SC2154
     download $iso /os/windows.iso
     mkdir -p /iso
-    mount /os/windows.iso /iso
+    mount -o ro /os/windows.iso /iso
 
     # 从iso复制文件
     # efi: 复制boot开头的文件+efi目录到efi分区，复制iso全部文件(除了boot.wim)到installer分区
@@ -1720,7 +1720,7 @@ install_windows() {
 
         download https://fedorapeople.org/groups/virt/virtio-win/direct-downloads/$dir/virtio-win.iso $drv/virtio-win.iso
         mkdir -p $drv/virtio
-        mount $drv/virtio-win.iso $drv/virtio
+        mount -o ro $drv/virtio-win.iso $drv/virtio
 
         apk add dmidecode
         dmi=$(dmidecode)
@@ -1945,6 +1945,7 @@ install_redhat_ubuntu() {
         menuentry "reinstall" {
             # https://bugs.launchpad.net/ubuntu/+source/grub2/+bug/1851311
             # rmmod tpm
+            insmod all_video
             search --no-floppy --label --set=root installer
             loopback loop /ubuntu.iso
             linux (loop)/casper/vmlinuz iso-scan/filename=/ubuntu.iso autoinstall noprompt noeject cloud-config-url=$ks $extra_cmdline extra.kernel=$kernel --- $console_cmdline
@@ -1959,6 +1960,7 @@ EOF
         cat <<EOF >$grub_cfg
         set timeout=5
         menuentry "reinstall" {
+            insmod all_video
             search --no-floppy --label --set=root os
             linux /vmlinuz inst.stage2=hd:LABEL=installer:/install.img inst.ks=$ks $extra_cmdline $console_cmdline
             initrd /initrd.img
