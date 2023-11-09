@@ -29,7 +29,7 @@ curl -O https://raw.githubusercontent.com/bin456789/reinstall/main/reinstall.sh
 curl -O https://ghps.cc/https://raw.githubusercontent.com/bin456789/reinstall/main/reinstall.sh
 ```
 
-### 安装 Linux
+### 用法 1: 安装 Linux
 
 ```bash
 bash reinstall.sh centos   7|8|9  (8|9 为 stream 版本)
@@ -48,7 +48,7 @@ bash reinstall.sh centos   7|8|9  (8|9 为 stream 版本)
 可选参数:         --ci     强制使用云镜像
 ```
 
-### DD
+### 用法 2: DD
 
 支持 gzip、xz 格式
 
@@ -58,7 +58,21 @@ bash reinstall.sh centos   7|8|9  (8|9 为 stream 版本)
 bash reinstall.sh dd --img=https://example.com/xxx.xz
 ```
 
-### 安装 Windows ISO
+### 用法 3：重启到 Alpine 救援系统 (Live OS)
+
+可用 ssh 连接，进行手动 DD、修改分区、手动安装 Arch Linux 等操作
+
+```bash
+bash reinstall.sh alpine --hold=1
+```
+
+### 用法 4：重启到 netboot.xyz
+
+```bash
+bash reinstall.sh netboot.xyz
+```
+
+### 用法 5: 安装 Windows ISO
 
 ```bash
 bash reinstall.sh windows \
@@ -100,20 +114,6 @@ bash reinstall.sh windows \
    <https://archive.org>
 
    <https://massgrave.dev/genuine-installation-media.html>
-
-### 其它用法1：重启到 Alpine 救援系统 (Live OS) ，不运行重装
-
-可用 ssh 连接，进行手动 DD、修改分区、手动安装 Arch Linux 等操作
-
-```bash
-bash reinstall.sh alpine --hold=1
-```
-
-### 其它用法2：重启到 netboot.xyz
-
-```bash
-bash reinstall.sh netboot.xyz
-```
 
 ## Windows 下使用
 
