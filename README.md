@@ -101,12 +101,18 @@ bash reinstall.sh windows \
 
    <https://massgrave.dev/genuine-installation-media.html>
 
-### 其它用法：仅重启到 Alpine 救援系统 (Live OS) ，不运行重装
+### 其它用法1：重启到 Alpine 救援系统 (Live OS) ，不运行重装
 
 可用 ssh 连接，进行手动 DD、修改分区、手动安装 Arch Linux 等操作
 
 ```bash
 bash reinstall.sh alpine --hold=1
+```
+
+### 其它用法2：重启到 netboot.xyz
+
+```bash
+bash reinstall.sh netboot.xyz
 ```
 
 ## Windows 下使用

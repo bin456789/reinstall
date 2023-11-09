@@ -30,6 +30,7 @@ jobs:
           ${{ matrix.command }} ubuntu
           ${{ matrix.command }} debian 12
           ${{ matrix.command }} alpine
+          ${{ matrix.command }} netboot.xyz
           ${{ matrix.command }} dd --img=https://download.opensuse.org/tumbleweed/appliances/openSUSE-MicroOS.x86_64-SelfInstall.raw.xz
 
           # 测试 cloud image

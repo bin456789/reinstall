@@ -27,8 +27,9 @@ Usage: reinstall.sh centos   7|8|9
                     opensuse 15.4|15.5|tumbleweed
                     arch
                     gentoo
-                    dd       --img=xxx
-                    windows  --iso=xxx --image-name=xxx
+                    dd       --img=http://xxx
+                    windows  --iso=http://xxx --image-name='windows xxx'
+                    netboot.xyz
 EOF
     exit 1
 }
@@ -121,6 +122,14 @@ is_host_has_ipv4_and_ipv6() {
     res=$(dig +short $host A $host AAAA | grep -v '\.$')
     # 有.表示有ipv4地址，有:表示有ipv6地址
     grep -q \. <<<$res && grep -q : <<<$res
+}
+
+is_netboot_xyz() {
+    [ "$distro" = netboot.xyz ]
+}
+
+is_have_initrd() {
+    ! is_netboot_xyz
 }
 
 get_host_by_url() {
@@ -236,27 +245,46 @@ assert_not_in_container() {
 }
 
 is_virt() {
-    if is_in_windows; then
-        # https://github.com/systemd/systemd/blob/main/src/basic/virt.c
-        # https://sources.debian.org/src/hw-detect/1.159/hw-detect.finish-install.d/08hw-detect/
-        vmstr='VMware|Virtual|Virtualization|VirtualBox|VMW|Hyper-V|Bochs|QEMU|KVM|OpenStack|KubeVirt|innotek|Xen|Parallels|BHYVE'
-        for name in ComputerSystem BIOS BaseBoard; do
-            wmic $name | grep -Eiw $vmstr && return 0
-        done
-        wmic /namespace:'\\root\cimv2' PATH Win32_Fan 2>/dev/null | head -1 | grep -q -v Name
-    else
-        # aws t4g debian 11
-        # systemd-detect-virt: 为 none，即使装了dmidecode
-        # virt-what: 未装 deidecode时结果为空，装了deidecode后结果为aws
-        # 所以综合两个命令的结果来判断
-        if is_have_cmd systemd-detect-virt && systemd-detect-virt -v; then
-            return 0
+    if [ -z "$_is_virt" ]; then
+        if is_in_windows; then
+            # https://github.com/systemd/systemd/blob/main/src/basic/virt.c
+            # https://sources.debian.org/src/hw-detect/1.159/hw-detect.finish-install.d/08hw-detect/
+            vmstr='VMware|Virtual|Virtualization|VirtualBox|VMW|Hyper-V|Bochs|QEMU|KVM|OpenStack|KubeVirt|innotek|Xen|Parallels|BHYVE'
+            for name in ComputerSystem BIOS BaseBoard; do
+                if wmic $name | grep -Eiwo $vmstr; then
+                    _is_virt=true
+                    break
+                fi
+            done
+            if [ -z "$_is_virt" ]; then
+                if wmic /namespace:'\\root\cimv2' PATH Win32_Fan 2>/dev/null | head -1 | grep -q Name; then
+                    _is_virt=true
+                fi
+            fi
+        else
+            # aws t4g debian 11
+            # systemd-detect-virt: 为 none，即使装了dmidecode
+            # virt-what: 未装 deidecode时结果为空，装了deidecode后结果为aws
+            # 所以综合两个命令的结果来判断
+            if is_have_cmd systemd-detect-virt && systemd-detect-virt -v; then
+                _is_virt=true
+            fi
+            if [ -z "$_is_virt" ]; then
+                # debian 安装 virt-what 不会自动安装 dmidecode，因此结果有误
+                install_pkg dmidecode virt-what
+                # virt-what 返回值始终是0，所以用是否有输出作为判断
+                if [ -n "$(virt-what)" ]; then
+                    _is_virt=true
+                fi
+            fi
         fi
-        # debian 安装 virt-what 不会自动安装 dmidecode，因此结果有误
-        install_pkg dmidecode virt-what
-        # virt-what 返回值始终是0，所以用是否有输出作为判断
-        [ -n "$(virt-what)" ]
+
+        if [ -z "$_is_virt" ]; then
+            _is_virt=false
+        fi
+        echo "VM: $_is_virt"
     fi
+    $_is_virt
 }
 
 setos() {
@@ -264,6 +292,18 @@ setos() {
     local distro=$2
     local releasever=$3
     info set $step $distro $releasever
+
+    setos_netboot.xyz() {
+        if is_efi; then
+            if [ "$basearch" == aarch64 ]; then
+                eval ${step}_efi=https://boot.netboot.xyz/ipxe/netboot.xyz-arm64.efi
+            else
+                eval ${step}_efi=https://boot.netboot.xyz/ipxe/netboot.xyz.efi
+            fi
+        else
+            eval ${step}_vmlinuz=https://boot.netboot.xyz/ipxe/netboot.xyz.lkrn
+        fi
+    }
 
     setos_alpine() {
         flavour=lts
@@ -559,7 +599,8 @@ verify_os_name() {
         'arch' \
         'gentoo' \
         'windows' \
-        'dd'; do
+        'dd' \
+        'netboot.xyz'; do
         ds=$(awk '{print $1}' <<<"$os")
         vers=$(awk '{print $2}' <<<"$os" | sed 's \. \\\. g')
         finalos=$(echo "$@" | to_lower | sed -n -E "s,^($ds)[ :-]?(|$vers)$,\1:\2,p")
@@ -621,7 +662,7 @@ install_pkg() {
     cmd_to_pkg() {
         unset USE
         case $cmd in
-        lsmem | lsblk) pkg="util-linux" ;;
+        lsmem | lsblk | findmnt) pkg="util-linux" ;;
         unsquashfs)
             case "$pkg_mgr" in
             zypper) pkg="squashfs" ;;
@@ -738,6 +779,10 @@ is_efi() {
     fi
 }
 
+is_use_grub() {
+    ! { is_netboot_xyz && is_efi; }
+}
+
 to_upper() {
     tr '[:lower:]' '[:upper:]'
 }
@@ -843,9 +888,67 @@ collect_netconf() {
     echo "IPv6 Gateway: $ipv6_gateway"
 }
 
-install_grub_win() {
-    grub_cfg=$1 # /cygdrive/$c/grub.cfg
+add_efi_entry_in_windows() {
+    source=$1
 
+    # 挂载
+    if result=$(find /cygdrive/?/EFI/Microsoft/Boot/bootmgfw.efi 2>/dev/null); then
+        # 已经挂载
+        x=$(echo $result | cut -d/ -f3)
+    else
+        # 找到空盘符并挂载
+        for x in {a..z}; do
+            [ ! -e /cygdrive/$x ] && break
+        done
+        mountvol $x: /s
+    fi
+
+    # 文件夹命名为reinstall而不是grub，因为可能机器已经安装了grub，bcdedit名字同理
+    dist_dir=/cygdrive/$x/EFI/reinstall
+    basename=$(basename $source)
+    mkdir -p $dist_dir
+    cp -f "$source" "$dist_dir/$basename"
+
+    # 添加启动项
+    id=$(bcdedit /copy '{bootmgr}' /d "$(get_entry_name)" | grep -o '{.*}')
+    bcdedit /set $id device partition=$x:
+    bcdedit /set $id path \\EFI\\reinstall\\$basename
+    bcdedit /set '{fwbootmgr}' bootsequence $id
+}
+
+get_maybe_efi_dirs_in_linux() {
+    mount | awk '$5=="vfat" {print $3}' | grep -E '/boot|/efi'
+}
+
+add_efi_entry_in_linux() {
+    source=$1
+
+    install_pkg efibootmgr
+
+    for efi_part in $(get_maybe_efi_dirs_in_linux); do
+        if find $efi_part -name "*.efi" >/dev/null; then
+            dist_dir=$efi_part/EFI/reinstall
+            basename=$(basename $source)
+            mkdir -p $dist_dir
+            cp -f "$source" "$dist_dir/$basename"
+
+            # disk=$($grub-probe -t device "$dist")
+            install_pkg findmnt
+            disk=$(findmnt -T "$dist_dir" -no SOURCE)
+            efibootmgr --quiet --create-only \
+                --disk "$disk" \
+                --label "$(get_entry_name)" \
+                --loader "\\EFI\\reinstall\\$basename"
+            id=$(efibootmgr | grep "$(get_entry_name)" | grep -oE '[0-9]{4}')
+            efibootmgr --bootnext $id
+            return
+        fi
+    done
+
+    error_and_exit "Can't find efi partition."
+}
+
+install_grub_win() {
     # 下载 grub
     info download grub
     grub_ver=2.06
@@ -855,10 +958,11 @@ install_grub_win() {
     curl -Lo /tmp/grub.zip $grub_url
     # unzip -qo /tmp/grub.zip
     7z x /tmp/grub.zip -o/tmp -r -y -xr!i386-efi -xr!locale -xr!themes -bso0
-    grub_exe_dir=$(readlink -f /tmp/grub-$grub_ver-for-windows)
+    grub_dir=/tmp/grub-$grub_ver-for-windows
+    grub=$grub_dir/grub
 
     # 设置 grub 内嵌的模块
-    grub_modules+=" normal minicmd ls echo test cat reboot halt linux chain search all_video configfile"
+    grub_modules+=" normal minicmd ls echo test cat reboot halt linux linux16 chain search all_video configfile"
     grub_modules+=" scsi part_msdos part_gpt fat ntfs ntfscomp ext2 lvm xfs lzopio xzio gzio zstd"
     if ! is_efi; then
         grub_modules+=" biosdisk"
@@ -866,41 +970,15 @@ install_grub_win() {
 
     # 设置 grub prefix 为c盘根目录
     # 运行 grub-probe 会改变cmd窗口字体
-    prefix=$($grub_exe_dir/grub-probe -t drive $c: | sed 's,.*PhysicalDrive,(hd,' | sed 's,\r,,')/
+    prefix=$($grub-probe -t drive $c: | sed 's,.*PhysicalDrive,(hd,' | sed 's,\r,,')/
     echo $prefix
 
     # 安装 grub
     if is_efi; then
         # efi
         info install grub for efi
-
-        # 挂载
-        if result=$(find /cygdrive/?/EFI/Microsoft/Boot/bootmgfw.efi 2>/dev/null); then
-            # 已经挂载
-            x=$(echo $result | cut -d/ -f3)
-        else
-            # 找到空盘符并挂载
-            for x in {a..z}; do
-                [ ! -e /cygdrive/$x ] && break
-            done
-            mountvol $x: /s
-        fi
-
-        # 文件夹命名为reinstall而不是grub，因为可能机器已经安装了grub，bcdedit名字同理
-        grub_dir=$x:\\EFI\\reinstall
-        mkdir -p $grub_dir
-        # grub-mkimage 可设置prefix，也可嵌入配置文件（官方不建议嵌入menuentry条目）
-        #  -c $grub_cfg_win
-        $grub_exe_dir/grub-mkimage -p $prefix -O x86_64-efi -o $grub_dir\\grubx64.efi $grub_modules
-
-        # 添加引导
-        # 脚本可能不是首次运行，所以先删除原来的
-        bcdedit /enum bootmgr | grep --text -B3 Reinstall | awk '{print $2}' | grep '{.*}' |
-            xargs -I {} cmd /c bcdedit /delete {}
-        id=$(bcdedit /copy '{bootmgr}' /d Reinstall | grep -o '{.*}')
-        bcdedit /set $id device partition=$x:
-        bcdedit /set $id path \\EFI\\reinstall\\grubx64.efi
-        bcdedit /set '{fwbootmgr}' bootsequence $id
+        $grub-mkimage -p $prefix -O x86_64-efi -o "$(cygpath -w $grub_dir/grubx64.efi)" $grub_modules
+        add_efi_entry_in_windows $grub_dir/grubx64.efi
     else
         # bios
         info install grub for bios
@@ -916,162 +994,19 @@ install_grub_win() {
         find /tmp/win32-loader -name 'g2ldr.mbr' -exec cp {} /cygdrive/$c/ \;
 
         # g2ldr
-        $grub_exe_dir/grub-mkimage -p "$prefix" -O i386-pc -o core.img $grub_modules
-        cat $grub_exe_dir/i386-pc/lnxboot.img core.img >/cygdrive/$c/g2ldr
+        $grub-mkimage -p "$prefix" -O i386-pc -o core.img $grub_modules
+        cat $grub_dir/i386-pc/lnxboot.img core.img >/cygdrive/$c/g2ldr
 
         # 添加引导
         # 脚本可能不是首次运行，所以先删除原来的
         id='{1c41f649-1637-52f1-aea8-f96bfebeecc8}'
         bcdedit /enum all | grep --text $id && bcdedit /delete $id
-        bcdedit /create $id /d Reinstall /application bootsector
+        bcdedit /create $id /d "$(get_entry_name)" /application bootsector
         bcdedit /set $id device partition=$c:
         bcdedit /set $id path \\g2ldr.mbr
         bcdedit /displayorder $id /addlast
         bcdedit /bootsequence $id /addfirst
     fi
-}
-
-# 脚本入口
-# 检查 root
-if ! is_in_windows; then
-    if [ "$EUID" -ne 0 ]; then
-        info "Please run as root."
-        exit 1
-    fi
-fi
-
-# 整理参数
-if ! opts=$(getopt -n $0 -o "" --long debug,hold:,sleep:,iso:,image-name:,img:,ci,cloud-image -- "$@"); then
-    usage_and_exit
-fi
-
-eval set -- "$opts"
-# shellcheck disable=SC2034
-while true; do
-    case "$1" in
-    --debug)
-        set -x
-        shift
-        ;;
-    --ci | --cloud-image)
-        cloud_image=1
-        shift
-        ;;
-    --hold | --sleep)
-        hold=$2
-        shift 2
-        ;;
-    --img)
-        img=$2
-        shift 2
-        ;;
-    --iso)
-        iso=$2
-        shift 2
-        ;;
-    --image-name)
-        image_name=$2
-        shift 2
-        ;;
-    --)
-        shift
-        break
-        ;;
-    *)
-        echo "Unexpected option: $1."
-        usage_and_exit
-        ;;
-    esac
-done
-
-# 不支持容器虚拟化
-assert_not_in_container
-
-# 检查目标系统名
-verify_os_name "$@"
-
-# 检查必须的参数
-verify_os_args
-
-# win系统盘
-if is_in_windows; then
-    c=$(echo $SYSTEMDRIVE | cut -c1)
-fi
-
-# 必备组件
-install_pkg curl
-# alpine 自带的 grep 是 busybox 里面的， 要下载完整版grep
-if is_in_alpine; then
-    apk add grep
-fi
-
-# 检查内存
-if ! { [ "$distro" = dd ] || [ "$distro" = windows ]; }; then
-    check_ram
-fi
-
-# alpine --ci 参数无效
-if [ "$distro" = alpine ] && is_use_cloud_image; then
-    error_and_exit "can't install alpine with cloud image"
-fi
-
-# 检查硬件架构
-# x86强制使用x64
-basearch=$(uname -m)
-[ $basearch = i686 ] && basearch=x86_64
-case "$basearch" in
-"x86_64") basearch_alt=amd64 ;;
-"aarch64") basearch_alt=arm64 ;;
-esac
-
-# 设置国内代理
-# gitee 不支持ipv6
-# jsdelivr 有12小时缓存
-# https://github.com/XIU2/UserScript/blob/master/GithubEnhanced-High-Speed-Download.user.js#L31
-if [[ "$confhome" == http*://raw.githubusercontent.com/* ]] &&
-    is_in_china; then
-    confhome=https://ghps.cc/$confhome
-fi
-
-# 以下目标系统不需要进入alpine
-# debian
-# el7 x86_64 >=1g
-# el7 aarch64 >=1.5g
-# el8/9/fedora 任何架构 >=2g
-if ! is_use_cloud_image &&
-    { [ "$distro" = "debian" ] ||
-        { is_distro_like_redhat "$distro" && [ $releasever -eq 7 ] && [ $ram_size -ge 1024 ] && [ $basearch = "x86_64" ]; } ||
-        { is_distro_like_redhat "$distro" && [ $releasever -eq 7 ] && [ $ram_size -ge 1536 ] && [ $basearch = "aarch64" ]; } ||
-        { is_distro_like_redhat "$distro" && [ $releasever -ge 8 ] && [ $ram_size -ge 2048 ]; }; }; then
-    setos nextos $distro $releasever
-else
-    # 安装alpine时，使用指定的版本。 alpine作为中间系统时，使用 3.18
-    [ "$distro" = "alpine" ] && alpine_releasever=$releasever || alpine_releasever=3.18
-    setos finalos $distro $releasever
-    setos nextos alpine $alpine_releasever
-fi
-
-# 测试链接
-# 在 ubuntu 20.04 上，file 命令检测 ubuntu 22.04 iso 结果不正确，所以去掉 iso 检测
-if is_use_cloud_image; then
-    test_url $finalos_img 'xz|gzip|qemu' finalos_img_type
-elif is_use_dd; then
-    test_url $finalos_img 'xz|gzip' finalos_img_type
-elif [ -n "$finalos_img" ]; then
-    test_url $finalos_img
-elif [ -n "$finalos_iso" ]; then
-    test_url $finalos_iso
-fi
-
-# shellcheck disable=SC2154
-{
-    # 下载 nextos 内核
-    info download vmlnuz and initrd
-    echo $nextos_vmlinuz
-    curl -Lo /reinstall-vmlinuz $nextos_vmlinuz
-
-    echo $nextos_initrd
-    curl -Lo /reinstall-initrd $nextos_initrd
 }
 
 # 转换 finalos_a=1 为 finalos.a=1 ，排除 finalos_mirrorlist
@@ -1105,6 +1040,12 @@ build_extra_cmdline() {
 
 echo_tmp_ttys() {
     curl -L $confhome/ttys.sh | sh -s "console="
+}
+
+get_entry_name() {
+    printf 'reinstall (%s%s%s)' "$distro" \
+        "$([ -n "$releasever" ] && printf ' %s' "$releasever")" \
+        "$([ "$distro" = alpine ] && [ "$hold" = 1 ] && printf ' Live OS')"
 }
 
 # shellcheck disable=SC2154
@@ -1251,86 +1192,288 @@ EOF
     cd -
 }
 
-build_finalos_cmdline
-build_extra_cmdline
-build_cmdline
-
-info 'create grub config'
-# linux grub
+# 脚本入口
+# 检查 root
 if ! is_in_windows; then
-    if is_have_cmd update-grub; then
-        grub_cfg=$(grep -o '[^ ]*grub.cfg' "$(get_cmd_path update-grub)")
-    else
-        # 找出主配置文件（含有menuentry|blscfg）
-        # 如果是efi，先搜索efi目录
-        # arch云镜像efi分区挂载在/efi
-        if is_efi; then
-            for dir in /boot/efi /efi; do
-                [ -d $dir ] && efi_dir+=" $dir"
-            done
-        fi
-        grub_cfg=$(
-            find $efi_dir /boot/grub* \
-                -type f -name grub.cfg \
-                -exec grep -E -l 'menuentry|blscfg' {} \;
-        )
-
-        if [ "$(wc -l <<<"$grub_cfg")" -gt 1 ]; then
-            error_and_exit 'find multi grub.cfg files.'
-        fi
-    fi
-
-    # 有些机子例如hython debian的grub.cfg少了40_custom 41_custom
-    # 所以先重新生成 grub.cfg
-    $(command -v grub-mkconfig grub2-mkconfig) -o $grub_cfg
-
-    # 在x86 efi机器上，不同版本的 grub 可能用 linux 或 linuxefi 加载内核
-    # 通过检测原有的条目有没有 linuxefi 字样就知道当前 grub 用哪一种
-    if [ -d /boot/loader/entries/ ]; then
-        entries="/boot/loader/entries/"
-    fi
-    if grep -q -r -E '^[[:blank:]]*linuxefi[[:blank:]]' $grub_cfg $entries; then
-        efi=efi
+    if [ "$EUID" -ne 0 ]; then
+        info "Please run as root."
+        exit 1
     fi
 fi
 
-# 生成 custom.cfg (linux) 或者 grub.cfg (win)
-is_in_windows && custom_cfg=/cygdrive/$c/grub.cfg || custom_cfg=$(dirname $grub_cfg)/custom.cfg
-echo $custom_cfg
-cat <<EOF | tee $custom_cfg
+# 整理参数
+if ! opts=$(getopt -n $0 -o "" --long debug,hold:,sleep:,iso:,image-name:,img:,ci,cloud-image -- "$@"); then
+    usage_and_exit
+fi
+
+eval set -- "$opts"
+# shellcheck disable=SC2034
+while true; do
+    case "$1" in
+    --debug)
+        set -x
+        shift
+        ;;
+    --ci | --cloud-image)
+        cloud_image=1
+        shift
+        ;;
+    --hold | --sleep)
+        hold=$2
+        shift 2
+        ;;
+    --img)
+        img=$2
+        shift 2
+        ;;
+    --iso)
+        iso=$2
+        shift 2
+        ;;
+    --image-name)
+        image_name=$2
+        shift 2
+        ;;
+    --)
+        shift
+        break
+        ;;
+    *)
+        echo "Unexpected option: $1."
+        usage_and_exit
+        ;;
+    esac
+done
+
+# 不支持容器虚拟化
+assert_not_in_container
+
+# 检查目标系统名
+verify_os_name "$@"
+
+# 检查必须的参数
+verify_os_args
+
+# win系统盘
+if is_in_windows; then
+    c=$(echo $SYSTEMDRIVE | cut -c1)
+fi
+
+# 必备组件
+install_pkg curl
+# alpine 自带的 grep 是 busybox 里面的， 要下载完整版grep
+if is_in_alpine; then
+    apk add grep
+fi
+
+# 检查内存
+if ! { [ "$distro" = dd ] || [ "$distro" = windows ] || [ "$distro" = netboot.xyz ]; }; then
+    check_ram
+fi
+
+# alpine --ci 参数无效
+if [ "$distro" = alpine ] && is_use_cloud_image; then
+    error_and_exit "can't install alpine with cloud image"
+fi
+
+# 检查硬件架构
+# x86强制使用x64
+basearch=$(uname -m)
+[ $basearch = i686 ] && basearch=x86_64
+case "$basearch" in
+"x86_64") basearch_alt=amd64 ;;
+"aarch64") basearch_alt=arm64 ;;
+esac
+
+# 设置国内代理
+# gitee 不支持ipv6
+# jsdelivr 有12小时缓存
+# https://github.com/XIU2/UserScript/blob/master/GithubEnhanced-High-Speed-Download.user.js#L31
+if [[ "$confhome" == http*://raw.githubusercontent.com/* ]] &&
+    is_in_china; then
+    confhome=https://ghps.cc/$confhome
+fi
+
+# 以下目标系统不需要进入alpine
+# debian
+# el7 x86_64 >=1g
+# el7 aarch64 >=1.5g
+# el8/9/fedora 任何架构 >=2g
+if is_netboot_xyz ||
+    { ! is_use_cloud_image && {
+        [ "$distro" = "debian" ] ||
+            { is_distro_like_redhat "$distro" && [ $releasever -eq 7 ] && [ $ram_size -ge 1024 ] && [ $basearch = "x86_64" ]; } ||
+            { is_distro_like_redhat "$distro" && [ $releasever -eq 7 ] && [ $ram_size -ge 1536 ] && [ $basearch = "aarch64" ]; } ||
+            { is_distro_like_redhat "$distro" && [ $releasever -ge 8 ] && [ $ram_size -ge 2048 ]; }
+    }; }; then
+    setos nextos $distro $releasever
+else
+    # 安装alpine时，使用指定的版本。 alpine作为中间系统时，使用 3.18
+    [ "$distro" = "alpine" ] && alpine_releasever=$releasever || alpine_releasever=3.18
+    setos finalos $distro $releasever
+    setos nextos alpine $alpine_releasever
+fi
+
+# 测试链接
+# 在 ubuntu 20.04 上，file 命令检测 ubuntu 22.04 iso 结果不正确，所以去掉 iso 检测
+if is_use_cloud_image; then
+    test_url $finalos_img 'xz|gzip|qemu' finalos_img_type
+elif is_use_dd; then
+    test_url $finalos_img 'xz|gzip' finalos_img_type
+elif [ -n "$finalos_img" ]; then
+    test_url $finalos_img
+elif [ -n "$finalos_iso" ]; then
+    test_url $finalos_iso
+fi
+
+# 删除之前的条目
+# 防止第一次运行 netboot.xyz，第二次运行其他，但还是进入 netboot.xyz
+# 防止第一次运行其他，第二次运行 netboot.xyz，但还有第一次的菜单
+# bios 无论什么情况都用到 grub，所以不用处理
+if is_efi; then
+    if is_in_windows; then
+        rm -f /cygdrive/$c/grub.cfg
+
+        bcdedit /set '{fwbootmgr}' bootsequence '{bootmgr}'
+        bcdedit /enum bootmgr | grep --text -B3 'reinstall.*' | awk '{print $2}' | grep '{.*}' |
+            xargs -I {} cmd /c bcdedit /delete {}
+    else
+        maybe_efi_dirs=$(get_maybe_efi_dirs_in_linux)
+        find $maybe_efi_dirs /boot -type f -name 'custom.cfg' -exec rm -f {} \;
+
+        install_pkg efibootmgr
+        efibootmgr | grep -q 'BootNext:' && efibootmgr --quiet --delete-bootnext
+        efibootmgr | grep 'reinstall.*' | grep -oE '[0-9]{4}' |
+            xargs -I {} efibootmgr --quiet --bootnum {} --delete-bootnum
+    fi
+fi
+
+# grub
+if is_use_grub; then
+    if is_in_windows; then
+        install_grub_win
+    else
+        if is_have_cmd grub2-mkconfig; then
+            grub=grub2
+        elif is_have_cmd grub-mkconfig; then
+            grub=grub
+        else
+            error_and_exit "grub not found"
+        fi
+    fi
+fi
+
+# 下载 netboot.xyz / 内核
+# shellcheck disable=SC2154
+if is_netboot_xyz; then
+    if is_efi; then
+        curl -Lo /netboot.xyz.efi $nextos_efi
+        if is_in_windows; then
+            add_efi_entry_in_windows /netboot.xyz.efi
+        else
+            add_efi_entry_in_linux /netboot.xyz.efi
+        fi
+    else
+        curl -Lo /reinstall-vmlinuz $nextos_vmlinuz
+    fi
+else
+    # 下载 nextos 内核
+    info download vmlnuz and initrd
+    echo $nextos_vmlinuz
+    curl -Lo /reinstall-vmlinuz $nextos_vmlinuz
+
+    echo $nextos_initrd
+    curl -Lo /reinstall-initrd $nextos_initrd
+
+    build_finalos_cmdline
+    build_extra_cmdline
+    build_cmdline
+fi
+
+if is_use_grub; then
+    info 'create grub config'
+    # linux grub
+    if ! is_in_windows; then
+        if is_have_cmd update-grub; then
+            grub_cfg=$(grep -o '[^ ]*grub.cfg' "$(get_cmd_path update-grub)")
+        else
+            # 找出主配置文件（含有menuentry|blscfg）
+            # 如果是efi，先搜索efi目录
+            # arch云镜像efi分区挂载在/efi
+            if is_efi; then
+                efi_dir=$(get_maybe_efi_dirs_in_linux)
+            fi
+            grub_cfg=$(
+                find $efi_dir /boot/grub* \
+                    -type f -name grub.cfg \
+                    -exec grep -E -l 'menuentry|blscfg' {} \;
+            )
+
+            if [ "$(wc -l <<<"$grub_cfg")" -gt 1 ]; then
+                error_and_exit 'find multi grub.cfg files.'
+            fi
+        fi
+
+        # 有些机子例如hython debian的grub.cfg少了40_custom 41_custom
+        # 所以先重新生成 grub.cfg
+        $grub-mkconfig -o $grub_cfg
+
+        # 在x86 efi机器上，不同版本的 grub 可能用 linux 或 linuxefi 加载内核
+        # 通过检测原有的条目有没有 linuxefi 字样就知道当前 grub 用哪一种
+        if [ -d /boot/loader/entries/ ]; then
+            entries="/boot/loader/entries/"
+        fi
+        if grep -q -r -E '^[[:blank:]]*linuxefi[[:blank:]]' $grub_cfg $entries; then
+            efi=efi
+        fi
+    fi
+
+    # 生成 custom.cfg (linux) 或者 grub.cfg (win)
+    is_in_windows && custom_cfg=/cygdrive/$c/grub.cfg || custom_cfg=$(dirname $grub_cfg)/custom.cfg
+    echo $custom_cfg
+
+    if is_netboot_xyz; then
+        linux_cmd="linux16 /reinstall-vmlinuz"
+    else
+        linux_cmd="linux$efi /reinstall-vmlinuz $(echo_tmp_ttys) $cmdline"
+        initrd_cmd="initrd$efi /reinstall-initrd"
+    fi
+    cat <<EOF | tee $custom_cfg
 set timeout=5
-menuentry "reinstall" {
-    load_video
+menuentry "$(get_entry_name)" {
+    insmod all_video
     insmod lvm
     insmod xfs
     search --no-floppy --file --set=root /reinstall-vmlinuz
-    linux$efi /reinstall-vmlinuz $(echo_tmp_ttys) $cmdline
-    initrd$efi /reinstall-initrd
+    $linux_cmd
+    $initrd_cmd
 }
 EOF
 
-if is_in_windows; then
-    mv /reinstall-vmlinuz /cygdrive/$c/
-    mv /reinstall-initrd /cygdrive/$c/
-    install_grub_win $custom_cfg
-else
-    if is_os_in_btrfs && is_os_in_subvol; then
-        cp_to_btrfs_root /reinstall-vmlinuz
-        cp_to_btrfs_root /reinstall-initrd
-    fi
+    if is_in_windows; then
+        mv /reinstall-vmlinuz /cygdrive/$c/
+        is_have_initrd && mv /reinstall-initrd /cygdrive/$c/
+    else
+        if is_os_in_btrfs && is_os_in_subvol; then
+            cp_to_btrfs_root /reinstall-vmlinuz
+            is_have_initrd && cp_to_btrfs_root /reinstall-initrd
+        fi
 
-    # 有的机器开启了 kexec，例如腾讯云轻量 debian，要禁用
-    if [ -f /etc/default/kexec ]; then
-        sed -i 's/LOAD_KEXEC=true/LOAD_KEXEC=false/' /etc/default/kexec
-    fi
+        # 有的机器开启了 kexec，例如腾讯云轻量 debian，要禁用
+        if [ -f /etc/default/kexec ]; then
+            sed -i 's/LOAD_KEXEC=true/LOAD_KEXEC=false/' /etc/default/kexec
+        fi
 
-    $(command -v grub-reboot grub2-reboot) reinstall
+        $grub-reboot "$(get_entry_name)"
+    fi
 fi
 
 if is_use_cloud_image; then
     info 'cloud image mode'
 elif is_use_dd; then
     info 'dd mode'
+elif is_netboot_xyz; then
+    info 'boot into netboot.xyz'
 else
     info 'installer mode'
 fi
