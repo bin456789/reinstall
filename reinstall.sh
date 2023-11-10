@@ -258,7 +258,7 @@ is_virt() {
             done
             if [ -z "$_is_virt" ]; then
                 if wmic /namespace:'\\root\cimv2' PATH Win32_Fan 2>/dev/null | head -1 | grep -q Name; then
-                    _is_virt=true
+                    _is_virt=false
                 fi
             fi
         else
