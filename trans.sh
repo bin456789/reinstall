@@ -839,7 +839,7 @@ create_cloud_init_network_config() {
 
     # ipv4
     if is_dhcpv4; then
-        yq -i ".network.config[0].subnets += [{\"type\": \"dhcp\"}]" $ci_file
+        yq -i ".network.config[0].subnets += [{\"type\": \"dhcp4\"}]" $ci_file
 
     elif is_staticv4; then
         get_netconf_to ipv4_addr
