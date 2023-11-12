@@ -895,7 +895,7 @@ create_cloud_init_network_config() {
 download_cloud_init_config() {
     os_dir=$1
 
-    ci_file=$os_dir/etc/cloud/cloud.cfg.d/99_nocloud.cfg
+    ci_file=$os_dir/etc/cloud/cloud.cfg.d/99_fallback.cfg
     download $confhome/cloud-init.yaml $ci_file
     # 删除注释行，除了第一行
     sed -i '1!{/^[[:space:]]*#/d}' $ci_file

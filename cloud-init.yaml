@@ -1,5 +1,5 @@
 #cloud-config
-datasource_list: [NoCloud]
+datasource_list: [None]
 timezone: Asia/Shanghai
 disable_root: false
 ssh_pwauth: true
