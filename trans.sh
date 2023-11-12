@@ -876,9 +876,15 @@ create_cloud_init_network_config() {
         get_netconf_to ipv6_gateway
         # centos7 不认识 static6，但可改成 static，作用相同
         # https://github.com/canonical/cloud-init/commit/dacdd30080bd8183d1f1c1dc9dbcbc8448301529
+        if [ -f /os/etc/system-release-cpe ] &&
+            grep centos:7 /os/etc/system-release-cpe; then
+            type_ipv6_static=static
+        else
+            type_ipv6_static=static6
+        fi
         yq -i "
             .network.config[0].subnets += [{
-                \"type\": \"static\",
+                \"type\": \"$type_ipv6_static\",
                 \"address\": \"$ipv6_addr\",
                 \"gateway\": \"$ipv6_gateway\" }]
             " $ci_file
