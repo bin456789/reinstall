@@ -892,6 +892,12 @@ create_cloud_init_network_config() {
     fi
 }
 
+truncate_machine_id() {
+    os_dir=$1
+
+    truncate -s 0 $os_dir/etc/machine-id
+}
+
 download_cloud_init_config() {
     os_dir=$1
 
@@ -1030,6 +1036,8 @@ modify_linux() {
     }
 
     download_cloud_init_config $os_dir
+
+    truncate_machine_id $os_dir
 
     # 为红帽系禁用 selinux kdump
     if [ -f $os_dir/etc/redhat-release ]; then
@@ -1283,6 +1291,9 @@ install_qcow_el() {
 
     # cloud-init
     download_cloud_init_config /os
+
+    # 部分镜像例如 centos7 要手动删除 machine-id
+    truncate_machine_id /os
 
     # 为 centos 7 ci 安装 NetworkManager
     # 1. 能够自动配置 onlink 网关
