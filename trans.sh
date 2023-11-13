@@ -915,11 +915,14 @@ download_cloud_init_config() {
     # 如果分区表中已经有swapfile就跳过，例如arch
     if ! grep -w swap $os_dir/etc/fstab; then
         # btrfs
+        # 目前只有 arch 和 fedora 镜像使用 btrfs
+        # 等 fedora 38 cloud-init 升级到 v23.3 后删除
         if mount | grep 'on /os type btrfs'; then
             insert_into_file $ci_file after '^runcmd:' <<EOF
   - btrfs filesystem mkswapfile --size 1G /swapfile
   - swapon /swapfile
   - echo "/swapfile none swap defaults 0 0" >> /etc/fstab
+  - systemctl daemon-reload
 EOF
         else
             # ext4 xfs
@@ -1049,6 +1052,16 @@ modify_linux() {
         find_and_mount /boot
         find_and_mount /boot/efi
         disable_selinux_kdump $os_dir
+    fi
+
+    # 修复 fedora 38 或以下用静态 ipv6 会掉线
+    # el 全系也用 NetworkManager，但他们的配置文件是 sysconfig，因此不受影响
+    # https://github.com/canonical/cloud-init/commit/5d440856cb6d2b4c908015fe4eb7227615c17c8b
+    if grep -E 'fedora:(37|38)' $os_dir/etc/os-release; then
+        network_manager_py=$os_dir/usr/lib/python3.11/site-packages/cloudinit/net/network_manager.py &&
+            if ! grep '"static6": "manual",' $network_manager_py; then
+                echo '"static6": "manual",' | insert_into_file $network_manager_py after '"static": "manual",'
+            fi
     fi
 
     # debian 10/11 默认不支持 rdnss，要安装 rdnssd 或者 nm
