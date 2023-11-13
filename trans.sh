@@ -829,34 +829,34 @@ create_cloud_init_network_config() {
     get_netconf_to mac_addr
     apk add yq
 
-    yq -i "
-        .network.version=1 |
-        .network.config[0].type=\"physical\" |
-        .network.config[0].name=\"eth0\" |
-        .network.config[0].mac_address=\"$mac_addr\"  |
-        .network.config[1].type=\"nameserver\"
-        " $ci_file
+    # shellcheck disable=SC2154
+    yq -i ".network.version=1 |
+           .network.config[0].type=\"physical\" |
+           .network.config[0].name=\"eth0\" |
+           .network.config[0].mac_address=\"$mac_addr\"
+           " $ci_file
+
+    ip_index=0
 
     # ipv4
     if is_dhcpv4; then
-        yq -i ".network.config[0].subnets += [{\"type\": \"dhcp4\"}]" $ci_file
-
+        yq -i ".network.config[0].subnets[$ip_index] = {\"type\": \"dhcp4\"}" $ci_file
+        ip_index=$((ip_index + 1))
     elif is_staticv4; then
         get_netconf_to ipv4_addr
         get_netconf_to ipv4_gateway
-
-        yq -i "
-            .network.config[0].subnets += [{
-                \"type\": \"static\",
-                \"address\": \"$ipv4_addr\",
-                \"gateway\": \"$ipv4_gateway\" }]
-                " $ci_file
+        yq -i ".network.config[0].subnets[$ip_index] = {
+                    \"type\": \"static\",
+                    \"address\": \"$ipv4_addr\",
+                    \"gateway\": \"$ipv4_gateway\" }
+                    " $ci_file
 
         if dns4_list=$(get_current_dns_v4); then
             for cur in $dns4_list; do
-                yq -i ".network.config[1].address += [\"$cur\"]" $ci_file
+                yq -i ".network.config[0].subnets[$ip_index].dns_nameservers += [\"$cur\"]" $ci_file
             done
         fi
+        ip_index=$((ip_index + 1))
     fi
 
     # ipv6
@@ -866,10 +866,10 @@ create_cloud_init_network_config() {
         else
             type=ipv6_slaac
         fi
-        yq -i ".network.config[0].subnets += [{\"type\": \"$type\"}]" $ci_file
+        yq -i ".network.config[0].subnets[$ip_index] = {\"type\": \"$type\"}" $ci_file
 
     elif is_dhcpv6; then
-        yq -i ".network.config[0].subnets += [{\"type\": \"ipv6_dhcpv6-stateful\"}]" $ci_file
+        yq -i ".network.config[0].subnets[$ip_index] = {\"type\": \"ipv6_dhcpv6-stateful\"}" $ci_file
 
     elif is_staticv6; then
         get_netconf_to ipv6_addr
@@ -882,18 +882,17 @@ create_cloud_init_network_config() {
         else
             type_ipv6_static=static6
         fi
-        yq -i "
-            .network.config[0].subnets += [{
-                \"type\": \"$type_ipv6_static\",
-                \"address\": \"$ipv6_addr\",
-                \"gateway\": \"$ipv6_gateway\" }]
-            " $ci_file
+        yq -i ".network.config[0].subnets[$ip_index] = {
+                    \"type\": \"$type_ipv6_static\",
+                    \"address\": \"$ipv6_addr\",
+                    \"gateway\": \"$ipv6_gateway\" }
+                    " $ci_file
     fi
 
     # 有 ipv6 但需设置 dns 的情况
     if is_need_manual_set_dnsv6 && dns6_list=$(get_current_dns_v6); then
         for cur in $dns6_list; do
-            yq -i ".network.config[1].address += [\"$cur\"]" $ci_file
+            yq -i ".network.config[0].subnets[$ip_index].dns_nameservers += [\"$cur\"]" $ci_file
         done
     fi
 }
