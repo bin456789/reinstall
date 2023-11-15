@@ -833,7 +833,8 @@ create_cloud_init_network_config() {
     yq -i ".network.version=1 |
            .network.config[0].type=\"physical\" |
            .network.config[0].name=\"eth0\" |
-           .network.config[0].mac_address=\"$mac_addr\"
+           .network.config[0].mac_address=\"$mac_addr\" |
+           .network.config[1].type=\"nameserver\"
            " $ci_file
 
     ip_index=0
@@ -851,9 +852,13 @@ create_cloud_init_network_config() {
                     \"gateway\": \"$ipv4_gateway\" }
                     " $ci_file
 
+        # 旧版 cloud-init 有 bug
+        # 有的版本会只从第一种配置中读取 dns，有的从第二种读取
+        # 因此写两种配置
         if dns4_list=$(get_current_dns_v4); then
             for cur in $dns4_list; do
                 yq -i ".network.config[0].subnets[$ip_index].dns_nameservers += [\"$cur\"]" $ci_file
+                yq -i ".network.config[1].address += [\"$cur\"]" $ci_file
             done
         fi
         ip_index=$((ip_index + 1))
@@ -893,6 +898,7 @@ create_cloud_init_network_config() {
     if is_need_manual_set_dnsv6 && dns6_list=$(get_current_dns_v6); then
         for cur in $dns6_list; do
             yq -i ".network.config[0].subnets[$ip_index].dns_nameservers += [\"$cur\"]" $ci_file
+            yq -i ".network.config[1].address += [\"$cur\"]" $ci_file
         done
     fi
 }
