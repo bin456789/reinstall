@@ -1793,15 +1793,18 @@ install_windows() {
     locale=$(wiminfo $install_wim | grep 'Default Language' | head -1 | awk '{print $NF}')
     sed -i "s|%arch%|$arch|; s|%image_name%|$image_name|; s|%locale%|$locale|" /tmp/Autounattend.xml
 
-    # sda 只读，放的是 cloud-init 配置，通常 win 有驱动，能识别
-    # 而 vda/nvme/xen 加载驱动后才能识别，所以这时 disk_id 应该为 1
-    if [ -e "/sys/class/block/sda/ro" ] &&
-        [ "$(cat /sys/class/block/sda/ro)" = 1 ]; then
-        disk_id=1
-    else
-        disk_id=0
+    # 修改 disk_id
+    if false; then
+        # sda 只读，放的是 cloud-init 配置，通常 win 有驱动，能识别
+        # 而 vda/nvme/xen 加载驱动后才能识别，所以这时 disk_id 应该为 1
+        if [ -e "/sys/class/block/sda/ro" ] &&
+            [ "$(cat /sys/class/block/sda/ro)" = 1 ]; then
+            disk_id=1
+        else
+            disk_id=0
+        fi
+        sed -i "s|%disk_id%|$disk_id|" /tmp/Autounattend.xml
     fi
-    sed -i "s|%disk_id%|$disk_id|" /tmp/Autounattend.xml
 
     # 修改应答文件，分区配置
     if is_efi; then
@@ -1832,7 +1835,6 @@ EOF
             </ModifyPartition>
 EOF
     fi
-    unix2dos /tmp/Autounattend.xml
 
     #     # ei.cfg
     #     cat <<EOF >/os/installer/sources/ei.cfg
@@ -1879,7 +1881,15 @@ EOF
     fi
 
     # 复制应答文件
-    cp /tmp/Autounattend.xml /wim/
+    # 移除注释，否则 windows-setup.bat 重新生成的 Autounattend.xml 有问题
+    apk add xmlstarlet
+    xmlstarlet ed -d '//comment()' /tmp/Autounattend.xml >/wim/Autounattend.xml
+    unix2dos /wim/Autounattend.xml
+
+    # 复制安装脚本
+    # https://slightlyovercomplicated.com/2016/11/07/windows-pe-startup-sequence-explained/
+    mv /wim/setup.exe /wim/setup.exe.disabled
+    download $confhome/windows-setup.bat /wim/Windows/System32/startnet.cmd
 
     # 提交修改 boot.wim
     wimunmount --commit /wim/
