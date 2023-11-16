@@ -901,6 +901,9 @@ create_cloud_init_network_config() {
             yq -i ".network.config[1].address += [\"$cur\"]" $ci_file
         done
     fi
+
+    # 如果 network.config[1] 没有 address，则删除，避免低版本 cloud-init 报错
+    yq -i 'del(.network.config[1] | select(has("address") | not))' $ci_file
 }
 
 truncate_machine_id() {
