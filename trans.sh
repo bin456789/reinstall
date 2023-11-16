@@ -1070,15 +1070,34 @@ modify_linux() {
             fi
     fi
 
-    # debian 10/11 默认不支持 rdnss，要安装 rdnssd 或者 nm
+    # debian 10/11 网络问题
     if [ -f $os_dir/etc/debian_version ] && grep -E '^(10|11)' $os_dir/etc/debian_version; then
         mv $os_dir/etc/resolv.conf $os_dir/etc/resolv.conf.orig
         cp -f /etc/resolv.conf $os_dir/etc/resolv.conf
         mount_pseudo_fs $os_dir
         chroot $os_dir apt update
-        chroot $os_dir apt install -y rdnssd
-        # 不会自动建立链接，因此不能删除
-        mv $os_dir/etc/resolv.conf.orig $os_dir/etc/resolv.conf
+
+        if true; then
+            # 将 debian 10/11 设置为 12 一样的网络管理器
+            # 可解决 ifupdown dhcp 不支持 24位掩码+不规则网关的问题
+            chroot $os_dir apt install -y netplan.io
+            chroot $os_dir systemctl disable networking resolvconf
+            chroot $os_dir systemctl enable systemd-networkd systemd-resolved
+            rm -f $os_dir/etc/resolv.conf $os_dir/etc/resolv.conf.orig
+            ln -sf ../run/systemd/resolve/stub-resolv.conf $os_dir/etc/resolv.conf
+            insert_into_file $os_dir/etc/cloud/cloud.cfg.d/99_fallback.cfg after '#cloud-config' <<EOF
+system_info:
+  network:
+    renderers: [netplan]
+    activators: [netplan]
+EOF
+
+        else
+            # debian 10/11 默认不支持 rdnss，要安装 rdnssd 或者 nm
+            chroot $os_dir apt install -y rdnssd
+            # 不会自动建立链接，因此不能删除
+            mv $os_dir/etc/resolv.conf.orig $os_dir/etc/resolv.conf
+        fi
     fi
 
     # opensuse tumbleweed 需安装 wicked
