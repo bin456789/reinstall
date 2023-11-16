@@ -24,10 +24,11 @@ if not exist %tmp% (
 
 :: 检查是否国内
 if not exist %tmp%\geoip (
-    call :download https://www.cloudflare.com/cdn-cgi/trace %tmp%\geoip
+    call :download http://www.cloudflare.com/cdn-cgi/trace %tmp%\geoip
 )
 findstr /c:"loc=CN" %tmp%\geoip >nul
 if !errorlevel! == 0 (
+    :: mirrors.tuna.tsinghua.edu.cn 会强制跳转 https
     set mirror=http://mirror.nju.edu.cn
 
     echo !confhome! | findstr /c:"://raw.githubusercontent.com/" >nul
@@ -35,7 +36,8 @@ if !errorlevel! == 0 (
         set confhome=https://ghps.cc/!confhome!
     )
 ) else (
-    set mirror=http://mirrors.kernel.org
+    :: mirrors.kernel.org 在荷兰太慢
+    set mirror=http://mirror.facebook.net
 )
 
 
