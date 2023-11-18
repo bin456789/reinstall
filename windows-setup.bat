@@ -2,7 +2,8 @@
 
 :: 安装 SCSI 驱动
 for %%F in ("X:\drivers\*.inf") do (
-    find "Class=SCSIAdapter" "%%~F" >nul
+    :: 不要查找 Class=SCSIAdapter 因为有些驱动等号两边有空格
+    find /i "SCSIAdapter" "%%~F" >nul
     if not errorlevel 1 (
         drvload "%%~F"
     )
