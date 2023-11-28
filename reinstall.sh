@@ -62,6 +62,7 @@ error_and_exit() {
 curl() {
     # 添加 -f, --fail，不然 404 退出码也为0
     # 32位 cygwin 已停止更新，证书可能有问题，先添加 --insecure
+    grep -o 'http[^ ]*' <<<"$@" >&2
     command curl --insecure --connect-timeout 5 --retry 2 --retry-delay 1 -f "$@"
 }
 
@@ -175,7 +176,6 @@ test_url_real() {
     expect_type=$3
     var_to_eval=$4
     info test url
-    echo $url
 
     failed() {
         $grace && return 1
@@ -954,7 +954,6 @@ install_grub_win() {
     grub_ver=2.06
     is_in_china && grub_url=https://mirrors.tuna.tsinghua.edu.cn/gnu/grub/grub-$grub_ver-for-windows.zip ||
         grub_url=https://mirror.fcix.net/gnu/grub/grub-$grub_ver-for-windows.zip
-    echo $grub_url
     curl -Lo /tmp/grub.zip $grub_url
     # unzip -qo /tmp/grub.zip
     7z x /tmp/grub.zip -o/tmp -r -y -xr!i386-efi -xr!locale -xr!themes -bso0
@@ -1379,10 +1378,7 @@ if is_netboot_xyz; then
 else
     # 下载 nextos 内核
     info download vmlnuz and initrd
-    echo $nextos_vmlinuz
     curl -Lo /reinstall-vmlinuz $nextos_vmlinuz
-
-    echo $nextos_initrd
     curl -Lo /reinstall-initrd $nextos_initrd
 
     build_finalos_cmdline
