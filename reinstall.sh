@@ -1140,11 +1140,13 @@ EOF
     # udhcpc 添加 -n 参数，请求dhcp失败后退出
     # 使用同样参数运行 udhcpc6
     # TODO: digitalocean -i eth1?
-    # shellcheck disable=SC2016
-    orig_cmd="$(grep '$MOCK udhcpc' init)"
+    # $MOCK udhcpc -i "$device" -f -q # v3.18
+    #       udhcpc -i "$device" -f -q # v3.17
+    search='udhcpc -i'
+    orig_cmd="$(grep "$search" init)"
     mod_cmd4="$orig_cmd -n || true"
     mod_cmd6="${mod_cmd4//udhcpc/udhcpc6}"
-    sed -i "/\$MOCK udhcpc/c$mod_cmd4 \n $mod_cmd6" init
+    sed -i "/$search/c$mod_cmd4 \n $mod_cmd6" init
 
     # hack 3 /usr/share/udhcpc/default.script
     # 脚本被调用的顺序

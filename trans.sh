@@ -199,7 +199,8 @@ qemu_nbd() {
 
 mod_motd() {
     # 安装后 alpine 后要恢复默认
-    if [ "$distro" = alpine ]; then
+    # 自动安装失败后，可能手动安装 alpine，因此无需判断 $distro
+    if ! [ -e /etc/motd.orig ]; then
         cp /etc/motd /etc/motd.orig
         # shellcheck disable=SC2016
         echo 'mv /etc/motd.orig /etc/motd' |
@@ -471,7 +472,7 @@ EOF
     fi
 
     # scaleway block volume optimal_io_size 是 4M
-    # setup-disk 用 cfdisk 从 1M 开始分区
+    # setup-disk 用 sfdisk 从 1M 开始分区
     # 但 cfdisk 只能按 optimal_io_size 对齐分区，因此报错
     # 将 start 置空，则自动对齐到 optimal_io_size
     # https://oss.oracle.com/~mkp/docs/linux-advanced-storage.pdf
@@ -583,8 +584,10 @@ EOF
     if [ -e /dev/input/event0 ]; then
         rc-update add acpid
     fi
+
+    # 3.16 没有 seedrng
     rc-update add crond
-    rc-update add seedrng boot
+    rc-update add seedrng boot || true
 
     # 如果是 vm 就用 virt 内核
     if is_virt; then
@@ -2053,6 +2056,7 @@ fi
 
 mod_motd
 setup_tty_and_log
+cat /proc/cmdline
 clear_previous
 add_community_repo
 
