@@ -3,6 +3,7 @@
 
 set -eE
 confhome=https://raw.githubusercontent.com/bin456789/reinstall/main
+github_proxy=https://ghps.cc
 
 this_script=$(realpath "$0")
 trap 'trap_err $LINENO $?' ERR
@@ -1301,9 +1302,8 @@ esac
 # gitee 不支持ipv6
 # jsdelivr 有12小时缓存
 # https://github.com/XIU2/UserScript/blob/master/GithubEnhanced-High-Speed-Download.user.js#L31
-if [[ "$confhome" == http*://raw.githubusercontent.com/* ]] &&
-    is_in_china; then
-    confhome=https://ghps.cc/$confhome
+if [ -n "$github_proxy" ] && [[ "$confhome" = http*://raw.githubusercontent.com/* ]] && is_in_china; then
+    confhome=$github_proxy/$confhome
 fi
 
 # 以下目标系统不需要进入alpine
