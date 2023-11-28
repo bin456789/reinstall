@@ -372,15 +372,28 @@ setos() {
     }
 
     setos_ubuntu() {
+        case "$releasever" in
+        20.04) codename=focal ;;
+        22.04) codename=jammy ;;
+        esac
+
         if is_use_cloud_image; then
             # cloud image
-            # TODO: Minimal 镜像
             if is_in_china; then
                 ci_mirror=https://mirror.nju.edu.cn/ubuntu-cloud-images
             else
                 ci_mirror=https://cloud-images.ubuntu.com
             fi
+
             eval ${step}_img=$ci_mirror/releases/$releasever/release/ubuntu-$releasever-server-cloudimg-$basearch_alt.img
+
+            # minimal 镜像内核风味是 kvm，后台 vnc 无显示
+            # 没有 aarch64 minimal 镜像
+            # TODO: 在 trans 里安装普通内核/云内核
+            use_minimal_image=false
+            if $use_minimal_image && [ "$basearch" = x86_64 ]; then
+                eval ${step}_img=$ci_mirror/minimal/releases/$codename/release/ubuntu-$releasever-minimal-cloudimg-$basearch_alt.img
+            fi
         else
             # 传统安装
             if is_in_china; then
