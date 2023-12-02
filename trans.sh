@@ -105,15 +105,20 @@ download() {
 }
 
 update_part() {
-    {
-        set +e
-        hdparm -z $1
-        partprobe $1
+    # partx
+    # https://access.redhat.com/solutions/199573
+    if is_have_cmd partx; then
         partx -u $1
+    fi
+
+    if rc-service --exists udev && rc-service udev status; then
+        # udev
+        udevadm trigger
         udevadm settle
-        echo 1 >/sys/block/${1#/dev/}/device/rescan
-        set -e
-    } 2>/dev/null || true
+    else
+        # busybox mdev
+        mdev -s
+    fi
 }
 
 is_efi() {
@@ -154,9 +159,14 @@ setup_lighttpd() {
     rc-service lighttpd start
 }
 
-# 最后一个 tty 是主tty，显示的信息最多
-# 有些平台例如 aws/gcp 只能截图，不能输入（没有鼠标）
-# 所以如果有显示器且有鼠标，tty0 放最后面，否则 tty0 放前面
+setup_udev_util_linux() {
+    # mdev 不会删除 /sys/block/by-label 的旧分区名，所以用 udev
+    # util-linux 包含 lsblk
+    # util-linux 可自动探测 mount 格式
+    apk add udev util-linux
+    rc-service udev start
+}
+
 get_ttys() {
     prefix=$1
     # shellcheck disable=SC2154
@@ -217,20 +227,27 @@ Reinstalling...
 To view logs run:
 tail -fn+1 /reinstall.log
 EOF
+
+umount_all() {
+    dirs="/os /iso /wim /installer /nbd /nbd-boot /nbd-efi /root"
+    regex=$(echo "$dirs" | sed 's, ,|,g')
+    if mounts=$(mount | grep -Ew "$regex" | awk '{print $3}' | tac); then
+        for mount in $mounts; do
+            echo "umount $mount"
+            umount $mount
+        done
+    fi
 }
 
 # 可能脚本不是首次运行，先清理之前的残留
 clear_previous() {
-    {
-        # TODO: fuser and kill
-        set +e
-        qemu_nbd -d /dev/nbd0
-        swapoff -a
-        # alpine 自带的umount没有-R，除非安装了util-linux
-        umount -R /iso /wim /installer /os/installer /os /nbd /nbd-boot /nbd-efi /mnt
-        umount /iso /wim /installer /os/installer /os /nbd /nbd-boot /nbd-efi /mnt
-        set -e
-    } 2>/dev/null || true
+    qemu_nbd -d /dev/nbd0 2>/dev/null || true
+    swapoff -a
+    umount_all
+
+    # 以下情况 umount -R /1 会提示 busy
+    # mount /file1 /1
+    # mount /1/file2 /2
 }
 
 get_virt_to() {
@@ -655,19 +672,13 @@ is_xda_gt_2t() {
 }
 
 create_part() {
-    # 目标系统非 alpine 和 dd
-    # 脚本开始
-    apk add util-linux udev hdparm e2fsprogs parted
+    # 除了 dd 都会用到
 
-    # 打开dev才能刷新分区名
-    rc-service udev start
-
-    # 反激活 lvm
-    # alpine live 不需要
-    false && vgchange -an
-
-    # 移除 lsblk 显示的分区
-    partx -d /dev/$xda || true
+    # 分区工具
+    apk add parted e2fsprogs
+    if is_efi; then
+        apk add dosfstools
+    fi
 
     # 清除分区签名
     # TODO: 先检测iso链接/各种链接
@@ -677,20 +688,20 @@ create_part() {
     # shellcheck disable=SC2154
     if [ "$distro" = windows ]; then
         get_http_file_size_to size_bytes $iso
-        if [ -n "$size_bytes" ]; then
-            # 按iso容量计算分区大小，512m用于驱动和文件系统自身占用
-            part_size="$((size_bytes / 1024 / 1024 + 512))MiB"
-        else
-            # 默认值，最大的iso 23h2 需要7g
-            part_size="$((7 * 1024))MiB"
+
+        # 默认值，最大的iso 23h2 需要7g
+        if [ -z "$size_bytes" ]; then
+            size_bytes=$((7 * 1024 * 1024 * 1024))
         fi
+
+        # 按iso容量计算分区大小，200m用于驱动和文件系统自身占用
+        part_size="$((size_bytes / 1024 / 1024 + 200))MiB"
 
         apk add ntfs-3g-progs virt-what wimlib rsync
         # 虽然ntfs3不需要fuse，但wimmount需要，所以还是要保留
         modprobe fuse ntfs3
         if is_efi; then
             # efi
-            apk add dosfstools
             parted /dev/$xda -s -- \
                 mklabel gpt \
                 mkpart '" "' fat32 1MiB 1025MiB \
@@ -721,7 +732,6 @@ create_part() {
     elif is_use_cloud_image; then
         # 这几个系统不使用dd，而是复制文件，因为dd这几个系统的qcow2需要10g硬盘
         if { [ "$distro" = centos ] || [ "$distro" = alma ] || [ "$distro" = rocky ]; }; then
-            apk add dosfstools e2fsprogs
             if is_efi; then
                 parted /dev/$xda -s -- \
                     mklabel gpt \
@@ -1165,8 +1175,6 @@ EOF
 modify_os_on_disk() {
     only_process=$1
 
-    apk add util-linux udev hdparm lsblk
-    rc-service udev start
     update_part /dev/$xda
 
     # dd linux 的时候不用修改硬盘内容
@@ -1248,7 +1256,7 @@ disable_selinux_kdump() {
 }
 
 download_qcow() {
-    apk add qemu-img lsblk
+    apk add qemu-img
 
     mkdir -p /installer
     mount /dev/disk/by-label/installer /installer
@@ -1540,6 +1548,7 @@ resize_after_install_cloud_image() {
                 e2fsck -p -f /dev/$xda*$system_part_num
                 resize2fs /dev/$xda*$system_part_num
             fi
+            update_part /dev/$xda
         fi
     fi
 }
@@ -1669,7 +1678,7 @@ install_windows() {
     fi
 
     # 变量名     使用场景
-    # arch_uname uname -m                      x86_64  aarch64
+    # arch_uname arch命令/uname -m             x86_64  aarch64
     # arch_wim   wiminfo                  x86  x86_64  ARM64
     # arch       virtio驱动/unattend.xml  x86  amd64   arm64
     # arch_xen   xen驱动                  x86  x64
@@ -1959,23 +1968,25 @@ EOF
     fi
 }
 
+# 添加 netboot.efi 备用
+download_netboot_xyz_efi() {
+    dir=$1
+
+    file=$dir/netboot.xyz.efi
+    if [ "$(uname -m)" = aarch64 ]; then
+        download https://boot.netboot.xyz/ipxe/netboot.xyz-arm64.efi $file
+    else
+        download https://boot.netboot.xyz/ipxe/netboot.xyz.efi $file
+    fi
+}
+
 install_redhat_ubuntu() {
     # 安装 grub2
     if is_efi; then
         # 注意低版本的grub无法启动f38 arm的内核
         # https://forums.fedoraforum.org/showthread.php?330104-aarch64-pxeboot-vmlinuz-file-format-changed-broke-PXE-installs
-
         apk add grub-efi efibootmgr
         grub-install --efi-directory=/os/boot/efi --boot-directory=/os/boot
-
-        # 添加 netboot 备用
-        arch_uname=$(uname -m)
-        cd /os/boot/efi
-        if [ "$arch_uname" = aarch64 ]; then
-            download https://boot.netboot.xyz/ipxe/netboot.xyz-arm64.efi
-        else
-            download https://boot.netboot.xyz/ipxe/netboot.xyz.efi
-        fi
     else
         apk add grub-bios
         grub-install --boot-directory=/os/boot /dev/$xda
@@ -2070,6 +2081,7 @@ xda=$(get_xda)
 
 if [ "$distro" != "alpine" ]; then
     setup_nginx_if_enough_ram
+    setup_udev_util_linux
 fi
 
 # dd qemu 切换成云镜像模式，暂时没用到
@@ -2111,6 +2123,8 @@ else
         install_redhat_ubuntu
     fi
 fi
+
+echo 'done'
 if [ "$hold" = 2 ]; then
     exit
 fi
