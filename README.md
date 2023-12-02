@@ -1,5 +1,7 @@
 # reinstall
 
+[![Codacy Badge](https://api.codacy.com/project/badge/Grade/50bfd754802c4e1f9bd6bacaa30135f7)](https://app.codacy.com/gh/bin456789/reinstall?utm_source=github.com&utm_medium=referral&utm_content=bin456789/reinstall&utm_campaign=Badge_Grade)
+
 又一个重装脚本
 
 ## 亮点
