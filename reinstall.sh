@@ -283,7 +283,7 @@ is_virt() {
         if [ -z "$_is_virt" ]; then
             _is_virt=false
         fi
-        echo "VM: $_is_virt"
+        echo "vm: $_is_virt"
     fi
     $_is_virt
 }
@@ -296,7 +296,7 @@ setos() {
 
     setos_netboot.xyz() {
         if is_efi; then
-            if [ "$basearch" == aarch64 ]; then
+            if [ "$basearch" = aarch64 ]; then
                 eval ${step}_efi=https://boot.netboot.xyz/ipxe/netboot.xyz-arm64.efi
             else
                 eval ${step}_efi=https://boot.netboot.xyz/ipxe/netboot.xyz.efi
@@ -310,7 +310,7 @@ setos() {
         flavour=lts
         if is_virt; then
             # alpine aarch64 3.18 才有 virt 直连链接
-            if [ "$basearch" == aarch64 ]; then
+            if [ "$basearch" = aarch64 ]; then
                 install_pkg bc
                 (($(echo "$releasever >= 3.18" | bc))) && flavour=virt
             else
@@ -412,6 +412,8 @@ setos() {
             # iso
             filename=$(curl -L $mirror | grep -oP "ubuntu-$releasever.*?-live-server-$basearch_alt.iso" | head -1)
             iso=$mirror/$filename
+            # 在 ubuntu 20.04 上，file 命令检测 ubuntu 22.04 iso 结果是 DOS/MBR boot sector
+            test_url $iso 'iso|dos/mbr'
             eval ${step}_iso=$iso
 
             # ks
@@ -464,41 +466,34 @@ setos() {
             mirror=https://mirror.fcix.net/opensuse
         fi
 
-        if grep -iq Tumbleweed <<<"$releasever"; then
-            # Tumbleweed
-            releasever=Tumbleweed
+        if [ "$releasever" = tumbleweed ]; then
+            # tumbleweed
             if [ "$basearch" = aarch64 ]; then
                 dir=ports/aarch64/tumbleweed/appliances
             else
                 dir=tumbleweed/appliances
             fi
+            file=openSUSE-Tumbleweed-Minimal-VM.$basearch-Cloud.qcow2
         else
             # 常规版本
-            # 如果用户输入的版本号是 15，需要查询小版本号
-            if ! grep -q '\.' <<<"$releasever"; then
-                releasever=$(curl -L https://download.opensuse.org/download/distribution/openSUSE-stable/appliances/boxes/?json |
-                    grep -oP "(?<=\"name\":\"Leap-)$releasever\.[0-9]*" | head -1)
-            fi
-            if [ "$releasever" = 15.4 ]; then
-                openstack=-OpenStack
-            fi
             dir=distribution/leap/$releasever/appliances
-            releasever=Leap-$releasever
+            file=openSUSE-Leap-$releasever-Minimal-VM.$basearch-Cloud.qcow2
         fi
 
         # 有专门的kvm镜像，openSUSE-Leap-15.5-Minimal-VM.x86_64-kvm-and-xen.qcow2，但里面没有cloud-init
-        eval ${step}_img=$mirror/$dir/openSUSE-$releasever-Minimal-VM.$basearch$openstack-Cloud.qcow2
+        eval ${step}_img=$mirror/$dir/$file
     }
 
     setos_windows() {
+        test_url $iso 'iso|dos/mbr'
         eval "${step}_iso='$iso'"
         eval "${step}_image_name='$image_name'"
     }
 
     # shellcheck disable=SC2154
     setos_dd() {
+        test_url $img 'xz|gzip' ${step}_img_type
         eval "${step}_img='$img'"
-        eval "${step}_img_type='$img_type'"
     }
 
     setos_redhat() {
@@ -576,10 +571,14 @@ setos() {
             eval ${step}_ks=$confhome/redhat.cfg
             eval ${step}_vmlinuz=${mirror}images/pxeboot/vmlinuz
             eval ${step}_initrd=${mirror}images/pxeboot/initrd.img
-            eval ${step}_squashfs=${mirror}images/install.img
+
             if [ "$releasever" = 7 ]; then
-                eval ${step}_squashfs=${mirror}LiveOS/squashfs.img
+                squashfs=${mirror}LiveOS/squashfs.img
+            else
+                squashfs=${mirror}images/install.img
             fi
+            test_url $squashfs 'squashfs'
+            eval ${step}_squashfs=$squashfs
         fi
     }
 
@@ -588,6 +587,12 @@ setos() {
         setos_redhat
     else
         setos_$distro
+    fi
+
+    # 集中测试云镜像格式
+    if is_use_cloud_image && [ "$step" = finalos ]; then
+        # shellcheck disable=SC2154
+        test_url $finalos_img 'xz|gzip|qemu' finalos_img_type
     fi
 }
 
@@ -609,7 +614,7 @@ verify_os_name() {
         'debian   10|11|12' \
         'ubuntu   20.04|22.04' \
         'alpine   3.16|3.17|3.18' \
-        'opensuse 15|15.4|15.5|tumbleweed' \
+        'opensuse 15.4|15.5|tumbleweed' \
         'arch' \
         'gentoo' \
         'windows' \
@@ -1062,24 +1067,37 @@ get_entry_name() {
 }
 
 # shellcheck disable=SC2154
-build_cmdline() {
-    if [ -n "$finalos_cmdline" ]; then
-        # 有 finalos_cmdline 表示需要两步安装
-        # 两步安装需要修改 alpine initrd
-        mod_alpine_initrd
-
-        # 可添加 pkgs=xxx,yyy 启动时自动安装
-        # apkovl=http://xxx.com/apkovl.tar.gz 可用，arm https未测但应该不行
-        # apkovl=sda2:ext4:/apkovl.tar.gz 官方有写但不生效
-        cmdline="alpine_repo=$nextos_repo modloop=$nextos_modloop $extra_cmdline $finalos_cmdline"
+build_nextos_cmdline() {
+    if [ $nextos_distro = alpine ]; then
+        nextos_cmdline="alpine_repo=$nextos_repo modloop=$nextos_modloop"
+    elif [ $nextos_distro = debian ]; then
+        nextos_cmdline="lowmem=+1 lowmem/low=1 auto=true priority=critical url=$nextos_ks"
     else
-        if [ $distro = debian ]; then
-            cmdline="lowmem=+1 lowmem/low=1 auto=true priority=critical url=$nextos_ks $extra_cmdline"
-        else
-            # redhat
-            cmdline="root=live:$nextos_squashfs inst.ks=$nextos_ks $extra_cmdline"
-        fi
+        # redhat
+        nextos_cmdline="root=live:$nextos_squashfs inst.ks=$nextos_ks"
     fi
+
+    nextos_cmdline+=" $(echo_tmp_ttys)"
+    # nextos_cmdline+=" mem=256M"
+}
+
+build_cmdline() {
+    # nextos
+    build_nextos_cmdline
+
+    # finalos
+    # trans 需要 finalos_distro 识别是安装 alpine 还是其他系统
+    if [ "$distro" = alpine ]; then
+        finalos_distro=alpine
+    fi
+    if [ -n "$finalos_distro" ]; then
+        build_finalos_cmdline
+    fi
+
+    # extra
+    build_extra_cmdline
+
+    cmdline="$nextos_cmdline $finalos_cmdline $extra_cmdline"
 }
 
 # 脚本可能多次运行，先清理之前的残留
@@ -1203,8 +1221,8 @@ EOF
     # -c    Identical to "-H newc", use the new (SVR4)
     #       portable format.If you wish the old portable
     #       (ASCII) archive format, use "-H odc" instead.
-    find . | cpio -o -H newc | gzip -1 >/reinstall-initrd
-    cd -
+    find . | cpio --quiet -o -H newc | gzip -1 >/reinstall-initrd
+    cd - >/dev/null
 }
 
 # 脚本入口
@@ -1293,6 +1311,7 @@ fi
 
 # 检查硬件架构
 # x86强制使用x64
+# archlinux 云镜像没有 arch 命令
 basearch=$(uname -m)
 [ $basearch = i686 ] && basearch=x86_64
 case "$basearch" in
@@ -1308,36 +1327,25 @@ if [ -n "$github_proxy" ] && [[ "$confhome" = http*://raw.githubusercontent.com/
     confhome=$github_proxy/$confhome
 fi
 
-# 以下目标系统不需要进入alpine
+# 以下目标系统不需要两步安装
+# alpine
 # debian
 # el7 x86_64 >=1g
 # el7 aarch64 >=1.5g
 # el8/9/fedora 任何架构 >=2g
 if is_netboot_xyz ||
     { ! is_use_cloud_image && {
-        [ "$distro" = "debian" ] ||
+        [ "$distro" = "alpine" ] || [ "$distro" = "debian" ] ||
             { is_distro_like_redhat "$distro" && [ $releasever -eq 7 ] && [ $ram_size -ge 1024 ] && [ $basearch = "x86_64" ]; } ||
             { is_distro_like_redhat "$distro" && [ $releasever -eq 7 ] && [ $ram_size -ge 1536 ] && [ $basearch = "aarch64" ]; } ||
             { is_distro_like_redhat "$distro" && [ $releasever -ge 8 ] && [ $ram_size -ge 2048 ]; }
     }; }; then
     setos nextos $distro $releasever
 else
-    # 安装alpine时，使用指定的版本。 alpine作为中间系统时，使用 3.18
-    [ "$distro" = "alpine" ] && alpine_releasever=$releasever || alpine_releasever=3.18
+    # alpine 作为中间系统时，使用 3.18
+    alpine_ver_for_trans=3.18
     setos finalos $distro $releasever
-    setos nextos alpine $alpine_releasever
-fi
-
-# 测试链接
-# 在 ubuntu 20.04 上，file 命令检测 ubuntu 22.04 iso 结果不正确，所以去掉 iso 检测
-if is_use_cloud_image; then
-    test_url $finalos_img 'xz|gzip|qemu' finalos_img_type
-elif is_use_dd; then
-    test_url $finalos_img 'xz|gzip' finalos_img_type
-elif [ -n "$finalos_img" ]; then
-    test_url $finalos_img
-elif [ -n "$finalos_iso" ]; then
-    test_url $finalos_iso
+    setos nextos alpine $alpine_ver_for_trans
 fi
 
 # 删除之前的条目
@@ -1396,9 +1404,9 @@ else
     curl -Lo /reinstall-vmlinuz $nextos_vmlinuz
     curl -Lo /reinstall-initrd $nextos_initrd
 
-    build_finalos_cmdline
-    build_extra_cmdline
-    build_cmdline
+    if [ "$nextos_distro" = alpine ]; then
+        mod_alpine_initrd
+    fi
 fi
 
 if is_use_grub; then
@@ -1441,14 +1449,16 @@ if is_use_grub; then
 
     # 生成 custom.cfg (linux) 或者 grub.cfg (win)
     is_in_windows && custom_cfg=/cygdrive/$c/grub.cfg || custom_cfg=$(dirname $grub_cfg)/custom.cfg
-    echo $custom_cfg
 
     if is_netboot_xyz; then
         linux_cmd="linux16 /reinstall-vmlinuz"
     else
-        linux_cmd="linux$efi /reinstall-vmlinuz $(echo_tmp_ttys) $cmdline"
+        build_cmdline
+        linux_cmd="linux$efi /reinstall-vmlinuz $cmdline"
         initrd_cmd="initrd$efi /reinstall-initrd"
     fi
+
+    echo $custom_cfg
     cat <<EOF | tee $custom_cfg
 set timeout=5
 menuentry "$(get_entry_name)" {
