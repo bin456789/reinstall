@@ -69,7 +69,6 @@ download() {
     path=$2
     echo $url
 
-    # 阿里云源禁止 axel 下载，检测 user-agent
     # 有ipv4地址无ipv4网关的情况下，aria2可能会用ipv4下载，而不是ipv6
     # axel 在 lightsail 上会占用大量cpu
     # aria2 下载 fedora 官方镜像链接会将meta4文件下载下来，而且占用了指定文件名，造成重命名失效。而且无法指定目录
@@ -95,8 +94,14 @@ download() {
         apk add aria2 coreutils
     fi
 
-    # 默认 --max-tries 5
-    stdbuf -o0 -e0 aria2c -x4 --allow-overwrite=true --summary-interval=0 $save $url
+    # 阿里云源检测 user-agent 禁止 axel/aria2 下载
+    # aria2 默认 --max-tries 5
+    stdbuf -o0 -e0 \
+        aria2c -x4 \
+        --allow-overwrite=true \
+        --summary-interval=0 \
+        --user-agent=Wget/1.21.1 \
+        $save $url
 }
 
 update_part() {
