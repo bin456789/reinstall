@@ -143,9 +143,22 @@ setup_nginx() {
     fi
 }
 
+get_approximate_ram_size() {
+    # lsmem 需要 util-linux
+    if is_have_cmd lsmem; then
+        ram_size=$(lsmem -b 2>/dev/null | grep 'Total online memory:' | awk '{ print $NF/1024/1024 }')
+    fi
+
+    if [ -z $ram_size ]; then
+        ram_size=$(free -m | awk '{print $2}' | sed -n '2p')
+    fi
+
+    echo "$ram_size"
+}
+
 setup_nginx_if_enough_ram() {
-    total_ram=$(free -m | awk '{print $2}' | sed -n '2p')
-    # 避免后面没内存安装程序，谨慎起见，512内存才安装
+    total_ram=$(get_approximate_ram_size)
+    # 512内存才安装
     if [ $total_ram -gt 400 ]; then
         # lighttpd 虽然运行占用内存少，但安装占用空间大
         # setup_lighttpd
@@ -215,18 +228,20 @@ qemu_nbd() {
 mod_motd() {
     # 安装后 alpine 后要恢复默认
     # 自动安装失败后，可能手动安装 alpine，因此无需判断 $distro
-    if ! [ -e /etc/motd.orig ]; then
-        cp /etc/motd /etc/motd.orig
+    file=/etc/motd
+    if ! [ -e $file.orig ]; then
+        cp $file $file.orig
         # shellcheck disable=SC2016
-        echo 'mv /etc/motd.orig /etc/motd' |
-            insert_into_file /sbin/setup-disk after 'mount -t \$ROOTFS \$root_dev "\$SYSROOT"'
-    fi
+        echo "mv "\$mnt$file.orig" "\$mnt$file"" |
+            insert_into_file /sbin/setup-disk before 'cleanup_chroot_mounts "\$mnt"'
 
-    cat <<EOF >/etc/motd
+        cat <<EOF >$file
 Reinstalling...
 To view logs run:
 tail -fn+1 /reinstall.log
 EOF
+    fi
+}
 
 umount_all() {
     dirs="/os /iso /wim /installer /nbd /nbd-boot /nbd-efi /root"
@@ -455,8 +470,11 @@ insert_into_file() {
 }
 
 install_alpine() {
-    hack_lowram=true
-    if $hack_lowram; then
+    hack_lowram_modloop=true
+    hack_lowram_swap=true
+    mount / -o remount,size=100%
+
+    if $hack_lowram_modloop; then
         # 预先加载需要的模块
         if rc-service modloop status; then
             modules="ext4 vfat nls_utf8 nls_cp437 crc32c"
@@ -468,39 +486,30 @@ install_alpine() {
         # 删除 modloop ，释放内存
         rc-service modloop stop
         rm -f /lib/modloop-lts /lib/modloop-virt
-
-        # 复制一份原版，防止再次运行时出错
-        if [ -e /sbin/setup-disk.orig ]; then
-            cp -f /sbin/setup-disk.orig /sbin/setup-disk
-        else
-            cp -f /sbin/setup-disk /sbin/setup-disk.orig
-        fi
-
-        # 格式化系统分区、mount 后立即开启 swap
-        # shellcheck disable=SC2016
-        insert_into_file /sbin/setup-disk after 'mount -t \$ROOTFS \$root_dev "\$SYSROOT"' <<EOF
-            fallocate -l 1G /mnt/swapfile
-            chmod 0600 /mnt/swapfile
-            mkswap /mnt/swapfile
-            swapon /mnt/swapfile
-            rc-update add swap boot
-EOF
-
-        # 安装完成后写入 swapfile 到 fstab
-        # shellcheck disable=SC2016
-        insert_into_file /sbin/setup-disk after 'install_mounted_root "\$SYSROOT" "\$disks"' <<EOF
-            echo "/swapfile swap swap defaults 0 0" >>/mnt/etc/fstab
-EOF
     fi
 
-    # scaleway block volume optimal_io_size 是 4M
-    # setup-disk 用 sfdisk 从 1M 开始分区
-    # 但 cfdisk 只能按 optimal_io_size 对齐分区，因此报错
-    # 将 start 置空，则自动对齐到 optimal_io_size
-    # https://oss.oracle.com/~mkp/docs/linux-advanced-storage.pdf
-    if [ -f /sys/block/$xda/queue/optimal_io_size ] &&
-        [ "$(cat /sys/block/$xda/queue/optimal_io_size)" -gt $((1024 * 1024)) ]; then
-        sed -i 's/start=1M/start=/' /sbin/setup-disk
+    # bios机器用 setup-disk 自动分区会有 boot 分区
+    # 因此手动分区安装
+    create_part
+
+    # 挂载系统分区
+    if is_efi || is_xda_gt_2t; then
+        os_part_num=2
+    else
+        os_part_num=1
+    fi
+    mkdir -p /os
+    mount -t ext4 /dev/${xda}*${os_part_num} /os
+
+    # 挂载 efi
+    if is_efi; then
+        mkdir -p /os/boot/efi
+        mount -t vfat /dev/${xda}*1 /os/boot/efi
+    fi
+
+    # 创建 swap
+    if $hack_lowram_swap; then
+        create_swap 256 /os/swapfile
     fi
 
     # 网络
@@ -625,12 +634,35 @@ EOF
         setup-apkrepos -1
     fi
 
+    # 修复3.16安装后无法引导
+    # https://github.com/alpinelinux/alpine-conf/commit/bc7aeab868bf4d94dde2ff5d6eb97daede5975b9
+    if grep -F '3.16' /etc/alpine-release; then
+        file=/sbin/setup-disk
+        if ! [ -e $file.orig ]; then
+            cp $file $file.orig
+            # shellcheck disable=SC2016
+            echo 'apk add --quiet $(select_bootloader_pkg)' |
+                insert_into_file $file after '# install to given mounted root'
+        fi
+    fi
+
     # 安装到硬盘
     # alpine默认使用 syslinux (efi 环境除外)，这里强制使用 grub，方便用脚本再次重装
     KERNELOPTS="$(get_ttys console=)"
     export KERNELOPTS
     export BOOTLOADER="grub"
-    printf 'y' | setup-disk -m sys -k $kernel_flavor -s 0 /dev/$xda
+    printf 'y' | setup-disk -m sys -k $kernel_flavor /os
+
+    # 是否保留 swap
+    if [ -e /os/swapfile ]; then
+        if false; then
+            echo "/swapfile swap swap defaults 0 0" >>/os/etc/fstab
+            ln -sf /etc/init.d/swap /os/etc/runlevels/boot/swap
+        else
+            swapoff -a
+            rm /os/swapfile
+        fi
+    fi
 }
 
 get_http_file_size_to() {
@@ -770,6 +802,39 @@ create_part() {
             mkfs.ext4 -F -L os /dev/$xda*1        #1 os
             mkfs.ext4 -F -L installer /dev/$xda*2 #2 installer
         fi
+    elif [ "$distro" = alpine ]; then
+        if is_efi; then
+            # efi
+            parted /dev/$xda -s -- \
+                mklabel gpt \
+                mkpart '" "' fat32 1MiB 101MiB \
+                mkpart '" "' ext4 101MiB 100% \
+                set 1 boot on
+            update_part /dev/$xda
+
+            mkfs.fat /dev/$xda*1     #1 efi
+            mkfs.ext4 -F /dev/$xda*2 #2 os
+        elif is_xda_gt_2t; then
+            # bios > 2t
+            parted /dev/$xda -s -- \
+                mklabel gpt \
+                mkpart '" "' ext4 1MiB 2MiB \
+                mkpart '" "' ext4 2MiB 100% \
+                set 1 bios_grub on
+            update_part /dev/$xda
+
+            echo                     #1 bios_boot
+            mkfs.ext4 -F /dev/$xda*2 #2 os
+        else
+            # bios
+            parted /dev/$xda -s -- \
+                mklabel msdos \
+                mkpart primary ext4 1MiB 100% \
+                set 1 boot on
+            update_part /dev/$xda
+
+            mkfs.ext4 -F /dev/$xda*1 #1 os
+        fi
     else
         # 安装红帽系或ubuntu
         # 对于红帽系是临时分区表，安装时除了 installer 分区，其他分区会重建为默认的大小
@@ -826,6 +891,12 @@ create_part() {
     fi
 
     update_part /dev/$xda
+
+    # alpine 删除分区工具，防止 256M 小机爆内存
+    # setup-disk /dev/sda 会保留格式化工具，我们也保留
+    if [ "$distro" = alpine ]; then
+        apk del parted
+    fi
 }
 
 mount_pseudo_fs() {
@@ -1213,17 +1284,26 @@ modify_os_on_disk() {
     error_and_exit "Can't find os partition."
 }
 
+create_swap_if_ram_less_than() {
+    need_ram=$1
+    swapfile=$2
+
+    phy_ram=$(get_approximate_ram_size)
+    swapsize=$((need_ram - phy_ram))
+    if [ $swapsize -gt 0 ]; then
+        create_swap $swapsize $swapfile
+    fi
+}
+
 create_swap() {
-    swapfile=$1
+    swapsize=$1
+    swapfile=$2
+
     if ! grep $swapfile /proc/swaps; then
-        apk add util-linux
-        ram_size=$(lsmem -b 2>/dev/null | grep 'Total online memory:' | awk '{ print $NF/1024/1024 }')
-        if [ -z $ram_size ] || [ $ram_size -lt 1024 ]; then
-            fallocate -l 512M $swapfile
-            chmod 0600 $swapfile
-            mkswap $swapfile
-            swapon $swapfile
-        fi
+        fallocate -l ${swapsize}M $swapfile
+        chmod 0600 $swapfile
+        mkswap $swapfile
+        swapon $swapfile
     fi
 }
 
@@ -1343,7 +1423,7 @@ install_qcow_el() {
 
     # 创建 swap
     rm -rf /installer/*
-    create_swap /installer/swapfile
+    create_swap 1024 /installer/swapfile
 
     # resolv.conf
     cp /etc/resolv.conf /os/etc/resolv.conf
