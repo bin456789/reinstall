@@ -456,12 +456,14 @@ setos() {
         # aria2 有 mata4 问题
         # https://download.opensuse.org/
 
-        # 清华源缺少 aarch64 tumbleweed appliances
-        # https://mirrors.tuna.tsinghua.edu.cn/opensuse/ports/aarch64/tumbleweed/appliances/
+        # 很多国内源缺少 aarch64 tumbleweed appliances
+        #                 https://download.opensuse.org/ports/aarch64/tumbleweed/appliances/
         #           https://mirrors.nju.edu.cn/opensuse/ports/aarch64/tumbleweed/appliances/
+        #          https://mirrors.ustc.edu.cn/opensuse/ports/aarch64/tumbleweed/appliances/
+        # https://mirrors.tuna.tsinghua.edu.cn/opensuse/ports/aarch64/tumbleweed/appliances/
 
         if is_in_china; then
-            mirror=https://mirrors.ustc.edu.cn/opensuse
+            mirror=https://mirror.sjtu.edu.cn/opensuse
         else
             mirror=https://mirror.fcix.net/opensuse
         fi
