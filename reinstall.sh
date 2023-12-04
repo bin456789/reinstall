@@ -130,6 +130,10 @@ is_netboot_xyz() {
     [ "$distro" = netboot.xyz ]
 }
 
+is_alpine_live() {
+    [ "$distro" = alpine ] && [ "$hold" = 1 ]
+}
+
 is_have_initrd() {
     ! is_netboot_xyz
 }
@@ -673,8 +677,8 @@ install_pkg() {
 
     find_pkg_mgr() {
         if [ -z "$pkg_mgr" ]; then
-            for c in dnf yum apt pacman zypper emerge apk; do
-                is_have_cmd $c && pkg_mgr=$c && return
+            for mgr in dnf yum apt pacman zypper emerge apk; do
+                is_have_cmd $mgr && pkg_mgr=$mgr && return
             done
             return 1
         fi
@@ -974,7 +978,7 @@ install_grub_win() {
     info download grub
     grub_ver=2.06
     is_in_china && grub_url=https://mirrors.tuna.tsinghua.edu.cn/gnu/grub/grub-$grub_ver-for-windows.zip ||
-        grub_url=https://mirror.fcix.net/gnu/grub/grub-$grub_ver-for-windows.zip
+        grub_url=https://ftpmirror.gnu.org/gnu/grub/grub-$grub_ver-for-windows.zip
     curl -Lo /tmp/grub.zip $grub_url
     # unzip -qo /tmp/grub.zip
     7z x /tmp/grub.zip -o/tmp -r -y -xr!i386-efi -xr!locale -xr!themes -bso0
@@ -1491,14 +1495,22 @@ EOF
     fi
 fi
 
-if is_use_cloud_image; then
-    info 'cloud image mode'
+info 'info'
+echo "$distro $releasever"
+if is_netboot_xyz; then
+    echo 'Reboot to start netboot.xyz.'
+elif is_alpine_live; then
+    echo 'Reboot to start Alpine Live OS.'
 elif is_use_dd; then
-    info 'dd mode'
-elif is_netboot_xyz; then
-    info 'boot into netboot.xyz'
+    echo 'Reboot to start DD.'
 else
-    info 'installer mode'
-fi
+    if [ "$distro" = windows ]; then
+        username="administrator"
+    else
+        username="root"
+    fi
 
-info 'Please reboot to begin the installation'
+    echo "Username: $username"
+    echo "Password: 123@@@"
+    echo "Reboot to start the installation."
+fi

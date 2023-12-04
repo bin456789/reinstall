@@ -1,5 +1,8 @@
 # reinstall
 
+[![Codacy Badge](https://app.codacy.com/project/badge/Grade/dc679a17751448628fe6d8ac35e26eed)](https://app.codacy.com/gh/bin456789/reinstall/dashboard?utm_source=gh&utm_medium=referral&utm_content=&utm_campaign=Badge_grade)
+[![CodeFactor](https://www.codefactor.io/repository/github/bin456789/reinstall/badge)](https://www.codefactor.io/repository/github/bin456789/reinstall)
+
 又一个重装脚本
 
 ## 亮点
@@ -30,6 +33,8 @@ curl -O https://ghps.cc/https://raw.githubusercontent.com/bin456789/reinstall/ma
 ```
 
 ### 用法 1: 安装 Linux
+
+注意：静态 IP 的机器安装 centos、alma、rocky、fedora、debian、ubuntu，需添加参数 --ci 强制使用云镜像
 
 ```bash
 bash reinstall.sh centos   7|8|9  (8|9 为 stream 版本)
