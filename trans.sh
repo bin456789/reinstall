@@ -117,7 +117,10 @@ update_part() {
         udevadm settle
     else
         # busybox mdev
-        mdev -s
+        # 得刷新多次，不然找不到新分区
+        # -f 好像没用，而且 3.16 没有
+        mdev -s 2>/dev/null
+        mdev -s 2>/dev/null
     fi
 }
 
