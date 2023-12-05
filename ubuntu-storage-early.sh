@@ -1,16 +1,16 @@
 #!/bin/bash
 
 get_xda() {
-  # 排除只读盘，vda 放前面
-  # 有的机器有sda和vda，vda是主硬盘，另一个盘是只读
-  for _xda in vda xda sda hda xvda nvme0n1; do
-    if [ -e "/sys/class/block/$_xda/ro" ] &&
-      [ "$(cat /sys/class/block/$_xda/ro)" = 0 ]; then
-      echo $_xda
-      return
-    fi
-  done
-  return 1
+    # 排除只读盘，vda 放前面
+    # 有的机器有sda和vda，vda是主硬盘，另一个盘是只读
+    for _xda in vda xda sda hda xvda nvme0n1; do
+        if [ -e "/sys/class/block/$_xda/ro" ] &&
+            [ "$(cat /sys/class/block/$_xda/ro)" = 0 ]; then
+            echo $_xda
+            return
+        fi
+    done
+    return 1
 }
 
 sed -i -E '/^\.{3}$/d' /autoinstall.yaml
@@ -27,11 +27,11 @@ xda=$(get_xda)
 # https://curtin.readthedocs.io/en/latest/topics/storage.html
 size_os=$(lsblk -bn -o SIZE /dev/disk/by-label/os)
 
-if parted /dev/$xda print | grep '^Partition Table' | grep gpt; then
-  # efi
-  if [ -e /dev/disk/by-label/efi ]; then
-    size_efi=$(lsblk -bn -o SIZE /dev/disk/by-label/efi)
-    cat <<EOF >>/autoinstall.yaml
+if parted "/dev/$xda" print | grep '^Partition Table' | grep gpt; then
+    # efi
+    if [ -e /dev/disk/by-label/efi ]; then
+        size_efi=$(lsblk -bn -o SIZE /dev/disk/by-label/efi)
+        cat <<EOF >>/autoinstall.yaml
   config:
     # disk
     - ptable: gpt
@@ -72,10 +72,10 @@ if parted /dev/$xda print | grep '^Partition Table' | grep gpt; then
       type: mount
       id: mount-efi
 EOF
-  else
-    # bios > 2t
-    size_biosboot=$(parted /dev/$xda unit b print | grep bios_grub | awk '{print $4}' | sed 's/B$//')
-    cat <<EOF >>/autoinstall.yaml
+    else
+        # bios > 2t
+        size_biosboot=$(parted "/dev/$xda" unit b print | grep bios_grub | awk '{print $4}' | sed 's/B$//')
+        cat <<EOF >>/autoinstall.yaml
   config:
     # disk
     - ptable: gpt
@@ -108,10 +108,10 @@ EOF
       type: mount
       id: mount-os
 EOF
-  fi
+    fi
 else
-  # bios
-  cat <<EOF >>/autoinstall.yaml
+    # bios
+    cat <<EOF >>/autoinstall.yaml
   config:
     # disk
     - ptable: msdos
