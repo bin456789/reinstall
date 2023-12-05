@@ -37,7 +37,7 @@ fi
 # el7 的 lsblk 没有 --sort，所以用其他方法
 # shellcheck disable=2012
 part_num=$(ls -1v /dev/$xda* | tail -1 | grep -o '[0-9]*$')
-part_fstype=$(lsblk -no FSTYPE /dev/$xda$part_num)
+part_fstype=$(lsblk -no FSTYPE /dev/$xda*$part_num)
 
 # 扩容分区
 # ubuntu 和 el7 用 growpart，其他用 parted
@@ -52,7 +52,7 @@ update_part /dev/$xda
 # 扩容最后一个分区的文件系统
 case $part_fstype in
 xfs) xfs_growfs / ;;
-ext*) resize2fs /dev/$xda$part_num ;;
+ext*) resize2fs /dev/$xda*$part_num ;;
 btrfs) btrfs filesystem resize max / ;;
 esac
 update_part /dev/$xda
