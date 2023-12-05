@@ -287,7 +287,9 @@ get_ra_to() {
         apk add ndisc6
         # 有时会重复收取，所以设置收一份后退出
         echo "Gathering network info..."
-        _ra="$(rdisc6 -1 eth0)"
+        get_netconf_to ethx
+        # shellcheck disable=SC2154
+        _ra="$(rdisc6 -1 "$ethx")"
         apk del ndisc6
 
         # 显示网络配置
@@ -535,23 +537,25 @@ install_alpine() {
     sed -i '/^#slaac hwaddr/s/^#//' /etc/dhcpcd.conf
     rc-update add networking boot
 
-    # 生成 lo配置 + eth0头部
+    get_netconf_to ethx
+
+    # 生成 lo配置 + ethx头部
     cat <<EOF >/etc/network/interfaces
 auto lo
 iface lo inet loopback
 
-auto eth0
+auto $ethx
 EOF
 
     # ipv4
     if is_dhcpv4; then
-        echo "iface eth0 inet dhcp" >>/etc/network/interfaces
+        echo "iface $ethx inet dhcp" >>/etc/network/interfaces
 
     elif is_staticv4; then
         get_netconf_to ipv4_addr
         get_netconf_to ipv4_gateway
         cat <<EOF >>/etc/network/interfaces
-iface eth0 inet static
+iface $ethx inet static
     address $ipv4_addr
     gateway $ipv4_gateway
 EOF
@@ -567,16 +571,16 @@ EOF
 
     # ipv6
     if is_slaac; then
-        echo 'iface eth0 inet6 auto' >>/etc/network/interfaces
+        echo "iface $ethx inet6 auto" >>/etc/network/interfaces
 
     elif is_dhcpv6; then
-        echo 'iface eth0 inet6 dhcp' >>/etc/network/interfaces
+        echo "iface $ethx inet6 dhcp" >>/etc/network/interfaces
 
     elif is_staticv6; then
         get_netconf_to ipv6_addr
         get_netconf_to ipv6_gateway
         cat <<EOF >>/etc/network/interfaces
-iface eth0 inet6 static
+iface $ethx inet6 static
     address $ipv6_addr
     gateway $ipv6_gateway
 EOF
@@ -918,13 +922,14 @@ mount_pseudo_fs() {
 create_cloud_init_network_config() {
     ci_file=$1
 
+    get_netconf_to ethx
     get_netconf_to mac_addr
     apk add yq
 
     # shellcheck disable=SC2154
     yq -i ".network.version=1 |
            .network.config[0].type=\"physical\" |
-           .network.config[0].name=\"eth0\" |
+           .network.config[0].name=\"$ethx\" |
            .network.config[0].mac_address=\"$mac_addr\" |
            .network.config[1].type=\"nameserver\"
            " $ci_file

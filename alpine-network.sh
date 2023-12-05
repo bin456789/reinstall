@@ -8,6 +8,9 @@ ipv6_addr=$4
 ipv6_gateway=$5
 is_in_china=$6
 
+# shellcheck disable=SC2154
+ethx="$device"
+
 if $is_in_china; then
     ipv4_dns1='119.29.29.29'
     ipv4_dns2='223.5.5.5'
@@ -21,23 +24,23 @@ else
 fi
 
 get_first_ipv4_addr() {
-    ip -4 -o addr show scope global dev eth0 | head -1 | awk '{print $4}'
+    ip -4 -o addr show scope global dev "$ethx" | head -1 | awk '{print $4}'
 }
 
 is_have_ipv4_addr() {
-    ip -4 addr show scope global dev eth0 | grep -q inet
+    ip -4 addr show scope global dev "$ethx" | grep -q inet
 }
 
 is_have_ipv6_addr() {
-    ip -6 addr show scope global dev eth0 | grep -q inet6
+    ip -6 addr show scope global dev "$ethx" | grep -q inet6
 }
 
 is_have_ipv4_gateway() {
-    ip -4 route show default dev eth0 | grep -q .
+    ip -4 route show default dev "$ethx" | grep -q .
 }
 
 is_have_ipv6_gateway() {
-    ip -6 route show default dev eth0 | grep -q .
+    ip -6 route show default dev "$ethx" | grep -q .
 }
 
 is_have_ipv4() {
@@ -48,8 +51,8 @@ is_have_ipv6() {
     is_have_ipv6_addr && is_have_ipv6_gateway
 }
 
-# 开启 eth0
-ip link set dev eth0 up
+# 开启 ethx
+ip link set dev "$ethx" up
 
 # 等待slaac
 # 有ipv6地址就跳过，不管是slaac或者dhcpv6
@@ -69,12 +72,12 @@ is_have_ipv6_addr && dhcpv6_or_slaac=true || dhcpv6_or_slaac=false
 add_missing_ipv4_config() {
     if [ -n "$ipv4_addr" ] && [ -n "$ipv4_gateway" ]; then
         if ! is_have_ipv4_addr; then
-            ip -4 addr add "$ipv4_addr" dev eth0
+            ip -4 addr add "$ipv4_addr" dev "$ethx"
         fi
 
         if ! is_have_ipv4_gateway; then
             # 如果 dhcp 无法设置onlink网关，那么在这里设置
-            ip -4 route add default via "$ipv4_gateway" dev eth0 onlink
+            ip -4 route add default via "$ipv4_gateway" dev "$ethx" onlink
         fi
     fi
 }
@@ -82,12 +85,12 @@ add_missing_ipv4_config() {
 add_missing_ipv6_config() {
     if [ -n "$ipv6_addr" ] && [ -n "$ipv6_gateway" ]; then
         if ! is_have_ipv6_addr; then
-            ip -6 addr add "$ipv6_addr" dev eth0
+            ip -6 addr add "$ipv6_addr" dev "$ethx"
         fi
 
         if ! is_have_ipv6_gateway; then
             # 如果 dhcp 无法设置onlink网关，那么在这里设置
-            ip -6 route add default via "$ipv6_gateway" dev eth0 onlink
+            ip -6 route add default via "$ipv6_gateway" dev "$ethx" onlink
         fi
     fi
 }
@@ -135,8 +138,8 @@ test_internet
 if $dhcpv4 && ! $ipv4_has_internet &&
     ! [ "$ipv4_addr" = "$(get_first_ipv4_addr)" ]; then
     echo "DHCPv4 can't access Internet. And not match static IPv4."
-    ip -4 addr flush scope global dev eth0
-    ip -4 route flush dev eth0
+    ip -4 addr flush scope global dev "$ethx"
+    ip -4 route flush dev "$ethx"
     add_missing_ipv4_config
     test_internet
     if $ipv4_has_internet; then
@@ -157,10 +160,10 @@ fi
 #   此时alpine只会用ipv6下载apk，而不用会ipv4下载
 # 2 有ipv4地址但没有ipv4网关的情况(vultr)，aria2会用ipv4下载
 if $ipv4_has_internet && ! $ipv6_has_internet; then
-    echo 0 >/proc/sys/net/ipv6/conf/eth0/accept_ra
-    ip -6 addr flush scope global dev eth0
+    echo 0 >"/proc/sys/net/ipv6/conf/$ethx/accept_ra"
+    ip -6 addr flush scope global dev "$ethx"
 elif ! $ipv4_has_internet && $ipv6_has_internet; then
-    ip -4 addr flush scope global dev eth0
+    ip -4 addr flush scope global dev "$ethx"
 fi
 
 # 如果联网了，但没获取到默认 DNS，则添加我们的 DNS
@@ -176,6 +179,7 @@ fi
 # 传参给 trans.start
 $dhcpv4 && echo 1 >/dev/dhcpv4 || echo 0 >/dev/dhcpv4
 $is_in_china && echo 1 >/dev/is_in_china || echo 0 >/dev/is_in_china
+echo "$ethx" >/dev/ethx
 echo "$mac_addr" >/dev/mac_addr
 echo "$ipv4_addr" >/dev/ipv4_addr
 echo "$ipv4_gateway" >/dev/ipv4_gateway

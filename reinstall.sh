@@ -1160,7 +1160,16 @@ mod_alpine_initrd() {
         modprobe ipv6
 EOF
 
-    # hack 2
+    # hack 2 设置 ethx
+    ip_choose_if() {
+        ip -o link | grep "@mac_addr" | awk '{print $2}' | cut -d: -f1
+        return
+    }
+
+    collect_netconf
+    get_function_content ip_choose_if | sed "s/@mac_addr/$mac_addr/" | insert_into_file init after 'ip_choose_if\(\)'
+
+    # hack 3
     # udhcpc 添加 -n 参数，请求dhcp失败后退出
     # 使用同样参数运行 udhcpc6
     # TODO: digitalocean -i eth1?
@@ -1172,7 +1181,7 @@ EOF
     mod_cmd6="${mod_cmd4//udhcpc/udhcpc6}"
     sed -i "/$search/c$mod_cmd4 \n $mod_cmd6" init
 
-    # hack 3 /usr/share/udhcpc/default.script
+    # hack 4 /usr/share/udhcpc/default.script
     # 脚本被调用的顺序
     # udhcpc:  deconfig
     # udhcpc:  bound
@@ -1196,8 +1205,7 @@ EOF
     # 允许设置 ipv4 onlink 网关
     sed -Ei 's,(0\.0\.0\.0\/0),"\1 onlink",' usr/share/udhcpc/default.script
 
-    # hack 4 网络配置
-    collect_netconf
+    # hack 5 网络配置
     is_in_china && is_in_china=true || is_in_china=false
     insert_into_file init after 'MAC_ADDRESS=' <<EOF
         source /alpine-network.sh \
