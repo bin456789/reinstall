@@ -2,12 +2,10 @@
 PATH="/usr/sbin:/usr/bin"
 
 update_part() {
-  hdparm -z $1
-  partprobe $1
-  partx -u $1
-  udevadm settle
-  echo 1 >/sys/block/${1#/dev/}/device/rescan
-} 2>/dev/null
+    partx -u "$1"
+    udevadm trigger
+    udevadm settle
+}
 
 # el 自带 fdisk parted (el7的part不支持在线扩容)
 # ubuntu 自带 fdisk growpart
