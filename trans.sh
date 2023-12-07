@@ -660,6 +660,11 @@ EOF
     export BOOTLOADER="grub"
     printf 'y' | setup-disk -m sys -k $kernel_flavor /os
 
+    # 3.19 或以上，非 efi 需要手动安装 grub
+    if ! is_efi && grep -F '3.19' /etc/alpine-release; then
+        grub-install --boot-directory=/os/boot --target=i386-pc /dev/$xda
+    fi
+
     # 是否保留 swap
     if [ -e /os/swapfile ]; then
         if false; then

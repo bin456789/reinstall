@@ -24,7 +24,7 @@ Usage: reinstall.sh centos   7|8|9
                     fedora   37|38
                     debian   10|11|12
                     ubuntu   20.04|22.04
-                    alpine   3.16|3.17|3.18
+                    alpine   3.16|3.17|3.18|3.19
                     opensuse 15.4|15.5|tumbleweed
                     arch
                     gentoo
@@ -619,7 +619,7 @@ verify_os_name() {
         'fedora   37|38' \
         'debian   10|11|12' \
         'ubuntu   20.04|22.04' \
-        'alpine   3.16|3.17|3.18' \
+        'alpine   3.16|3.17|3.18|3.19' \
         'opensuse 15.4|15.5|tumbleweed' \
         'arch' \
         'gentoo' \
@@ -1356,8 +1356,8 @@ if is_netboot_xyz ||
     }; }; then
     setos nextos $distro $releasever
 else
-    # alpine 作为中间系统时，使用 3.18
-    alpine_ver_for_trans=3.18
+    # alpine 作为中间系统时，使用 3.19
+    alpine_ver_for_trans=3.19
     setos finalos $distro $releasever
     setos nextos alpine $alpine_ver_for_trans
 fi
@@ -1428,7 +1428,8 @@ if is_use_grub; then
     # linux grub
     if ! is_in_windows; then
         if is_have_cmd update-grub; then
-            grub_cfg=$(grep -o '[^ ]*grub.cfg' "$(get_cmd_path update-grub)")
+            # alpine debian ubuntu
+            grub_cfg=$(grep -o '[^ ]*grub.cfg' "$(get_cmd_path update-grub)" | head -1)
         else
             # 找出主配置文件（含有menuentry|blscfg）
             # 如果是efi，先搜索efi目录
