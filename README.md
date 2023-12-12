@@ -29,7 +29,7 @@ curl -O https://raw.githubusercontent.com/bin456789/reinstall/main/reinstall.sh
 ### 下载 (国内)
 
 ```bash
-curl -O https://ghps.cc/https://raw.githubusercontent.com/bin456789/reinstall/main/reinstall.sh
+curl -O https://raw.fgit.cf/bin456789/reinstall/main/reinstall.sh
 ```
 
 ### 用法 1: 安装 Linux
@@ -135,7 +135,7 @@ certutil -urlcache -f -split https://raw.githubusercontent.com/bin456789/reinsta
 ### 下载（国内）
 
 ```batch
-certutil -urlcache -f -split https://ghps.cc/https://raw.githubusercontent.com/bin456789/reinstall/main/reinstall.bat
+certutil -urlcache -f -split https://raw.fgit.cf/bin456789/reinstall/main/reinstall.bat
 ```
 
 ### 如果无法下载
