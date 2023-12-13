@@ -1018,8 +1018,8 @@ install_grub_win() {
         find /tmp/win32-loader -name 'g2ldr.mbr' -exec cp {} /cygdrive/$c/ \;
 
         # g2ldr
-        $grub-mkimage -p "$prefix" -O i386-pc -o core.img $grub_modules
-        cat $grub_dir/i386-pc/lnxboot.img core.img >/cygdrive/$c/g2ldr
+        $grub-mkimage -p "$prefix" -O i386-pc -o "$(cygpath -w $grub_dir/core.img)" $grub_modules
+        cat $grub_dir/i386-pc/lnxboot.img $grub_dir/core.img >/cygdrive/$c/g2ldr
 
         # 添加引导
         # 脚本可能不是首次运行，所以先删除原来的
