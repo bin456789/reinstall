@@ -459,6 +459,7 @@ insert_into_file() {
     regex_to_find=$3
 
     if [ "$location" = HEAD ]; then
+        apk add ed
         in=$(mktemp)
         cat /dev/stdin >$in
         echo -e "0r $in \n w \n q" | ed $file >/dev/null
