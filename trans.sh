@@ -441,14 +441,15 @@ to_lower() {
 unix2dos() {
     target=$1
 
-    # 先原地unix2dos，出错再用复制，可最大限度保留文件权限
-    if ! command unix2dos $target 2>/tmp/error.log; then
+    # 先原地unix2dos，出错再用cat，可最大限度保留文件权限
+    if ! command unix2dos $target 2>/tmp/unix2dos.log; then
         # 出错后删除 unix2dos 创建的临时文件
-        rm "$(awk -F: '{print $2}' /tmp/error.log | xargs)"
+        rm "$(awk -F: '{print $2}' /tmp/unix2dos.log | xargs)"
         tmp=$(mktemp)
         cp $target $tmp
         command unix2dos $tmp
-        cp $tmp $target
+        # cat 可以保留权限
+        cat $tmp >$target
         rm $tmp
     fi
 }
@@ -458,11 +459,10 @@ insert_into_file() {
     location=$2
     regex_to_find=$3
 
-    if [ "$location" = HEAD ]; then
-        apk add ed
-        in=$(mktemp)
-        cat /dev/stdin >$in
-        echo -e "0r $in\n w \n q" | ed $file >/dev/null
+    if [ "$location" = head ]; then
+        bak=$(mktemp)
+        cp $file $bak
+        cat - $bak >$file
     else
         line_num=$(grep -E -n "$regex_to_find" "$file" | cut -d: -f1)
 
@@ -1134,19 +1134,20 @@ EOF
 
         # 添加到 C:\Setup\Scripts\SetupComplete.cmd 最前面
         # call 防止子 bat 删除自身后中断主脚本
-        my_setup_complete=$(mktemp)
+        setup_complete_mod=$(mktemp)
         for bat in $bats; do
-            echo "if exist %SystemDrive%\\$bat (call %SystemDrive%\\$bat)" >>$my_setup_complete
+            echo "if exist %SystemDrive%\\$bat (call %SystemDrive%\\$bat)" >>$setup_complete_mod
         done
 
+        # 复制原来的内容
         if [ -f $setup_complete ]; then
-            # 直接插入而不是覆盖，可以保留权限，虽然没什么影响
-            insert_into_file $setup_complete HEAD <$my_setup_complete
-        else
-            cp $my_setup_complete $setup_complete
+            cat $setup_complete >>$setup_complete_mod
         fi
 
-        unix2dos $setup_complete
+        unix2dos $setup_complete_mod
+
+        # cat 可以保留权限
+        cat $setup_complete_mod >$setup_complete
     fi
 }
 
