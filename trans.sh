@@ -462,7 +462,7 @@ insert_into_file() {
         apk add ed
         in=$(mktemp)
         cat /dev/stdin >$in
-        echo -e "0r $in \n w \n q" | ed $file >/dev/null
+        echo -e "0r $in\n w \n q" | ed $file >/dev/null
     else
         line_num=$(grep -E -n "$regex_to_find" "$file" | cut -d: -f1)
 
