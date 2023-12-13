@@ -105,23 +105,29 @@ download() {
 }
 
 update_part() {
-    # partx
-    # https://access.redhat.com/solutions/199573
-    if is_have_cmd partx; then
-        partx -u $1
-    fi
+    sleep 1
 
-    if rc-service --exists udev && rc-service udev status; then
-        # udev
-        udevadm trigger
-        udevadm settle
-    else
-        # busybox mdev
-        # 得刷新多次，不然找不到新分区
-        # -f 好像没用，而且 3.16 没有
-        mdev -s 2>/dev/null
-        mdev -s 2>/dev/null
-    fi
+    # 玄学
+    for i in 1 2 3; do
+        sync
+        partprobe /dev/$xda 2>/dev/null
+
+        # partx
+        # https://access.redhat.com/solutions/199573
+        if is_have_cmd partx; then
+            partx -u $1
+        fi
+
+        if rc-service --exists udev && rc-service -q udev status; then
+            # udev
+            udevadm trigger
+            udevadm settle
+        else
+            # busybox mdev
+            # -f 好像没用，而且 3.16 没有
+            mdev -s 2>/dev/null
+        fi
+    done
 }
 
 is_efi() {
