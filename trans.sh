@@ -2029,7 +2029,12 @@ EOF
     # 复制安装脚本
     # https://slightlyovercomplicated.com/2016/11/07/windows-pe-startup-sequence-explained/
     mv /wim/setup.exe /wim/setup.exe.disabled
-    download $confhome/windows-setup.bat /wim/Windows/System32/startnet.cmd
+
+    # 如果有重复的 Windows/System32 文件夹，会提示找不到 winload.exe 无法引导
+    # win7 win10 是 Windows/System32
+    # win2016    是 windows/system32
+    system32_dir=$(ls -d /wim/*/*32)
+    download $confhome/windows-setup.bat $system32_dir/startnet.cmd
 
     # 提交修改 boot.wim
     wimunmount --commit /wim/
