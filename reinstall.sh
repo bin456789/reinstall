@@ -808,6 +808,11 @@ is_use_grub() {
     ! { is_netboot_xyz && is_efi; }
 }
 
+# 只有 linux bios 是用本机的 grub
+is_use_local_grub() {
+    is_use_grub && ! is_in_windows && ! is_efi
+}
+
 to_upper() {
     tr '[:lower:]' '[:upper:]'
 }
@@ -942,6 +947,7 @@ add_efi_entry_in_windows() {
 }
 
 get_maybe_efi_dirs_in_linux() {
+    # arch云镜像efi分区挂载在/efi
     mount | awk '$5=="vfat" {print $3}' | grep -E '/boot|/efi'
 }
 
@@ -988,6 +994,26 @@ add_efi_entry_in_linux() {
     done
 
     error_and_exit "Can't find efi partition."
+}
+
+install_grub_linux_efi() {
+    info 'download grub efi'
+    fedora_ver=39
+
+    if [ "$basearch" = aarch64 ]; then
+        grub_efi=grubaa64.efi
+    else
+        grub_efi=grubx64.efi
+    fi
+
+    if is_in_china; then
+        mirror=https://mirrors.tuna.tsinghua.edu.cn/fedora
+    else
+        mirror=https://download.fedoraproject.org/pub/fedora/linux
+    fi
+
+    curl -Lo /tmp/$grub_efi $mirror/releases/$fedora_ver/Everything/$basearch/os/EFI/BOOT/$grub_efi
+    add_efi_entry_in_linux /tmp/$grub_efi
 }
 
 install_grub_win() {
@@ -1402,19 +1428,9 @@ if is_efi; then
     fi
 fi
 
-# grub
-if is_use_grub; then
-    if is_in_windows; then
-        install_grub_win
-    else
-        if is_have_cmd grub2-mkconfig; then
-            grub=grub2
-        elif is_have_cmd grub-mkconfig; then
-            grub=grub
-        else
-            error_and_exit "grub not found"
-        fi
-    fi
+# 有的机器开启了 kexec，例如腾讯云轻量 debian，要禁用
+if ! is_in_windows && [ -f /etc/default/kexec ]; then
+    sed -i 's/LOAD_KEXEC=true/LOAD_KEXEC=false/' /etc/default/kexec
 fi
 
 # 下载 netboot.xyz / 内核
@@ -1435,41 +1451,74 @@ else
     info download vmlnuz and initrd
     curl -Lo /reinstall-vmlinuz $nextos_vmlinuz
     curl -Lo /reinstall-initrd $nextos_initrd
+fi
 
-    if [ "$nextos_distro" = alpine ]; then
-        mod_alpine_initrd
+# 修改 alpine initrd
+if [ "$nextos_distro" = alpine ]; then
+    mod_alpine_initrd
+fi
+
+# 将内核/netboot.xyz.lkrn 放到正确的位置
+if is_use_grub; then
+    if is_in_windows; then
+        mv /reinstall-vmlinuz /cygdrive/$c/
+        is_have_initrd && mv /reinstall-initrd /cygdrive/$c/
+    else
+        if is_os_in_btrfs && is_os_in_subvol; then
+            cp_to_btrfs_root /reinstall-vmlinuz
+            is_have_initrd && cp_to_btrfs_root /reinstall-initrd
+        fi
     fi
 fi
 
+# grub
 if is_use_grub; then
-    info 'create grub config'
-    # linux grub
-    if ! is_in_windows; then
-        if is_have_cmd update-grub; then
-            # alpine debian ubuntu
-            grub_cfg=$(grep -o '[^ ]*grub.cfg' "$(get_cmd_path update-grub)" | head -1)
-        else
-            # 找出主配置文件（含有menuentry|blscfg）
-            # 如果是efi，先搜索efi目录
-            # arch云镜像efi分区挂载在/efi
-            if is_efi; then
-                efi_dir=$(get_maybe_efi_dirs_in_linux)
-            fi
-            grub_cfg=$(
-                find $efi_dir /boot/grub* \
-                    -type f -name grub.cfg \
-                    -exec grep -E -l 'menuentry|blscfg' {} \;
-            )
+    # win 使用外部 grub
+    if is_in_windows; then
+        install_grub_win
+    else
+        # linux aarch64 efi 要用去除了内核 magic number 校验的 grub
+        # 为了方便测试，linux x86 efi 也是用外部 grub
+        if is_efi; then
+            install_grub_linux_efi
+        fi
+    fi
 
-            if [ "$(wc -l <<<"$grub_cfg")" -gt 1 ]; then
-                error_and_exit 'find multi grub.cfg files.'
+    info 'create grub config'
+
+    # 寻找 grub.cfg
+    if is_in_windows; then
+        grub_cfg=/cygdrive/$c/grub.cfg
+    else
+        # linux
+        if is_efi; then
+            # 现在 linux-efi 是使用 reinstall 目录下的 grub
+            # shellcheck disable=SC2046
+            efi_reinstall_dir=$(find $(get_maybe_efi_dirs_in_linux) -type d -name "reinstall" | head -1)
+            grub_cfg=$efi_reinstall_dir/grub.cfg
+        else
+            if is_have_cmd update-grub; then
+                # alpine debian ubuntu
+                grub_cfg=$(grep -o '[^ ]*grub.cfg' "$(get_cmd_path update-grub)" | head -1)
+            else
+                # 找出主配置文件（含有menuentry|blscfg）
+                # 现在 efi 用下载的 grub，因此不需要查找 efi 目录
+                grub_cfg=$(
+                    find /boot/grub* \
+                        -type f -name grub.cfg \
+                        -exec grep -E -l 'menuentry|blscfg' {} \;
+                )
+
+                if [ "$(wc -l <<<"$grub_cfg")" -gt 1 ]; then
+                    error_and_exit 'find multi grub.cfg files.'
+                fi
             fi
         fi
+    fi
 
-        # 有些机子例如hython debian的grub.cfg少了40_custom 41_custom
-        # 所以先重新生成 grub.cfg
-        $grub-mkconfig -o $grub_cfg
-
+    # 判断用 linux 还是 linuxefi
+    # 现在 efi 用下载的 grub，因此不需要判断 linux 或 linuxefi
+    if false && is_use_local_grub; then
         # 在x86 efi机器上，不同版本的 grub 可能用 linux 或 linuxefi 加载内核
         # 通过检测原有的条目有没有 linuxefi 字样就知道当前 grub 用哪一种
         if [ -d /boot/loader/entries/ ]; then
@@ -1480,9 +1529,28 @@ if is_use_grub; then
         fi
     fi
 
-    # 生成 custom.cfg (linux) 或者 grub.cfg (win)
-    is_in_windows && custom_cfg=/cygdrive/$c/grub.cfg || custom_cfg=$(dirname $grub_cfg)/custom.cfg
+    # 找到 grub 程序的前缀
+    # 并重新生成 grub.cfg
+    # 因为有些机子例如hython debian的grub.cfg少了40_custom 41_custom
+    if is_use_local_grub; then
+        if is_have_cmd grub2-mkconfig; then
+            grub=grub2
+        elif is_have_cmd grub-mkconfig; then
+            grub=grub
+        else
+            error_and_exit "grub not found"
+        fi
+        $grub-mkconfig -o $grub_cfg
+    fi
 
+    # 选择用 custom.cfg (linux-bios) 还是 grub.cfg (win/linux-efi)
+    if is_use_local_grub; then
+        target_cfg=$(dirname $grub_cfg)/custom.cfg
+    else
+        target_cfg=$grub_cfg
+    fi
+
+    # 生成 linux initrd 命令
     if is_netboot_xyz; then
         linux_cmd="linux16 /reinstall-vmlinuz"
     else
@@ -1491,8 +1559,9 @@ if is_use_grub; then
         initrd_cmd="initrd$efi /reinstall-initrd"
     fi
 
-    echo $custom_cfg
-    cat <<EOF | tee $custom_cfg
+    # 生成 grub 配置
+    echo $target_cfg
+    cat <<EOF | tee $target_cfg
 set timeout=5
 menuentry "$(get_entry_name)" {
     insmod all_video
@@ -1504,20 +1573,8 @@ menuentry "$(get_entry_name)" {
 }
 EOF
 
-    if is_in_windows; then
-        mv /reinstall-vmlinuz /cygdrive/$c/
-        is_have_initrd && mv /reinstall-initrd /cygdrive/$c/
-    else
-        if is_os_in_btrfs && is_os_in_subvol; then
-            cp_to_btrfs_root /reinstall-vmlinuz
-            is_have_initrd && cp_to_btrfs_root /reinstall-initrd
-        fi
-
-        # 有的机器开启了 kexec，例如腾讯云轻量 debian，要禁用
-        if [ -f /etc/default/kexec ]; then
-            sed -i 's/LOAD_KEXEC=true/LOAD_KEXEC=false/' /etc/default/kexec
-        fi
-
+    # 设置重启引导项
+    if is_use_local_grub; then
         $grub-reboot "$(get_entry_name)"
     fi
 fi
