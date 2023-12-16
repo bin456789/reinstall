@@ -945,6 +945,17 @@ get_maybe_efi_dirs_in_linux() {
     mount | awk '$5=="vfat" {print $3}' | grep -E '/boot|/efi'
 }
 
+get_disk_by_part() {
+    dev_part=$1
+    install_pkg lsblk
+    lsblk -rn --inverse "$dev_part" | grep -w disk | awk '{print $1}'
+}
+
+get_part_num_by_part() {
+    dev_part=$1
+    grep -o '[0-9]*' <<<"$dev_part" | tail -1
+}
+
 add_efi_entry_in_linux() {
     source=$1
 
@@ -955,16 +966,22 @@ add_efi_entry_in_linux() {
             dist_dir=$efi_part/EFI/reinstall
             basename=$(basename $source)
             mkdir -p $dist_dir
-            cp -f "$source" "$dist_dir/$basename"
+
+            if [[ "$source" = http* ]]; then
+                curl -Lo "$dist_dir/$basename" "$source"
+            else
+                cp -f "$source" "$dist_dir/$basename"
+            fi
 
             # disk=$($grub-probe -t device "$dist")
             install_pkg findmnt
-            disk=$(findmnt -T "$dist_dir" -no SOURCE)
+            dev_part=$(findmnt -T "$dist_dir" -no SOURCE)
             efibootmgr --quiet --create-only \
-                --disk "$disk" \
+                --disk "/dev/$(get_disk_by_part $dev_part)" \
+                --part "$(get_part_num_by_part $dev_part)" \
                 --label "$(get_entry_name)" \
                 --loader "\\EFI\\reinstall\\$basename"
-            id=$(efibootmgr | grep "$(get_entry_name)" | grep -oE '[0-9]{4}')
+            id=$(efibootmgr | grep "$(get_entry_name)" | awk -F '*' '{print $1}' | sed 's/Boot//')
             efibootmgr --bootnext $id
             return
         fi
@@ -1372,15 +1389,15 @@ if is_efi; then
         rm -f /cygdrive/$c/grub.cfg
 
         bcdedit /set '{fwbootmgr}' bootsequence '{bootmgr}'
-        bcdedit /enum bootmgr | grep --text -B3 'reinstall.*' | awk '{print $2}' | grep '{.*}' |
+        bcdedit /enum bootmgr | grep --text -B3 'reinstall' | awk '{print $2}' | grep '{.*}' |
             xargs -I {} cmd /c bcdedit /delete {}
     else
-        maybe_efi_dirs=$(get_maybe_efi_dirs_in_linux)
-        find $maybe_efi_dirs /boot -type f -name 'custom.cfg' -exec rm -f {} \;
+        # shellcheck disable=SC2046
+        find $(get_maybe_efi_dirs_in_linux) /boot -type f -name 'custom.cfg' -exec rm -f {} \;
 
         install_pkg efibootmgr
         efibootmgr | grep -q 'BootNext:' && efibootmgr --quiet --delete-bootnext
-        efibootmgr | grep 'reinstall.*' | grep -oE '[0-9]{4}' |
+        efibootmgr | grep 'reinstall' | awk -F '*' '{print $1}' | sed 's/Boot//' |
             xargs -I {} efibootmgr --quiet --bootnum {} --delete-bootnum
     fi
 fi
