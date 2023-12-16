@@ -1887,9 +1887,9 @@ install_windows() {
 
         case "$sys" in
         # https://github.com/virtio-win/virtio-win-pkg-scripts/issues/40
-        w7) dir=archive-virtio/virtio-win-0.1.173-9 ;;
+        w7 | 2k8*) dir=archive-virtio/virtio-win-0.1.173-9 ;;
         # https://github.com/virtio-win/virtio-win-pkg-scripts/issues/61
-        2k12*) dir=archive-virtio/virtio-win-0.1.215-1 ;;
+        w8* | 2k12*) dir=archive-virtio/virtio-win-0.1.215-1 ;;
         *) dir=stable-virtio ;;
         esac
 
@@ -1929,9 +1929,9 @@ install_windows() {
     fi
 
     # 修改应答文件
-    download $confhome/windows.xml /tmp/Autounattend.xml
+    download $confhome/windows.xml /tmp/autounattend.xml
     locale=$(wiminfo $install_wim | grep 'Default Language' | head -1 | awk '{print $NF}')
-    sed -i "s|%arch%|$arch|; s|%image_name%|$image_name|; s|%locale%|$locale|" /tmp/Autounattend.xml
+    sed -i "s|%arch%|$arch|; s|%image_name%|$image_name|; s|%locale%|$locale|" /tmp/autounattend.xml
 
     # 修改 disk_id
     if false; then
@@ -1943,13 +1943,13 @@ install_windows() {
         else
             disk_id=0
         fi
-        sed -i "s|%disk_id%|$disk_id|" /tmp/Autounattend.xml
+        sed -i "s|%disk_id%|$disk_id|" /tmp/autounattend.xml
     fi
 
     # 修改应答文件，分区配置
     if is_efi; then
-        sed -i "s|%installto_partitionid%|3|" /tmp/Autounattend.xml
-        insert_into_file /tmp/Autounattend.xml after '<ModifyPartitions>' <<EOF
+        sed -i "s|%installto_partitionid%|3|" /tmp/autounattend.xml
+        insert_into_file /tmp/autounattend.xml after '<ModifyPartitions>' <<EOF
             <ModifyPartition wcm:action="add">
                 <Order>1</Order>
                 <PartitionID>1</PartitionID>
@@ -1966,8 +1966,8 @@ install_windows() {
             </ModifyPartition>
 EOF
     else
-        sed -i "s|%installto_partitionid%|1|" /tmp/Autounattend.xml
-        insert_into_file /tmp/Autounattend.xml after '<ModifyPartitions>' <<EOF
+        sed -i "s|%installto_partitionid%|1|" /tmp/autounattend.xml
+        insert_into_file /tmp/autounattend.xml after '<ModifyPartitions>' <<EOF
             <ModifyPartition wcm:action="add">
                 <Order>1</Order>
                 <PartitionID>1</PartitionID>
@@ -1976,12 +1976,14 @@ EOF
 EOF
     fi
 
-    #     # ei.cfg
-    #     cat <<EOF >/os/installer/sources/ei.cfg
-    #         [Channel]
-    #         OEM
-    # EOF
-    #     unix2dos /os/installer/sources/ei.cfg
+    # ei.cfg
+    if false; then
+        cat <<EOF >/os/installer/sources/EI.CFG
+[Channel]
+_Default
+EOF
+        unix2dos /os/installer/sources/EI.CFG
+    fi
 
     # 挂载 boot.wim
     mkdir -p /wim
@@ -2021,10 +2023,10 @@ EOF
     fi
 
     # 复制应答文件
-    # 移除注释，否则 windows-setup.bat 重新生成的 Autounattend.xml 有问题
+    # 移除注释，否则 windows-setup.bat 重新生成的 autounattend.xml 有问题
     apk add xmlstarlet
-    xmlstarlet ed -d '//comment()' /tmp/Autounattend.xml >/wim/Autounattend.xml
-    unix2dos /wim/Autounattend.xml
+    xmlstarlet ed -d '//comment()' /tmp/autounattend.xml >/wim/autounattend.xml
+    unix2dos /wim/autounattend.xml
 
     # 复制安装脚本
     # https://slightlyovercomplicated.com/2016/11/07/windows-pe-startup-sequence-explained/
@@ -2046,7 +2048,7 @@ EOF
     if [[ "$install_wim" = '*.wim' ]]; then
         wimmountrw $install_wim "$image_name" /wim/
         if false; then
-            # 使用 Autounattend.xml
+            # 使用 autounattend.xml
             # win7 在此阶段找不到网卡
             download $confhome/windows-resize.bat /wim/windows-resize.bat
             create_win_set_netconf_script /wim/windows-set-netconf.bat

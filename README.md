@@ -2,8 +2,11 @@
 
 [![Codacy Badge](https://app.codacy.com/project/badge/Grade/dc679a17751448628fe6d8ac35e26eed)](https://app.codacy.com/gh/bin456789/reinstall/dashboard?utm_source=gh&utm_medium=referral&utm_content=&utm_campaign=Badge_grade)
 [![CodeFactor](https://www.codefactor.io/repository/github/bin456789/reinstall/badge)](https://www.codefactor.io/repository/github/bin456789/reinstall)
+[![Lines of Code](https://tokei.rs/b1/github/bin456789/reinstall?category=code)](#reinstall)
 
-又一个重装脚本
+一键重装脚本
+
+[中文](README.md) | [English](README.en.md)
 
 ## 亮点
 
@@ -40,7 +43,7 @@ curl -O https://raw.fgit.cf/bin456789/reinstall/main/reinstall.sh
 bash reinstall.sh centos   7|8|9  (8|9 为 stream 版本)
                   alma     8|9
                   rocky    8|9
-                  fedora   37|38
+                  fedora   38|39
                   debian   10|11|12
                   ubuntu   20.04|22.04
                   alpine   3.16|3.17|3.18|3.19

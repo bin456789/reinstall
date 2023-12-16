@@ -21,7 +21,7 @@ usage_and_exit() {
 Usage: reinstall.sh centos   7|8|9
                     alma     8|9
                     rocky    8|9
-                    fedora   37|38
+                    fedora   38|39
                     debian   10|11|12
                     ubuntu   20.04|22.04
                     alpine   3.16|3.17|3.18|3.19
@@ -31,6 +31,8 @@ Usage: reinstall.sh centos   7|8|9
                     dd       --img=http://xxx
                     windows  --iso=http://xxx --image-name='windows xxx'
                     netboot.xyz
+
+Homepage: https://github.com/bin456789/reinstall
 EOF
     exit 1
 }
@@ -311,15 +313,12 @@ setos() {
     }
 
     setos_alpine() {
-        flavour=lts
-        if is_virt; then
-            # alpine aarch64 3.18 才有 virt 直连链接
-            if [ "$basearch" = aarch64 ]; then
-                install_pkg bc
-                (($(echo "$releasever >= 3.18" | bc))) && flavour=virt
-            else
-                flavour=virt
-            fi
+        is_virt && flavour=virt || flavour=lts
+
+        # alpine aarch64 3.16/3.17 lts 才有直连链接
+        if [ "$basearch" = aarch64 ] &&
+            { [ "$releasever" = 3.16 ] || [ "$releasever" = 3.17 ]; }; then
+            flavour=lts
         fi
 
         # 不要用https 因为甲骨文云arm initramfs阶段不会从硬件同步时钟，导致访问https出错
@@ -616,7 +615,7 @@ verify_os_name() {
         'centos   7|8|9' \
         'alma     8|9' \
         'rocky    8|9' \
-        'fedora   37|38' \
+        'fedora   38|39' \
         'debian   10|11|12' \
         'ubuntu   20.04|22.04' \
         'alpine   3.16|3.17|3.18|3.19' \

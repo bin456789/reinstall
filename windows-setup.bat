@@ -20,8 +20,8 @@ for /F "tokens=2 delims==" %%A in ('wmic logicaldisk where "VolumeName='installe
     set "DiskIndex=%%A"
 )
 
-:: 设置 Autounattend.xml 的主硬盘 id
-set "file=X:\Autounattend.xml"
+:: 设置 autounattend.xml 的主硬盘 id
+set "file=X:\autounattend.xml"
 set "tempFile=X:\tmp.xml"
 
 set "search=%%disk_id%%"
