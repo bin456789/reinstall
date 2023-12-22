@@ -438,6 +438,70 @@ to_lower() {
     tr '[:upper:]' '[:lower:]'
 }
 
+get_part_num_by_part() {
+    dev_part=$1
+    echo "$dev_part" | grep -o '[0-9]*' | tail -1
+}
+
+get_fallback_efi_file_name() {
+    case $(arch) in
+    x86_64) echo bootx64.efi ;;
+    aarch64) echo bootaa64.efi ;;
+    *) error_and_exit ;;
+    esac
+}
+
+del_invalid_efi_entry() {
+    apk add lsblk efibootmgr
+
+    efibootmgr --quiet --remove-dups
+
+    while read -r line; do
+        part_uuid=$(echo "$line" | awk -F ',' '{print $3}')
+        efi_index=$(echo "$line" | grep_efi_index)
+        if ! lsblk -o PARTUUID | grep "$part_uuid"; then
+            echo "Delete invalid EFI Entry: $line"
+            efibootmgr --quiet --bootnum "$efi_index" --delete-bootnum
+        fi
+    done < <(efibootmgr | grep 'HD(.*,GPT,')
+}
+
+grep_efi_index() {
+    awk -F '*' '{print $1}' | sed 's/Boot//'
+}
+
+# 某些机器可能不会回落到 bootx64.efi
+# 因此手动添加一个回落项
+add_fallback_efi_to_nvram() {
+    apk add lsblk efibootmgr
+
+    EFI_UUID=C12A7328-F81F-11D2-BA4B-00A0C93EC93B
+    efi_row=$(lsblk /dev/$xda -ro NAME,PARTTYPE,PARTUUID | grep -i "$EFI_UUID")
+    efi_part_uuid=$(echo "$efi_row" | awk '{print $3}')
+    efi_part_name=$(echo "$efi_row" | awk '{print $1}')
+    efi_part_num=$(get_part_num_by_part "$efi_part_name")
+    efi_file=$(get_fallback_efi_file_name)
+
+    # 创建条目，先判断是否已经存在
+    if ! efibootmgr | grep -i "HD($efi_part_num,GPT,$efi_part_uuid,.*)/File(\\\EFI\\\boot\\\\$efi_file)"; then
+        fallback_id=$(efibootmgr --create-only \
+            --disk "/dev/$xda" \
+            --part "$efi_part_num" \
+            --label "fallback" \
+            --loader "\\EFI\\boot\\$efi_file" |
+            tail -1 | grep_efi_index)
+
+        # 添加到最后
+        orig_order=$(efibootmgr | grep -F BootOrder: | awk '{print $2}')
+        if [ -n "$orig_order" ]; then
+            new_order="$orig_order,$fallback_id"
+        else
+            new_order="$fallback_id"
+        fi
+        efibootmgr --bootorder "$new_order"
+    fi
+}
+
 unix2dos() {
     target=$1
 
@@ -660,6 +724,13 @@ EOF
         fi
     fi
 
+    # setup-disk 安装 grub 跳过了添加引导项到 nvram
+    # 防止部分机器不会 fallback 到 bootx64.efi
+    if is_efi; then
+        apk add efibootmgr
+        sed -i 's/--no-nvram//' /sbin/setup-disk
+    fi
+
     # 安装到硬盘
     # alpine默认使用 syslinux (efi 环境除外)，这里强制使用 grub，方便用脚本再次重装
     KERNELOPTS="$(get_ttys console=)"
@@ -671,6 +742,9 @@ EOF
     if ! is_efi && grep -F '3.19' /etc/alpine-release; then
         grub-install --boot-directory=/os/boot --target=i386-pc /dev/$xda
     fi
+
+    # 删除无效的 efi 条目
+    del_invalid_efi_entry
 
     # 是否保留 swap
     if [ -e /os/swapfile ]; then
@@ -2240,6 +2314,12 @@ else
     else
         install_redhat_ubuntu
     fi
+fi
+
+# alpine 因内存容量问题，单独处理
+if is_efi && [ "$distro" != "alpine" ]; then
+    del_invalid_efi_entry
+    add_fallback_efi_to_nvram
 fi
 
 echo 'done'
