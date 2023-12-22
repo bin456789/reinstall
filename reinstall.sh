@@ -836,7 +836,7 @@ collect_netconf() {
 
         # 部分机器精简了 powershell
         # 所以不要用 powershell 获取网络信息
-        ids=$(wmic nic where "PhysicalAdapter=true and MACAddress is not null and PNPDeviceID like '%VEN_%&DEV_%'" get InterfaceIndex | del_cr | sed '1d')
+        ids=$(wmic nic where "PhysicalAdapter=true and MACAddress is not null and (PNPDeviceID like '%VEN_%&DEV_%' or PNPDeviceID like '%{F8615163-DF3E-46C5-913F-F2D2F965ED0E}%')" get InterfaceIndex | del_cr | sed '1d')
         for id in $ids; do
             config=$(wmic nicconfig where "InterfaceIndex='$id'" get MACAddress,IPAddress,IPSubnet,DefaultIPGateway /format:list | del_cr)
             # 排除 IP/子网/网关为空的
