@@ -1077,8 +1077,9 @@ install_grub_win() {
     grub=$grub_dir/grub
 
     # 设置 grub 内嵌的模块
-    grub_modules+=" normal minicmd ls echo test cat reboot halt linux linux16 chain search all_video configfile"
-    grub_modules+=" scsi part_msdos part_gpt fat ntfs ntfscomp ext2 lvm xfs lzopio xzio gzio zstd"
+    # 原系统是 windows，因此不需要 ext2 lvm xfs btrfs
+    grub_modules+=" normal minicmd serial ls echo test cat reboot halt linux linux16 chain search all_video configfile"
+    grub_modules+=" scsi part_msdos part_gpt fat ntfs ntfscomp lzopio xzio gzio zstd"
     if ! is_efi; then
         grub_modules+=" biosdisk"
     fi
@@ -1618,8 +1619,6 @@ if is_use_grub; then
 set timeout=5
 menuentry "$(get_entry_name)" {
     insmod all_video
-    insmod lvm
-    insmod xfs
     search --no-floppy --file --set=root /reinstall-vmlinuz
     $linux_cmd
     $initrd_cmd
