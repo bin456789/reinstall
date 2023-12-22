@@ -938,6 +938,13 @@ add_efi_entry_in_windows() {
     mkdir -p $dist_dir
     cp -f "$source" "$dist_dir/$basename"
 
+    # 如果 {fwbootmgr} displayorder 为空
+    # 执行 bcdedit /copy '{bootmgr}' 会报错
+    # 例如 azure windows 2016 模板
+    # 要先设置默认的 {fwbootmgr} displayorder
+    # https://github.com/hakuna-m/wubiuefi/issues/286
+    bcdedit /set '{fwbootmgr}' displayorder '{bootmgr}' /addfirst
+
     # 添加启动项
     id=$(bcdedit /copy '{bootmgr}' /d "$(get_entry_name)" | grep -o '{.*}')
     bcdedit /set $id device partition=$x:
