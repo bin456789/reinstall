@@ -1016,7 +1016,6 @@ add_efi_entry_in_linux() {
 
 install_grub_linux_efi() {
     info 'download grub efi'
-    fedora_ver=39
 
     if [ "$basearch" = aarch64 ]; then
         grub_efi=grubaa64.efi
@@ -1024,13 +1023,32 @@ install_grub_linux_efi() {
         grub_efi=grubx64.efi
     fi
 
-    if is_in_china; then
-        mirror=https://mirrors.tuna.tsinghua.edu.cn/fedora
+    # fedora x86_64 的 efi 无法识别 opensuse tumbleweed 的 btrfs
+    # 造成找不到启动内核
+    if false; then
+        fedora_ver=39
+
+        if is_in_china; then
+            mirror=https://mirrors.tuna.tsinghua.edu.cn/fedora
+        else
+            mirror=https://download.fedoraproject.org/pub/fedora/linux
+        fi
+
+        curl -Lo /tmp/$grub_efi $mirror/releases/$fedora_ver/Everything/$basearch/os/EFI/BOOT/$grub_efi
     else
-        mirror=https://download.fedoraproject.org/pub/fedora/linux
+        if is_in_china; then
+            mirror=https://mirror.sjtu.edu.cn/opensuse
+        else
+            mirror=https://download.opensuse.org
+        fi
+
+        file=tumbleweed/repo/oss/EFI/BOOT/grub.efi
+        if [ "$basearch" = aarch64 ]; then
+            file=ports/aarch64/$file
+        fi
+        curl -Lo /tmp/$grub_efi $mirror/$file
     fi
 
-    curl -Lo /tmp/$grub_efi $mirror/releases/$fedora_ver/Everything/$basearch/os/EFI/BOOT/$grub_efi
     add_efi_entry_in_linux /tmp/$grub_efi
 }
 
