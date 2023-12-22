@@ -965,8 +965,8 @@ add_efi_entry_in_windows() {
 }
 
 get_maybe_efi_dirs_in_linux() {
-    # arch云镜像efi分区挂载在/efi
-    mount | awk '$5=="vfat" {print $3}' | grep -E '/boot|/efi'
+    # arch云镜像efi分区挂载在/efi，且使用 autofs，挂载后会有两个 /efi 条目
+    mount | awk '$5=="vfat" || $5=="autofs" {print $3}' | grep -E '/boot|/efi' | sort | uniq
 }
 
 get_disk_by_part() {
@@ -978,6 +978,10 @@ get_disk_by_part() {
 get_part_num_by_part() {
     dev_part=$1
     grep -o '[0-9]*' <<<"$dev_part" | tail -1
+}
+
+grep_efi_index() {
+    awk -F '*' '{print $1}' | sed 's/Boot//'
 }
 
 add_efi_entry_in_linux() {
@@ -997,15 +1001,23 @@ add_efi_entry_in_linux() {
                 cp -f "$source" "$dist_dir/$basename"
             fi
 
-            # disk=$($grub-probe -t device "$dist")
-            install_pkg findmnt
-            dev_part=$(findmnt -T "$dist_dir" -no SOURCE)
-            efibootmgr --quiet --create-only \
+            if false; then
+                grub_probe="$(command -v grub-probe grub2-probe)"
+                dev_part="$("$grub_probe" -t device "$dist_dir")"
+            else
+                install_pkg findmnt
+                # arch findmnt 会得到
+                # systemd-1
+                # /dev/sda2
+                dev_part=$(findmnt -T "$dist_dir" -no SOURCE | grep '^/dev/')
+            fi
+
+            id=$(efibootmgr --create-only \
                 --disk "/dev/$(get_disk_by_part $dev_part)" \
                 --part "$(get_part_num_by_part $dev_part)" \
                 --label "$(get_entry_name)" \
-                --loader "\\EFI\\reinstall\\$basename"
-            id=$(efibootmgr | grep "$(get_entry_name)" | awk -F '*' '{print $1}' | sed 's/Boot//')
+                --loader "\\EFI\\reinstall\\$basename" |
+                tail -1 | grep_efi_index)
             efibootmgr --bootnext $id
             return
         fi
@@ -1464,7 +1476,7 @@ if is_efi; then
 
         install_pkg efibootmgr
         efibootmgr | grep -q 'BootNext:' && efibootmgr --quiet --delete-bootnext
-        efibootmgr | grep 'reinstall' | awk -F '*' '{print $1}' | sed 's/Boot//' |
+        efibootmgr | grep 'reinstall' | grep_efi_index |
             xargs -I {} efibootmgr --quiet --bootnum {} --delete-bootnum
     fi
 fi
