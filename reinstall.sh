@@ -803,6 +803,18 @@ is_efi() {
     fi
 }
 
+is_secure_boot_enabled() {
+    if is_efi; then
+        if is_in_windows; then
+            reg query 'HKLM\SYSTEM\CurrentControlSet\Control\SecureBoot\State' /v UEFISecureBootEnabled | grep 0x1 && return 0
+        else
+            # mokutil --sb-state
+            dmesg | grep -i 'Secure boot enabled' && return 0
+        fi
+    fi
+    return 1
+}
+
 is_use_grub() {
     ! { is_netboot_xyz && is_efi; }
 }
@@ -1341,14 +1353,19 @@ while true; do
     esac
 done
 
-# 不支持容器虚拟化
-assert_not_in_container
-
 # 检查目标系统名
 verify_os_name "$@"
 
 # 检查必须的参数
 verify_os_args
+
+# 不支持容器虚拟化
+assert_not_in_container
+
+# 不支持安全启动
+if is_secure_boot_enabled; then
+    error_and_exit "Not Supported with secure boot enabled."
+fi
 
 # win系统盘
 if is_in_windows; then
