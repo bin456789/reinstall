@@ -1221,6 +1221,16 @@ EOF
         rm -f $os_dir/etc/resolv.conf
     fi
 
+    # arch
+    if [ -f $os_dir/etc/arch-release ]; then
+        rm $os_dir/etc/resolv.conf
+        cp /etc/resolv.conf $os_dir/etc/resolv.conf
+        mount_pseudo_fs $os_dir
+        chroot $os_dir pacman-key --init
+        chroot $os_dir pacman-key --populate
+        rm $os_dir/etc/resolv.conf
+    fi
+
     # gentoo
     if [ -f $os_dir/etc/gentoo-release ]; then
         # 挂载伪文件系统
