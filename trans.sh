@@ -744,7 +744,9 @@ EOF
     fi
 
     # 删除无效的 efi 条目
-    del_invalid_efi_entry
+    if is_efi; then
+        del_invalid_efi_entry
+    fi
 
     # 是否保留 swap
     if [ -e /os/swapfile ]; then
