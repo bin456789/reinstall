@@ -1044,8 +1044,14 @@ install_grub_linux_efi() {
     fi
 
     # fedora x86_64 的 efi 无法识别 opensuse tumbleweed 的 btrfs
-    # 造成找不到启动内核
-    if false; then
+    # opensuse tumbleweed aarch64 的 efi 无法识别 alpine 3.19 的内核
+    if [ "$basearch" = aarch64 ]; then
+        efi_distro=fedora
+    else
+        efi_distro=opensuse
+    fi
+
+    if [ "$efi_distro" = fedora ]; then
         fedora_ver=39
 
         if is_in_china; then
