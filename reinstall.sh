@@ -848,10 +848,18 @@ collect_netconf() {
 
         # 部分机器精简了 powershell
         # 所以不要用 powershell 获取网络信息
-        ids=$(wmic nic where "PhysicalAdapter=true and MACAddress is not null and (PNPDeviceID like '%VEN_%&DEV_%' or PNPDeviceID like '%{F8615163-DF3E-46C5-913F-F2D2F965ED0E}%')" get InterfaceIndex | del_cr | sed '1d')
+        # ids=$(wmic nic where "PhysicalAdapter=true and MACAddress is not null and (PNPDeviceID like '%VEN_%&DEV_%' or PNPDeviceID like '%{F8615163-DF3E-46C5-913F-F2D2F965ED0E}%')" get InterfaceIndex | del_cr | sed '1d')
+
+        # 否        手动        0    0.0.0.0/0                  19  192.168.1.1
+        # 否        手动        0    0.0.0.0/0                  59  nekoray-tun
+        ids="
+        $(netsh int ipv4 show route | grep --text -F '0.0.0.0/0' | awk '$6 ~ /\./ {print $5}')
+        $(netsh int ipv6 show route | grep --text -F '::/0' | awk '$6 ~ /:/ {print $5}')
+        "
+        ids=$(echo "$ids" | sort -u)
         for id in $ids; do
             config=$(wmic nicconfig where "InterfaceIndex='$id'" get MACAddress,IPAddress,IPSubnet,DefaultIPGateway /format:list | del_cr)
-            # 排除 IP/子网/网关为空的
+            # 排除 IP/子网/网关/MAC 为空的
             if grep -q '=$' <<<"$config"; then
                 continue
             fi
