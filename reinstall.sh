@@ -1081,7 +1081,7 @@ install_grub_linux_efi() {
 install_grub_win() {
     # 下载 grub
     info download grub
-    grub_ver=2.12
+    grub_ver=2.06
     is_in_china && grub_url=https://mirrors.tuna.tsinghua.edu.cn/gnu/grub/grub-$grub_ver-for-windows.zip ||
         grub_url=https://ftpmirror.gnu.org/gnu/grub/grub-$grub_ver-for-windows.zip
     curl -Lo /tmp/grub.zip $grub_url
