@@ -79,15 +79,20 @@ if not exist reinstall.sh (
     call :download %confhome%/reinstall.sh %~dp0reinstall.sh
 )
 
-:: 运行 reinstall.sh
-:: 方法1:
+:: 为每个参数添加引号，使参数正确传递到 bash
+for %%a in (%*) do (
+    set "param=!param! "%%~a""
+)
+
 :: 在c盘根目录下执行 cygpath -ua . 会得到 /cygdrive/c，因此末尾要有 /
 for /f %%a in ('%SystemDrive%\cygwin\bin\cygpath -ua ./') do set thisdir=%%a
-%SystemDrive%\cygwin\bin\bash -l -c "%thisdir%reinstall.sh %*"
 
-:: 方法2:
-:: set PATH=/usr/local/bin:/usr/bin
+:: 方法1
+%SystemDrive%\cygwin\bin\bash -l -c '%thisdir%reinstall.sh !param!'
+
+:: 方法2
 :: %SystemDrive%\cygwin\bin\bash reinstall.sh %*
+:: 再在 reinstall.sh 里运行 source /etc/profile
 exit /b !errorlevel!
 
 
