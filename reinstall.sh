@@ -1628,10 +1628,12 @@ if is_use_grub; then
     fi
 
     # 生成 grub 配置
+    # 实测 centos 7 lvm 要手动加载 lvm 模块
     echo $target_cfg
     cat <<EOF | tee $target_cfg
 set timeout=5
 menuentry "$(get_entry_name)" {
+    $(is_in_windows || echo 'insmod lvm')
     insmod all_video
     search --no-floppy --file --set=root /reinstall-vmlinuz
     $linux_cmd
