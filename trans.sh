@@ -2019,56 +2019,11 @@ install_windows() {
     locale=$(wiminfo $install_wim | grep 'Default Language' | head -1 | awk '{print $NF}')
     sed -i "s|%arch%|$arch|; s|%image_name%|$image_name|; s|%locale%|$locale|" /tmp/autounattend.xml
 
-    # 修改 disk_id
-    if false; then
-        # sda 只读，放的是 cloud-init 配置，通常 win 有驱动，能识别
-        # 而 vda/nvme/xen 加载驱动后才能识别，所以这时 disk_id 应该为 1
-        if [ -e "/sys/class/block/sda/ro" ] &&
-            [ "$(cat /sys/class/block/sda/ro)" = 1 ]; then
-            disk_id=1
-        else
-            disk_id=0
-        fi
-        sed -i "s|%disk_id%|$disk_id|" /tmp/autounattend.xml
-    fi
-
     # 修改应答文件，分区配置
     if is_efi; then
         sed -i "s|%installto_partitionid%|3|" /tmp/autounattend.xml
-        insert_into_file /tmp/autounattend.xml after '<ModifyPartitions>' <<EOF
-            <ModifyPartition wcm:action="add">
-                <Order>1</Order>
-                <PartitionID>1</PartitionID>
-                <Format>FAT32</Format>
-            </ModifyPartition>
-            <ModifyPartition wcm:action="add">
-                <Order>2</Order>
-                <PartitionID>2</PartitionID>
-            </ModifyPartition>
-            <ModifyPartition wcm:action="add">
-                <Order>3</Order>
-                <PartitionID>3</PartitionID>
-                <Format>NTFS</Format>
-            </ModifyPartition>
-EOF
     else
         sed -i "s|%installto_partitionid%|1|" /tmp/autounattend.xml
-        insert_into_file /tmp/autounattend.xml after '<ModifyPartitions>' <<EOF
-            <ModifyPartition wcm:action="add">
-                <Order>1</Order>
-                <PartitionID>1</PartitionID>
-                <Format>NTFS</Format>
-            </ModifyPartition>
-EOF
-    fi
-
-    # ei.cfg
-    if false; then
-        cat <<EOF >/os/installer/sources/EI.CFG
-[Channel]
-_Default
-EOF
-        unix2dos /os/installer/sources/EI.CFG
     fi
 
     # 挂载 boot.wim
