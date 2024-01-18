@@ -50,7 +50,12 @@
             <UILanguage>%locale%</UILanguage>
             <UserLocale>%locale%</UserLocale>
         </component>
-        <component name="Microsoft-Windows-PnpCustomizationsWinPE" processorArchitecture="%arch%" publicKeyToken="31bf3856ad364e35" language="neutral" versionScope="nonSxS" xmlns:wcm="http://schemas.microsoft.com/WMIConfig/2002/State" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance">
+    </settings>
+
+    <!-- vultr win8/8.1/2012/2012r2 在 windowsPE/Microsoft-Windows-PnpCustomizationsWinPE 下载加载气球驱动
+    会出现 Windows Cannot find Microsoft software license terms 错误 -->
+    <settings pass="offlineServicing">
+        <component name="Microsoft-Windows-PnpCustomizationsNonWinPE" processorArchitecture="%arch%" publicKeyToken="31bf3856ad364e35" language="neutral" versionScope="nonSxS" xmlns:wcm="http://schemas.microsoft.com/WMIConfig/2002/State" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance">
             <DriverPaths>
                 <PathAndCredentials wcm:action="add" wcm:keyValue="1">
                     <Path>X:\drivers</Path>
