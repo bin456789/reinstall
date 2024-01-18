@@ -1289,12 +1289,10 @@ EOF
         fi
     fi
 
-    # opensuse tumbleweed 需安装 wicked
+    # opensuse tumbleweed
+    # TODO: cloud-init 更新后删除
     if grep opensuse-tumbleweed $os_dir/etc/os-release; then
-        cp -f /etc/resolv.conf $os_dir/etc/resolv.conf
-        mount_pseudo_fs $os_dir
-        chroot $os_dir zypper install -y wicked
-        rm -f $os_dir/etc/resolv.conf
+        touch $os_dir/etc/NetworkManager/NetworkManager.conf
     fi
 
     # arch

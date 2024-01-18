@@ -25,7 +25,7 @@ Usage: reinstall.sh centos   7|8|9
                     debian   10|11|12
                     ubuntu   20.04|22.04
                     alpine   3.16|3.17|3.18|3.19
-                    opensuse 15.4|15.5|tumbleweed
+                    opensuse 15.5|tumbleweed
                     arch
                     gentoo
                     dd       --img=http://xxx
@@ -619,7 +619,7 @@ verify_os_name() {
         'debian   10|11|12' \
         'ubuntu   20.04|22.04' \
         'alpine   3.16|3.17|3.18|3.19' \
-        'opensuse 15.4|15.5|tumbleweed' \
+        'opensuse 15.5|tumbleweed' \
         'arch' \
         'gentoo' \
         'windows' \

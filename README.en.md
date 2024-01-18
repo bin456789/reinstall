@@ -47,7 +47,7 @@ bash reinstall.sh centos   7|8|9  (8|9 for stream versions)
                   debian   10|11|12
                   ubuntu   20.04|22.04
                   alpine   3.16|3.17|3.18|3.19
-                  opensuse 15.4|15.5|tumbleweed (supports cloud mirror only)
+                  opensuse 15.5|tumbleweed (supports cloud mirror only)
                   arch     (supports only amd64 cloud mirror)
                   gentoo   (supports only amd64 cloud mirror)
 
