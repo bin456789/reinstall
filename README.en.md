@@ -205,3 +205,7 @@ Please use <https://github.com/LloydAsp/OsMutation>.
 ## TODO
 
 - Installation modes: Static IP, IPv6, multiple NICs.
+
+## Sponsor
+
+[![DartNode](https://github.com/bin456789/reinstall/assets/7548515/7531e443-4069-4bf1-a40e-2e965f311e3f)](https://dartnode.com/)

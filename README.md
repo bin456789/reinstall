@@ -205,3 +205,7 @@ reinstall.bat centos-7
 ## TODO
 
 - 安装模式：静态 IP、IPv6、多网卡
+
+## 赞助
+
+[![DartNode](https://github.com/bin456789/reinstall/assets/7548515/7531e443-4069-4bf1-a40e-2e965f311e3f)](https://dartnode.com/)
