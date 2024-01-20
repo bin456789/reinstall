@@ -2024,6 +2024,15 @@ install_windows() {
         sed -i "s|%installto_partitionid%|1|" /tmp/autounattend.xml
     fi
 
+    # 评估版 iso 需要删除 autounattend.xml 里面的 <Key />
+    # 否则会出现 Windows Cannot find Microsoft software license terms
+    # shellcheck disable=SC2010
+    if ei_cfg="$(ls -d /os/installer/sources/* | grep -i ei.cfg)"; then
+        if grep -i EVAL "$ei_cfg"; then
+            sed -i '/<Key \/>/d' /tmp/autounattend.xml
+        fi
+    fi
+
     # 挂载 boot.wim
     mkdir -p /wim
     wimmountrw $boot_wim 2 /wim/
