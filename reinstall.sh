@@ -1267,20 +1267,29 @@ mod_alpine_initrd() {
 EOF
 
     # hack 2 设置 ethx
+    # 3.16~3.18 ip_choose_if
+    # 3.19.1+ ethernets
+    if grep -q ip_choose_if init; then
+        ethernets_func=ip_choose_if
+    else
+        ethernets_func=ethernets
+    fi
+
     ip_choose_if() {
         ip -o link | grep "@mac_addr" | awk '{print $2}' | cut -d: -f1
         return
     }
 
     collect_netconf
-    get_function_content ip_choose_if | sed "s/@mac_addr/$mac_addr/" | insert_into_file init after 'ip_choose_if\(\)'
+    get_function_content ip_choose_if | sed "s/@mac_addr/$mac_addr/" |
+        insert_into_file init after "$ethernets_func\(\)"
 
     # hack 3
     # udhcpc 添加 -n 参数，请求dhcp失败后退出
     # 使用同样参数运行 udhcpc6
-    # TODO: digitalocean -i eth1?
-    # $MOCK udhcpc -i "$device" -f -q # v3.18
     #       udhcpc -i "$device" -f -q # v3.17
+    # $MOCK udhcpc -i "$device" -f -q # v3.18
+    # $MOCK udhcpc -i "$iface" -f -q  # v3.19.1
     search='udhcpc -i'
     orig_cmd="$(grep "$search" init)"
     mod_cmd4="$orig_cmd -n || true"

@@ -8,8 +8,14 @@ ipv6_addr=$4
 ipv6_gateway=$5
 is_in_china=$6
 
+# 3.16-3.18 $device
+# 3.19.1+ $iface
 # shellcheck disable=SC2154
-ethx="$device"
+if [ -n "$iface" ]; then
+    ethx="$iface"
+else
+    ethx="$device"
+fi
 
 if $is_in_china; then
     ipv4_dns1='119.29.29.29'
