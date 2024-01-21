@@ -885,9 +885,8 @@ create_part() {
                 mkfs.ext4 -F -L installer /dev/$xda*3 #3 installer
             fi
         else
-            # 最大的 qcow2 是 centos8，1.8g
-            # gentoo 的镜像解压后是 3.5g，因此设置 installer 分区 1g，这样才能在5g硬盘上安装
-            [ "$distro" = gentoo ] && installer_part_size=1GiB || installer_part_size=2GiB
+            # fedora debian ubuntu opensuse arch gentoo
+            installer_part_size=1GiB
             parted /dev/$xda -s -- \
                 mklabel gpt \
                 mkpart '" "' ext4 1MiB -$installer_part_size \
