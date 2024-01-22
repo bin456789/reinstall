@@ -824,7 +824,7 @@ create_part() {
         # 按iso容量计算分区大小，200m用于驱动和文件系统自身占用
         part_size="$((size_bytes / 1024 / 1024 + 200))MiB"
 
-        apk add ntfs-3g-progs virt-what wimlib rsync
+        apk add ntfs-3g-progs
         # 虽然ntfs3不需要fuse，但wimmount需要，所以还是要保留
         modprobe fuse ntfs3
         if is_efi; then
@@ -1810,6 +1810,8 @@ EOF
 }
 
 install_windows() {
+    apk add wimlib virt-what dmidecode rsync pev
+
     # shellcheck disable=SC2154
     download $iso /os/windows.iso
     mkdir -p /iso
@@ -1847,9 +1849,15 @@ install_windows() {
         # 否则改成正确的大小写
         image_name=$(wiminfo $install_wim | grep -ix "Name:[[:blank:]]*$image_name" | cut -d: -f2 | xargs)
     fi
+    echo "Image Name: $image_name"
 
-    is_win7_or_win2008r2() {
-        echo $image_name | grep -iEw '^Windows (7|Server 2008 R2)'
+    # 用内核版本号筛选驱动
+    # 使得可以安装 Hyper-V Server / Azure Stack HCI 等 Windows Server 变种
+    nt_ver="$(peres -v /iso/setup.exe | grep 'Product Version:' | cut -d: -f2 | xargs | cut -d. -f 1,2)"
+    echo "NT Version: $nt_ver"
+
+    is_nt_6_1() {
+        [ "$nt_ver" = 6.1 ]
     }
 
     is_win11() {
@@ -1902,8 +1910,9 @@ install_windows() {
         [ "$arch_wim" = x86_64 ]; then
         # aws nitro
         # 只有 x64 位驱动
-        # https://docs.aws.amazon.com/zh_cn/AWSEC2/latest/WindowsGuide/migrating-latest-types.html
-        if is_win7_or_win2008r2; then
+        # https://docs.aws.amazon.com/zh_cn/AWSEC2/latest/WindowsGuide/aws-nvme-drivers.html
+        # https://docs.aws.amazon.com/zh_cn/AWSEC2/latest/WindowsGuide/enhanced-networking-ena.html
+        if is_nt_6_1; then
             download https://s3.amazonaws.com/ec2-windows-drivers-downloads/NVMe/1.3.2/AWSNVMe.zip $drv/AWSNVMe.zip
             download https://s3.amazonaws.com/ec2-windows-drivers-downloads/ENA/x64/2.2.3/AwsEnaNetworkDriver.zip $drv/AwsEnaNetworkDriver.zip
         else
@@ -1918,10 +1927,10 @@ install_windows() {
         # aws xen
         # 只有 64 位驱动
         # 未测试
-        # https://docs.aws.amazon.com/zh_cn/AWSEC2/latest/WindowsGuide/Upgrading_PV_drivers.html
+        # https://docs.aws.amazon.com/zh_cn/AWSEC2/latest/WindowsGuide/xen-drivers-overview.html
         apk add msitools
 
-        if is_win7_or_win2008r2; then
+        if is_nt_6_1; then
             download https://s3.amazonaws.com/ec2-windows-drivers-downloads/AWSPV/8.3.5/AWSPVDriver.zip $drv/AWSPVDriver.zip
         else
             download https://s3.amazonaws.com/ec2-windows-drivers-downloads/AWSPV/Latest/AWSPVDriver.zip $drv/AWSPVDriver.zip
@@ -1952,27 +1961,21 @@ install_windows() {
         # virtio
         # x86 x64 arm64 都有
         # https://fedorapeople.org/groups/virt/virtio-win/direct-downloads/stable-virtio/
-        case $(echo "$image_name" | to_lower) in
-        'windows server 2022'*) sys=2k22 ;;
-        'windows server 2019'*) sys=2k19 ;;
-        'windows server 2016'*) sys=2k16 ;;
-        'windows server 2012 R2'*) sys=2k12R2 ;;
-        'windows server 2012'*) sys=2k12 ;;
-        'windows server 2008 R2'*) sys=2k8R2 ;;
-        'windows server 2008'*) sys=2k8 ;;
-        'windows 11'*) sys=w11 ;;
-        'windows 10'*) sys=w10 ;;
-        'windows 8.1'*) sys=w8.1 ;;
-        'windows 8'*) sys=w8 ;;
-        'windows 7'*) sys=w7 ;;
-        'windows vista'*) sys=2k8 ;; # virtio 没有 vista 专用驱动
+
+        # 没有 vista 文件夹
+        case "$nt_ver" in
+        6.0) sys=2k8 ;;
+        6.1) sys=w7 ;;
+        6.2) sys=w8 ;;
+        6.3) sys=w8.1 ;;
+        10.0) sys=w10 ;;
         esac
 
-        case "$sys" in
         # https://github.com/virtio-win/virtio-win-pkg-scripts/issues/40
-        w7 | 2k8*) dir=archive-virtio/virtio-win-0.1.173-9 ;;
         # https://github.com/virtio-win/virtio-win-pkg-scripts/issues/61
-        w8* | 2k12*) dir=archive-virtio/virtio-win-0.1.215-1 ;;
+        case "$sys" in
+        vista | w7 | 2k8 | 2k8R2) dir=archive-virtio/virtio-win-0.1.173-9 ;;
+        w8 | w8.1 | 2k12 | 2k12R2) dir=archive-virtio/virtio-win-0.1.215-1 ;;
         *) dir=stable-virtio ;;
         esac
 
@@ -1993,21 +1996,8 @@ install_windows() {
                 wget $gce_repo$link -O- | tar -xzf- -C $drv/gce/$name
             done
 
-            # 没有 vista 驱动
-            # 没有专用的 win11 驱动
-            case $(echo "$image_name" | to_lower) in
-            'windows server 2022'*) sys_gce=win10.0 ;;
-            'windows server 2019'*) sys_gce=win10.0 ;;
-            'windows server 2016'*) sys_gce=win10.0 ;;
-            'windows server 2012 R2'*) sys_gce=win6.3 ;;
-            'windows server 2012'*) sys_gce=win6.2 ;;
-            'windows server 2008 R2'*) sys_gce=win6.1 ;;
-            'windows 11'*) sys_gce=win10.0 ;;
-            'windows 10'*) sys_gce=win10.0 ;;
-            'windows 8.1'*) sys_gce=win6.3 ;;
-            'windows 8'*) sys_gce=win6.2 ;;
-            'windows 7'*) sys_gce=win6.1 ;;
-            esac
+            # 没有 win6.0 文件夹
+            sys_gce=win$nt_ver
         fi
     fi
 
