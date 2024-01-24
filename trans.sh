@@ -1973,9 +1973,9 @@ install_windows() {
 
         # https://github.com/virtio-win/virtio-win-pkg-scripts/issues/40
         # https://github.com/virtio-win/virtio-win-pkg-scripts/issues/61
-        case "$sys" in
-        vista | w7 | 2k8 | 2k8R2) dir=archive-virtio/virtio-win-0.1.173-9 ;;
-        w8 | w8.1 | 2k12 | 2k12R2) dir=archive-virtio/virtio-win-0.1.215-1 ;;
+        case "$nt_ver" in
+        6.0 | 6.1) dir=archive-virtio/virtio-win-0.1.173-9 ;; # vista | w7 | 2k8 | 2k8R2
+        6.2 | 6.3) dir=archive-virtio/virtio-win-0.1.215-1 ;; # win8 | w8.1 | 2k12 | 2k12R2
         *) dir=stable-virtio ;;
         esac
 
@@ -2013,12 +2013,18 @@ install_windows() {
         sed -i "s|%installto_partitionid%|1|" /tmp/autounattend.xml
     fi
 
-    # 评估版 iso 需要删除 autounattend.xml 里面的 <Key />
-    # 否则会出现 Windows Cannot find Microsoft software license terms
     # shellcheck disable=SC2010
     if ei_cfg="$(ls -d /os/installer/sources/* | grep -i ei.cfg)"; then
+        # 评估版 iso 需要删除 autounattend.xml 里面的 <Key><Key/>
+        # 否则会出现 Windows Cannot find Microsoft software license terms
         if grep -i EVAL "$ei_cfg"; then
-            sed -i '/<Key \/>/d' /tmp/autounattend.xml
+            sed -i "s|<Key></Key>||" /tmp/autounattend.xml
+        fi
+    else
+        # vista 需密钥，密钥与 edition 可以不一致
+        if [[ "$image_name" = 'Windows Vista'* ]]; then
+            vista_gvlk=VKK3X-68KWM-X2YGT-QR4M6-4BWMV
+            sed -i "s|<Key></Key>|<Key>$vista_gvlk</Key>|" /tmp/autounattend.xml
         fi
     fi
 
@@ -2028,28 +2034,32 @@ install_windows() {
 
     cp_drivers() {
         src=$1
-        path=$2
+        shift
 
-        [ -n "$path" ] && filter="-ipath $path" || filter=""
         find $src \
-            $filter \
             -type f \
             -not -iname "*.pdb" \
             -not -iname "dpinst.exe" \
+            "$@" \
             -exec cp -rfv {} /wim/drivers \;
     }
 
     # 添加驱动
     mkdir -p /wim/drivers
-
-    [ -d $drv/virtio ] && cp_drivers $drv/virtio "*/$sys/$arch/*"
+    [ -d $drv/virtio ] && {
+        if [ "$nt_ver" = 6.0 ]; then
+            # 气球驱动有问题
+            cp_drivers $drv/virtio -ipath "*/$sys/$arch/*" -not -ipath "*/balloon/*"
+        else
+            cp_drivers $drv/virtio -ipath "*/$sys/$arch/*"
+        fi
+    }
     [ -d $drv/aws ] && cp_drivers $drv/aws
-    [ -d $drv/xen ] && cp_drivers $drv/xen "*/$arch_xen/*"
+    [ -d $drv/xen ] && cp_drivers $drv/xen -ipath "*/$arch_xen/*"
     [ -d $drv/gce ] && {
         [ "$arch_wim" = x86 ] && gvnic_suffix=-32 || gvnic_suffix=
-        cp_drivers $drv/gce/gvnic "*/$sys_gce$gvnic_suffix/*"
-        # gga 驱动不分32/64位
-        cp_drivers $drv/gce/gga "*/$sys_gce/*"
+        cp_drivers $drv/gce/gvnic -ipath "*/$sys_gce$gvnic_suffix/*"
+        cp_drivers $drv/gce/gga -ipath "*/$sys_gce/*"
     }
 
     # win7 要添加 bootx64.efi 到 efi 目录

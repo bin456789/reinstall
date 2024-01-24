@@ -20,18 +20,31 @@ for %%F in ("X:\drivers\*.inf") do (
 echo wscript.sleep(5000) > sleep.vbs
 cscript //nologo sleep.vbs
 
-:: 获取主硬盘 id
-:: 注意 vista pe 没有 wmic
-for /F "tokens=2 delims==" %%A in ('wmic logicaldisk where "VolumeName='installer'" assoc:value /resultclass:Win32_DiskPartition ^| find "DiskIndex"') do (
-    set "DiskIndex=%%A"
-)
-
 :: 判断 efi 还是 bios
 echo list vol | diskpart | find "efi" && (
     set boot_type=efi
 ) || (
     set boot_type=bios
 )
+
+:: 获取 installer 卷 id
+for /f "tokens=2" %%a in ('echo list vol ^| diskpart ^| find "installer"') do (
+    set "VolIndex=%%a"
+)
+
+:: 将 installer 分区设为 Y 盘
+(echo select vol %VolIndex% & echo assign letter=Y) | diskpart
+
+:: 设置虚拟内存，好像没必要，安装时会自动在 C 盘设置虚拟内存
+rem wpeutil CreatePageFile /path=Y:\pagefile.sys
+
+:: 获取主硬盘 id
+:: vista pe 没有 wmic，因此用 diskpart
+(echo select vol %VolIndex% & echo list disk) | diskpart | find "* " > X:\disk.txt
+for /f "tokens=3" %%a in (X:\disk.txt) do (
+    set "DiskIndex=%%a"
+)
+del X:\disk.txt
 
 :: 重新分区/格式化
 (if "%boot_type%"=="efi" (
@@ -58,9 +71,13 @@ echo list vol | diskpart | find "efi" && (
     echo format fs=ntfs quick
 )) > X:\diskpart.txt
 
-
 :: 使用 diskpart /s ，出错不会执行剩下的 diskpart 命令
 diskpart /s X:\diskpart.txt
+del X:\diskpart.txt
+
+:: 盘符
+rem X boot.wim (ram)
+rem Y installer
 
 :: 设置 autounattend.xml 的主硬盘 id
 set "file=X:\autounattend.xml"
@@ -79,6 +96,9 @@ set "replace=%DiskIndex%"
 )) > %tempFile%
 move /y %tempFile% %file%
 
-:: 执行 setup.exe
 rename X:\setup.exe.disabled setup.exe
-X:\setup.exe /emsport:COM1 /emsbaudrate:115200
+
+:: 运行 X:\setup.exe 的话
+:: vista 会找不到安装源
+:: server 23h2 会无法运行
+Y:\setup.exe /emsport:COM1 /emsbaudrate:115200

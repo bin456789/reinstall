@@ -6,7 +6,7 @@
                 <AcceptEula>true</AcceptEula>
                 <ProductKey>
                     <WillShowUI>OnError</WillShowUI>
-                    <Key />
+                    <Key></Key>
                 </ProductKey>
             </UserData>
             <DiskConfiguration>
