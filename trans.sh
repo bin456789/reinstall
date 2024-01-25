@@ -845,11 +845,12 @@ create_part() {
             mkfs.ext4 -F -L os /dev/$xda*3           #3 os
             mkfs.ntfs -f -F -L installer /dev/$xda*4 #4 installer
         else
-            # bios
+            # bios + mbr 启动盘最大可用 2t
+            is_xda_gt_2t && max_usable_size=2TiB || max_usable_size=100%
             parted /dev/$xda -s -- \
                 mklabel msdos \
                 mkpart primary ntfs 1MiB -${part_size} \
-                mkpart primary ntfs -${part_size} 100% \
+                mkpart primary ntfs -${part_size} ${max_usable_size} \
                 set 1 boot on
             update_part /dev/$xda
 
