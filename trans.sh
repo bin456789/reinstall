@@ -438,6 +438,11 @@ to_lower() {
     tr '[:upper:]' '[:lower:]'
 }
 
+del_empty_lines() {
+    # grep .
+    sed '/^[[:space:]]*$/d'
+}
+
 get_part_num_by_part() {
     dev_part=$1
     echo "$dev_part" | grep -o '[0-9]*' | tail -1
@@ -789,11 +794,38 @@ dd_gzip_xz() {
     # alpine busybox 自带 gzip xz，但官方版也许性能更好
     # 用官方 wget，一来带进度条，二来自带重试
     apk add wget $prog
-    command wget $img -O- --tries=3 --progress=bar:force | $prog -dc >/dev/$xda
+    if ! command wget $img -O- --tries=5 --progress=bar:force | $prog -dc >/dev/$xda 2>/tmp/dd_stderr; then
+        # vhd 文件结尾有 512 字节额外信息，可以忽略
+        if grep -iq 'No space' /tmp/dd_stderr; then
+            apk add parted
+            disk_size=$(get_xda_size)
+            disk_end=$((disk_size - 1))
+            # 这里要 Ignore 两次
+            # Error: Can't have a partition outside the disk!
+            # Ignore/Cancel? i
+            # Error: Can't have a partition outside the disk!
+            # Ignore/Cancel? i
+            last_part_end=$(yes i | parted /dev/$xda 'unit b print' ---pretend-input-tty |
+                del_empty_lines | tail -1 | awk '{print $3}' | sed 's/B//')
+
+            echo "Last part end: $last_part_end"
+            echo "Disk end:      $disk_end"
+
+            if [ "$last_part_end" -le "$disk_end" ]; then
+                echo "Safely ignore no space error."
+                return
+            fi
+        fi
+        error_and_exit "$(cat /tmp/dd_stderr)"
+    fi
+}
+
+get_xda_size() {
+    blockdev --getsize64 /dev/$xda
 }
 
 is_xda_gt_2t() {
-    disk_size=$(blockdev --getsize64 /dev/$xda)
+    disk_size=$(get_xda_size)
     disk_2t=$((2 * 1024 * 1024 * 1024 * 1024))
     [ "$disk_size" -gt "$disk_2t" ]
 }
