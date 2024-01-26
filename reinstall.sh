@@ -258,15 +258,17 @@ is_virt() {
             # https://sources.debian.org/src/hw-detect/1.159/hw-detect.finish-install.d/08hw-detect/
             vmstr='VMware|Virtual|Virtualization|VirtualBox|VMW|Hyper-V|Bochs|QEMU|KVM|OpenStack|KubeVirt|innotek|Xen|Parallels|BHYVE'
             for name in ComputerSystem BIOS BaseBoard; do
-                if wmic $name | grep -Eiwo $vmstr; then
+                if wmic $name get /format:list | grep -Eiw $vmstr; then
                     _is_virt=true
                     break
                 fi
             done
-            if [ -z "$_is_virt" ]; then
-                if wmic /namespace:'\\root\cimv2' PATH Win32_Fan 2>/dev/null | head -1 | grep -q Name; then
-                    _is_virt=false
-                fi
+
+            # 没有风扇和温度信息，大概是虚拟机
+            if [ -z "$_is_virt" ] &&
+                ! wmic /namespace:'\\root\cimv2' PATH Win32_Fan 2>/dev/null | grep -q Name &&
+                ! wmic /namespace:'\\root\wmi' PATH MSAcpi_ThermalZoneTemperature 2>/dev/null | grep -q Name; then
+                _is_virt=true
             fi
         else
             # aws t4g debian 11
