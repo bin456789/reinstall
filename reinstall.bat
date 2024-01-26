@@ -40,8 +40,7 @@ if !errorlevel! == 0 (
         )
     )
 ) else (
-    :: mirrors.kernel.org 在荷兰太慢
-    set mirror=http://mirror.facebook.net
+    set mirror=http://mirrors.kernel.org
 )
 
 
