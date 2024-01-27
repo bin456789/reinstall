@@ -1092,12 +1092,12 @@ install_grub_win() {
     grub_dir=/tmp/grub-$grub_ver-for-windows
     grub=$grub_dir/grub
 
-    # 设置 grub 内嵌的模块
+    # 设置 grub 包含的模块
     # 原系统是 windows，因此不需要 ext2 lvm xfs btrfs
-    grub_modules+=" normal minicmd serial ls echo test cat reboot halt linux linux16 chain search all_video configfile"
+    grub_modules+=" normal minicmd serial ls echo test cat reboot halt linux chain search all_video configfile"
     grub_modules+=" scsi part_msdos part_gpt fat ntfs ntfscomp lzopio xzio gzio zstd"
     if ! is_efi; then
-        grub_modules+=" biosdisk"
+        grub_modules+=" biosdisk linux16"
     fi
 
     # 设置 grub prefix 为c盘根目录
@@ -1109,8 +1109,19 @@ install_grub_win() {
     if is_efi; then
         # efi
         info install grub for efi
-        $grub-mkimage -p $prefix -O x86_64-efi -o "$(cygpath -w $grub_dir/grubx64.efi)" $grub_modules
-        add_efi_entry_in_windows $grub_dir/grubx64.efi
+        if [ "$basearch" = aarch64 ]; then
+            alpine_ver=3.19
+            is_in_china && mirror=http://mirrors.tuna.tsinghua.edu.cn/alpine || mirror=https://dl-cdn.alpinelinux.org/alpine
+            grub_efi_apk=$(curl -L $mirror/v$alpine_ver/main/aarch64/ | grep -oP 'grub-efi-.*?apk' | head -1)
+            mkdir -p /tmp/grub-efi
+            curl -L "$mirror/v$alpine_ver/main/aarch64/$grub_efi_apk" | tar xz --warning=no-unknown-keyword -C /tmp/grub-efi/
+            cp -r /tmp/grub-efi/usr/lib/grub/arm64-efi/ $grub_dir
+            $grub-mkimage -p $prefix -O arm64-efi -o "$(cygpath -w $grub_dir/grubaa64.efi)" $grub_modules
+            add_efi_entry_in_windows $grub_dir/grubaa64.efi
+        else
+            $grub-mkimage -p $prefix -O x86_64-efi -o "$(cygpath -w $grub_dir/grubx64.efi)" $grub_modules
+            add_efi_entry_in_windows $grub_dir/grubx64.efi
+        fi
     else
         # bios
         info install grub for bios
@@ -1446,13 +1457,30 @@ if [ "$distro" = alpine ] && is_use_cloud_image; then
 fi
 
 # 检查硬件架构
-# x86强制使用x64
-# archlinux 云镜像没有 arch 命令
-basearch=$(uname -m)
-[ $basearch = i686 ] && basearch=x86_64
-case "$basearch" in
-"x86_64") basearch_alt=amd64 ;;
-"aarch64") basearch_alt=arm64 ;;
+if is_in_windows; then
+    # x86-based PC
+    # x64-based PC
+    # ARM-based PC
+    # ARM64-based PC
+    basearch=$(wmic ComputerSystem get SystemType /format:list |
+        grep '=' | cut -d= -f2 | cut -d- -f1)
+else
+    # archlinux 云镜像没有 arch 命令
+    # https://en.wikipedia.org/wiki/Uname
+    basearch=$(uname -m)
+fi
+
+# 统一架构名称，并强制 64 位
+case "$(echo $basearch | to_lower)" in
+i?86 | x64 | x86* | amd64)
+    basearch=x86_64
+    basearch_alt=amd64
+    ;;
+arm* | aarch64)
+    basearch=aarch64
+    basearch_alt=arm64
+    ;;
+*) error_and_exit "Unsupported arch: $basearch" ;;
 esac
 
 # 设置国内代理

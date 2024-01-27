@@ -49,17 +49,34 @@ set pkgs="curl,cpio,p7zip,bind-utils,ipcalc"
 set tags=%tmp%\cygwin-installed-!pkgs!
 if not exist !tags! (
     :: 检查32/64位
-    wmic os get osarchitecture | findstr /c:"64" >nul
-    if !errorlevel! == 0 (
-        set arch=x86_64
+    :: win10 arm 支持运行 x86 软件
+    :: win11 arm 支持运行 x86 和 x86_64 软件
+    :: wmic os get osarchitecture
+    wmic ComputerSystem get SystemType | find "ARM" > nul
+    if not errorlevel 1 (
+        for /f "tokens=2 delims==" %%a in ('wmic os get BuildNumber /format:list ^| find "BuildNumber"') do set BuildNumber=%%a
+        if !BuildNumber! GEQ 22000 (
+            set CygwinArch=x86_64
+        ) else (
+            set CygwinArch=x86
+        )
+    ) else (
+        wmic ComputerSystem get SystemType | find "x64" > nul
+        if not errorlevel 1 (
+            set CygwinArch=x86_64
+        ) else (
+            set CygwinArch=x86
+        )
+    )
+
+    if "!CygwinArch!" == "x86_64" (
         set dir=/sourceware/cygwin
     ) else (
-        set arch=x86
         set dir=/sourceware/cygwin-archive/20221123
     )
 
     :: 下载 Cygwin
-    call :download http://www.cygwin.com/setup-!arch!.exe %tmp%\setup-cygwin.exe
+    call :download http://www.cygwin.com/setup-!CygwinArch!.exe %tmp%\setup-cygwin.exe
 
     :: 安装 Cygwin
     set site=!mirror!!dir!

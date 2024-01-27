@@ -2,42 +2,65 @@
 
 [![Codacy Badge](https://app.codacy.com/project/badge/Grade/dc679a17751448628fe6d8ac35e26eed)](https://app.codacy.com/gh/bin456789/reinstall/dashboard?utm_source=gh&utm_medium=referral&utm_content=&utm_campaign=Badge_grade)
 [![CodeFactor](https://www.codefactor.io/repository/github/bin456789/reinstall/badge)](https://www.codefactor.io/repository/github/bin456789/reinstall)
-[![Lines of Code](https://tokei.rs/b1/github/bin456789/reinstall?category=code)](#reinstall)
+[![Lines of Code](https://tokei.rs/b1/github/bin456789/reinstall?category=code&style=flat)](https://github.com/XAMPPRocky/tokei_rs)
 
 一键重装脚本
 
-[中文](README.md) | [English](README.en.md)
+中文 | [English](README.en.md)
 
 ## 亮点
 
 - 默认使用官方安装程序，不满足安装程序内存要求时，将使用官方云镜像 (Cloud Image)
 - 不含第三方链接和自制包，所有资源均实时从源站点获得
 - 适配 512M + 5G 小鸡，并支持 256M 小鸡安装 Alpine
-- 支持用官方 iso 安装 Windows (不支持 ARM)
+- 支持用官方 iso 安装 Windows
 - 支持 Windows 重装成 Linux，也可重装 Windows
-- 支持 BIOS、EFI、ARM (ARM 不支持安装 Windows)
+- 支持 BIOS、EFI、ARM
 - 原系统分区支持 LVM、Btrfs
 - 支持安装 Alpine、Arch、openSUSE、Gentoo，也可从这些系统安装
 - 可通过 SSH、浏览器、串行控制台、后台 VNC 查看 DD、云镜像安装进度
 - 有很多注释
 
-## Linux 下使用
+## 下载（当前系统是 Linux）
 
-### 下载
+国外：
 
 ```bash
 curl -O https://raw.githubusercontent.com/bin456789/reinstall/main/reinstall.sh
 ```
 
-### 下载 (国内)
+国内：
 
 ```bash
 curl -O https://raw.fgit.cf/bin456789/reinstall/main/reinstall.sh
 ```
 
+## 下载（当前系统是 Windows）
+
+先关闭 `Windows Defender` 的 `实时保护` 功能
+
+国外：
+
+```batch
+certutil -urlcache -f -split https://raw.githubusercontent.com/bin456789/reinstall/main/reinstall.bat
+```
+
+国内：
+
+```batch
+certutil -urlcache -f -split https://raw.fgit.cf/bin456789/reinstall/main/reinstall.bat
+```
+
+[无法下载？](#如果-windows-下无法下载脚本)
+
+## 使用
+
+- 以下用法以 Linux 下运行为例
+- Windows 下运行 `reinstall.bat`，参数相同
+
 ### 用法 1: 安装 Linux
 
-注意：静态 IP 的机器安装 centos、alma、rocky、fedora、debian、ubuntu，需添加参数 --ci 强制使用云镜像
+- 静态 IP 的机器安装 centos、alma、rocky、fedora、debian、ubuntu，需添加参数 --ci 强制使用云镜像
 
 ```bash
 bash reinstall.sh centos   7|8|9  (8|9 为 stream 版本)
@@ -52,43 +75,55 @@ bash reinstall.sh centos   7|8|9  (8|9 为 stream 版本)
                   gentoo   (只支持 amd64 云镜像)
 
                   不输入版本号，则安装最新版
+```
 
-可选参数:         --ci     强制使用云镜像
+参数:
+
+```bash
+--ci              强制使用云镜像
 ```
 
 ### 用法 2: DD
 
-支持 gzip、xz 格式
+- 支持 gzip、xz 格式
 
-支持自动配置静态 IP、扩展系统盘
+- 静态 IP 的机器 DD Windows，会自动配置好 IP
 
 ```bash
-bash reinstall.sh dd --img=https://example.com/xxx.xz
+bash reinstall.sh dd --img https://example.com/xxx.xz
 ```
 
-### 用法 3：重启到 Alpine 救援系统 (Live OS)
+### 用法 3: 重启到 Alpine 救援系统 (Live OS)
 
-可用 ssh 连接，进行手动 DD、修改分区、手动安装 Arch Linux 等操作
+- 可用 ssh 连接，进行手动 DD、修改分区、手动安装 Arch / Gentoo 等操作
+
+- 如果没有修改硬盘内容，再次重启将回到原系统
 
 ```bash
 bash reinstall.sh alpine --hold=1
 ```
 
-### 用法 4：重启到 netboot.xyz
+### 用法 4: 重启到 [netboot.xyz](https://netboot.xyz/)
+
+- 可使用后台 VNC 安装更多系统
 
 ```bash
 bash reinstall.sh netboot.xyz
 ```
 
+![netboot.xyz](https://netboot.xyz/images/netboot.xyz.gif)
+
 ### 用法 5: 安装 Windows ISO
 
 ```bash
 bash reinstall.sh windows \
-     --iso='https://example.com/en-us_windows_10_enterprise_ltsc_2021_x64_dvd_d289cf96.iso' \
-     --image-name='Windows 10 Enterprise LTSC 2021'
+     --iso 'https://drive.massgrave.dev/en-us_windows_10_enterprise_ltsc_2021_x64_dvd_d289cf96.iso' \
+     --image-name 'Windows 10 Enterprise LTSC 2021'
 ```
 
-#### 参数说明
+![windows installer](https://filestore.community.support.microsoft.com/api/images/67c13a8c-cee6-47cd-ae80-a55923875c83)
+
+参数:
 
 `--iso` 原版镜像链接，无需集成 VirtIO、Xen、AWS、GCP 驱动
 
@@ -105,87 +140,47 @@ bash reinstall.sh windows \
 
 ![image-name](https://github.com/bin456789/reinstall/assets/7548515/5aae0a9b-61e2-4f66-bb98-d470a6beaac2)
 
-#### 其它说明
-
-1. 测试成功的系统有 7 10 11 2022，测试平台为 vultr (bios)、甲骨文 (efi)、aws t2 (xen)、aws t3 (nitro)
-2. 支持 32/64 位系统，UEFI 机器只支持 64 位
-3. 可绕过 Windows 11 硬件限制
-4. 实测不支持 ARM
-5. `zh-cn_windows_10_enterprise_ltsc_2021_x64_dvd_033b7312.iso` 此镜像安装后 `wsappx` 进程会长期占用 CPU
+1. 支持的系统：
+    - Windows Vista 到 Windows 11
+    - Windows Server 2008 到 Windows Server 2022
+    - Windows Server 变体，例如
+        - Windows Server Essentials
+        - Windows Server Annual Channel
+        - Hyper-V Server
+        - Azure Stack HCI
+2. BIOS 可使用 32/64 位，UEFI 机器只可使用 64 位
+3. 如果机器是静态 IP，安装后会自动设置 IP
+4. 可绕过 Windows 11 硬件限制
+5. 支持 Azure ARM (Hyper-V)，不支持甲骨文 ARM (KVM)
+6. `zh-cn_windows_10_enterprise_ltsc_2021_x64_dvd_033b7312.iso` 此镜像安装后 `wsappx` 进程会长期占用 CPU
 
    这是镜像的问题，解决方法是安装 `VCLibs` 库
 
    <https://www.google.com/search?q=ltsc+wsappx>
 
-6. 以下网站可找到 iso 链接
-
-   <https://archive.org>
+7. 以下网站可找到 iso 链接
 
    <https://massgrave.dev/genuine-installation-media.html>
 
-## Windows 下使用
-
-管理员权限运行 `cmd`
-
-如果运行的是 `powershell`，先进入 `cmd`
-
-### 下载
-
-```batch
-certutil -urlcache -f -split https://raw.githubusercontent.com/bin456789/reinstall/main/reinstall.bat
-```
-
-### 下载（国内）
-
-```batch
-certutil -urlcache -f -split https://raw.fgit.cf/bin456789/reinstall/main/reinstall.bat
-```
-
-### 如果无法下载
-
-- 关闭 Windows Defender 实时保护
-
-- 更新 SSL 根证书
-
-  ```batch
-  certutil -generateSSTFromWU root.sst
-  certutil -addstore Root root.sst
-  ```
-
-- `链接另存为`、`远程桌面` 复制以下两个文件
-
-  <https://raw.githubusercontent.com/bin456789/reinstall/main/reinstall.bat>
-
-  <https://raw.githubusercontent.com/bin456789/reinstall/main/reinstall.sh>
-
-### 使用
-
-所有功能均可在 Windows 下使用，参数和 Linux 下使用一样
-
-以安装 centos 7 为例
-
-```batch
-reinstall.bat centos-7
-```
-
 ## 内存要求
 
-| 系统                           | 传统安装 | 云镜像 |
-| ------------------------------ | -------- | ------ |
-| Debian                         | 384M     | 512M   |
-| Ubuntu                         | 1G       | 512M   |
-| CentOS / Alma / Rocky / Fedora | 1G       | 512M   |
-| Alpine                         | 256M     | -      |
-| openSUSE                       | -        | 512M   |
-| Arch                           | -        | 512M   |
-| Gentoo                         | -        | 512M   |
-| Windows                        | 1G       | -      |
+| 系统                                | 传统安装 | 云镜像 |
+| ----------------------------------- | -------- | ------ |
+| Debian                              | 384M     | 512M   |
+| Ubuntu                              | 1G       | 512M   |
+| CentOS / Alma / Rocky / Fedora      | 1G       | 512M   |
+| Alpine                              | 256M     | -      |
+| openSUSE                            | -        | 512M   |
+| Arch                                | -        | 512M   |
+| Gentoo                              | -        | 512M   |
+| Windows 8.1 (Server 2012 R2) 或以下 | 512M     | -      |
+| Windows 10 (Server 2016) 或以上     | 1G       | -      |
 
 ## 网络要求
 
 用`安装模式`安装 Linux 要有 DHCPv4
 
-其他情况支持静态 IP、IPv6（包括安装 Alpine、云镜像、Windows iso、dd）
+其他情况支持静态 IP、IPv6（包括安装 Alpine、Linux 云镜像、Windows iso、dd）
 
 运行脚本时不需要填写静态 IP 地址
 
@@ -197,15 +192,39 @@ reinstall.bat centos-7
 
 ## 默认密码
 
-| 系统               | 用户名        | 密码   |
-| ------------------ | ------------- | ------ |
-| Linux              | root          | 123@@@ |
-| Windows (iso 安装) | administrator | 123@@@ |
+| 系统          | 用户名        | 密码     |
+| ------------- | ------------- | -------- |
+| Linux         | root          | 123@@@   |
+| Windows (iso) | administrator | 123@@@   |
+| Windows (dd)  | 镜像用户名    | 镜像密码 |
+
+## 如果 Windows 下无法下载脚本
+
+可尝试以下几种方法
+
+1. 关闭 Windows Defender 实时保护
+
+2. Windows 7 安装此补丁启用 TLS 1.2
+
+   <https://aka.ms/easyfix51044>
+
+3. 更新 SSL 根证书
+
+   ```batch
+   certutil -generateSSTFromWU root.sst
+   certutil -addstore Root root.sst
+   ```
+
+4. 手动下载，通过 `远程桌面` 复制这两个文件
+
+   <https://raw.githubusercontent.com/bin456789/reinstall/main/reinstall.bat>
+
+   <https://raw.githubusercontent.com/bin456789/reinstall/main/reinstall.sh>
 
 ## TODO
 
 - 安装模式：静态 IP、IPv6、多网卡
 
-## 赞助
+## 推广
 
 [![DartNode](https://github.com/bin456789/reinstall/assets/7548515/7531e443-4069-4bf1-a40e-2e965f311e3f)](https://dartnode.com/)
