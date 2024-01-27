@@ -1133,19 +1133,35 @@ install_grub_win() {
         # bios
         info install grub for bios
 
-        # bootmgr 加载 g2ldr 有64k限制
+        # bootmgr 加载 g2ldr 有大小限制
+        # 超过大小会报错 0xc000007b
         # 解决方法1 g2ldr.mbr + g2ldr
         # 解决方法2 生成少于64K的 g2ldr + 动态模块
+        if false; then
+            # g2ldr.mbr
+            # 部分国内机无法访问 ftp.cn.debian.org
+            is_in_china && host=mirrors.tuna.tsinghua.edu.cn || host=deb.debian.org
+            curl -LO http://$host/debian/tools/win32-loader/stable/win32-loader.exe
+            7z x win32-loader.exe 'g2ldr.mbr' -o/tmp/win32-loader -r -y -bso0
+            find /tmp/win32-loader -name 'g2ldr.mbr' -exec cp {} /cygdrive/$c/ \;
 
-        # g2ldr.mbr
-        is_in_china && host=ftp.cn.debian.org || host=deb.debian.org
-        curl -LO http://$host/debian/tools/win32-loader/stable/win32-loader.exe
-        7z x win32-loader.exe 'g2ldr.mbr' -o/tmp/win32-loader -r -y -bso0
-        find /tmp/win32-loader -name 'g2ldr.mbr' -exec cp {} /cygdrive/$c/ \;
+            # g2ldr
+            # 配置文件 c:\grub.cfg
+            $grub-mkimage -p "$prefix" -O i386-pc -o "$(cygpath -w $grub_dir/core.img)" $grub_modules
+            cat $grub_dir/i386-pc/lnxboot.img $grub_dir/core.img >/cygdrive/$c/g2ldr
+        else
+            # grub-install 无法设置 prefix
+            # 配置文件 c:\grub\grub.cfg
+            $grub-install $c \
+                --target=i386-pc \
+                --boot-directory=$c: \
+                --install-modules="$grub_modules" \
+                --themes= \
+                --fonts= \
+                --no-bootsector
 
-        # g2ldr
-        $grub-mkimage -p "$prefix" -O i386-pc -o "$(cygpath -w $grub_dir/core.img)" $grub_modules
-        cat $grub_dir/i386-pc/lnxboot.img $grub_dir/core.img >/cygdrive/$c/g2ldr
+            cat $grub_dir/i386-pc/lnxboot.img /cygdrive/$c/grub/i386-pc/core.img >/cygdrive/$c/g2ldr
+        fi
 
         # 添加引导
         # 脚本可能不是首次运行，所以先删除原来的
@@ -1153,7 +1169,7 @@ install_grub_win() {
         bcdedit /enum all | grep --text $id && bcdedit /delete $id
         bcdedit /create $id /d "$(get_entry_name)" /application bootsector
         bcdedit /set $id device partition=$c:
-        bcdedit /set $id path \\g2ldr.mbr
+        bcdedit /set $id path \\g2ldr
         bcdedit /displayorder $id /addlast
         bcdedit /bootsequence $id /addfirst
     fi
@@ -1608,7 +1624,11 @@ if is_use_grub; then
 
     # 寻找 grub.cfg
     if is_in_windows; then
-        grub_cfg=/cygdrive/$c/grub.cfg
+        if is_efi; then
+            grub_cfg=/cygdrive/$c/grub.cfg
+        else
+            grub_cfg=/cygdrive/$c/grub/grub.cfg
+        fi
     else
         # linux
         if is_efi; then
