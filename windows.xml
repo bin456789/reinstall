@@ -1,5 +1,6 @@
 <?xml version="1.0" encoding="utf-8"?>
 <unattend xmlns="urn:schemas-microsoft-com:unattend">
+
     <settings pass="windowsPE">
         <component name="Microsoft-Windows-Setup" processorArchitecture="%arch%" publicKeyToken="31bf3856ad364e35" language="neutral" versionScope="nonSxS" xmlns:wcm="http://schemas.microsoft.com/WMIConfig/2002/State" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance">
             <UserData>
@@ -9,18 +10,6 @@
                     <Key></Key>
                 </ProductKey>
             </UserData>
-            <DiskConfiguration>
-                <WillShowUI>OnError</WillShowUI>
-                <Disk>
-                    <DiskID>%disk_id%</DiskID>
-                    <WillWipeDisk>false</WillWipeDisk>
-                    <ModifyPartitions>
-                    </ModifyPartitions>
-                </Disk>
-            </DiskConfiguration>
-            <ComplianceCheck>
-                <DisplayReport>OnError</DisplayReport>
-            </ComplianceCheck>
             <ImageInstall>
                 <OSImage>
                     <InstallFrom>
@@ -54,6 +43,7 @@
 
     <!-- vultr win8/8.1/2012/2012r2 在 windowsPE/Microsoft-Windows-PnpCustomizationsWinPE 下载加载气球驱动
     会出现 Windows Cannot find Microsoft software license terms 错误 -->
+
     <settings pass="offlineServicing">
         <component name="Microsoft-Windows-PnpCustomizationsNonWinPE" processorArchitecture="%arch%" publicKeyToken="31bf3856ad364e35" language="neutral" versionScope="nonSxS" xmlns:wcm="http://schemas.microsoft.com/WMIConfig/2002/State" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance">
             <DriverPaths>
@@ -63,23 +53,7 @@
             </DriverPaths>
         </component>
     </settings>
-    <settings pass="oobeSystem">
-        <component name="Microsoft-Windows-Shell-Setup" processorArchitecture="%arch%" publicKeyToken="31bf3856ad364e35" language="neutral" versionScope="nonSxS" xmlns:wcm="http://schemas.microsoft.com/WMIConfig/2002/State" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance">
-            <UserAccounts>
-                <AdministratorPassword>
-                    <Value>123@@@</Value>
-                    <PlainText>true</PlainText>
-                </AdministratorPassword>
-            </UserAccounts>
-            <OOBE>
-                <HideEULAPage>true</HideEULAPage>
-                <ProtectYourPC>3</ProtectYourPC>
-                <SkipMachineOOBE>true</SkipMachineOOBE>
-                <SkipUserOOBE>true</SkipUserOOBE>
-            </OOBE>
-            <TimeZone>China Standard Time</TimeZone>
-        </component>
-    </settings>
+
     <settings pass="specialize">
         <component name="Microsoft-Windows-Deployment" processorArchitecture="%arch%" publicKeyToken="31bf3856ad364e35" language="neutral" versionScope="nonSxS" xmlns:wcm="http://schemas.microsoft.com/WMIConfig/2002/State" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance">
             <RunSynchronous>
@@ -128,6 +102,24 @@
         </component>
         <component name="Microsoft-Windows-powercpl" processorArchitecture="%arch%" publicKeyToken="31bf3856ad364e35" language="neutral" versionScope="nonSxS" xmlns:wcm="http://schemas.microsoft.com/WMIConfig/2002/State" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance">
             <PreferredPlan>8c5e7fda-e8bf-4a96-9a85-a6e23a8c635c</PreferredPlan>
+        </component>
+    </settings>
+
+    <settings pass="oobeSystem">
+        <component name="Microsoft-Windows-Shell-Setup" processorArchitecture="%arch%" publicKeyToken="31bf3856ad364e35" language="neutral" versionScope="nonSxS" xmlns:wcm="http://schemas.microsoft.com/WMIConfig/2002/State" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance">
+            <UserAccounts>
+                <AdministratorPassword>
+                    <Value>123@@@</Value>
+                    <PlainText>true</PlainText>
+                </AdministratorPassword>
+            </UserAccounts>
+            <OOBE>
+                <HideEULAPage>true</HideEULAPage>
+                <ProtectYourPC>3</ProtectYourPC>
+                <SkipMachineOOBE>true</SkipMachineOOBE>
+                <SkipUserOOBE>true</SkipUserOOBE>
+            </OOBE>
+            <TimeZone>China Standard Time</TimeZone>
         </component>
     </settings>
 </unattend>

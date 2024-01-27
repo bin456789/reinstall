@@ -16,8 +16,7 @@ chpasswd:
       password: 123@@@
       type: text
 runcmd:
-  # arch 没有 /etc/ssh/sshd_config.d/ 文件夹
-  # opensuse tumbleweed 有 /etc/ssh/sshd_config.d/ 文件夹，但没有 /etc/ssh/sshd_config，但有/usr/etc/ssh/sshd_config
+  # opensuse tumbleweed 有 /etc/ssh/sshd_config.d/ 文件夹，没有 /etc/ssh/sshd_config，有/usr/etc/ssh/sshd_config
   - grep 'Include.*/etc/ssh/sshd_config.d' /etc/ssh/sshd_config && mkdir -p /etc/ssh/sshd_config.d && echo "PermitRootLogin yes" >/etc/ssh/sshd_config.d/01-permitrootlogin.conf || echo "PermitRootLogin yes" >>/etc/ssh/sshd_config
   - systemctl restart sshd
   - touch /etc/cloud/cloud-init.disabled

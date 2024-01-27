@@ -278,6 +278,7 @@ is_virt() {
             if is_have_cmd systemd-detect-virt && systemd-detect-virt -v; then
                 _is_virt=true
             fi
+
             if [ -z "$_is_virt" ]; then
                 # debian 安装 virt-what 不会自动安装 dmidecode，因此结果有误
                 install_pkg dmidecode virt-what
@@ -317,7 +318,7 @@ setos() {
     setos_alpine() {
         is_virt && flavour=virt || flavour=lts
 
-        # alpine aarch64 3.16/3.17 lts 才有直连链接
+        # alpine aarch64 3.16/3.17 virt 没有直连链接
         if [ "$basearch" = aarch64 ] &&
             { [ "$releasever" = 3.16 ] || [ "$releasever" = 3.17 ]; }; then
             flavour=lts
@@ -331,8 +332,8 @@ setos() {
         fi
         eval ${step}_vmlinuz=$mirror/releases/$basearch/netboot/vmlinuz-$flavour
         eval ${step}_initrd=$mirror/releases/$basearch/netboot/initramfs-$flavour
-        eval ${step}_repo=$mirror/main
         eval ${step}_modloop=$mirror/releases/$basearch/netboot/modloop-$flavour
+        eval ${step}_repo=$mirror/main
     }
 
     setos_debian() {
@@ -726,15 +727,18 @@ install_pkg() {
         esac
     }
 
+    is_need_rebuild() {
+        cmd=$1
+        # gentoo 默认编译的 unsquashfs 不支持 xz
+        if [ "$cmd" = unsquashfs ] && is_have_cmd emerge && ! unsquashfs |& grep -w xz; then
+            echo "unsquashfs not supported xz. rebuilding."
+            return 0
+        fi
+        return 1
+    }
+
     for cmd in "$@"; do
-        if ! is_have_cmd $cmd ||
-            {
-                # gentoo 默认编译的 unsquashfs 不支持 xz
-                [ "$cmd" = unsquashfs ] &&
-                    is_have_cmd emerge &&
-                    ! unsquashfs |& grep -w xz &&
-                    echo "unsquashfs not supported xz. need rebuild."
-            }; then
+        if ! is_have_cmd $cmd || is_need_rebuild $cmd; then
             if ! find_pkg_mgr; then
                 error_and_exit "Can't find compatible package manager. Please manually install $cmd."
             fi
@@ -799,7 +803,8 @@ check_ram() {
 
 is_efi() {
     if is_in_windows; then
-        bcdedit | grep -q '^path.*\.efi'
+        # bcdedit | grep -qi '^path.*\.efi'
+        mountvol | grep -q --text 'EFI'
     else
         [ -d /sys/firmware/efi ]
     fi
@@ -976,7 +981,7 @@ add_efi_entry_in_windows() {
 
 get_maybe_efi_dirs_in_linux() {
     # arch云镜像efi分区挂载在/efi，且使用 autofs，挂载后会有两个 /efi 条目
-    mount | awk '$5=="vfat" || $5=="autofs" {print $3}' | grep -E '/boot|/efi' | sort | uniq
+    mount | awk '$5=="vfat" || $5=="autofs" {print $3}' | grep -E '/boot|/efi' | sort -u
 }
 
 get_disk_by_part() {
@@ -1045,7 +1050,7 @@ install_grub_linux_efi() {
         grub_efi=grubx64.efi
     fi
 
-    # fedora x86_64 的 efi 无法识别 opensuse tumbleweed 的 btrfs
+    # fedora x86_64 的 efi 无法识别 opensuse tumbleweed 的 xfs
     # opensuse tumbleweed aarch64 的 efi 无法识别 alpine 3.19 的内核
     if [ "$basearch" = aarch64 ]; then
         efi_distro=fedora
@@ -1053,13 +1058,15 @@ install_grub_linux_efi() {
         efi_distro=opensuse
     fi
 
+    # 不要用 download.opensuse.org 和 download.fedoraproject.org
+    # 因为 ipv6 访问有时跳转到 ipv4 地址，造成 ipv6 only 机器无法下载
     if [ "$efi_distro" = fedora ]; then
         fedora_ver=39
 
         if is_in_china; then
             mirror=https://mirrors.tuna.tsinghua.edu.cn/fedora
         else
-            mirror=https://download.fedoraproject.org/pub/fedora/linux
+            mirror=https://mirror.fcix.net/fedora/linux
         fi
 
         curl -Lo /tmp/$grub_efi $mirror/releases/$fedora_ver/Everything/$basearch/os/EFI/BOOT/$grub_efi
@@ -1067,7 +1074,7 @@ install_grub_linux_efi() {
         if is_in_china; then
             mirror=https://mirror.sjtu.edu.cn/opensuse
         else
-            mirror=https://download.opensuse.org
+            mirror=https://mirror.fcix.net/opensuse
         fi
 
         file=tumbleweed/repo/oss/EFI/BOOT/grub.efi
@@ -1102,7 +1109,7 @@ install_grub_win() {
 
     # 设置 grub prefix 为c盘根目录
     # 运行 grub-probe 会改变cmd窗口字体
-    prefix=$($grub-probe -t drive $c: | sed 's,.*PhysicalDrive,(hd,' | sed 's,\r,,')/
+    prefix=$($grub-probe -t drive $c: | sed 's|.*PhysicalDrive|(hd|' | del_cr)/
     echo $prefix
 
     # 安装 grub
@@ -1186,9 +1193,11 @@ echo_tmp_ttys() {
 }
 
 get_entry_name() {
-    printf 'reinstall (%s%s%s)' "$distro" \
-        "$([ -n "$releasever" ] && printf ' %s' "$releasever")" \
-        "$([ "$distro" = alpine ] && [ "$hold" = 1 ] && printf ' Live OS')"
+    printf 'reinstall ('
+    printf '%s' "$distro"
+    [ -n "$releasever" ] && printf ' %s' "$releasever"
+    [ "$distro" = alpine ] && [ "$hold" = 1 ] && printf ' Live OS'
+    printf ')'
 }
 
 # shellcheck disable=SC2154
@@ -1369,10 +1378,13 @@ EOF
 
 # 脚本入口
 # 检查 root
-if ! is_in_windows; then
+if is_in_windows; then
+    if ! openfiles >/dev/null 2>&1; then
+        error_and_exit "Please run as administrator."
+    fi
+else
     if [ "$EUID" -ne 0 ]; then
-        info "Please run as root."
-        exit 1
+        error_and_exit "Please run as root."
     fi
 fi
 
@@ -1568,8 +1580,8 @@ fi
 # 将内核/netboot.xyz.lkrn 放到正确的位置
 if is_use_grub; then
     if is_in_windows; then
-        mv /reinstall-vmlinuz /cygdrive/$c/
-        is_have_initrd && mv /reinstall-initrd /cygdrive/$c/
+        cp -f /reinstall-vmlinuz /cygdrive/$c/
+        is_have_initrd && cp -f /reinstall-initrd /cygdrive/$c/
     else
         if is_os_in_btrfs && is_os_in_subvol; then
             cp_to_btrfs_root /reinstall-vmlinuz
@@ -1584,8 +1596,9 @@ if is_use_grub; then
     if is_in_windows; then
         install_grub_win
     else
-        # linux aarch64 efi 要用去除了内核 magic number 校验的 grub
-        # 为了方便测试，linux x86 efi 也是用外部 grub
+        # linux aarch64 原系统的 grub 可能无法启动 alpine 3.19 的内核
+        # 要用去除了内核 magic number 校验的 grub
+        # 为了方便测试，linux x86 efi 也采用外部 grub
         if is_efi; then
             install_grub_linux_efi
         fi
@@ -1623,11 +1636,12 @@ if is_use_grub; then
         fi
     fi
 
-    # 判断用 linux 还是 linuxefi
+    # 判断用 linux 还是 linuxefi（主要是红帽系）
     # 现在 efi 用下载的 grub，因此不需要判断 linux 或 linuxefi
     if false && is_use_local_grub; then
         # 在x86 efi机器上，不同版本的 grub 可能用 linux 或 linuxefi 加载内核
         # 通过检测原有的条目有没有 linuxefi 字样就知道当前 grub 用哪一种
+        # 也可以检测 /etc/grub.d/10_linux
         if [ -d /boot/loader/entries/ ]; then
             entries="/boot/loader/entries/"
         fi

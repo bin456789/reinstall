@@ -67,7 +67,6 @@ is_have_cmd() {
 download() {
     url=$1
     path=$2
-    echo $url
 
     # 有ipv4地址无ipv4网关的情况下，aria2可能会用ipv4下载，而不是ipv6
     # axel 在 lightsail 上会占用大量cpu
@@ -96,12 +95,25 @@ download() {
 
     # 阿里云源检测 user-agent 禁止 axel/aria2 下载
     # aria2 默认 --max-tries 5
-    stdbuf -o0 -e0 \
-        aria2c -x4 \
-        --allow-overwrite=true \
-        --summary-interval=0 \
-        --user-agent=Wget/1.21.1 \
-        $save $url
+
+    # 默认 --max-tries=5，但以下情况服务器出错，aria2不会重试，而是直接返回错误
+    # 因此添加 for 循环
+    #     [ERROR] CUID#7 - Download aborted. URI=https://aka.ms/manawindowsdrivers
+    # Exception: [AbstractCommand.cc:351] errorCode=1 URI=https://aka.ms/manawindowsdrivers
+    #   -> [SocketCore.cc:1019] errorCode=1 SSL/TLS handshake failure:  `not signed by known authorities or invalid'
+
+    echo "$url"
+    for i in 1 2 3; do
+        if stdbuf -oL -eL \
+            aria2c -x4 \
+            --allow-overwrite=true \
+            --summary-interval=0 \
+            --user-agent=Wget/1.21.1 \
+            --max-tries 1 \
+            $save $url; then
+            return
+        fi
+    done
 }
 
 update_part() {
@@ -1284,7 +1296,7 @@ modify_linux() {
     # 修复 fedora 38 或以下用静态 ipv6 会掉线
     # el 全系也用 NetworkManager，但他们的配置文件是 sysconfig，因此不受影响
     # https://github.com/canonical/cloud-init/commit/5d440856cb6d2b4c908015fe4eb7227615c17c8b
-    if grep -E 'fedora:(37|38)' $os_dir/etc/os-release; then
+    if grep -E 'fedora:38' $os_dir/etc/os-release; then
         network_manager_py=$os_dir/usr/lib/python3.11/site-packages/cloudinit/net/network_manager.py &&
             if ! grep '"static6": "manual",' $network_manager_py; then
                 echo '"static6": "manual",' | insert_into_file $network_manager_py after '"static": "manual",'
@@ -1405,7 +1417,11 @@ modify_os_on_disk() {
                     return
                 fi
             elif [ "$only_process" = windows ]; then
-                # find 有时会报 I/O error
+                # find 不是很聪明
+                # find /mnt/c -iname windows -type d -maxdepth 1
+                # find: /mnt/c/pagefile.sys: Permission denied
+                # find: /mnt/c/swapfile.sys: Permission denied
+                # shellcheck disable=SC2010
                 if ls -d /os/*/ | grep -i '/windows/' 2>/dev/null; then
                     # 重新挂载为读写、忽略大小写
                     umount /os
@@ -2115,7 +2131,8 @@ install_windows() {
     # 如果有重复的 Windows/System32 文件夹，会提示找不到 winload.exe 无法引导
     # win7 win10 是 Windows/System32
     # win2016    是 windows/system32
-    system32_dir=$(ls -d /wim/*/*32)
+    # shellcheck disable=SC2010
+    system32_dir=$(ls -d /wim/*/*32 | grep -i windows/system32)
     download $confhome/windows-setup.bat $system32_dir/startnet.cmd
 
     # 提交修改 boot.wim
@@ -2323,9 +2340,6 @@ if [ "$hold" = 2 ]; then
     exit
 fi
 
-# 让 web ssh 输出全部内容
-for i in $(seq 10); do
-    echo
-done
+# 让 web 输出全部内容
 sleep 5
 reboot

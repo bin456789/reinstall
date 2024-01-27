@@ -80,13 +80,13 @@ if not exist !tags! (
 
     :: 安装 Cygwin
     set site=!mirror!!dir!
-    %tmp%\setup-cygwin.exe --allow-unsupported-windows^
-                            --quiet-mode^
-                            --only-site^
-                            --site !site!^
-                            --root %SystemDrive%\cygwin^
-                            --local-package-dir %tmp%\cygwin-local-package-dir^
-                            --packages !pkgs!^
+    %tmp%\setup-cygwin.exe --allow-unsupported-windows ^
+                           --quiet-mode ^
+                           --only-site ^
+                           --site !site! ^
+                           --root %SystemDrive%\cygwin ^
+                           --local-package-dir %tmp%\cygwin-local-package-dir ^
+                           --packages !pkgs! ^
     && type nul >!tags!
 )
 

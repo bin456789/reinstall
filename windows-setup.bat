@@ -17,14 +17,17 @@ for %%F in ("X:\drivers\*.inf") do (
 :: 等待加载分区
 :: 没有 timeout 命令
 :: 没有加载网卡驱动，无法用 ping 来等待
-echo wscript.sleep(5000) > sleep.vbs
-cscript //nologo sleep.vbs
+echo wscript.sleep(5000) > X:\sleep.vbs
+cscript //nologo X:\sleep.vbs
+del X:\sleep.vbs
 
 :: 判断 efi 还是 bios
+:: 或者用 https://learn.microsoft.com/windows-hardware/manufacture/desktop/boot-to-uefi-mode-or-legacy-bios-mode
+:: pe 下没有 mountvol
 echo list vol | diskpart | find "efi" && (
-    set boot_type=efi
+    set BootType=efi
 ) || (
-    set boot_type=bios
+    set BootType=bios
 )
 
 :: 获取 installer 卷 id
@@ -47,7 +50,7 @@ for /f "tokens=3" %%a in (X:\disk.txt) do (
 del X:\disk.txt
 
 :: 重新分区/格式化
-(if "%boot_type%"=="efi" (
+(if "%BootType%"=="efi" (
     echo select disk %DiskIndex%
 
     echo select part 1
