@@ -1859,7 +1859,7 @@ EOF
 }
 
 install_windows() {
-    apk add wimlib virt-what dmidecode rsync pev
+    apk add wimlib virt-what dmidecode pev
 
     # shellcheck disable=SC2154
     download $iso /os/windows.iso
@@ -1874,10 +1874,19 @@ install_windows() {
         cp -rv /iso/boot* /os/boot/efi/
         cp -rv /iso/efi/ /os/boot/efi/
         cp -rv /iso/sources/boot.wim /os/boot/efi/sources/
-        rsync -rv --exclude=/sources/boot.wim /iso/* /os/installer/
+
+        if false; then
+            rsync -rv --exclude=/sources/boot.wim /iso/* /os/installer/
+        else
+            cd /iso
+            echo 'Copying installer files...'
+            find . -type f -not -name boot.wim -exec cp -r --parents {} /os/installer/ \;
+            cd -
+        fi
         boot_wim=/os/boot/efi/sources/boot.wim
     else
-        rsync -rv /iso/* /os/installer/
+        echo 'Copying installer files...'
+        cp -r /iso/* /os/installer/
         boot_wim=/os/installer/sources/boot.wim
     fi
 
