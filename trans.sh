@@ -1914,16 +1914,8 @@ install_windows() {
     nt_ver="$(peres -v /iso/setup.exe | grep 'Product Version:' | cut -d: -f2 | xargs | cut -d. -f 1,2)"
     echo "NT Version: $nt_ver"
 
-    is_nt_6_1() {
-        [ "$nt_ver" = 6.1 ]
-    }
-
-    is_win11() {
-        echo $image_name | grep -iEw '^Windows 11'
-    }
-
     # 跳过 win11 硬件限制
-    if is_win11; then
+    if [[ "$image_name" = "Windows 11"* ]]; then
         wiminfo "$install_wim" "$image_name" --image-property WINDOWS/INSTALLATIONTYPE=Server
     fi
 
@@ -1968,15 +1960,28 @@ install_windows() {
         [ "$arch_wim" = x86_64 ]; then
         # aws nitro
         # 只有 x64 位驱动
+        # 可能不支持 vista
         # https://docs.aws.amazon.com/zh_cn/AWSEC2/latest/WindowsGuide/aws-nvme-drivers.html
         # https://docs.aws.amazon.com/zh_cn/AWSEC2/latest/WindowsGuide/enhanced-networking-ena.html
-        if is_nt_6_1; then
-            download https://s3.amazonaws.com/ec2-windows-drivers-downloads/NVMe/1.3.2/AWSNVMe.zip $drv/AWSNVMe.zip
-            download https://s3.amazonaws.com/ec2-windows-drivers-downloads/ENA/x64/2.2.3/AwsEnaNetworkDriver.zip $drv/AwsEnaNetworkDriver.zip
-        else
-            download https://s3.amazonaws.com/ec2-windows-drivers-downloads/NVMe/Latest/AWSNVMe.zip $drv/AWSNVMe.zip
-            download https://s3.amazonaws.com/ec2-windows-drivers-downloads/ENA/Latest/AwsEnaNetworkDriver.zip $drv/AwsEnaNetworkDriver.zip
-        fi
+
+        nvme_ver=$(
+            case "$nt_ver" in
+            6.0 | 6.1) echo 1.3.2 ;;
+            *) echo Latest ;;
+            esac
+        )
+
+        ena_ver=$(
+            case "$nt_ver" in
+            6.0 | 6.1) echo 2.2.3 ;;
+            6.2 | 6.3) echo 2.6.0 ;;
+            *) echo Latest ;;
+            esac
+        )
+
+        download https://s3.amazonaws.com/ec2-windows-drivers-downloads/NVMe/$nvme_ver/AWSNVMe.zip $drv/AWSNVMe.zip
+        download https://s3.amazonaws.com/ec2-windows-drivers-downloads/ENA/$ena_ver/AwsEnaNetworkDriver.zip $drv/AwsEnaNetworkDriver.zip
+
         unzip -o -d $drv/aws/ $drv/AWSNVMe.zip
         unzip -o -d $drv/aws/ $drv/AwsEnaNetworkDriver.zip
 
@@ -1984,15 +1989,18 @@ install_windows() {
         [ "$arch_wim" = x86_64 ]; then
         # aws xen
         # 只有 64 位驱动
-        # 未测试
+        # 可能不支持 vista
         # https://docs.aws.amazon.com/zh_cn/AWSEC2/latest/WindowsGuide/xen-drivers-overview.html
         apk add msitools
 
-        if is_nt_6_1; then
-            download https://s3.amazonaws.com/ec2-windows-drivers-downloads/AWSPV/8.3.5/AWSPVDriver.zip $drv/AWSPVDriver.zip
-        else
-            download https://s3.amazonaws.com/ec2-windows-drivers-downloads/AWSPV/Latest/AWSPVDriver.zip $drv/AWSPVDriver.zip
-        fi
+        aws_pv_ver=$(
+            case "$nt_ver" in
+            6.0 | 6.1) echo 8.3.5 ;;
+            *) echo Latest ;;
+            esac
+        )
+
+        download https://s3.amazonaws.com/ec2-windows-drivers-downloads/AWSPV/$aws_pv_ver/AWSPVDriver.zip $drv/AWSPVDriver.zip
 
         unzip -o -d $drv $drv/AWSPVDriver.zip
         msiextract $drv/AWSPVDriverSetup.msi -C $drv
@@ -2057,6 +2065,14 @@ install_windows() {
             # 没有 win6.0 文件夹
             sys_gce=win$nt_ver
         fi
+
+    elif [ "$(dmidecode -s chassis-asset-tag)" = "7783-7084-3265-9085-8269-3286-77" ] &&
+        [ "$arch_wim" != arm64 ]; then
+        # azure
+        # 有 x86 x64，没 arm64
+        # https://learn.microsoft.com/azure/virtual-network/accelerated-networking-mana-windows
+        download https://aka.ms/manawindowsdrivers $drv/azure.zip
+        unzip $drv/azure.zip -d $drv/azure/
     fi
 
     # 修改应答文件
@@ -2072,18 +2088,20 @@ install_windows() {
     fi
 
     # shellcheck disable=SC2010
-    if ei_cfg="$(ls -d /os/installer/sources/* | grep -i ei.cfg)"; then
+    if ei_cfg="$(ls -d /os/installer/sources/* | grep -i ei.cfg)" &&
+        grep -i EVAL "$ei_cfg"; then
         # 评估版 iso 需要删除 autounattend.xml 里面的 <Key><Key/>
         # 否则会出现 Windows Cannot find Microsoft software license terms
-        if grep -i EVAL "$ei_cfg"; then
-            sed -i "s|<Key></Key>||" /tmp/autounattend.xml
-        fi
+        sed -i "/%Key%/d" /tmp/autounattend.xml
     else
-        # vista 需密钥，密钥与 edition 可以不一致
+        # vista 需密钥，密钥可与 edition 不一致
+        # 其他系统要空密钥
         if [[ "$image_name" = 'Windows Vista'* ]]; then
-            vista_gvlk=VKK3X-68KWM-X2YGT-QR4M6-4BWMV
-            sed -i "s|<Key></Key>|<Key>$vista_gvlk</Key>|" /tmp/autounattend.xml
+            key=VKK3X-68KWM-X2YGT-QR4M6-4BWMV
+        else
+            key=
         fi
+        sed -i "s/%key%/$key/" /tmp/autounattend.xml
     fi
 
     # 挂载 boot.wim
@@ -2114,6 +2132,7 @@ install_windows() {
     }
     [ -d $drv/aws ] && cp_drivers $drv/aws
     [ -d $drv/xen ] && cp_drivers $drv/xen -ipath "*/$arch_xen/*"
+    [ -d $drv/azure ] && cp_drivers $drv/azure
     [ -d $drv/gce ] && {
         [ "$arch_wim" = x86 ] && gvnic_suffix=-32 || gvnic_suffix=
         cp_drivers $drv/gce/gvnic -ipath "*/$sys_gce$gvnic_suffix/*"

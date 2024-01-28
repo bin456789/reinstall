@@ -37,7 +37,9 @@ curl -O https://raw.fgit.cf/bin456789/reinstall/main/reinstall.sh
 
 ## 下载（当前系统是 Windows）
 
-先关闭 `Windows Defender` 的 `实时保护` 功能
+[无法下载？](#如果-windows-下无法下载脚本)
+
+请先关闭 `Windows Defender` 的 `实时保护` 功能。该功能会阻止 `certutil` 下载任何文件
 
 国外：
 
@@ -51,14 +53,14 @@ certutil -urlcache -f -split https://raw.githubusercontent.com/bin456789/reinsta
 certutil -urlcache -f -split https://raw.fgit.cf/bin456789/reinstall/main/reinstall.bat
 ```
 
-[无法下载？](#如果-windows-下无法下载脚本)
-
 ## 使用
 
-- 以下用法以 Linux 下运行为例
-- Windows 下运行 `reinstall.bat`，参数相同
+所有功能均可在 Linux / Windows 下使用
 
-### 用法 1: 安装 Linux
+- Linux 下运行 `bash reinstall.sh`
+- Windows 下运行 `reinstall.bat`
+
+### 功能 1: 安装 Linux
 
 - 静态 IP 的机器安装 centos、alma、rocky、fedora、debian、ubuntu，需添加参数 --ci 强制使用云镜像
 
@@ -83,7 +85,7 @@ bash reinstall.sh centos   7|8|9  (8|9 为 stream 版本)
 --ci              强制使用云镜像
 ```
 
-### 用法 2: DD
+### 功能 2: DD
 
 - 支持 gzip、xz 格式
 
@@ -93,7 +95,7 @@ bash reinstall.sh centos   7|8|9  (8|9 为 stream 版本)
 bash reinstall.sh dd --img https://example.com/xxx.xz
 ```
 
-### 用法 3: 重启到 Alpine 救援系统 (Live OS)
+### 功能 3: 重启到 Alpine 救援系统 (Live OS)
 
 - 可用 ssh 连接，进行手动 DD、修改分区、手动安装 Arch / Gentoo 等操作
 
@@ -103,7 +105,7 @@ bash reinstall.sh dd --img https://example.com/xxx.xz
 bash reinstall.sh alpine --hold=1
 ```
 
-### 用法 4: 重启到 [netboot.xyz](https://netboot.xyz/)
+### 功能 4: 重启到 [netboot.xyz](https://netboot.xyz/)
 
 - 可使用后台 VNC 安装更多系统
 
@@ -113,7 +115,7 @@ bash reinstall.sh netboot.xyz
 
 ![netboot.xyz](https://netboot.xyz/images/netboot.xyz.gif)
 
-### 用法 5: 安装 Windows ISO
+### 功能 5: 安装 Windows ISO
 
 ```bash
 bash reinstall.sh windows \
@@ -125,7 +127,7 @@ bash reinstall.sh windows \
 
 参数:
 
-`--iso` 原版镜像链接，无需集成 VirtIO、Xen、AWS、GCP 驱动
+`--iso` 原版镜像链接
 
 `--image-name` 指定要安装的映像，不区分大小写，两边要有引号，例如：
 
@@ -148,17 +150,23 @@ bash reinstall.sh windows \
         - Windows Server Annual Channel
         - Hyper-V Server
         - Azure Stack HCI
-2. BIOS 可使用 32/64 位，UEFI 机器只可使用 64 位
-3. 如果机器是静态 IP，安装后会自动设置 IP
-4. 可绕过 Windows 11 硬件限制
-5. 支持 Azure ARM (Hyper-V)，不支持甲骨文 ARM (KVM)
-6. `zh-cn_windows_10_enterprise_ltsc_2021_x64_dvd_033b7312.iso` 此镜像安装后 `wsappx` 进程会长期占用 CPU
+2. 脚本会按需安装以下驱动：
+    - KVM ([Virtio](https://fedorapeople.org/groups/virt/virtio-win/direct-downloads/))
+    - XEN ([XEN PV](https://xenproject.org/windows-pv-drivers/)、[AWS PV](https://docs.aws.amazon.com/zh_cn/AWSEC2/latest/WindowsGuide/xen-drivers-overview.html))
+    - AWS ([ENA 网卡](https://docs.aws.amazon.com/zh_cn/AWSEC2/latest/WindowsGuide/enhanced-networking-ena.html)、[NVME 存储控制器](https://docs.aws.amazon.com/zh_cn/AWSEC2/latest/WindowsGuide/aws-nvme-drivers.html))
+    - GCP ([gVNIC 网卡](https://cloud.google.com/compute/docs/networking/using-gvnic)、[GGA 显卡](https://cloud.google.com/compute/docs/instances/enable-instance-virtual-display))
+    - Azure ([MANA 网卡](https://learn.microsoft.com/zh-cn/azure/virtual-network/accelerated-networking-mana-windows))
+3. Vista (Server 2008) 和 32 位系统可能会缺少驱动
+4. 静态 IP 的机器，安装后会自动配置好 IP
+5. 可绕过 Windows 11 硬件限制
+6. 支持 Azure ARM (Hyper-V)，不支持甲骨文 ARM (KVM)
+7. `zh-cn_windows_10_enterprise_ltsc_2021_x64_dvd_033b7312.iso` 此镜像安装后 `wsappx` 进程会长期占用 CPU
 
    这是镜像的问题，解决方法是安装 `VCLibs` 库
 
    <https://www.google.com/search?q=ltsc+wsappx>
 
-7. 以下网站可找到 iso 链接
+8. 以下网站可找到 iso 链接
 
    <https://massgrave.dev/genuine-installation-media.html>
 

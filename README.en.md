@@ -37,7 +37,9 @@ curl -O https://raw.fgit.cf/bin456789/reinstall/main/reinstall.sh
 
 ## Download (Current system is Windows)
 
-First, disable the `Real-time Protection` feature of `Windows Defender`.
+[Unable to download?](#if-the-script-cannot-be-downloaded-under-windows)
+
+Before proceeding, please disable the 'Real-time protection' feature in `Windows Defender`. This feature may prevent `certutil` from downloading any files.
 
 For users outside China:
 
@@ -51,13 +53,14 @@ For users in China:
 certutil -urlcache -f -split https://raw.fgit.cf/bin456789/reinstall/main/reinstall.bat
 ```
 
-[Unable to download?](#if-the-script-cannot-be-downloaded-under-windows)
-
 ## Usage
 
-- The following examples are for running on Linux; for Windows, run `reinstall.bat` with the same parameters.
+All features can be used on both Linux and Windows.
 
-### Usage 1: Install Linux
+- on Linux, execute `bash reinstall.sh`
+- on Windows, execute `reinstall.bat`
+
+### Feature 1: Install Linux
 
 - For machines with static IP, install CentOS, Alma, Rocky, Fedora, Debian, Ubuntu, and add the --ci parameter to force the use of the cloud image.
 
@@ -82,7 +85,7 @@ Parameters:
 --ci              Force the use of the cloud image
 ```
 
-### Usage 2: DD
+### Feature 2: DD
 
 - Supports gzip, xz formats.
 
@@ -92,7 +95,7 @@ Parameters:
 bash reinstall.sh dd --img https://example.com/xxx.xz
 ```
 
-### Usage 3: Reboot to Alpine Rescue System (Live OS)
+### Feature 3: Reboot to Alpine Rescue System (Live OS)
 
 - Can be connected via SSH to perform manual DD, modify partitions, manually install Arch / Gentoo, etc.
 
@@ -102,7 +105,7 @@ bash reinstall.sh dd --img https://example.com/xxx.xz
 bash reinstall.sh alpine --hold=1
 ```
 
-### Usage 4: Reboot to [netboot.xyz](https://netboot.xyz/)
+### Feature 4: Reboot to [netboot.xyz](https://netboot.xyz/)
 
 - Can install more systems using background VNC.
 
@@ -112,7 +115,7 @@ bash reinstall.sh netboot.xyz
 
 ![netboot.xyz](https://netboot.xyz/images/netboot.xyz.gif)
 
-### Usage 5: Install Windows ISO
+### Feature 5: Install Windows ISO
 
 ```bash
 bash reinstall.sh windows \
@@ -124,7 +127,7 @@ bash reinstall.sh windows \
 
 Parameters:
 
-`--iso` Original image link, no need to integrate VirtIO, Xen, AWS, GCP drivers.
+`--iso` Original image link
 
 `--image-name` Specify the image to install, case-insensitive, should be enclosed in quotes on both sides, for example:
 
@@ -147,17 +150,23 @@ Use `Dism++` File menu > Open Image File, select the iso to be installed to get 
      - Windows Server Annual Channel
      - Hyper-V Server
      - Azure Stack HCI
-2. BIOS can be used for 32/64 bit, UEFI machines can only use 64-bit.
-3. If the machine has a static IP, the IP will be automatically set after installation.
-4. Can bypass Windows 11 hardware restrictions.
-5. Supports Azure ARM (Hyper-V), does not support Oracle ARM (KVM).
-6. The process `wsappx` will occupy CPU for a long time after installing the image `zh-cn_windows_10_enterprise_ltsc_2021_x64_dvd_033b7312.iso`.
+2. The script will install the following drivers as needed:
+    - KVM ([Virtio](https://fedorapeople.org/groups/virt/virtio-win/direct-downloads/))
+    - XEN ([XEN PV](https://xenproject.org/windows-pv-drivers/), [AWS PV](https://docs.aws.amazon.com/zh_cn/AWSEC2/latest/WindowsGuide/xen-drivers-overview.html))
+    - AWS ([ENA Network Adapter](https://docs.aws.amazon.com/zh_cn/AWSEC2/latest/WindowsGuide/enhanced-networking-ena.html), [NVMe Storage Controller](https://docs.aws.amazon.com/zh_cn/AWSEC2/latest/WindowsGuide/aws-nvme-drivers.html))
+    - GCP ([gVNIC Network Adapter](https://cloud.google.com/compute/docs/networking/using-gvnic), [GGA Graphics](https://cloud.google.com/compute/docs/instances/enable-instance-virtual-display))
+    - Azure ([MANA Network Adapter](https://learn.microsoft.com/zh-cn/azure/virtual-network/accelerated-networking-mana-windows))
+3. Vista (Server 2008) and 32-bit systems may lack drivers.
+4. If the machine has a static IP, the IP will be automatically set after installation.
+5. Can bypass Windows 11 hardware restrictions.
+6. Supports Azure ARM (Hyper-V), does not support Oracle ARM (KVM).
+7. The process `wsappx` will occupy CPU for a long time after installing the image `zh-cn_windows_10_enterprise_ltsc_2021_x64_dvd_033b7312.iso`.
 
    This is an issue with the image, and the solution is to install the `VCLibs` library.
 
    <https://www.google.com/search?q=ltsc+wsappx>
 
-7. The following website provides iso links.
+8. The following website provides iso links.
 
    <https://massgrave.dev/genuine-installation-media.html>
 

@@ -6,8 +6,7 @@
             <UserData>
                 <AcceptEula>true</AcceptEula>
                 <ProductKey>
-                    <WillShowUI>OnError</WillShowUI>
-                    <Key></Key>
+                    <Key>%key%</Key>
                 </ProductKey>
             </UserData>
             <ImageInstall>
@@ -18,7 +17,6 @@
                             <Value>%image_name%</Value>
                         </MetaData>
                     </InstallFrom>
-                    <WillShowUI>OnError</WillShowUI>
                     <InstallTo>
                         <DiskID>%disk_id%</DiskID>
                         <PartitionID>%installto_partitionid%</PartitionID>
