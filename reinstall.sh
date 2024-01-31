@@ -683,7 +683,25 @@ install_pkg() {
     cmd_to_pkg() {
         unset USE
         case $cmd in
-        lsmem | lsblk | findmnt) pkg="util-linux" ;;
+        lsblk | findmnt)
+            case "$pkg_mgr" in
+            apk) pkg="$cmd" ;;
+            *) pkg="util-linux" ;;
+            esac
+            ;;
+        lsmem)
+            case "$pkg_mgr" in
+            apk) pkg="util-linux-misc" ;;
+            *) pkg="util-linux" ;;
+            esac
+            ;;
+        fdisk)
+            case "$pkg_mgr" in
+            apt) pkg="fdisk" ;;
+            apk) pkg="util-linux-misc" ;;
+            *) pkg="util-linux" ;;
+            esac
+            ;;
         unsquashfs)
             case "$pkg_mgr" in
             zypper) pkg="squashfs" ;;
@@ -704,6 +722,7 @@ install_pkg() {
     }
 
     install_pkg_real() {
+        echo "Installing package '$pkg' for command '$cmd'..."
         case $pkg_mgr in
         dnf) dnf install -y --setopt=install_weak_deps=False $pkg ;;
         yum) yum install -y $pkg ;;
@@ -721,18 +740,30 @@ install_pkg() {
         esac
     }
 
-    is_need_rebuild() {
+    is_need_reinstall() {
         cmd=$1
+
         # gentoo 默认编译的 unsquashfs 不支持 xz
-        if [ "$cmd" = unsquashfs ] && is_have_cmd emerge && ! unsquashfs |& grep -w xz; then
+        if [ "$cmd" = unsquashfs ] && is_have_cmd emerge && ! $cmd |& grep -wq xz; then
             echo "unsquashfs not supported xz. rebuilding."
             return 0
         fi
+
+        # busybox fdisk 无法显示 mbr 分区表的 id
+        if [ "$cmd" = fdisk ] && is_have_cmd apk && $cmd |& grep -wq BusyBox; then
+            return 0
+        fi
+
+        # busybox grep 无法 grep -oP
+        if [ "$cmd" = grep ] && is_have_cmd apk && $cmd |& grep -wq BusyBox; then
+            return 0
+        fi
+
         return 1
     }
 
     for cmd in "$@"; do
-        if ! is_have_cmd $cmd || is_need_rebuild $cmd; then
+        if ! is_have_cmd $cmd || is_need_reinstall $cmd; then
             if ! find_pkg_mgr; then
                 error_and_exit "Can't find compatible package manager. Please manually install $cmd."
             fi
@@ -835,6 +866,64 @@ to_lower() {
 
 del_cr() {
     sed 's/\r//g'
+}
+
+# 记录主硬盘
+find_main_disk() {
+    if is_in_windows; then
+        # TODO:
+        # 已测试 vista
+        # 测试 软raid
+        # 测试 动态磁盘
+
+        # diskpart 命令结果
+        # 磁盘 ID: E5FDE61C
+        # 磁盘 ID: {92CF6564-9B2E-4348-A3BD-D84E3507EBD7}
+        disk_index=$(wmic logicaldisk where "DeviceID='$c:'" assoc:value /resultclass:Win32_DiskPartition |
+            grep 'DiskIndex=' | cut -d= -f2 | del_cr)
+        main_disk=$(printf "%s\n%s" "select disk $disk_index" "uniqueid disk" | diskpart |
+            tail -1 | awk '{print $NF}' | sed 's,[{}],,g' | del_cr)
+    else
+        # centos7下测试     lsblk --inverse $mapper | grep -w disk     grub2-probe -t disk /
+        # 跨硬盘btrfs       只显示第一个硬盘                            显示两个硬盘
+        # 跨硬盘lvm         显示两个硬盘                                显示/dev/mapper/centos-root
+        # 跨硬盘软raid      显示两个硬盘                                显示/dev/md127
+
+        # 改成先检测 /boot/efi /efi /boot 分区？
+
+        install_pkg lsblk
+        # lvm 显示的是 /dev/mapper/xxx-yyy，再用第二条命令得到sda
+        mapper=$(mount | awk '$3=="/" {print $1}')
+        xda=$(lsblk -rn --inverse $mapper | grep -w disk | awk '{print $1}' | sort -u)
+
+        # 检测主硬盘是否横跨多个磁盘
+        os_across_disks_count=$(wc -l <<<"$xda")
+        if [ $os_across_disks_count -eq 1 ]; then
+            info "Main disk: $xda"
+        else
+            error_and_exit "OS across $os_across_disks_count disk: $xda"
+        fi
+
+        # 可以用 dd 找出 guid?
+
+        # centos7 sfdisk 不显示 Disk identifier
+        # 因此用 fdisk
+
+        # Disk identifier: 0x36778223                                  # gnu fdisk + mbr
+        # Disk identifier: D6B17C1A-FA1E-40A1-BDCB-0278A3ED9CFC        # gnu fdisk + gpt
+        # Disk identifier (GUID): d6b17c1a-fa1e-40a1-bdcb-0278a3ed9cfc # busybox fdisk + gpt
+        # 不显示 Disk identifier                                        # busybox fdisk + mbr
+
+        # 获取 xda 的 id
+        install_pkg fdisk
+        main_disk=$(fdisk -l /dev/$xda | grep 'Disk identifier' | awk '{print $NF}' | sed 's/0x//')
+    fi
+
+    # 检查 id 格式是否正确
+    if ! grep -Eix '[0-9a-f]{8}' <<<"$main_disk" &&
+        ! grep -Eix '[0-9a-f-]{36}' <<<"$main_disk"; then
+        error_and_exit "Disk ID is invalid: $main_disk"
+    fi
 }
 
 # TODO: 多网卡 单网卡多IP
@@ -980,7 +1069,7 @@ get_maybe_efi_dirs_in_linux() {
 
 get_disk_by_part() {
     dev_part=$1
-    install_pkg lsblk
+    install_pkg lsblk >&2
     lsblk -rn --inverse "$dev_part" | grep -w disk | awk '{print $1}'
 }
 
@@ -1183,7 +1272,7 @@ build_finalos_cmdline() {
 }
 
 build_extra_cmdline() {
-    for key in confhome hold cloud_image kernel deb_hostname; do
+    for key in confhome hold cloud_image kernel deb_hostname main_disk; do
         value=${!key}
         if [ -n "$value" ]; then
             extra_cmdline+=" extra.$key='$value'"
@@ -1462,11 +1551,7 @@ if is_in_windows; then
 fi
 
 # 必备组件
-install_pkg curl
-# alpine 自带的 grep 是 busybox 里面的， 要下载完整版grep
-if is_in_alpine; then
-    apk add grep
-fi
+install_pkg curl grep
 
 # 检查内存
 if ! { [ "$distro" = dd ] || [ "$distro" = windows ] || [ "$distro" = netboot.xyz ]; }; then
@@ -1689,6 +1774,7 @@ if is_use_grub; then
     if is_netboot_xyz; then
         linux_cmd="linux16 /reinstall-vmlinuz"
     else
+        find_main_disk
         build_cmdline
         linux_cmd="linux$efi /reinstall-vmlinuz $cmdline"
         initrd_cmd="initrd$efi /reinstall-initrd"

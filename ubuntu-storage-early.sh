@@ -1,16 +1,22 @@
 #!/bin/bash
 
+get_all_disks() {
+    lsblk -rn --nodeps -o NAME,TYPE | grep 'disk$' | awk '{print $1}'
+}
+
 get_xda() {
-    # 排除只读盘，vda 放前面
-    # 有的机器有sda和vda，vda是主硬盘，另一个盘是只读
-    for _xda in vda xda sda hda xvda nvme0n1; do
-        if [ -e "/sys/class/block/$_xda/ro" ] &&
-            [ "$(cat /sys/class/block/$_xda/ro)" = 0 ]; then
-            echo $_xda
-            return
+    # 防止 $main_disk 为空
+    if [ -z "$main_disk" ]; then
+        return
+    fi
+
+    for disk in $(get_all_disks); do
+        # shellcheck disable=SC2154
+        if fdisk -l "/dev/$disk" | grep -iq "$main_disk"; then
+            echo "$disk"
+            break
         fi
     done
-    return 1
 }
 
 sed -i -E '/^\.{3}$/d' /autoinstall.yaml
@@ -22,7 +28,8 @@ cat <<EOF >>/autoinstall.yaml
     size: 0
 EOF
 
-xda=$(get_xda)
+xda="$(get_xda)"
+
 # 是用 size 寻找分区，number 没什么用
 # https://curtin.readthedocs.io/en/latest/topics/storage.html
 size_os=$(lsblk -bn -o SIZE /dev/disk/by-label/os)

@@ -210,18 +210,50 @@ get_ttys() {
     wget $confhome/ttys.sh -O- | sh -s $prefix
 }
 
-get_xda() {
-    # 排除只读盘，vda 放前面
-    # 有的机器有sda和vda，vda是主硬盘，另一个盘是只读
-    # TODO: 找出容量最大的？
-    for _xda in vda xda sda hda xvda nvme0n1; do
-        if [ -e "/sys/class/block/$_xda/ro" ] &&
-            [ "$(cat /sys/class/block/$_xda/ro)" = 0 ]; then
-            echo $_xda
-            return
+find_xda() {
+    # 防止 $main_disk 为空
+    if [ -z "$main_disk" ]; then
+        error_and_exit "cmdline main_disk is empty."
+    fi
+
+    # busybox fdisk 不显示 mbr 分区表 id
+    # fdisk 在 util-linux-misc 里面，占用大
+    # sfdisk 占用小
+    if is_have_cmd sfdisk; then
+        need_del_sfdisk=false
+    else
+        apk add sfdisk
+        need_del_sfdisk=true
+    fi
+
+    for disk in $(get_all_disks); do
+        if sfdisk --disk-id "/dev/$disk" | sed 's/0x//' | grep -ix "$main_disk"; then
+            xda=$disk
+            break
         fi
     done
-    return 1
+
+    if [ -z "$xda" ]; then
+        error_and_exit "Could not find xda: $main_disk"
+    fi
+
+    if $need_del_sfdisk; then
+        apk del sfdisk
+    fi
+}
+
+get_all_disks() {
+    # busybox blkid 不接受任何参数
+    # lsblk 要另外安装
+    disks=$(blkid | cut -d: -f1 | cut -d/ -f3 | sed -E 's/p?[0-9]+$//' | sort -u)
+
+    # blkid 会显示 sr0，经过上面的命令输出为 sr
+    # 因此要检测是否有效
+    for disk in $disks; do
+        if [ -b "/dev/$disk" ]; then
+            echo "$disk"
+        fi
+    done
 }
 
 setup_tty_and_log() {
@@ -2219,6 +2251,21 @@ download_netboot_xyz_efi() {
     fi
 }
 
+refind_main_disk() {
+    if is_have_cmd sfdisk; then
+        need_del_sfdisk=false
+    else
+        apk add sfdisk
+        need_del_sfdisk=true
+    fi
+
+    main_disk="$(sfdisk --disk-id "/dev/$xda" | sed 's/0x//')"
+
+    if $need_del_sfdisk; then
+        apk del sfdisk
+    fi
+}
+
 install_redhat_ubuntu() {
     # 安装 grub2
     if is_efi; then
@@ -2232,8 +2279,15 @@ install_redhat_ubuntu() {
     fi
 
     # 重新整理 extra，因为grub会处理掉引号，要重新添加引号
+    extra_cmdline=''
     for var in $(grep -o '\bextra\.[^ ]*' /proc/cmdline | xargs); do
-        extra_cmdline="$extra_cmdline $(echo $var | sed -E "s/(extra\.[^=]*)=(.*)/\1='\2'/")"
+        if [[ "$var" = "extra.main_disk="* ]]; then
+            # 重新记录主硬盘
+            refind_main_disk
+            extra_cmdline="$extra_cmdline extra.main_disk=$main_disk"
+        else
+            extra_cmdline="$extra_cmdline $(echo $var | sed -E "s/(extra\.[^=]*)=(.*)/\1='\2'/")"
+        fi
     done
 
     # 安装红帽系时，只有最后一个有安装界面显示
@@ -2315,8 +2369,8 @@ cat /proc/cmdline
 clear_previous
 add_community_repo
 
-# 找到主硬盘
-xda=$(get_xda)
+# 需要在重新分区之前，找到主硬盘
+find_xda
 
 if [ "$distro" != "alpine" ]; then
     setup_nginx_if_enough_ram

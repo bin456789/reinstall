@@ -27,6 +27,7 @@ autoinstall:
       done
 
       # 生成分区信息
+      export main_disk
       curl -L $confhome/ubuntu-storage-early.sh | bash -s
 
       # 内核风味
