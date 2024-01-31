@@ -511,7 +511,7 @@ del_invalid_efi_entry() {
     while read -r line; do
         part_uuid=$(echo "$line" | awk -F ',' '{print $3}')
         efi_index=$(echo "$line" | grep_efi_index)
-        if ! lsblk -o PARTUUID | grep "$part_uuid"; then
+        if ! lsblk -o PARTUUID | grep -q "$part_uuid"; then
             echo "Delete invalid EFI Entry: $line"
             efibootmgr --quiet --bootnum "$efi_index" --delete-bootnum
         fi
@@ -2346,6 +2346,8 @@ EOF
         }
 EOF
     fi
+
+    cat "$grub_cfg"
 }
 
 # 脚本入口

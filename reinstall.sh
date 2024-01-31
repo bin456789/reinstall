@@ -1133,7 +1133,7 @@ install_grub_linux_efi() {
         grub_efi=grubx64.efi
     fi
 
-    # fedora x86_64 的 efi 无法识别 opensuse tumbleweed 的 xfs
+    # fedora 的 efi 无法识别 opensuse tumbleweed 的 xfs
     # opensuse tumbleweed aarch64 的 efi 无法识别 alpine 3.19 的内核
     if [ "$basearch" = aarch64 ]; then
         efi_distro=fedora
