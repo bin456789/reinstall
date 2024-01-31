@@ -29,7 +29,14 @@ if defined mac_addr (
         rem 配置静态 IPv4 DNS 服务器
         for %%i in (1, 2) do (
             if defined ipv4_dns%%i (
-                netsh interface ipv4 add dnsservers !id! !ipv4_dns%%i! %%i no
+                netsh interface ipv4 add | find "dnsservers"
+                if ErrorLevel 1 (
+                    rem vista
+                    netsh interface ipv4 add dnsserver !id! !ipv4_dns%%i! %%i
+                ) else (
+                    rem win7
+                    netsh interface ipv4 add dnsservers !id! !ipv4_dns%%i! %%i no
+                )
             )
         )
 
@@ -42,7 +49,14 @@ if defined mac_addr (
         rem 配置 IPv6 DNS 服务器
         for %%i in (1, 2) do (
             if defined ipv6_dns%%i (
-                netsh interface ipv6 add dnsservers !id! !ipv6_dns%%i! %%i no
+                netsh interface ipv6 add | find "dnsservers"
+                if ErrorLevel 1 (
+                    rem vista
+                    netsh interface ipv6 add dnsserver !id! !ipv6_dns%%i! %%i
+                ) else (
+                    rem win7
+                    netsh interface ipv6 add dnsservers !id! !ipv6_dns%%i! %%i no
+                )
             )
         )
     )
