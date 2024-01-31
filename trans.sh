@@ -55,7 +55,7 @@ add_community_repo() {
 
 # busybox 的 wget 没有重试功能
 wget() {
-    for i in 1 2 3; do
+    for i in $(seq 5); do
         command wget "$@" && return
     done
 }
@@ -102,17 +102,20 @@ download() {
     # Exception: [AbstractCommand.cc:351] errorCode=1 URI=https://aka.ms/manawindowsdrivers
     #   -> [SocketCore.cc:1019] errorCode=1 SSL/TLS handshake failure:  `not signed by known authorities or invalid'
 
+    # 用 if 的话，报错不会中断脚本
+    # if aria2c xxx; then
+    #     return
+    # fi
+
     echo "$url"
-    for i in 1 2 3; do
-        if stdbuf -oL -eL \
+    for i in $(seq 5); do
+        stdbuf -oL -eL \
             aria2c -x4 \
             --allow-overwrite=true \
             --summary-interval=0 \
             --user-agent=Wget/1.21.1 \
             --max-tries 1 \
-            $save $url; then
-            return
-        fi
+            $save $url && return
     done
 }
 
@@ -120,7 +123,7 @@ update_part() {
     sleep 1
 
     # 玄学
-    for i in 1 2 3; do
+    for i in $(seq 3); do
         sync
         partprobe /dev/$xda 2>/dev/null
 
@@ -1961,19 +1964,21 @@ install_windows() {
         # aws nitro
         # 只有 x64 位驱动
         # 可能不支持 vista
+        # 未打补丁的 win7 无法使用 sha256 签名的驱动
         # https://docs.aws.amazon.com/zh_cn/AWSEC2/latest/WindowsGuide/aws-nvme-drivers.html
         # https://docs.aws.amazon.com/zh_cn/AWSEC2/latest/WindowsGuide/enhanced-networking-ena.html
 
         nvme_ver=$(
             case "$nt_ver" in
-            6.0 | 6.1) echo 1.3.2 ;;
+            6.0 | 6.1) echo 1.3.2 ;; # sha1 签名
             *) echo Latest ;;
             esac
         )
 
         ena_ver=$(
             case "$nt_ver" in
-            6.0 | 6.1) echo 2.2.3 ;;
+            6.0 | 6.1) echo 2.1.4 ;; # sha1 签名
+            # 6.0 | 6.1) echo 2.2.3 ;; # sha256 签名
             6.2 | 6.3) echo 2.6.0 ;;
             *) echo Latest ;;
             esac
@@ -1995,7 +2000,8 @@ install_windows() {
 
         aws_pv_ver=$(
             case "$nt_ver" in
-            6.0 | 6.1) echo 8.3.5 ;;
+            6.0 | 6.1) echo 8.3.2 ;; # sha1 签名
+            # 6.0 | 6.1) echo 8.3.5 ;; # sha256 签名
             *) echo Latest ;;
             esac
         )
@@ -2092,7 +2098,7 @@ install_windows() {
         grep -i EVAL "$ei_cfg"; then
         # 评估版 iso 需要删除 autounattend.xml 里面的 <Key><Key/>
         # 否则会出现 Windows Cannot find Microsoft software license terms
-        sed -i "/%Key%/d" /tmp/autounattend.xml
+        sed -i "/%key%/d" /tmp/autounattend.xml
     else
         # vista 需密钥，密钥可与 edition 不一致
         # 其他系统要空密钥

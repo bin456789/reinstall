@@ -66,7 +66,7 @@ curl() {
     # 添加 -f, --fail，不然 404 退出码也为0
     # 32位 cygwin 已停止更新，证书可能有问题，先添加 --insecure
     grep -o 'http[^ ]*' <<<"$@" >&2
-    command curl --insecure --connect-timeout 5 --retry 2 --retry-delay 1 -f "$@"
+    command curl --insecure --connect-timeout 10 --retry 5 --retry-delay 1 -f "$@"
 }
 
 is_in_china() {
@@ -653,12 +653,6 @@ verify_os_args() {
         if [ -z "$iso" ] || [ -z "$image_name" ]; then
             error_and_exit "Install Windows need --iso and --image-name"
         fi
-        # 防止常见错误
-        # --image-name 肯定大于等于3个单词
-        if [ "$(echo "$image_name" | wc -w)" -lt 3 ] ||
-            [[ "$(to_lower <<<"$image_name")" != windows* ]]; then
-            error_and_exit "--image-name wrong."
-        fi
         ;;
     esac
 }
@@ -992,7 +986,7 @@ get_disk_by_part() {
 
 get_part_num_by_part() {
     dev_part=$1
-    grep -o '[0-9]*' <<<"$dev_part" | tail -1
+    grep -oE '[0-9]*$' <<<"$dev_part"
 }
 
 grep_efi_index() {
