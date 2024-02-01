@@ -838,13 +838,16 @@ is_efi() {
 is_secure_boot_enabled() {
     if is_efi; then
         if is_in_windows; then
-            reg query 'HKLM\SYSTEM\CurrentControlSet\Control\SecureBoot\State' /v UEFISecureBootEnabled | grep 0x1 && return 0
+            reg query 'HKLM\SYSTEM\CurrentControlSet\Control\SecureBoot\State' /v UEFISecureBootEnabled | grep 0x1
         else
-            # mokutil --sb-state
-            dmesg | grep -i 'Secure boot enabled' && return 0
+            # localhost:~# mokutil --sb-state
+            # SecureBoot disabled
+            # Platform is in Setup Mode
+            dmesg | grep -i 'Secure boot enabled'
         fi
+    else
+        return 1
     fi
-    return 1
 }
 
 is_use_grub() {
@@ -1133,16 +1136,12 @@ install_grub_linux_efi() {
         grub_efi=grubx64.efi
     fi
 
-    # fedora 的 efi 无法识别 opensuse tumbleweed 的 xfs
-    # opensuse tumbleweed aarch64 的 efi 无法识别 alpine 3.19 的内核
-    if [ "$basearch" = aarch64 ]; then
-        efi_distro=fedora
-    else
-        efi_distro=opensuse
-    fi
+    # fedora 39 的 efi 无法识别 opensuse tumbleweed 的 xfs
+    efi_distro=opensuse
 
     # 不要用 download.opensuse.org 和 download.fedoraproject.org
     # 因为 ipv6 访问有时跳转到 ipv4 地址，造成 ipv6 only 机器无法下载
+    # 日韩机器有时得到国内链接，且连不上
     if [ "$efi_distro" = fedora ]; then
         fedora_ver=39
 
@@ -1160,11 +1159,9 @@ install_grub_linux_efi() {
             mirror=https://mirror.fcix.net/opensuse
         fi
 
-        file=tumbleweed/repo/oss/EFI/BOOT/grub.efi
-        if [ "$basearch" = aarch64 ]; then
-            file=ports/aarch64/$file
-        fi
-        curl -Lo /tmp/$grub_efi $mirror/$file
+        [ "$basearch" = x86_64 ] && ports='' || ports=/ports/$basearch
+
+        curl -Lo /tmp/$grub_efi $mirror$ports/tumbleweed/repo/oss/EFI/BOOT/grub.efi
     fi
 
     add_efi_entry_in_linux /tmp/$grub_efi

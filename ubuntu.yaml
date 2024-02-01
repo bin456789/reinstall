@@ -57,7 +57,7 @@ autoinstall:
 
       # 下载合并分区脚本
       cd /target
-      curl -O $confhome/resize.sh
+      curl -LO $confhome/resize.sh
 
       # 升级 cloud-init
       # curtin in-target --target=/target -- apt update

@@ -117,25 +117,27 @@ bash reinstall.sh netboot.xyz
 
 ### Feature 5: Install Windows ISO
 
+- Pay attention to the quotation marks around the parameters
+
 ```bash
 bash reinstall.sh windows \
      --iso 'https://drive.massgrave.dev/en-us_windows_10_enterprise_ltsc_2021_x64_dvd_d289cf96.iso' \
      --image-name 'Windows 10 Enterprise LTSC 2021'
 ```
 
-![windows installer](https://filestore.community.support.microsoft.com/api/images/67c13a8c-cee6-47cd-ae80-a55923875c83)
+![Installing Windows](https://github.com/bin456789/reinstall/assets/7548515/07c1aea2-1ce3-4967-904f-aaf9d6eec3f7)
 
 Parameters:
 
 `--iso` Original image link
 
-`--image-name` Specify the image to install, case-insensitive, should be enclosed in quotes on both sides, for example:
+`--image-name` Specify the image to install, case-insensitive, for example:
 
 ```text
-'Windows 7 Ultimate'
-'Windows 10 Enterprise LTSC 2021'
-'Windows 11 Pro'
-'Windows Server 2022 SERVERDATACENTER'
+Windows 7 Ultimate
+Windows 10 Enterprise LTSC 2021
+Windows 11 Pro
+Windows Server 2022 SERVERDATACENTER
 ```
 
 Use `Dism++` File menu > Open Image File, select the iso to be installed to get the image name.
@@ -143,9 +145,8 @@ Use `Dism++` File menu > Open Image File, select the iso to be installed to get 
 ![image-name](https://github.com/bin456789/reinstall/assets/7548515/5aae0a9b-61e2-4f66-bb98-d470a6beaac2)
 
 1. Supported systems:
-   - Windows Vista to Windows 11
-   - Windows Server 2008 to Windows Server 2022
-   - Windows Server variants, such as
+   - Windows Vista to 11
+   - Windows Server 2008 to 2022, including the following variants
      - Windows Server Essentials
      - Windows Server Annual Channel
      - Hyper-V Server
@@ -206,6 +207,8 @@ Please use <https://github.com/LloydAsp/OsMutation>.
 | Windows (iso) | administrator  | 123@@@         |
 | Windows (dd)  | Image username | Image password |
 
+If encountering a password error during remote login to Windows, try using the username .\administrator.
+
 ## If the script cannot be downloaded under Windows
 
 You can try the following methods:
@@ -233,6 +236,9 @@ You can try the following methods:
 
 - Install mode: Static IP, IPv6, multiple NICs
 
-## Promotion
+## Thanks
 
-[![DartNode](https://github.com/bin456789/reinstall/assets/7548515/7531e443-4069-4bf1-a40e-2e965f311e3f)](https://dartnode.com/)
+Thanks to the following businesses for providing free servers.
+
+[![Oracle Cloud](https://github.com/bin456789/reinstall/assets/7548515/8b430ed4-8344-4f96-b4da-c2bda031cc90)](https://www.oracle.com/cloud/)
+[![DartNode](https://github.com/bin456789/reinstall/assets/7548515/12e3df20-06b8-4825-8319-65351f06e1ad)](https://dartnode.com/)

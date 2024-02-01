@@ -117,25 +117,27 @@ bash reinstall.sh netboot.xyz
 
 ### 功能 5: 安装 Windows ISO
 
+- 注意参数两边的引号
+
 ```bash
 bash reinstall.sh windows \
      --iso 'https://drive.massgrave.dev/en-us_windows_10_enterprise_ltsc_2021_x64_dvd_d289cf96.iso' \
      --image-name 'Windows 10 Enterprise LTSC 2021'
 ```
 
-![windows installer](https://filestore.community.support.microsoft.com/api/images/67c13a8c-cee6-47cd-ae80-a55923875c83)
+![Installing Windows](https://github.com/bin456789/reinstall/assets/7548515/07c1aea2-1ce3-4967-904f-aaf9d6eec3f7)
 
 参数:
 
 `--iso` 原版镜像链接
 
-`--image-name` 指定要安装的映像，不区分大小写，两边要有引号，例如：
+`--image-name` 指定要安装的映像，不区分大小写，例如：
 
 ```text
-'Windows 7 Ultimate'
-'Windows 10 Enterprise LTSC 2021'
-'Windows 11 Pro'
-'Windows Server 2022 SERVERDATACENTER'
+Windows 7 Ultimate
+Windows 10 Enterprise LTSC 2021
+Windows 11 Pro
+Windows Server 2022 SERVERDATACENTER
 ```
 
 使用 `Dism++` 文件菜单 > 打开映像文件，选择要安装的 iso，可以得到映像名称
@@ -143,9 +145,8 @@ bash reinstall.sh windows \
 ![image-name](https://github.com/bin456789/reinstall/assets/7548515/5aae0a9b-61e2-4f66-bb98-d470a6beaac2)
 
 1. 支持的系统：
-    - Windows Vista 到 Windows 11
-    - Windows Server 2008 到 Windows Server 2022
-    - Windows Server 变体，例如
+    - Windows Vista 到 11
+    - Windows Server 2008 到 2022，包括以下衍生版
         - Windows Server Essentials
         - Windows Server Annual Channel
         - Hyper-V Server
@@ -206,6 +207,8 @@ bash reinstall.sh windows \
 | Windows (iso) | administrator | 123@@@   |
 | Windows (dd)  | 镜像用户名    | 镜像密码 |
 
+如果远程登录 Windows 提示密码错误，尝试用户名 `.\administrator`
+
 ## 如果 Windows 下无法下载脚本
 
 可尝试以下几种方法
@@ -233,6 +236,9 @@ bash reinstall.sh windows \
 
 - 安装模式：静态 IP、IPv6、多网卡
 
-## 推广
+## 感谢
 
-[![DartNode](https://github.com/bin456789/reinstall/assets/7548515/7531e443-4069-4bf1-a40e-2e965f311e3f)](https://dartnode.com/)
+感谢以下商家提供白嫖机器
+
+[![Oracle Cloud](https://github.com/bin456789/reinstall/assets/7548515/8b430ed4-8344-4f96-b4da-c2bda031cc90)](https://www.oracle.com/cloud/)
+[![DartNode](https://github.com/bin456789/reinstall/assets/7548515/12e3df20-06b8-4825-8319-65351f06e1ad)](https://dartnode.com/)

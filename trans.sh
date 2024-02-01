@@ -219,12 +219,8 @@ find_xda() {
     # busybox fdisk 不显示 mbr 分区表 id
     # fdisk 在 util-linux-misc 里面，占用大
     # sfdisk 占用小
-    if is_have_cmd sfdisk; then
-        need_del_sfdisk=false
-    else
-        apk add sfdisk
-        need_del_sfdisk=true
-    fi
+
+    apk add sfdisk
 
     for disk in $(get_all_disks); do
         if sfdisk --disk-id "/dev/$disk" | sed 's/0x//' | grep -ix "$main_disk"; then
@@ -237,9 +233,7 @@ find_xda() {
         error_and_exit "Could not find xda: $main_disk"
     fi
 
-    if $need_del_sfdisk; then
-        apk del sfdisk
-    fi
+    apk del sfdisk
 }
 
 get_all_disks() {
@@ -2252,18 +2246,9 @@ download_netboot_xyz_efi() {
 }
 
 refind_main_disk() {
-    if is_have_cmd sfdisk; then
-        need_del_sfdisk=false
-    else
-        apk add sfdisk
-        need_del_sfdisk=true
-    fi
-
+    apk add sfdisk
     main_disk="$(sfdisk --disk-id "/dev/$xda" | sed 's/0x//')"
-
-    if $need_del_sfdisk; then
-        apk del sfdisk
-    fi
+    apk del sfdisk
 }
 
 install_redhat_ubuntu() {
