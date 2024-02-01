@@ -1,24 +1,4 @@
 #!/bin/bash
-
-get_all_disks() {
-    lsblk -rn --nodeps -o NAME,TYPE | grep 'disk$' | awk '{print $1}'
-}
-
-get_xda() {
-    # 防止 $main_disk 为空
-    if [ -z "$main_disk" ]; then
-        return
-    fi
-
-    for disk in $(get_all_disks); do
-        # shellcheck disable=SC2154
-        if fdisk -l "/dev/$disk" | grep -iq "$main_disk"; then
-            echo "$disk"
-            break
-        fi
-    done
-}
-
 sed -i -E '/^\.{3}$/d' /autoinstall.yaml
 echo 'storage:' >>/autoinstall.yaml
 
@@ -28,12 +8,11 @@ cat <<EOF >>/autoinstall.yaml
     size: 0
 EOF
 
-xda="$(get_xda)"
-
 # 是用 size 寻找分区，number 没什么用
 # https://curtin.readthedocs.io/en/latest/topics/storage.html
 size_os=$(lsblk -bn -o SIZE /dev/disk/by-label/os)
 
+# shellcheck disable=SC2154
 if parted "/dev/$xda" print | grep '^Partition Table' | grep gpt; then
     # efi
     if [ -e /dev/disk/by-label/efi ]; then

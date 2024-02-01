@@ -27,8 +27,9 @@ autoinstall:
       done
 
       # 生成分区信息
-      export main_disk
-      curl -L $confhome/ubuntu-storage-early.sh | bash -s
+      xda=$(curl -L "$confhome/get-xda.sh" | sh -s)
+      export xda
+      curl -L "$confhome/ubuntu-storage-early.sh" | sh -s
 
       # 内核风味
       # https://bugs.launchpad.net/subiquity/+bug/1989353
