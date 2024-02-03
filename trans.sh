@@ -270,11 +270,6 @@ extract_env_from_cmdline() {
     done
 }
 
-qemu_nbd() {
-    command qemu-nbd "$@"
-    sleep 5
-}
-
 mod_motd() {
     # 安装后 alpine 后要恢复默认
     # 自动安装失败后，可能手动安装 alpine，因此无需判断 $distro
@@ -306,7 +301,7 @@ umount_all() {
 
 # 可能脚本不是首次运行，先清理之前的残留
 clear_previous() {
-    qemu_nbd -d /dev/nbd0 2>/dev/null || true
+    qemu-nbd -d /dev/nbd0 2>/dev/null || true
     swapoff -a
     umount_all
 
@@ -1536,7 +1531,7 @@ install_qcow_el() {
     }
 
     modprobe nbd nbds_max=1
-    qemu_nbd -c /dev/nbd0 $qcow_file
+    qemu-nbd -c /dev/nbd0 $qcow_file
 
     # TODO: 改成循环mount找出os+fstab查找剩余分区？
     os_part=$(lsblk /dev/nbd0p*[0-9] --sort SIZE -no NAME,FSTYPE | grep xfs | tail -1 | cut -d' ' -f1)
@@ -1587,7 +1582,7 @@ install_qcow_el() {
 
     # 取消挂载 nbd
     umount /nbd/ /nbd-boot/ /nbd-efi/ || true
-    qemu_nbd -d /dev/nbd0
+    qemu-nbd -d /dev/nbd0
 
     # 如果镜像有efi分区，复制其uuid
     # 如果有相同uuid的fat分区，则无法挂载
@@ -1712,7 +1707,7 @@ EOF
 dd_qcow() {
     if true; then
         modprobe nbd nbds_max=1
-        qemu_nbd -c /dev/nbd0 $qcow_file
+        qemu-nbd -c /dev/nbd0 $qcow_file
 
         # 检查最后一个分区是否是 btrfs
         # 即使awk结果为空，返回值也是0，加上 grep . 检查是否结果为空
@@ -1742,11 +1737,11 @@ dd_qcow() {
                 printf "yes" | parted /dev/nbd0 resizepart $part_num ${part_end}B ---pretend-input-tty
 
                 # 缩小 qcow2
-                qemu_nbd -d /dev/nbd0
+                qemu-nbd -d /dev/nbd0
                 qemu-img resize --shrink $qcow_file $part_end
 
                 # 重新连接
-                qemu_nbd -c /dev/nbd0 $qcow_file
+                qemu-nbd -c /dev/nbd0 $qcow_file
             else
                 umount /mnt/btrfs
             fi
@@ -1778,12 +1773,19 @@ dd_qcow() {
             ;;
         esac
 
-        qemu_nbd -d /dev/nbd0
+        qemu-nbd -d /dev/nbd0
     else
         # 将前1M dd到内存，将1M之后 dd到硬盘
         qemu-img dd if=$qcow_file of=/first-1M bs=1M count=1
         qemu-img dd if=$qcow_file of=/dev/disk/by-label/os bs=1M skip=1
     fi
+
+    # 需要等待一下，不然会出现
+    # umount: /installer/: target is busy.
+    while fuser -sm /installer/; do
+        echo "Waiting for /installer/ to be unmounted..."
+        sleep 5
+    done
 
     # 将前1M从内存 dd 到硬盘
     umount /installer/
