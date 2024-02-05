@@ -32,7 +32,7 @@ curl -O https://raw.githubusercontent.com/bin456789/reinstall/main/reinstall.sh
 国内：
 
 ```bash
-curl -O https://raw.fgit.cf/bin456789/reinstall/main/reinstall.sh
+curl -O https://raw.gitmirror.com/bin456789/reinstall/main/reinstall.sh
 ```
 
 ## 下载（当前系统是 Windows）
@@ -50,7 +50,7 @@ certutil -urlcache -f -split https://raw.githubusercontent.com/bin456789/reinsta
 国内：
 
 ```batch
-certutil -urlcache -f -split https://raw.fgit.cf/bin456789/reinstall/main/reinstall.bat
+certutil -urlcache -f -split https://raw.gitmirror.com/bin456789/reinstall/main/reinstall.bat
 ```
 
 ## 使用

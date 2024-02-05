@@ -1,7 +1,7 @@
 @echo off
 setlocal EnableDelayedExpansion
 set confhome=https://raw.githubusercontent.com/bin456789/reinstall/main
-set github_proxy=raw.fgit.cf
+set github_proxy=raw.gitmirror.com
 
 rem 不要用 :: 注释
 rem 否则可能会出现 系统找不到指定的驱动器
