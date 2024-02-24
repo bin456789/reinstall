@@ -5,6 +5,9 @@ set -eE
 confhome=https://raw.githubusercontent.com/bin456789/reinstall/main
 github_proxy=raw.gitmirror.com
 
+# https://www.gnu.org/software/gettext/manual/html_node/The-LANGUAGE-variable.html
+export LC_ALL=C
+
 this_script=$(realpath "$0")
 trap 'trap_err $LINENO $?' ERR
 
