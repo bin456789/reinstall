@@ -105,9 +105,9 @@ bash reinstall.sh dd --img https://example.com/xxx.xz
 bash reinstall.sh alpine --hold=1
 ```
 
-### 功能 4: 重启到 [netboot.xyz](https://netboot.xyz/)
+### 功能 4: 重启到 netboot.xyz
 
-- 可使用后台 VNC 安装更多系统
+- 可使用后台 VNC 安装 [更多系统](https://github.com/netbootxyz/netboot.xyz?tab=readme-ov-file#what-operating-systems-are-currently-available-on-netbootxyz)
 
 ```bash
 bash reinstall.sh netboot.xyz
@@ -187,7 +187,7 @@ Windows Server 2022 SERVERDATACENTER
 
 ## 网络要求
 
-用`安装模式`安装 Linux 要有 DHCPv4
+用`安装模式`安装 Linux 要求能自动获取 IP 地址
 
 其他情况支持静态 IP、IPv6（包括安装 Alpine、Linux 云镜像、Windows iso、dd）
 
@@ -241,4 +241,4 @@ Windows Server 2022 SERVERDATACENTER
 感谢以下商家提供白嫖机器
 
 [![Oracle Cloud](https://github.com/bin456789/reinstall/assets/7548515/8b430ed4-8344-4f96-b4da-c2bda031cc90)](https://www.oracle.com/cloud/)
-[![DartNode](https://github.com/bin456789/reinstall/assets/7548515/12e3df20-06b8-4825-8319-65351f06e1ad)](https://dartnode.com/)
+[![DartNode](https://github.com/bin456789/reinstall/assets/7548515/435d6740-bcdd-4f3a-a196-2f60ae397f17)](https://dartnode.com/)

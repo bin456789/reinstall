@@ -18,7 +18,7 @@ One-click reinstallation script
 - Supports BIOS, EFI, ARM.
 - The original system partition supports LVM, Btrfs.
 - Supports installing Alpine, Arch, openSUSE, Gentoo, and can also install these systems from them.
-- Progress of DD and cloud image installation can be viewed through SSH, browser, serial console, and background VNC.
+- Progress of DD and cloud image installation can be viewed through SSH, browser, serial console, and web panel VNC.
 - Includes many comments.
 
 ## Download (Current system is Linux)
@@ -105,9 +105,9 @@ bash reinstall.sh dd --img https://example.com/xxx.xz
 bash reinstall.sh alpine --hold=1
 ```
 
-### Feature 4: Reboot to [netboot.xyz](https://netboot.xyz/)
+### Feature 4: Reboot to netboot.xyz
 
-- Can install more systems using background VNC.
+- Can install [more systems](https://github.com/netbootxyz/netboot.xyz?tab=readme-ov-file#what-operating-systems-are-currently-available-on-netbootxyz) using web panel VNC.
 
 ```bash
 bash reinstall.sh netboot.xyz
@@ -187,7 +187,7 @@ Use `Dism++` File menu > Open Image File, select the iso to be installed to get 
 
 ## Network Requirements
 
-Install Linux using the `Install Mode` must have DHCPv4.
+Install Linux using the `Install Mode` requires the machine to be able to automatically obtain an IP address.
 
 Other cases support static IP, IPv6 (including installing Alpine, Linux cloud image, Windows iso, dd).
 
@@ -241,4 +241,4 @@ You can try the following methods:
 Thanks to the following businesses for providing free servers.
 
 [![Oracle Cloud](https://github.com/bin456789/reinstall/assets/7548515/8b430ed4-8344-4f96-b4da-c2bda031cc90)](https://www.oracle.com/cloud/)
-[![DartNode](https://github.com/bin456789/reinstall/assets/7548515/12e3df20-06b8-4825-8319-65351f06e1ad)](https://dartnode.com/)
+[![DartNode](https://github.com/bin456789/reinstall/assets/7548515/435d6740-bcdd-4f3a-a196-2f60ae397f17)](https://dartnode.com/)
