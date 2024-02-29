@@ -301,7 +301,7 @@ umount_all() {
 
 # 可能脚本不是首次运行，先清理之前的残留
 clear_previous() {
-    qemu-nbd -d /dev/nbd0 2>/dev/null || true
+    disconnect_qcow
     swapoff -a
     umount_all
 
@@ -1521,6 +1521,30 @@ download_qcow() {
     download $img $qcow_file
 }
 
+connect_qcow() {
+    modprobe nbd nbds_max=1
+    qemu-nbd -c /dev/nbd0 $qcow_file
+
+    # 需要等待一下
+    # https://github.com/canonical/cloud-utils/blob/main/bin/mount-image-callback
+    while ! blkid /dev/nbd0; do
+        echo "Waiting for qcow file to be mounted..."
+        sleep 5
+    done
+}
+
+disconnect_qcow() {
+    if [ -f /sys/block/nbd0/pid ]; then
+        qemu-nbd -d /dev/nbd0
+
+        # 需要等待一下
+        while fuser -sm $qcow_file; do
+            echo "Waiting for qcow file to be unmounted..."
+            sleep 5
+        done
+    fi
+}
+
 install_qcow_el() {
     yum() {
         if [ "$releasever" = 7 ]; then
@@ -1530,8 +1554,7 @@ install_qcow_el() {
         fi
     }
 
-    modprobe nbd nbds_max=1
-    qemu-nbd -c /dev/nbd0 $qcow_file
+    connect_qcow
 
     # TODO: 改成循环mount找出os+fstab查找剩余分区？
     os_part=$(lsblk /dev/nbd0p*[0-9] --sort SIZE -no NAME,FSTYPE | grep xfs | tail -1 | cut -d' ' -f1)
@@ -1582,7 +1605,7 @@ install_qcow_el() {
 
     # 取消挂载 nbd
     umount /nbd/ /nbd-boot/ /nbd-efi/ || true
-    qemu-nbd -d /dev/nbd0
+    disconnect_qcow
 
     # 如果镜像有efi分区，复制其uuid
     # 如果有相同uuid的fat分区，则无法挂载
@@ -1706,8 +1729,7 @@ EOF
 
 dd_qcow() {
     if true; then
-        modprobe nbd nbds_max=1
-        qemu-nbd -c /dev/nbd0 $qcow_file
+        connect_qcow
 
         # 检查最后一个分区是否是 btrfs
         # 即使awk结果为空，返回值也是0，加上 grep . 检查是否结果为空
@@ -1737,11 +1759,11 @@ dd_qcow() {
                 printf "yes" | parted /dev/nbd0 resizepart $part_num ${part_end}B ---pretend-input-tty
 
                 # 缩小 qcow2
-                qemu-nbd -d /dev/nbd0
+                disconnect_qcow
                 qemu-img resize --shrink $qcow_file $part_end
 
                 # 重新连接
-                qemu-nbd -c /dev/nbd0 $qcow_file
+                connect_qcow
             else
                 umount /mnt/btrfs
             fi
@@ -1773,19 +1795,12 @@ dd_qcow() {
             ;;
         esac
 
-        qemu-nbd -d /dev/nbd0
+        disconnect_qcow
     else
         # 将前1M dd到内存，将1M之后 dd到硬盘
         qemu-img dd if=$qcow_file of=/first-1M bs=1M count=1
         qemu-img dd if=$qcow_file of=/dev/disk/by-label/os bs=1M skip=1
     fi
-
-    # 需要等待一下，不然会出现
-    # umount: /installer/: target is busy.
-    while fuser -sm /installer/; do
-        echo "Waiting for /installer/ to be unmounted..."
-        sleep 5
-    done
 
     # 将前1M从内存 dd 到硬盘
     umount /installer/
