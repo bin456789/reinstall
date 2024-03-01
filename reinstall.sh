@@ -99,7 +99,7 @@ is_use_dd() {
 }
 
 is_os_in_btrfs() {
-    mount | grep -w 'on / type btrfs'
+    mount | grep -qw 'on / type btrfs'
 }
 
 is_os_in_subvol() {
@@ -871,6 +871,10 @@ to_lower() {
 
 del_cr() {
     sed 's/\r//g'
+}
+
+del_blank_lines() {
+    sed '/^[[:space:]]*$/d'
 }
 
 # 记录主硬盘
@@ -1674,7 +1678,7 @@ if [ "$nextos_distro" = alpine ]; then
 fi
 
 # 将内核/netboot.xyz.lkrn 放到正确的位置
-if is_use_grub; then
+if false && is_use_grub; then
     if is_in_windows; then
         cp -f /reinstall-vmlinuz /cygdrive/$c/
         is_have_initrd && cp -f /reinstall-initrd /cygdrive/$c/
@@ -1771,25 +1775,47 @@ if is_use_grub; then
         target_cfg=$grub_cfg
     fi
 
+    # 找到 /reinstall-vmlinuz /reinstall-initrd 的绝对路径
+    if is_in_windows; then
+        # dir=/cygwin/
+        dir=$(cygpath -m / | cut -d: -f2-)/
+    else
+        # 获取当前系统根目录在 btrfs 中的绝对路径
+        if is_os_in_btrfs; then
+            # btrfs subvolume show /
+            # 输出可能是 / 或 root 或 @/.snapshots/1/snapshot
+            dir=$(btrfs subvolume show / | head -1)
+            if ! [ "$dir" = / ]; then
+                dir="/$dir/"
+            fi
+        else
+            dir=/
+        fi
+    fi
+
+    vmlinuz=${dir}reinstall-vmlinuz
+    initrd=${dir}reinstall-initrd
+
     # 生成 linux initrd 命令
     if is_netboot_xyz; then
-        linux_cmd="linux16 /reinstall-vmlinuz"
+        linux_cmd="linux16 $vmlinuz"
     else
         find_main_disk
         build_cmdline
-        linux_cmd="linux$efi /reinstall-vmlinuz $cmdline"
-        initrd_cmd="initrd$efi /reinstall-initrd"
+        linux_cmd="linux$efi $vmlinuz $cmdline"
+        initrd_cmd="initrd$efi $initrd"
     fi
 
     # 生成 grub 配置
     # 实测 centos 7 lvm 要手动加载 lvm 模块
     echo $target_cfg
-    cat <<EOF | tee $target_cfg
+    cat <<EOF | del_blank_lines | tee $target_cfg
 set timeout=5
 menuentry "$(get_entry_name)" {
-    $(is_in_windows || echo 'insmod lvm')
+    $(! is_in_windows && echo 'insmod lvm')
+    $(is_os_in_btrfs && echo 'set btrfs_relative_path=n')
     insmod all_video
-    search --no-floppy --file --set=root /reinstall-vmlinuz
+    search --no-floppy --file --set=root $vmlinuz
     $linux_cmd
     $initrd_cmd
 }
