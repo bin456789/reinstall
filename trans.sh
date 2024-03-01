@@ -1769,13 +1769,13 @@ dd_qcow() {
                 # 缩小分区
                 part_start=$(parted /dev/nbd0 -s 'unit b print' | awk "\$1==$part_num {print \$2}" | sed 's/B//')
                 part_size=$(btrfs filesystem usage /mnt/btrfs -b | grep 'Device size:' | awk '{print $3}')
-                part_end=$((part_start + part_size))
+                part_end=$((part_start + part_size - 1))
                 umount /mnt/btrfs
                 printf "yes" | parted /dev/nbd0 resizepart $part_num ${part_end}B ---pretend-input-tty
 
                 # 缩小 qcow2
                 disconnect_qcow
-                qemu-img resize --shrink $qcow_file $part_end
+                qemu-img resize --shrink $qcow_file $((part_end + 1))
 
                 # 重新连接
                 connect_qcow
