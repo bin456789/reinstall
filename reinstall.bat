@@ -28,7 +28,8 @@ if not exist %tmp% (
 
 rem 检查是否国内
 if not exist %tmp%\geoip (
-    call :download http://www.cloudflare.com/cdn-cgi/trace %tmp%\geoip
+    rem 部分地区 www.cloudflare.com 被墙
+    call :download http://dash.cloudflare.com/cdn-cgi/trace %tmp%\geoip
 )
 findstr /c:"loc=CN" %tmp%\geoip >nul
 if !errorlevel! == 0 (

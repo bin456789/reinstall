@@ -74,9 +74,8 @@ curl() {
 
 is_in_china() {
     if [ -z $_is_in_china ]; then
-        # https://geoip.fedoraproject.org/city # 不支持 ipv6
-        # https://geoip.ubuntu.com/lookup # 不支持 ipv6
-        curl -L http://www.cloudflare.com/cdn-cgi/trace |
+        # 部分地区 www.cloudflare.com 被墙
+        curl -L http://dash.cloudflare.com/cdn-cgi/trace |
             grep -qx 'loc=CN' && _is_in_china=true ||
             _is_in_china=false
     fi
@@ -912,7 +911,9 @@ find_main_disk() {
 
         # 可以用 dd 找出 guid?
 
+        # centos7 blkid lsblk 不显示 PTUUID
         # centos7 sfdisk 不显示 Disk identifier
+        # alpine blkid 不显示 gpt 分区表的 PTUUID
         # 因此用 fdisk
 
         # Disk identifier: 0x36778223                                  # gnu fdisk + mbr
@@ -1744,7 +1745,7 @@ if is_use_grub; then
         if [ -d /boot/loader/entries/ ]; then
             entries="/boot/loader/entries/"
         fi
-        if grep -q -r -E '^[[:blank:]]*linuxefi[[:blank:]]' $grub_cfg $entries; then
+        if grep -q -r -E '^[[:space:]]*linuxefi[[:space:]]' $grub_cfg $entries; then
             efi=efi
         fi
     fi

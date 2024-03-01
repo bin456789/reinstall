@@ -217,23 +217,38 @@ find_xda() {
     fi
 
     # busybox fdisk 不显示 mbr 分区表 id
+    # 可用以下工具：
     # fdisk 在 util-linux-misc 里面，占用大
     # sfdisk 占用小
+    # lsblk
 
-    apk add sfdisk
+    tool=sfdisk
 
-    for disk in $(get_all_disks); do
-        if sfdisk --disk-id "/dev/$disk" | sed 's/0x//' | grep -ix "$main_disk"; then
-            xda=$disk
-            break
-        fi
-    done
+    is_have_cmd $tool && need_install_tool=false || need_install_tool=true
+    if $need_install_tool; then
+        apk add $tool
+    fi
+
+    if [ "$tool" = sfdisk ]; then
+        # sfdisk
+        for disk in $(get_all_disks); do
+            if sfdisk --disk-id "/dev/$disk" | sed 's/0x//' | grep -ix "$main_disk"; then
+                xda=$disk
+                break
+            fi
+        done
+    else
+        # lsblk
+        xda=$(lsblk --nodeps -rno NAME,PTUUID | grep -iw "$main_disk" | awk '{print $1}')
+    fi
 
     if [ -z "$xda" ]; then
         error_and_exit "Could not find xda: $main_disk"
     fi
 
-    apk del sfdisk
+    if $need_install_tool; then
+        apk del $tool
+    fi
 }
 
 get_all_disks() {
@@ -1647,7 +1662,7 @@ install_qcow_el() {
 
     # fstab 删除 boot 分区
     # alma/rocky 镜像本身有boot分区，但我们不需要
-    sed -i '/[[:blank:]]\/boot[[:blank:]]/d' /os/etc/fstab
+    sed -i '/[[:space:]]\/boot[[:space:]]/d' /os/etc/fstab
 
     # fstab 添加 efi 分区
     if is_efi; then
@@ -1658,7 +1673,7 @@ install_qcow_el() {
         fi
     else
         # 删除 efi 条目
-        sed -i '/[[:blank:]]\/boot\/efi[[:blank:]]/d' /os/etc/fstab
+        sed -i '/[[:space:]]\/boot\/efi[[:space:]]/d' /os/etc/fstab
     fi
 
     distro_full=$(awk -F: '{ print $3 }' </os/etc/system-release-cpe)
@@ -1948,10 +1963,10 @@ install_windows() {
     image_count=$(wiminfo $install_wim | grep "Image Count:" | cut -d: -f2 | xargs)
     if [ "$image_count" = 1 ]; then
         # 只有一个版本就使用第一个版本
-        image_name=$(wiminfo $install_wim | grep -ix "Name:[[:blank:]]*.*" | cut -d: -f2 | xargs)
+        image_name=$(wiminfo $install_wim | grep -ix "Name:[[:space:]]*.*" | cut -d: -f2 | xargs)
     else
         # 否则改成正确的大小写
-        image_name=$(wiminfo $install_wim | grep -ix "Name:[[:blank:]]*$image_name" | cut -d: -f2 | xargs)
+        image_name=$(wiminfo $install_wim | grep -ix "Name:[[:space:]]*$image_name" | cut -d: -f2 | xargs)
     fi
     echo "Image Name: $image_name"
 
@@ -2263,9 +2278,13 @@ download_netboot_xyz_efi() {
 }
 
 refind_main_disk() {
-    apk add sfdisk
-    main_disk="$(sfdisk --disk-id "/dev/$xda" | sed 's/0x//')"
-    apk del sfdisk
+    if true; then
+        apk add sfdisk
+        main_disk=$(sfdisk --disk-id /dev/$xda | sed 's/0x//')
+    else
+        apk add lsblk
+        main_disk=$(lsblk --nodeps -rno PTUUID /dev/$xda)
+    fi
 }
 
 install_redhat_ubuntu() {
