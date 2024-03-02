@@ -1403,7 +1403,8 @@ EOF
             cp -f /etc/resolv.conf $os_dir/etc/resolv.conf
 
             chroot $os_dir emerge-webrsync
-            profile=$(chroot $os_dir eselect profile list | grep '/[0-9\.]*/systemd (stable)' | awk '{print $2}')
+            profile=$(chroot $os_dir eselect profile list |
+                grep stable | grep systemd | grep -v desktop | tail -1 | awk '{print $2}')
             chroot $os_dir eselect profile set $profile
         fi
 
