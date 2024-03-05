@@ -53,10 +53,20 @@ add_community_repo() {
     fi
 }
 
+# 有时网络问题下载失败，导致脚本中断
+# 因此需要重试
+apk() {
+    for i in $(seq 5); do
+        command apk "$@" && return
+        sleep 1
+    done
+}
+
 # busybox 的 wget 没有重试功能
 wget() {
     for i in $(seq 5); do
         command wget "$@" && return
+        sleep 1
     done
 }
 
@@ -116,6 +126,7 @@ download() {
             --user-agent=Wget/1.21.1 \
             --max-tries 1 \
             $save $url && return
+        sleep 1
     done
 }
 
@@ -1347,10 +1358,10 @@ EOF
     # el 全系也用 NetworkManager，但他们的配置文件是 sysconfig，因此不受影响
     # https://github.com/canonical/cloud-init/commit/5d440856cb6d2b4c908015fe4eb7227615c17c8b
     if grep -E 'fedora:38' $os_dir/etc/os-release; then
-        network_manager_py=$os_dir/usr/lib/python3.11/site-packages/cloudinit/net/network_manager.py &&
-            if ! grep '"static6": "manual",' $network_manager_py; then
-                echo '"static6": "manual",' | insert_into_file $network_manager_py after '"static": "manual",'
-            fi
+        network_manager_py=$os_dir/usr/lib/python3.11/site-packages/cloudinit/net/network_manager.py
+        if ! grep '"static6": "manual",' $network_manager_py; then
+            echo '"static6": "manual",' | insert_into_file $network_manager_py after '"static": "manual",'
+        fi
     fi
 
     # debian 网络问题
@@ -1854,15 +1865,17 @@ dd_qcow() {
 
 }
 
+fix_partition_table_by_parted() {
+    parted /dev/$xda -f -s print
+}
+
 resize_after_install_cloud_image() {
     # 提前扩容
     # 1 修复 vultr 512m debian 10/11 generic/genericcloud 首次启动 kernel panic
     # 2 修复 gentoo websync 时空间不足
     if [ "$distro" = debian ] || [ "$distro" = gentoo ]; then
         apk add parted
-        if parted /dev/$xda -s print 2>&1 | grep 'Not all of the space'; then
-            printf "fix" | parted /dev/$xda print ---pretend-input-tty
-
+        if fix_partition_table_by_parted 2>&1 | grep -q 'Fixing'; then
             system_part_num=$(parted /dev/$xda -m print | tail -1 | cut -d: -f1)
             printf "yes" | parted /dev/$xda resizepart $system_part_num 100% ---pretend-input-tty
             update_part /dev/$xda
@@ -2512,7 +2525,11 @@ clear_previous
 add_community_repo
 
 # 需要在重新分区之前，找到主硬盘
-find_xda
+# 重新运行脚本时，可指定 xda
+# xda=sda ash trans.start
+if [ -z "$xda" ]; then
+    find_xda
+fi
 
 if [ "$distro" != "alpine" ]; then
     setup_nginx_if_enough_ram
@@ -2565,6 +2582,7 @@ if is_efi && [ "$distro" != "alpine" ]; then
     add_fallback_efi_to_nvram
 fi
 
+sync
 echo 'done'
 if [ "$hold" = 2 ]; then
     exit

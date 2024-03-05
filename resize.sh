@@ -19,7 +19,6 @@ update_part() {
 # ubuntu grownpart
 
 # 找出主硬盘
-# shellcheck disable=SC2010
 root_drive=$(mount | awk '$3=="/" {print $1}')
 xda=$(lsblk -r --inverse "$root_drive" | grep -w disk | awk '{print $1}')
 

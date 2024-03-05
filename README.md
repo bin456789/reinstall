@@ -62,7 +62,8 @@ certutil -urlcache -f -split https://raw.gitmirror.com/bin456789/reinstall/main/
 
 ### 功能 1: 安装 Linux
 
-- 静态 IP 的机器安装 centos、alma、rocky、fedora、debian、ubuntu，需添加参数 --ci 强制使用云镜像
+- 静态 IP 的机器安装 CentOS、Alma、Rocky、Fedora、Debian、Ubuntu，必须添加参数 `--ci`
+- 如果不清楚机器是静态 IP 还是动态 IP，也可添加参数 `--ci`，增加安装成功率
 
 ```bash
 bash reinstall.sh centos   7|8|9  (8|9 为 stream 版本)

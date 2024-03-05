@@ -35,7 +35,7 @@ Usage: reinstall.sh centos   7|8|9
                     windows  --iso=http://xxx --image-name='windows xxx'
                     netboot.xyz
 
-Homepage: https://github.com/bin456789/reinstall
+Manual: https://github.com/bin456789/reinstall
 EOF
     exit 1
 }
@@ -68,8 +68,20 @@ error_and_exit() {
 curl() {
     # 添加 -f, --fail，不然 404 退出码也为0
     # 32位 cygwin 已停止更新，证书可能有问题，先添加 --insecure
+    # centos 7 curl 不支持 --retry-connrefused --retry-all-errors
+    # 因此手动 retry
     grep -o 'http[^ ]*' <<<"$@" >&2
-    command curl --insecure --connect-timeout 10 --retry 5 --retry-delay 1 -f "$@"
+    for i in $(seq 5); do
+        if command curl --insecure --connect-timeout 10 -f "$@"; then
+            return
+        else
+            ret=$?
+            if [ $ret -eq 22 ]; then
+                # 404 错误
+                return $ret
+            fi
+        fi
+    done
 }
 
 is_in_china() {
@@ -243,11 +255,11 @@ assert_not_in_container() {
     is_in_windows && return
 
     if is_have_cmd systemd-detect-virt; then
-        if systemd-detect-virt -c >/dev/null; then
+        if systemd-detect-virt -qc; then
             _error_and_exit
         fi
     else
-        if [ -d /proc/vz ] || grep container=lxc /proc/1/environ; then
+        if [ -d /proc/vz ] || grep -q container=lxc /proc/1/environ; then
             _error_and_exit
         fi
     fi
@@ -447,7 +459,7 @@ setos() {
         if is_in_china; then
             ci_mirror=https://mirrors.tuna.tsinghua.edu.cn/gentoo
         else
-            ci_mirror=https://distfiles.gentoo.org
+            ci_mirror=https://mirror.leaseweb.com/gentoo
         fi
 
         if [ "$basearch_alt" = arm64 ]; then
@@ -724,7 +736,11 @@ install_pkg() {
     }
 
     install_pkg_real() {
-        echo "Installing package '$pkg' for command '$cmd'..."
+        text="$pkg"
+        if [ "$pkg" != "$cmd" ]; then
+            text+=" ($cmd)"
+        fi
+        echo "Installing package '$text'..."
         case $pkg_mgr in
         dnf) dnf install -y --setopt=install_weak_deps=False $pkg ;;
         yum) yum install -y $pkg ;;
@@ -873,7 +889,7 @@ del_cr() {
     sed 's/\r//g'
 }
 
-del_blank_lines() {
+del_empty_lines() {
     sed '/^[[:space:]]*$/d'
 }
 
@@ -983,7 +999,7 @@ collect_netconf() {
             done
 
             # IPv6
-            ipv6_type_list=$(cmd /c "chcp 437 & netsh interface ipv6 show address $id normal")
+            ipv6_type_list=$(netsh interface ipv6 show address $id normal)
             for ((i = 0; i < ${#ips[@]}; i++)); do
                 ip=${ips[i]}
                 cidr=${subnets[i]}
@@ -1550,9 +1566,13 @@ if is_secure_boot_enabled; then
     error_and_exit "Not Supported with secure boot enabled."
 fi
 
-# win系统盘
 if is_in_windows; then
+    # win系统盘
     c=$(echo $SYSTEMDRIVE | cut -c1)
+
+    # 更改 windows 命令输出语言为英文
+    # chcp.com 437 # 会清屏
+    mode.com con cp select=437 >/dev/null
 fi
 
 # 必备组件
@@ -1563,9 +1583,12 @@ if ! { [ "$distro" = dd ] || [ "$distro" = windows ] || [ "$distro" = netboot.xy
     check_ram
 fi
 
-# alpine --ci 参数无效
-if [ "$distro" = alpine ] && is_use_cloud_image; then
-    error_and_exit "can't install alpine with cloud image"
+# 以下系统忽略 --ci 参数
+if is_use_cloud_image && {
+    [ "$distro" = dd ] || [ "$distro" = windows ] || [ "$distro" = netboot.xyz ] || [ "$distro" = alpine ]
+}; then
+    echo "ignored --ci"
+    cloud_image=0
 fi
 
 # 检查硬件架构
@@ -1809,7 +1832,7 @@ if is_use_grub; then
     # 生成 grub 配置
     # 实测 centos 7 lvm 要手动加载 lvm 模块
     echo $target_cfg
-    cat <<EOF | del_blank_lines | tee $target_cfg
+    cat <<EOF | del_empty_lines | tee $target_cfg
 set timeout=5
 menuentry "$(get_entry_name)" {
     $(! is_in_windows && echo 'insmod lvm')

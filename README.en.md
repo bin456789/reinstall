@@ -62,7 +62,8 @@ All features can be used on both Linux and Windows.
 
 ### Feature 1: Install Linux
 
-- For machines with static IP, install CentOS, Alma, Rocky, Fedora, Debian, Ubuntu, and add the --ci parameter to force the use of the cloud image.
+- Machines with static IP installing CentOS, Alma, Rocky, Fedora, Debian, Ubuntu must include the parameter `--ci`.
+- If it is uncertain whether the machine has a static or dynamic IP, you can also add the parameter `--ci` to increase the installation success rate.
 
 ```bash
 bash reinstall.sh centos   7|8|9  (8|9 for the stream version)

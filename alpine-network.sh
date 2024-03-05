@@ -121,11 +121,11 @@ test_internet() {
     echo 'Testing Internet Connection...'
 
     for i in $(seq 5); do
-        if is_need_test_ipv4 && nslookup www.qq.com $ipv4_dns1 2>/dev/null; then
+        if is_need_test_ipv4 && nslookup www.qq.com $ipv4_dns1 >/dev/null 2>&1; then
             echo "IPv4 has internet."
             ipv4_has_internet=true
         fi
-        if is_need_test_ipv6 && nslookup www.qq.com $ipv6_dns1 2>/dev/null; then
+        if is_need_test_ipv6 && nslookup www.qq.com $ipv6_dns1 >/dev/null 2>&1; then
             echo "IPv6 has internet."
             ipv6_has_internet=true
         fi
@@ -136,14 +136,19 @@ test_internet() {
     done
 }
 
+flush_ipv4_config() {
+    ip -4 addr flush scope global dev "$ethx"
+    ip -4 route flush dev "$ethx"
+}
+
 test_internet
 
 # 处理云电脑 dhcp 获取的地址无法上网
 if $dhcpv4 && ! $ipv4_has_internet &&
+    [ -n "$ipv4_addr" ] && [ -n "$ipv4_gateway" ] &&
     ! [ "$ipv4_addr" = "$(get_first_ipv4_addr)" ]; then
     echo "DHCPv4 can't access Internet. And not match static IPv4."
-    ip -4 addr flush scope global dev "$ethx"
-    ip -4 route flush dev "$ethx"
+    flush_ipv4_config
     add_missing_ipv4_config
     test_internet
     if $ipv4_has_internet; then
