@@ -1321,6 +1321,17 @@ modify_linux() {
         fi
     }
 
+    # 修复 onlink 网关
+    add_onlink_script_if_need() {
+        if is_staticv4 || is_staticv6; then
+            fix_sh=cloud-init-fix-onlink.sh
+            download $confhome/$fix_sh $os_dir/$fix_sh
+            insert_into_file $ci_file after '^runcmd:' <<EOF
+  - bash /$fix_sh && rm -f /$fix_sh
+EOF
+        fi
+    }
+
     download_cloud_init_config $os_dir
 
     truncate_machine_id $os_dir
@@ -1342,34 +1353,45 @@ modify_linux() {
             fi
     fi
 
-    # debian 10/11 网络问题
-    if [ -f $os_dir/etc/debian_version ] && grep -E '^(10|11)' $os_dir/etc/debian_version; then
-        mv $os_dir/etc/resolv.conf $os_dir/etc/resolv.conf.orig
-        cp -f /etc/resolv.conf $os_dir/etc/resolv.conf
-        mount_pseudo_fs $os_dir
-        chroot $os_dir apt update
+    # debian 网络问题
+    if [ -f $os_dir/etc/debian_version ]; then
+        # 修复 onlink 网关
+        add_onlink_script_if_need
 
-        if true; then
-            # 将 debian 10/11 设置为 12 一样的网络管理器
-            # 可解决 ifupdown dhcp 不支持 24位掩码+不规则网关的问题
-            chroot $os_dir apt install -y netplan.io
-            chroot $os_dir systemctl disable networking resolvconf
-            chroot $os_dir systemctl enable systemd-networkd systemd-resolved
-            rm -f $os_dir/etc/resolv.conf $os_dir/etc/resolv.conf.orig
-            ln -sf ../run/systemd/resolve/stub-resolv.conf $os_dir/etc/resolv.conf
-            insert_into_file $os_dir/etc/cloud/cloud.cfg.d/99_fallback.cfg after '#cloud-config' <<EOF
+        if grep -E '^(10|11)' $os_dir/etc/debian_version; then
+            mv $os_dir/etc/resolv.conf $os_dir/etc/resolv.conf.orig
+            cp -f /etc/resolv.conf $os_dir/etc/resolv.conf
+            mount_pseudo_fs $os_dir
+            chroot $os_dir apt update
+
+            if true; then
+                # 将 debian 10/11 设置为 12 一样的网络管理器
+                # 可解决 ifupdown dhcp 不支持 24位掩码+不规则网关的问题
+                chroot $os_dir apt install -y netplan.io
+                chroot $os_dir systemctl disable networking resolvconf
+                chroot $os_dir systemctl enable systemd-networkd systemd-resolved
+                rm -f $os_dir/etc/resolv.conf $os_dir/etc/resolv.conf.orig
+                ln -sf ../run/systemd/resolve/stub-resolv.conf $os_dir/etc/resolv.conf
+                insert_into_file $os_dir/etc/cloud/cloud.cfg.d/99_fallback.cfg after '#cloud-config' <<EOF
 system_info:
   network:
     renderers: [netplan]
     activators: [netplan]
 EOF
 
-        else
-            # debian 10/11 默认不支持 rdnss，要安装 rdnssd 或者 nm
-            chroot $os_dir apt install -y rdnssd
-            # 不会自动建立链接，因此不能删除
-            mv $os_dir/etc/resolv.conf.orig $os_dir/etc/resolv.conf
+            else
+                # debian 10/11 默认不支持 rdnss，要安装 rdnssd 或者 nm
+                chroot $os_dir apt install -y rdnssd
+                # 不会自动建立链接，因此不能删除
+                mv $os_dir/etc/resolv.conf.orig $os_dir/etc/resolv.conf
+            fi
         fi
+    fi
+
+    # opensuse leap
+    if grep opensuse-leap $os_dir/etc/os-release; then
+        # 修复 onlink 网关
+        add_onlink_script_if_need
     fi
 
     # opensuse tumbleweed
@@ -1380,6 +1402,10 @@ EOF
 
     # arch
     if [ -f $os_dir/etc/arch-release ]; then
+        # 修复 onlink 网关
+        add_onlink_script_if_need
+
+        # 同步证书
         rm $os_dir/etc/resolv.conf
         cp /etc/resolv.conf $os_dir/etc/resolv.conf
         mount_pseudo_fs $os_dir
@@ -1429,6 +1455,9 @@ EOF
         insert_into_file $ci_file after '^runcmd:' <<EOF
   - sed -i '/^Name=/d' /etc/systemd/network/10-cloud-init-eth*.network
 EOF
+
+        # 修复 onlink 网关
+        add_onlink_script_if_need
     fi
 }
 
