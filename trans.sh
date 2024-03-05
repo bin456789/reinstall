@@ -1920,10 +1920,37 @@ EOF
     unix2dos $target
 }
 
-install_windows() {
-    apk add wimlib virt-what dmidecode pev
+# virt-what 要用最新版
+# vultr 1G High Frequency LAX 实际上是 kvm
+# debian 11 virt-what 1.19 显示为 hyperv qemu
+# debian 11 systemd-detect-virt 显示为 microsoft
+# alpine virt-what 1.25 显示为 kvm
+# 所以不要在原系统上判断具体虚拟化环境
 
-    # shellcheck disable=SC2154
+# lscpu 也可查看虚拟化环境，但 alpine on lightsail 运行结果为 Microsoft
+# 猜测 lscpu 只参考了 cpuid 没参考 dmi
+# virt-what 可能会输出多行结果，因此用 grep
+is_virt_contains() {
+    if [ -z "$_virt" ]; then
+        apk add virt-what
+        _virt=$(virt-what)
+        apk del virt-what
+    fi
+    echo "$_virt" | grep -Eiw "$1"
+}
+
+is_dmi_contains() {
+    if [ -z "$_dmi" ]; then
+        apk add dmidecode
+        _dmi=$(dmidecode)
+        apk del dmidecode
+    fi
+    echo "$_dmi" | grep -Eiw "$1"
+}
+
+install_windows() {
+    apk add wimlib pev
+
     download $iso /os/windows.iso
     mkdir -p /iso
     mount -o ro /os/windows.iso /iso
@@ -1982,51 +2009,41 @@ install_windows() {
     fi
 
     # 变量名     使用场景
-    # arch_uname arch命令/uname -m             x86_64  aarch64
-    # arch_wim   wiminfo                  x86  x86_64  ARM64
-    # arch       virtio驱动/unattend.xml  x86  amd64   arm64
-    # arch_xen   xen驱动                  x86  x64
+    # arch_uname arch命令 / uname -m             x86_64  aarch64
+    # arch_wim   wiminfo                    x86  x86_64  ARM64
+    # arch       virtio iso / unattend.xml  x86  amd64   arm64
+    # arch_xdd   virtio msi / xen驱动       x86  x64
 
     # 将 wim 的 arch 转为驱动和应答文件的 arch
     arch_wim=$(wiminfo $install_wim 1 | grep Architecture: | awk '{print $2}' | to_lower)
     case "$arch_wim" in
     x86)
         arch=x86
-        arch_xen=x86
+        arch_xdd=x86
         ;;
     x86_64)
         arch=amd64
-        arch_xen=x64
+        arch_xdd=x64
         ;;
     arm64)
         arch=arm64
-        arch_xen= # xen 没有 arm64 驱动
+        arch_xdd= # xen 没有 arm64 驱动，# virtio 也没有 arm64 msi
         ;;
     esac
 
-    # virt-what 要用最新版
-    # vultr 1G High Frequency LAX 实际上是 kvm
-    # debian 11 virt-what 1.19 显示为 hyperv qemu
-    # debian 11 systemd-detect-virt 显示为 microsoft
-    # alpine virt-what 1.25 显示为 kvm
-    # 所以不要在原系统上判断具体虚拟化环境
-
-    # lscpu 也可查看虚拟化环境，但 alpine on lightsail 运行结果为 Microsoft
-    # 猜测 lscpu 只参考了 cpuid 没参考 dmi
-    # 下载 virtio 驱动
-    # virt-what 可能会输出多行结果，因此用 grep
+    # 驱动
     drv=/os/drivers
     mkdir -p $drv
-    if virt-what | grep aws &&
-        virt-what | grep kvm &&
-        [ "$arch_wim" = x86_64 ]; then
-        # aws nitro
-        # 只有 x64 位驱动
-        # 可能不支持 vista
-        # 未打补丁的 win7 无法使用 sha256 签名的驱动
-        # https://docs.aws.amazon.com/zh_cn/AWSEC2/latest/WindowsGuide/aws-nvme-drivers.html
-        # https://docs.aws.amazon.com/zh_cn/AWSEC2/latest/WindowsGuide/enhanced-networking-ena.html
 
+    # aws nitro
+    # 可能不支持 vista
+    # https://docs.aws.amazon.com/zh_cn/AWSEC2/latest/WindowsGuide/aws-nvme-drivers.html
+    # https://docs.aws.amazon.com/zh_cn/AWSEC2/latest/WindowsGuide/enhanced-networking-ena.html
+    if is_virt_contains aws &&
+        is_virt_contains kvm &&
+        [ "$arch_wim" = x86_64 ]; then
+
+        # 未打补丁的 win7 无法使用 sha256 签名的驱动
         nvme_ver=$(
             case "$nt_ver" in
             6.0 | 6.1) echo 1.3.2 ;; # sha1 签名
@@ -2048,13 +2065,14 @@ install_windows() {
 
         unzip -o -d $drv/aws/ $drv/AWSNVMe.zip
         unzip -o -d $drv/aws/ $drv/AwsEnaNetworkDriver.zip
+    fi
 
-    elif virt-what | grep xen &&
+    # aws xen
+    # 可能不支持 vista
+    # https://docs.aws.amazon.com/zh_cn/AWSEC2/latest/WindowsGuide/xen-drivers-overview.html
+    if is_virt_contains xen &&
         [ "$arch_wim" = x86_64 ]; then
-        # aws xen
-        # 只有 64 位驱动
-        # 可能不支持 vista
-        # https://docs.aws.amazon.com/zh_cn/AWSEC2/latest/WindowsGuide/xen-drivers-overview.html
+
         apk add msitools
 
         aws_pv_ver=$(
@@ -2071,27 +2089,31 @@ install_windows() {
         msiextract $drv/AWSPVDriverSetup.msi -C $drv
         mkdir -p $drv/aws/
         cp -rf $drv/.Drivers/* $drv/aws/
+    fi
 
-    elif false && virt-what | grep xen &&
-        [ "$arch_wim" != arm64 ]; then
-        # xen
-        # 有 x86 x64，没arm64驱动
-        # 没签名，暂时用aws的驱动代替
-        # https://lore.kernel.org/xen-devel/E1qKMmq-00035B-SS@xenbits.xenproject.org/
-        # https://xenbits.xenproject.org/pvdrivers/win/
-        # 在 aws t2 上测试，安装 xenbus 会蓝屏，装了其他7个驱动后，能进系统但没网络
-        # 但 aws 应该用aws官方xen驱动，所以测试仅供参考
+    # xen
+    # 没签名，暂时用aws的驱动代替
+    # https://lore.kernel.org/xen-devel/E1qKMmq-00035B-SS@xenbits.xenproject.org/
+    # https://xenbits.xenproject.org/pvdrivers/win/
+    # 在 aws t2 上测试，安装 xenbus 会蓝屏，装了其他7个驱动后，能进系统但没网络
+    # 但 aws 应该用aws官方xen驱动，所以测试仅供参考
+    if false &&
+        is_virt_contains xen &&
+        { [ "$arch_wim" = x86 ] || [ "$arch_wim" = x86_64 ]; }; then
+
         parts='xenbus xencons xenhid xeniface xennet xenvbd xenvif xenvkbd'
         mkdir -p $drv/xen/
         for part in $parts; do
             download https://xenbits.xenproject.org/pvdrivers/win/$part.tar $drv/$part.tar
             tar -xf $drv/$part.tar -C $drv/xen/
         done
+    fi
 
-    elif virt-what | grep kvm; then
-        # virtio
-        # x86 x64 arm64 都有
-        # https://fedorapeople.org/groups/virt/virtio-win/direct-downloads/stable-virtio/
+    # kvm (排除 aws)
+    # x86 x86_64 arm64 都有
+    # https://fedorapeople.org/groups/virt/virtio-win/direct-downloads/stable-virtio/
+    if is_virt_contains kvm &&
+        ! is_virt_contains aws; then
 
         # 没有 vista 文件夹
         case "$nt_ver" in
@@ -2105,37 +2127,98 @@ install_windows() {
         # https://github.com/virtio-win/virtio-win-pkg-scripts/issues/40
         # https://github.com/virtio-win/virtio-win-pkg-scripts/issues/61
         case "$nt_ver" in
-        6.0 | 6.1) dir=archive-virtio/virtio-win-0.1.173-9 ;; # vista | w7 | 2k8 | 2k8R2
-        6.2 | 6.3) dir=archive-virtio/virtio-win-0.1.215-1 ;; # win8 | w8.1 | 2k12 | 2k12R2
+        6.0 | 6.1) dir=archive-virtio/virtio-win-0.1.173-9 ;; # vista|w7|2k8|2k8R2
+        6.2 | 6.3) dir=archive-virtio/virtio-win-0.1.215-1 ;; # w8|w8.1|2k12|2k12R2
         *) dir=stable-virtio ;;
         esac
 
-        download https://fedorapeople.org/groups/virt/virtio-win/direct-downloads/$dir/virtio-win.iso $drv/virtio-win.iso
-        mkdir -p $drv/virtio
-        mount -o ro $drv/virtio-win.iso $drv/virtio
-
-        apk add dmidecode
-        dmi=$(dmidecode)
-
-        if echo "$dmi" | grep -Eiw "Google Compute Engine|GoogleCloud"; then
-            gce_repo=https://packages.cloud.google.com/yuck
-            download $gce_repo/repos/google-compute-engine-stable/index /tmp/gce.json
-            # gga 好像只是用于调节后台vnc分辨率
-            for name in gvnic gga; do
-                mkdir -p $drv/gce/$name
-                link=$(grep -o "/pool/.*-google-compute-engine-driver-$name\.goo" /tmp/gce.json)
-                wget $gce_repo$link -O- | tar -xzf- -C $drv/gce/$name
-            done
-
-            # 没有 win6.0 文件夹
-            sys_gce=win$nt_ver
+        # vista|w7|2k8|2k8R2|arm64 要从 iso 获取驱动
+        if [ "$nt_ver" = 6.0 ] || [ "$nt_ver" = 6.1 ] || [ "$arch_wim" = arm64 ]; then
+            virtio_source=iso
+        else
+            virtio_source=msi
         fi
 
-    elif [ "$(dmidecode -s chassis-asset-tag)" = "7783-7084-3265-9085-8269-3286-77" ] &&
-        [ "$arch_wim" != arm64 ]; then
-        # azure
-        # 有 x86 x64，没 arm64
-        # https://learn.microsoft.com/azure/virtual-network/accelerated-networking-mana-windows
+        baseurl=https://fedorapeople.org/groups/virt/virtio-win/direct-downloads
+
+        if [ "$virtio_source" = iso ]; then
+            download $baseurl/$dir/virtio-win.iso $drv/virtio.iso
+            mkdir -p $drv/virtio
+            mount -o ro $drv/virtio.iso $drv/virtio
+        else
+            # coreutils 的 cp mv rm 才有 -v 参数
+            apk add 7zip file coreutils
+            download $baseurl/$dir/virtio-win-gt-$arch_xdd.msi $drv/virtio.msi
+            match="FILE_*_${sys}_${arch}*"
+            7z x $drv/virtio.msi -o$drv/virtio -i!$match -y -bb1
+
+            (
+                cd $drv/virtio
+                # 为没有后缀名的文件添加后缀名
+                echo "Recognizing file extension..."
+                for file in *"${sys}_${arch}"; do
+                    recognized=false
+                    maybe_exts=$(file -b --extension "$file")
+
+                    # exe/sys -> sys
+                    # exe/com -> exe
+                    # dll/cpl/tlb/ocx/acm/ax/ime -> dll
+                    for ext in sys exe dll; do
+                        if echo $maybe_exts | grep -qw $ext; then
+                            recognized=true
+                            mv -v "$file" "$file.$ext"
+                            break
+                        fi
+                    done
+
+                    # 如果识别不了后缀名，就删除此文件
+                    # 因为用不了，免得占用空间
+                    if ! $recognized; then
+                        rm -fv "$file"
+                    fi
+                done
+
+                # 将
+                # FILE_netkvm_netkvmco_w8.1_amd64.dll
+                # FILE_netkvm_w8.1_amd64.cat
+                # 改名为
+                # netkvmco.dll
+                # netkvm.cat
+                echo "Renaming files..."
+                for file in *; do
+                    new_file=$(echo "$file" | sed "s|FILE_||; s|_${sys}_${arch}||; s|.*_||")
+                    mv -v "$file" "$new_file"
+                done
+            )
+        fi
+    fi
+
+    # gcp
+    if { is_dmi_contains "Google Compute Engine" || is_dmi_contains "GoogleCloud"; } &&
+        { [ "$arch_wim" = x86 ] || [ "$arch_wim" = x86_64 ]; }; then
+
+        gce_repo=https://packages.cloud.google.com/yuck
+        download $gce_repo/repos/google-compute-engine-stable/index /tmp/gce.json
+        # gga 好像只是用于调节后台vnc分辨率
+        for name in gvnic gga; do
+            mkdir -p $drv/gce/$name
+            link=$(grep -o "/pool/.*-google-compute-engine-driver-$name\.goo" /tmp/gce.json)
+            wget $gce_repo$link -O- | tar -xzf- -C $drv/gce/$name
+
+            # 没有 win6.0 文件夹
+            # TODO: 测试是否可用
+            if false; then
+                mkdir -p $drv/gce/$name/win6.0/
+                cp -r $drv/gce/$name/win6.1/* $drv/gce/$name/win6.0/
+            fi
+        done
+    fi
+
+    # azure
+    # https://learn.microsoft.com/azure/virtual-network/accelerated-networking-mana-windows
+    if is_dmi_contains "7783-7084-3265-9085-8269-3286-77" &&
+        { [ "$arch_wim" = x86 ] || [ "$arch_wim" = x86_64 ]; }; then
+
         download https://aka.ms/manawindowsdrivers $drv/azure.zip
         unzip $drv/azure.zip -d $drv/azure/
     fi
@@ -2188,20 +2271,28 @@ install_windows() {
     # 添加驱动
     mkdir -p /wim/drivers
     [ -d $drv/virtio ] && {
-        if [ "$nt_ver" = 6.0 ]; then
-            # 气球驱动有问题
-            cp_drivers $drv/virtio -ipath "*/$sys/$arch/*" -not -ipath "*/balloon/*"
+        if [ "$virtio_source" = iso ]; then
+            # iso
+            if [ "$nt_ver" = 6.0 ]; then
+                # win7 气球驱动有问题
+                cp_drivers $drv/virtio -ipath "*/$sys/$arch/*" -not -ipath "*/balloon/*"
+            else
+                cp_drivers $drv/virtio -ipath "*/$sys/$arch/*"
+            fi
         else
-            cp_drivers $drv/virtio -ipath "*/$sys/$arch/*"
+            # msi
+            # 虽然 win7 气球驱动有问题，但 msi 里面没有 win7 驱动
+            # 因此不用额外处理
+            cp_drivers $drv/virtio
         fi
     }
     [ -d $drv/aws ] && cp_drivers $drv/aws
-    [ -d $drv/xen ] && cp_drivers $drv/xen -ipath "*/$arch_xen/*"
+    [ -d $drv/xen ] && cp_drivers $drv/xen -ipath "*/$arch_xdd/*"
     [ -d $drv/azure ] && cp_drivers $drv/azure
     [ -d $drv/gce ] && {
         [ "$arch_wim" = x86 ] && gvnic_suffix=-32 || gvnic_suffix=
-        cp_drivers $drv/gce/gvnic -ipath "*/$sys_gce$gvnic_suffix/*"
-        cp_drivers $drv/gce/gga -ipath "*/$sys_gce/*"
+        cp_drivers $drv/gce/gvnic -ipath "*/win$nt_ver$gvnic_suffix/*"
+        cp_drivers $drv/gce/gga -ipath "*/win$nt_ver/*"
     }
 
     # win7 要添加 bootx64.efi 到 efi 目录
@@ -2322,18 +2413,16 @@ install_redhat_ubuntu() {
     if [ "$distro" = "ubuntu" ]; then
         download $iso /os/installer/ubuntu.iso
 
-        apk add dmidecode
-        dmi=$(dmidecode)
         # https://github.com/systemd/systemd/blob/main/src/basic/virt.c
         # https://github.com/canonical/cloud-init/blob/main/tools/ds-identify
         # http://git.annexia.org/?p=virt-what.git;a=blob;f=virt-what.in;hb=HEAD
-        if echo "$dmi" | grep -Eiw "amazon|ec2"; then
+        if is_dmi_contains "amazon" || is_dmi_contains "ec2"; then
             kernel=aws
-        elif echo "$dmi" | grep -Eiw "Google Compute Engine|GoogleCloud"; then
+        elif is_dmi_contains "Google Compute Engine" || is_dmi_contains "GoogleCloud"; then
             kernel=gcp
-        elif echo "$dmi" | grep -Eiw "OracleCloud"; then
+        elif is_dmi_contains "OracleCloud"; then
             kernel=oracle
-        elif echo "$dmi" | grep -Eiw "7783-7084-3265-9085-8269-3286-77"; then
+        elif is_dmi_contains "7783-7084-3265-9085-8269-3286-77"; then
             kernel=azure
         else
             kernel=generic
