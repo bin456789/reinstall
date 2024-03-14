@@ -856,7 +856,7 @@ is_efi() {
 is_secure_boot_enabled() {
     if is_efi; then
         if is_in_windows; then
-            reg query 'HKLM\SYSTEM\CurrentControlSet\Control\SecureBoot\State' /v UEFISecureBootEnabled | grep 0x1
+            reg query 'HKLM\SYSTEM\CurrentControlSet\Control\SecureBoot\State' /v UEFISecureBootEnabled 2>/dev/null | grep 0x1
         else
             # localhost:~# mokutil --sb-state
             # SecureBoot disabled
@@ -1497,9 +1497,25 @@ EOF
 }
 
 # 脚本入口
+if is_in_windows; then
+    # win系统盘
+    c=$(echo $SYSTEMDRIVE | cut -c1)
+
+    # 64位系统 + 32位cmd/cygwin，需要添加 PATH，否则找不到64位系统程序，例如bcdedit
+    sysnative=$(cygpath -u $WINDIR\\Sysnative)
+    if [ -d $sysnative ]; then
+        PATH=$PATH:$sysnative
+    fi
+
+    # 更改 windows 命令输出语言为英文
+    # chcp.com 437 # 会清屏
+    mode.com con cp select=437 >/dev/null
+fi
+
 # 检查 root
 if is_in_windows; then
-    if ! openfiles >/dev/null 2>&1; then
+    # 64位系统 + 32位cmd/cygwin，运行 openfiles 报错：目标系统必须运行 32 位的操作系统
+    if ! fltmc >/dev/null 2>&1; then
         error_and_exit "Please run as administrator."
     fi
 else
@@ -1564,15 +1580,6 @@ assert_not_in_container
 # 不支持安全启动
 if is_secure_boot_enabled; then
     error_and_exit "Not Supported with secure boot enabled."
-fi
-
-if is_in_windows; then
-    # win系统盘
-    c=$(echo $SYSTEMDRIVE | cut -c1)
-
-    # 更改 windows 命令输出语言为英文
-    # chcp.com 437 # 会清屏
-    mode.com con cp select=437 >/dev/null
 fi
 
 # 必备组件

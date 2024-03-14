@@ -53,28 +53,38 @@ set tags=%tmp%\cygwin-installed-!pkgs!
 if not exist !tags! (
     rem win10 arm 支持运行 x86 软件
     rem win11 arm 支持运行 x86 和 x86_64 软件
-    rem wmic os get osarchitecture
+    rem wmic os get osarchitecture 显示中文
+    rem wmic ComputerSystem get SystemType 显示英文
+
+    for /f "tokens=2 delims==" %%a in ('wmic os get BuildNumber /format:list ^| find "BuildNumber"') do (
+        set /a BuildNumber=%%a
+    )
+
+    set CygwinEOL=1
+
     wmic ComputerSystem get SystemType | find "ARM" > nul
     if not errorlevel 1 (
-        for /f "tokens=2 delims==" %%a in ('wmic os get BuildNumber /format:list ^| find "BuildNumber"') do set BuildNumber=%%a
         if !BuildNumber! GEQ 22000 (
-            set CygwinArch=x86_64
-        ) else (
-            set CygwinArch=x86
+            set CygwinEOL=0
         )
     ) else (
         wmic ComputerSystem get SystemType | find "x64" > nul
         if not errorlevel 1 (
-            set CygwinArch=x86_64
-        ) else (
-            set CygwinArch=x86
+            if !BuildNumber! GEQ 9600 (
+                set CygwinEOL=0
+            )
         )
     )
 
-    if "!CygwinArch!" == "x86_64" (
-        set dir=/sourceware/cygwin
-    ) else (
+    rem win7/8 cygwin 已 EOL，不能用最新 cygwin 源，而要用 Cygwin Time Machine 源
+    rem 但 Cygwin Time Machine 没有国内源
+    rem 为了保证国内下载速度, cygwin EOL 统一使用 cygwin-archive x86 源
+    if !CygwinEOL! == "1" (
+        set CygwinArch=x86
         set dir=/sourceware/cygwin-archive/20221123
+    ) else (
+        set CygwinArch=x86_64
+        set dir=/sourceware/cygwin
     )
 
     rem 下载 Cygwin
