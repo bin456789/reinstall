@@ -1595,7 +1595,21 @@ mod_initrd() {
     tmp_dir=/tmp/reinstall
     mkdir_clear $tmp_dir
     cd $tmp_dir
-    zcat /reinstall-initrd | cpio -idm
+
+    # cygwin 下处理 debian initrd 时
+    # 解压/重新打包/删除 initrd 的 /dev/console /dev/null 都会报错
+    # cpio: dev/console: Cannot utime: Invalid argument
+    # cpio: ./dev/console: Cannot stat: Bad address
+    # 用 windows 文件管理器可删除
+
+    # 但同样运行 zcat /reinstall-initrd | cpio -idm
+    # 打开 C:\cygwin\Cygwin.bat ，运行报错
+    # 打开桌面的 Cygwin 图标，运行就没问题
+
+    # shellcheck disable=SC2046
+    # nonmatching 是精确匹配路径
+    zcat /reinstall-initrd | cpio -idm \
+        $(is_in_windows && echo --nonmatching 'dev/console' --nonmatching 'dev/null')
 
     curl -Lo $tmp_dir/trans.sh $confhome/trans.sh
     curl -Lo $tmp_dir/alpine-network.sh $confhome/alpine-network.sh
