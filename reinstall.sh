@@ -1368,22 +1368,96 @@ mkdir_clear() {
     mkdir -p $dir
 }
 
-mod_alpine_initrd() {
-    # 修改 alpine 启动时运行我们的脚本
-    info mod alpine initrd
-    install_pkg gzip cpio
+mod_initrd_debian() {
+    # hack 1
+    # 允许设置 ipv4 onlink 网关
+    sed -Ei 's,&&( onlink=),||\1,' etc/udhcpc/default.script
 
-    # 解压
-    # 先删除临时文件，避免之前运行中断有残留文件
-    tmp_dir=/tmp/reinstall
-    mkdir_clear $tmp_dir
-    cd $tmp_dir
-    zcat /reinstall-initrd | cpio -idm
+    # hack 2
+    # 修改 /var/lib/dpkg/info/netcfg.postinst 运行我们的脚本
+    # shellcheck disable=SC1091,SC2317
+    netcfg() {
+        #!/bin/sh
+        . /usr/share/debconf/confmodule
+        db_progress START 0 5 debian-installer/netcfg/title
 
-    # 预先下载脚本
-    curl -Lo $tmp_dir/trans.start $confhome/trans.sh
-    curl -Lo $tmp_dir/alpine-network.sh $confhome/alpine-network.sh
+        # 找到主网卡
+        # debian 11 initrd 没有 awk
+        if false; then
+            iface=$(ip -o link | grep "@mac_addr" | awk '{print $2}' | cut -d: -f1)
+        else
+            iface=$(ip -o link | grep "@mac_addr" | cut -d' ' -f2 | cut -d: -f1)
+        fi
+        db_progress STEP 1
 
+        # dhcpv4
+        db_progress INFO netcfg/dhcp_progress
+        udhcpc -i "$iface" -f -q -n
+        db_progress STEP 1
+
+        # slaac + dhcpv6
+        db_progress INFO netcfg/slaac_wait_title
+        # https://salsa.debian.org/installer-team/netcfg/-/blob/master/autoconfig.c#L148
+        cat <<EOF >/var/lib/netcfg/dhcp6c.conf
+interface $iface {
+    send ia-na 0;
+    request domain-name-servers;
+    request domain-name;
+    script "/lib/netcfg/print-dhcp6c-info";
+};
+
+id-assoc na 0 {
+};
+EOF
+        dhcp6c -c /var/lib/netcfg/dhcp6c.conf "$iface"
+        sleep 10
+        kill -9 "$(cat /var/run/dhcp6c.pid)"
+        db_progress STEP 1
+
+        # 静态 + 检测网络
+        db_subst netcfg/link_detect_progress interface "$iface"
+        db_progress INFO netcfg/link_detect_progress
+        . /alpine-network.sh @netconf
+        db_progress STEP 1
+
+        # 运行trans.sh，保存配置
+        db_progress INFO base-installer/progress/netcfg
+        . /trans.sh
+        db_progress STEP 1
+    }
+
+    collect_netconf
+    is_in_china && is_in_china=true || is_in_china=false
+    netconf="'$mac_addr' '$ipv4_addr' '$ipv4_gateway' '$ipv6_addr' '$ipv6_gateway' '$is_in_china'"
+
+    get_function_content netcfg |
+        sed "s|@mac_addr|$mac_addr|" |
+        sed "s|@netconf|$netconf|" >var/lib/dpkg/info/netcfg.postinst
+
+    # hack 3
+    # 修改 trans.sh
+    # 1. 直接调用 create_ifupdown_config
+    insert_into_file $tmp_dir/trans.sh after ': main' <<EOF
+        distro=debian
+        create_ifupdown_config /etc/network/interfaces
+        exit
+EOF
+    # 2. 删除 debian busybox 无法识别的语法
+    # 3. 删除 apk 语句
+    # 4. debian 11/12 initrd 无法识别 > >
+    # 5. debian 11/12 initrd 无法识别 < <
+    # 6. debian 11 initrd 无法识别 set -E
+    # 7. debian 11 initrd 无法识别 trap ERR
+    # 删除或注释，可能会导致空方法而报错，因此改为替换成'\n: #'
+    replace='\n: #'
+    sed -Ei "s/> >/$replace/" $tmp_dir/trans.sh
+    sed -Ei "s/< </$replace/" $tmp_dir/trans.sh
+    sed -Ei "s/(^[[:space:]]*set[[:space:]].*)E/\1/" $tmp_dir/trans.sh
+    sed -Ei "s/^[[:space:]]*apk[[:space:]]/$replace/" $tmp_dir/trans.sh
+    sed -Ei "s/^[[:space:]]*trap[[:space:]]/$replace/" $tmp_dir/trans.sh
+}
+
+mod_initrd_alpine() {
     # virt 内核添加 ipv6 模块
     if virt_dir=$(ls -d $tmp_dir/lib/modules/*-virt 2>/dev/null); then
         ipv6_dir=$virt_dir/kernel/net/ipv6
@@ -1410,13 +1484,14 @@ EOF
 
     # hack 2 设置 ethx
     # 3.16~3.18 ip_choose_if
-    # 3.19.1+ ethernets
+    # 3.19 ethernets
     if grep -q ip_choose_if init; then
         ethernets_func=ip_choose_if
     else
         ethernets_func=ethernets
     fi
 
+    # shellcheck disable=SC2317
     ip_choose_if() {
         ip -o link | grep "@mac_addr" | awk '{print $2}' | cut -d: -f1
         return
@@ -1431,7 +1506,7 @@ EOF
     # 使用同样参数运行 udhcpc6
     #       udhcpc -i "$device" -f -q # v3.17
     # $MOCK udhcpc -i "$device" -f -q # v3.18
-    # $MOCK udhcpc -i "$iface" -f -q  # v3.19.1
+    # $MOCK udhcpc -i "$iface" -f -q  # v3.19
     search='udhcpc -i'
     orig_cmd="$(grep "$search" init)"
     mod_cmd4="$orig_cmd -n || true"
@@ -1444,12 +1519,13 @@ EOF
     # udhcpc:  bound
     # udhcpc6: deconfig
     # udhcpc6: bound
-    # shellcheck disable=SC2154
+    # shellcheck disable=SC2317
     udhcpc() {
         if [ "$1" = deconfig ]; then
             return
         fi
         if [ "$1" = bound ] && [ -n "$ipv6" ]; then
+            # shellcheck disable=SC2154
             ip -6 addr add "$ipv6" dev "$interface"
             ip link set dev "$interface" up
             return
@@ -1465,7 +1541,7 @@ EOF
     # hack 5 网络配置
     is_in_china && is_in_china=true || is_in_china=false
     insert_into_file init after 'MAC_ADDRESS=' <<EOF
-        source /alpine-network.sh \
+        . /alpine-network.sh \
         "$mac_addr" "$ipv4_addr" "$ipv4_gateway" "$ipv6_addr" "$ipv6_gateway" "$is_in_china"
 EOF
 
@@ -1481,10 +1557,27 @@ EOF
     insert_into_file init before '^exec (/bin/busybox )?switch_root' <<EOF
         # echo "wget --no-check-certificate -O- $confhome/trans.sh | /bin/ash" >\$sysroot/etc/local.d/trans.start
         # wget --no-check-certificate -O \$sysroot/etc/local.d/trans.start $confhome/trans.sh
-        cp /trans.start \$sysroot/etc/local.d/trans.start
+        cp /trans.sh \$sysroot/etc/local.d/trans.start
         chmod a+x \$sysroot/etc/local.d/trans.start
         ln -s /etc/init.d/local \$sysroot/etc/runlevels/default/
 EOF
+}
+
+mod_initrd() {
+    info "mod $nextos_distro initrd"
+    install_pkg gzip cpio
+
+    # 解压
+    # 先删除临时文件，避免之前运行中断有残留文件
+    tmp_dir=/tmp/reinstall
+    mkdir_clear $tmp_dir
+    cd $tmp_dir
+    zcat /reinstall-initrd | cpio -idm
+
+    curl -Lo $tmp_dir/trans.sh $confhome/trans.sh
+    curl -Lo $tmp_dir/alpine-network.sh $confhome/alpine-network.sh
+
+    mod_initrd_$nextos_distro
 
     # 重建
     # 注意要用 cpio -H newc 不要用 cpio -c ，不同版本的 -c 作用不一样，很坑
@@ -1702,9 +1795,9 @@ else
     curl -Lo /reinstall-initrd $nextos_initrd
 fi
 
-# 修改 alpine initrd
-if [ "$nextos_distro" = alpine ]; then
-    mod_alpine_initrd
+# 修改 alpine debian initrd
+if [ "$nextos_distro" = alpine ] || [ "$nextos_distro" = debian ]; then
+    mod_initrd
 fi
 
 # 将内核/netboot.xyz.lkrn 放到正确的位置

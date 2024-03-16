@@ -376,10 +376,11 @@ get_netconf_to() {
     esac
 
     # shellcheck disable=SC2154
+    # debian initrd 没有 xargs
     case "$1" in
     slaac) echo "$ra" | grep 'Autonomous address conf' | grep Yes && res=1 || res=0 ;;
     dhcpv6) echo "$ra" | grep 'Stateful address conf' | grep Yes && res=1 || res=0 ;;
-    rdnss) res=$(echo "$ra" | grep 'Recursive DNS server' | cut -d: -f2- | xargs) ;;
+    rdnss) res=$(echo "$ra" | grep 'Recursive DNS server' | cut -d: -f2-) ;;
     other) echo "$ra" | grep 'Stateful other conf' | grep Yes && res=1 || res=0 ;;
     *) res=$(cat /dev/$1) ;;
     esac
@@ -485,11 +486,21 @@ is_need_manual_set_dnsv6() {
 }
 
 get_current_dns_v4() {
-    grep '^nameserver' /etc/resolv.conf | awk '{print $2}' | grep '\.'
+    # debian 11 initrd 没有 awk
+    if false; then
+        grep '^nameserver' /etc/resolv.conf | awk '{print $2}' | grep '\.'
+    else
+        grep '^nameserver' /etc/resolv.conf | cut -d' ' -f2 | grep '\.'
+    fi
 }
 
 get_current_dns_v6() {
-    grep '^nameserver' /etc/resolv.conf | awk '{print $2}' | grep ':'
+    # debian 11 initrd 没有 awk
+    if false; then
+        grep '^nameserver' /etc/resolv.conf | awk '{print $2}' | grep ':'
+    else
+        grep '^nameserver' /etc/resolv.conf | cut -d' ' -f2 | grep ':'
+    fi
 }
 
 to_upper() {
@@ -612,6 +623,83 @@ insert_into_file() {
     fi
 }
 
+create_ifupdown_config() {
+    conf_file=$1
+
+    rm -f $conf_file
+
+    # shellcheck disable=SC2154
+    if [ "$distro" = debian ]; then
+        cat <<EOF >>$conf_file
+source /etc/network/interfaces.d/*
+
+EOF
+    fi
+
+    # 生成 lo配置 + ethx头部
+    get_netconf_to ethx
+    if [ -f /etc/network/devhotplug ] && grep -wo "$ethx" /etc/network/devhotplug; then
+        mode=allow-hotplug
+    else
+        mode=auto
+    fi
+    cat <<EOF >>$conf_file
+auto lo
+iface lo inet loopback
+
+$mode $ethx
+EOF
+
+    # ipv4
+    if is_dhcpv4; then
+        echo "iface $ethx inet dhcp" >>$conf_file
+
+    elif is_staticv4; then
+        get_netconf_to ipv4_addr
+        get_netconf_to ipv4_gateway
+        cat <<EOF >>$conf_file
+iface $ethx inet static
+    address $ipv4_addr
+    gateway $ipv4_gateway
+EOF
+        # dns
+        if list=$(get_current_dns_v4); then
+            for dns in $list; do
+                cat <<EOF >>$conf_file
+    dns-nameservers $dns
+EOF
+            done
+        fi
+    fi
+
+    # ipv6
+    if is_slaac; then
+        echo "iface $ethx inet6 auto" >>$conf_file
+
+    elif is_dhcpv6; then
+        echo "iface $ethx inet6 dhcp" >>$conf_file
+
+    elif is_staticv6; then
+        get_netconf_to ipv6_addr
+        get_netconf_to ipv6_gateway
+        cat <<EOF >>$conf_file
+iface $ethx inet6 static
+    address $ipv6_addr
+    gateway $ipv6_gateway
+EOF
+    fi
+
+    # dns
+    # 有 ipv6 但需设置 dns 的情况
+    if is_need_manual_set_dnsv6 && list=$(get_current_dns_v6); then
+        for dns in $list; do
+            cat <<EOF >>$conf_file
+    dns-nameserver $dns
+EOF
+        done
+    fi
+}
+
 install_alpine() {
     hack_lowram_modloop=true
     hack_lowram_swap=true
@@ -675,66 +763,8 @@ install_alpine() {
     sed -i '/^#slaac hwaddr/s/^#//' /etc/dhcpcd.conf
     rc-update add networking boot
 
-    get_netconf_to ethx
-
-    # 生成 lo配置 + ethx头部
-    cat <<EOF >/etc/network/interfaces
-auto lo
-iface lo inet loopback
-
-auto $ethx
-EOF
-
-    # ipv4
-    if is_dhcpv4; then
-        echo "iface $ethx inet dhcp" >>/etc/network/interfaces
-
-    elif is_staticv4; then
-        get_netconf_to ipv4_addr
-        get_netconf_to ipv4_gateway
-        cat <<EOF >>/etc/network/interfaces
-iface $ethx inet static
-    address $ipv4_addr
-    gateway $ipv4_gateway
-EOF
-        # dns
-        if list=$(get_current_dns_v4); then
-            for dns in $list; do
-                cat <<EOF >>/etc/network/interfaces
-    dns-nameserver $dns
-EOF
-            done
-        fi
-    fi
-
-    # ipv6
-    if is_slaac; then
-        echo "iface $ethx inet6 auto" >>/etc/network/interfaces
-
-    elif is_dhcpv6; then
-        echo "iface $ethx inet6 dhcp" >>/etc/network/interfaces
-
-    elif is_staticv6; then
-        get_netconf_to ipv6_addr
-        get_netconf_to ipv6_gateway
-        cat <<EOF >>/etc/network/interfaces
-iface $ethx inet6 static
-    address $ipv6_addr
-    gateway $ipv6_gateway
-EOF
-    fi
-
-    # dns
-    # 有 ipv6 但需设置 dns 的情况
-    if is_need_manual_set_dnsv6 && list=$(get_current_dns_v6); then
-        for dns in $list; do
-            cat <<EOF >>/etc/network/interfaces
-    dns-nameserver $dns
-EOF
-        done
-    fi
-
-    # 显示网络配置
+    # 网络配置
+    create_ifupdown_config /etc/network/interfaces
     echo
     cat -n /etc/network/interfaces
     echo
@@ -2504,6 +2534,10 @@ EOF
 }
 
 # 脚本入口
+# debian initrd 会寻找 : main
+# 并调用本文件的 create_ifupdown_config 方法
+: main
+
 # arm要手动从硬件同步时间，避免访问https出错
 # do 机器第二次运行会报错
 hwclock -s || true

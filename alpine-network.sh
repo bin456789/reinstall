@@ -1,5 +1,6 @@
 #!/bin/ash
 # shellcheck shell=dash
+# alpine / debian initrd 共用此脚本
 
 mac_addr=$1
 ipv4_addr=$2
@@ -9,7 +10,8 @@ ipv6_gateway=$5
 is_in_china=$6
 
 # 3.16-3.18 $device
-# 3.19.1+ $iface
+# 3.19 $iface
+# debian $iface
 # shellcheck disable=SC2154
 if [ -n "$iface" ]; then
     ethx="$iface"
@@ -30,7 +32,12 @@ else
 fi
 
 get_first_ipv4_addr() {
-    ip -4 -o addr show scope global dev "$ethx" | head -1 | awk '{print $4}'
+    # debian 11 initrd 没有 awk
+    if false; then
+        ip -4 -o addr show scope global dev "$ethx" | head -1 | awk '{print $4}'
+    else
+        ip -4 -o addr show scope global dev "$ethx" | head -1 | grep -o '[0-9\.]*/[0-9]*'
+    fi
 }
 
 is_have_ipv4_addr() {
@@ -120,12 +127,13 @@ is_need_test_ipv6() {
 test_internet() {
     echo 'Testing Internet Connection...'
 
+    # debian 没有 nslookup，因此用 ping
     for i in $(seq 5); do
-        if is_need_test_ipv4 && nslookup www.qq.com $ipv4_dns1 >/dev/null 2>&1; then
+        if is_need_test_ipv4 && ping -c1 -W5 $ipv4_dns1 >/dev/null 2>&1; then
             echo "IPv4 has internet."
             ipv4_has_internet=true
         fi
-        if is_need_test_ipv6 && nslookup www.qq.com $ipv6_dns1 >/dev/null 2>&1; then
+        if is_need_test_ipv6 && ping -c1 -W5 $ipv6_dns1 >/dev/null 2>&1; then
             echo "IPv6 has internet."
             ipv6_has_internet=true
         fi
