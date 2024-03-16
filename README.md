@@ -10,15 +10,16 @@
 
 ## 亮点
 
-- 默认使用官方安装程序，不满足安装程序内存要求时，将使用官方云镜像 (Cloud Image)
-- 不含第三方链接和自制包，所有资源均实时从源站点获得
-- 适配 512M + 5G 小鸡，并支持 256M 小鸡安装 Alpine
+- 使用官方云镜像 (Cloud Image) 安装，可绕过传统网络安装的 [内存要求](https://access.redhat.com/articles/rhel-limits#minimum-required-memory-3)，且安装速度更快
+- 支持 512M + 5G 小鸡，也支持 256M 小鸡安装 Alpine
+- 支持所有网络情况，包括动静态 IPv4/IPv6，纯 IPv4/IPv6
 - 支持用官方 iso 安装 Windows
-- 支持 Windows 重装成 Linux，也可重装 Windows
+- 支持 Windows 重装成 Linux，也支持重装 Windows
 - 支持 BIOS、EFI、ARM
 - 原系统分区支持 LVM、Btrfs
 - 支持安装 Alpine、Arch、openSUSE、Gentoo，也可从这些系统安装
 - 可通过 SSH、浏览器、串行控制台、后台 VNC 查看 DD、云镜像安装进度
+- 不含第三方链接和自制包，所有资源均实时从源站点获得
 - 有很多注释
 
 ## 下载（当前系统是 Linux）
@@ -62,8 +63,9 @@ certutil -urlcache -f -split https://raw.gitmirror.com/bin456789/reinstall/main/
 
 ### 功能 1: 安装 Linux
 
-- 静态 IP 的机器安装 CentOS、Alma、Rocky、Fedora、Debian、Ubuntu，必须添加参数 `--ci`
-- 如果不清楚机器是静态 IP 还是动态 IP，也可添加参数 `--ci`，增加安装成功率
+- 参数 `--ci` 表示强制使用云镜像安装
+- 静态 IP 的机器安装 CentOS、Alma、Rocky、Fedora、Ubuntu，必须使用 `--ci` 参数
+- 如果不清楚机器是静态 IP 还是动态 IP，也可使用 `--ci`
 
 ```bash
 bash reinstall.sh centos   7|8|9  (8|9 为 stream 版本)
@@ -73,9 +75,9 @@ bash reinstall.sh centos   7|8|9  (8|9 为 stream 版本)
                   debian   10|11|12
                   ubuntu   20.04|22.04
                   alpine   3.16|3.17|3.18|3.19
-                  opensuse 15.5|tumbleweed (只支持云镜像)
-                  arch     (只支持 amd64 云镜像)
-                  gentoo   (只支持 amd64 云镜像)
+                  opensuse 15.5|tumbleweed
+                  arch     (暂不支持 ARM)
+                  gentoo   (暂不支持 ARM)
 
                   不输入版本号，则安装最新版
 ```
@@ -159,18 +161,23 @@ Windows Server 2022 SERVERDATACENTER
     - GCP ([gVNIC 网卡](https://cloud.google.com/compute/docs/networking/using-gvnic)、[GGA 显卡](https://cloud.google.com/compute/docs/instances/enable-instance-virtual-display))
     - Azure ([MANA 网卡](https://learn.microsoft.com/zh-cn/azure/virtual-network/accelerated-networking-mana-windows))
 3. Vista (Server 2008) 和 32 位系统可能会缺少驱动
-4. 静态 IP 的机器，安装后会自动配置好 IP
-5. 可绕过 Windows 11 硬件限制
-6. 支持 Azure ARM (Hyper-V)，不支持甲骨文 ARM (KVM)
-7. `zh-cn_windows_10_enterprise_ltsc_2021_x64_dvd_033b7312.iso` 此镜像安装后 `wsappx` 进程会长期占用 CPU
+4. 未开启 CSM 的 EFI 机器，无法安装 Windows 7 (Server 2008 R2)
+5. 静态 IP 的机器，安装后会自动配置好 IP
+6. 可绕过 Windows 11 硬件限制
+7. 支持 Windows 11 on ARM，仅限 Hyper-V (Azure) ，不支持 KVM (甲骨文云)
+8. `zh-cn_windows_10_enterprise_ltsc_2021_x64_dvd_033b7312.iso` 此镜像安装后 `wsappx` 进程会长期占用 CPU
 
    这是镜像的问题，解决方法是安装 `VCLibs` 库
 
    <https://www.google.com/search?q=ltsc+wsappx>
 
-8. 以下网站可找到 iso 链接
+9. 以下网站可找到 iso 链接
 
-   <https://massgrave.dev/genuine-installation-media.html>
+   <https://massgrave.dev/genuine-installation-media.html> (推荐，iso 来自官方，每月更新，包含最新补丁)
+
+   <https://www.microsoft.com/software-download/windows10> (需用手机 User-Agent 打开)
+
+   <https://www.microsoft.com/software-download/windows11>
 
 ## 内存要求
 
@@ -185,14 +192,6 @@ Windows Server 2022 SERVERDATACENTER
 | Gentoo                              | -        | 512M   |
 | Windows 8.1 (Server 2012 R2) 或以下 | 512M     | -      |
 | Windows 10 (Server 2016) 或以上     | 1G       | -      |
-
-## 网络要求
-
-用`安装模式`安装 Linux 要求能自动获取 IP 地址
-
-其他情况支持静态 IP、IPv6（包括安装 Alpine、Linux 云镜像、Windows iso、dd）
-
-运行脚本时不需要填写静态 IP 地址
 
 ## 虚拟化要求
 
@@ -232,10 +231,6 @@ Windows Server 2022 SERVERDATACENTER
    <https://raw.githubusercontent.com/bin456789/reinstall/main/reinstall.bat>
 
    <https://raw.githubusercontent.com/bin456789/reinstall/main/reinstall.sh>
-
-## TODO
-
-- 安装模式：静态 IP、IPv6、多网卡
 
 ## 感谢
 

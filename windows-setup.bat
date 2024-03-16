@@ -20,6 +20,7 @@ rem 没有加载网卡驱动，无法用 ping 来等待
 echo wscript.sleep(5000) > X:\sleep.vbs
 cscript //nologo X:\sleep.vbs
 del X:\sleep.vbs
+echo rescan | diskpart
 
 rem 判断 efi 还是 bios
 rem 或者用 https://learn.microsoft.com/windows-hardware/manufacture/desktop/boot-to-uefi-mode-or-legacy-bios-mode

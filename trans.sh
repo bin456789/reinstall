@@ -98,9 +98,13 @@ download() {
         fi
     fi
 
-    # stdbuf 在 coreutils 包里面
     if ! is_have_cmd aria2c; then
-        apk add aria2 coreutils
+        apk add aria2
+    fi
+
+    # stdbuf 在 coreutils 包里面
+    if ! is_have_cmd stdbuf; then
+        apk add coreutils
     fi
 
     # 阿里云源检测 user-agent 禁止 axel/aria2 下载
@@ -1274,7 +1278,7 @@ modify_windows() {
 
     # 下载共同的子脚本
     # 可能 unattend.xml 已经设置了ExtendOSPartition，不过运行resize没副作用
-    bats="windows-resize.bat windows-set-netconf.bat"
+    bats="windows-set-netconf.bat windows-resize.bat"
     download $confhome/windows-resize.bat $os_dir/windows-resize.bat
     create_win_set_netconf_script $os_dir/windows-set-netconf.bat
 
@@ -2534,7 +2538,7 @@ EOF
 }
 
 # 脚本入口
-# debian initrd 会寻找 : main
+# debian initrd 会寻找 main
 # 并调用本文件的 create_ifupdown_config 方法
 : main
 

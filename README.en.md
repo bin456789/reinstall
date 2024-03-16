@@ -10,15 +10,17 @@ One-click reinstallation script
 
 ## Highlights
 
-- By default, the official installation program is used. When the memory requirements of the installation program are not met, the official cloud image (Cloud Image) will be used.
-- The script does not include third-party links or homemade packages; all resources are obtained in real-time from the source site.
+- Installing using official cloud images (Cloud Image) allows bypassing the [memory requirements](https://access.redhat.com/articles/rhel-limits#minimum-required-memory-3) of traditional network installations, resulting in faster installation speed.
+- Using official cloud images for installation ensures fast installation speed and can also avoid issues with netboot installation on machines with limited memory.
 - Compatible with 512M + 5G small servers and supports installing Alpine on 256M small servers.
+- Compatible with all network conditions, including dynamic/static IPv4/IPv6 and pure IPv4/IPv6.
 - Supports installing Windows using the official ISO.
 - Supports reinstalling Windows as Linux or Windows itself.
 - Supports BIOS, EFI, ARM.
 - The original system partition supports LVM, Btrfs.
 - Supports installing Alpine, Arch, openSUSE, Gentoo, and can also install these systems from them.
 - Progress of DD and cloud image installation can be viewed through SSH, browser, serial console, and web panel VNC.
+- The script does not include third-party links or homemade packages; all resources are obtained in real-time from the source site.
 - Includes many comments.
 
 ## Download (Current system is Linux)
@@ -62,8 +64,9 @@ All features can be used on both Linux and Windows.
 
 ### Feature 1: Install Linux
 
-- Machines with static IP installing CentOS, Alma, Rocky, Fedora, Debian, Ubuntu must include the parameter `--ci`.
-- If it is uncertain whether the machine has a static or dynamic IP, you can also add the parameter `--ci` to increase the installation success rate.
+- The parameter --ci indicates forced usage of the cloud image for installation.
+- Machines with static IP installing CentOS, Alma, Rocky, Fedora, Ubuntu must include the parameter `--ci`.
+- If it is uncertain whether the machine has a static or dynamic IP, you can also add the parameter `--ci`.
 
 ```bash
 bash reinstall.sh centos   7|8|9  (8|9 for the stream version)
@@ -73,9 +76,9 @@ bash reinstall.sh centos   7|8|9  (8|9 for the stream version)
                   debian   10|11|12
                   ubuntu   20.04|22.04
                   alpine   3.16|3.17|3.18|3.19
-                  opensuse 15.5|tumbleweed (only supports cloud image)
-                  arch     (only supports amd64 cloud image)
-                  gentoo   (only supports amd64 cloud image)
+                  opensuse 15.5|tumbleweed
+                  arch     (not supports ARM)
+                  gentoo   (not supports ARM)
 
                   If no version number is entered, the latest version will be installed.
 ```
@@ -159,18 +162,23 @@ Use `Dism++` File menu > Open Image File, select the iso to be installed to get 
     - GCP ([gVNIC Network Adapter](https://cloud.google.com/compute/docs/networking/using-gvnic), [GGA Graphics](https://cloud.google.com/compute/docs/instances/enable-instance-virtual-display))
     - Azure ([MANA Network Adapter](https://learn.microsoft.com/zh-cn/azure/virtual-network/accelerated-networking-mana-windows))
 3. Vista (Server 2008) and 32-bit systems may lack drivers.
-4. If the machine has a static IP, the IP will be automatically set after installation.
-5. Can bypass Windows 11 hardware restrictions.
-6. Supports Azure ARM (Hyper-V), does not support Oracle ARM (KVM).
-7. The process `wsappx` will occupy CPU for a long time after installing the image `zh-cn_windows_10_enterprise_ltsc_2021_x64_dvd_033b7312.iso`.
+4. For EFI machines without CSM enabled, Windows 7 (Server 2008 R2) cannot be installed.
+5. If the machine has a static IP, the IP will be automatically set after installation.
+6. Can bypass Windows 11 hardware restrictions.
+7. Supports Windows 11 on ARM, exclusively for Hyper-V (Azure), not compatible with KVM (Oracle Cloud).
+8. The process `wsappx` will occupy CPU for a long time after installing the image `zh-cn_windows_10_enterprise_ltsc_2021_x64_dvd_033b7312.iso`.
 
    This is an issue with the image, and the solution is to install the `VCLibs` library.
 
    <https://www.google.com/search?q=ltsc+wsappx>
 
-8. The following website provides iso links.
+9. The following website provides iso links.
 
-   <https://massgrave.dev/genuine-installation-media.html>
+   <https://massgrave.dev/genuine-installation-media.html> (Recommended, iso sourced from official channels, updated monthly, includes the latest patches)
+
+   <https://www.microsoft.com/software-download/windows10> (Need to open it with a mobile User-Agent)
+
+   <https://www.microsoft.com/software-download/windows11>
 
 ## Memory Requirements
 
@@ -185,14 +193,6 @@ Use `Dism++` File menu > Open Image File, select the iso to be installed to get 
 | Gentoo                                | -                        | 512M        |
 | Windows 8.1 (Server 2012 R2) or below | 512M                     | -           |
 | Windows 10 (Server 2016) or above     | 1G                       | -           |
-
-## Network Requirements
-
-Install Linux using the `Install Mode` requires the machine to be able to automatically obtain an IP address.
-
-Other cases support static IP, IPv6 (including installing Alpine, Linux cloud image, Windows iso, dd).
-
-No need to fill in the static IP address when running the script.
 
 ## Virtualization Requirements
 
@@ -232,10 +232,6 @@ You can try the following methods:
    <https://raw.githubusercontent.com/bin456789/reinstall/main/reinstall.bat>
 
    <https://raw.githubusercontent.com/bin456789/reinstall/main/reinstall.sh>
-
-## TODO
-
-- Install mode: Static IP, IPv6, multiple NICs
 
 ## Thanks
 

@@ -77,10 +77,11 @@ curl() {
         else
             ret=$?
             if [ $ret -eq 22 ]; then
-                # 404 错误
+                # 403 404 错误
                 return $ret
             fi
         fi
+        sleep 1
     done
 }
 
@@ -209,12 +210,23 @@ test_url_real() {
     # 用 dd 限制下载 1M
     # 并过滤 curl 23 错误（dd限制了空间）
     # 也可用 ulimit -f 但好像 cygwin 不支持
-    curl -Lr 0-1048575 "$url" \
-        1> >(dd bs=1M count=1 of=$tmp_file iflag=fullblock 2>/dev/null) \
-        2> >(grep -v 'curl: (23)' >&2) ||
-        if [ ! $? -eq 23 ]; then
-            failed "$url not accessible"
+    echo $url
+    for i in $(seq 5 -1 0); do
+        if command curl --insecure --connect-timeout 10 -Lfr 0-1048575 "$url" \
+            1> >(dd bs=1M count=1 of=$tmp_file iflag=fullblock 2>/dev/null) \
+            2> >(grep -v 'curl: (23)' >&2); then
+            break
+        else
+            ret=$?
+            msg="$url not accessible"
+            case $ret in
+            22) failed "$msg" ;;                # 403 404
+            23) break ;;                        # 限制了空间
+            *) [ $i -eq 0 ] && failed "$msg" ;; # 其他错误
+            esac
+            sleep 1
         fi
+    done
 
     if [ -n "$expect_type" ]; then
         # gzip的mime有很多种写法
@@ -388,7 +400,6 @@ setos() {
             [ "$releasever" -eq 10 ] && [ "$basearch_alt" = amd64 ] && flavour=
             # shellcheck disable=SC2034
             kernel=linux-image$flavour-$basearch_alt
-
         fi
     }
 
@@ -459,7 +470,8 @@ setos() {
         if is_in_china; then
             ci_mirror=https://mirrors.tuna.tsinghua.edu.cn/gentoo
         else
-            ci_mirror=https://mirror.leaseweb.com/gentoo
+            # ci_mirror=https://mirror.leaseweb.com/gentoo  # 不支持 ipv6
+            ci_mirror=https://distfiles.gentoo.org
         fi
 
         if [ "$basearch_alt" = arm64 ]; then
@@ -1331,7 +1343,18 @@ build_nextos_cmdline() {
         nextos_cmdline="root=live:$nextos_squashfs inst.ks=$nextos_ks"
     fi
 
-    nextos_cmdline+=" $(echo_tmp_ttys)"
+    if [ $nextos_distro = debian ]; then
+        if [ "$basearch" = "x86_64" ]; then
+            # debian 不遵循最后一个 tty 为主 tty 的规则
+            # 设置ttyS0,tty0,最终结果是ttyS0
+            :
+        else
+            # debian arm 不设置 tty 无法启动
+            nextos_cmdline+=" $(echo_tmp_ttys)"
+        fi
+    else
+        nextos_cmdline+=" $(echo_tmp_ttys)"
+    fi
     # nextos_cmdline+=" mem=256M"
 }
 
