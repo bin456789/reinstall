@@ -64,6 +64,7 @@ apk() {
 
 # busybox 的 wget 没有重试功能
 wget() {
+    echo "$@" | grep -o 'http[^ ]*' >&2
     for i in $(seq 5); do
         command wget "$@" && return
         sleep 1

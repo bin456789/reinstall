@@ -20,20 +20,25 @@ trap_err() {
 }
 
 usage_and_exit() {
+    if is_in_windows; then
+        reinstall____=' reinstall.bat'
+    else
+        reinstall____='./reinstall.sh'
+    fi
     cat <<EOF
-Usage: reinstall.sh centos   7|8|9
-                    alma     8|9
-                    rocky    8|9
-                    fedora   38|39
-                    debian   10|11|12
-                    ubuntu   20.04|22.04
-                    alpine   3.16|3.17|3.18|3.19
-                    opensuse 15.5|tumbleweed
-                    arch
-                    gentoo
-                    dd       --img=http://xxx
-                    windows  --iso=http://xxx --image-name='windows xxx'
-                    netboot.xyz
+Usage: $reinstall____ centos   7|8|9
+                      alma     8|9
+                      rocky    8|9
+                      fedora   38|39
+                      debian   10|11|12
+                      ubuntu   20.04|22.04
+                      alpine   3.16|3.17|3.18|3.19
+                      opensuse 15.5|tumbleweed
+                      arch
+                      gentoo
+                      dd       --img=http://xxx
+                      windows  --iso=http://xxx --image-name='windows xxx'
+                      netboot.xyz
 
 Manual: https://github.com/bin456789/reinstall
 EOF
@@ -1345,15 +1350,17 @@ build_nextos_cmdline() {
 
     if [ $nextos_distro = debian ]; then
         if [ "$basearch" = "x86_64" ]; then
-            # debian 不遵循最后一个 tty 为主 tty 的规则
-            # 设置ttyS0,tty0,最终结果是ttyS0
+            # debian 安装界面不遵循最后一个 tty 为主 tty 的规则
+            # 设置ttyS0,tty0,安装界面还是显示在ttyS0
             :
         else
-            # debian arm 不设置 tty 无法启动
-            nextos_cmdline+=" $(echo_tmp_ttys)"
+            # debian arm 在没有ttyAMA0的机器上（aws t4g），最少要设置一个tty才能启动
+            # 只设置tty0也行，但安装过程ttyS0没有显示
+            nextos_cmdline+=" console=ttyS0,115200 console=ttyAMA0,115200 console=tty0"
         fi
     else
-        nextos_cmdline+=" $(echo_tmp_ttys)"
+        # nextos_cmdline+=" $(echo_tmp_ttys)"
+        nextos_cmdline+=" console=ttyS0,115200 console=ttyAMA0,115200 console=tty0"
     fi
     # nextos_cmdline+=" mem=256M"
 }
