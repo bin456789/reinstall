@@ -1,4 +1,5 @@
 @echo off
+mode con cp select=65001 >nul
 
 rem 使用高性能模式
 rem https://learn.microsoft.com/windows-hardware/manufacture/desktop/capture-and-apply-windows-using-a-single-wim

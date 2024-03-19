@@ -1,5 +1,7 @@
 @echo off
+mode con cp select=65001 >nul
 setlocal EnableDelayedExpansion
+
 set confhome=https://raw.githubusercontent.com/bin456789/reinstall/main
 set github_proxy=raw.gitmirror.com
 
