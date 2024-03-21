@@ -1,5 +1,11 @@
 @echo off
-mode con cp select=65001 >nul
+mode con cp select=437 >nul
+
+rem 正常来说应该用 46001 代码页
+rem 但 win7 find 命令在 46001 代码页下有问题，仅限 win 7
+rem echo a | find "a"
+rem findstr 就正常，但安装程序又没有 findstr
+rem 只好用 437 代码页，好像也没副作用
 
 rem 使用高性能模式
 rem https://learn.microsoft.com/windows-hardware/manufacture/desktop/capture-and-apply-windows-using-a-single-wim
