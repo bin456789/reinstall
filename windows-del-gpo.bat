@@ -1,5 +1,5 @@
 @echo off
-mode con cp select=65001 >nul
+mode con cp select=437 >nul
 setlocal enabledelayedexpansion
 
 set "files[1]=%windir%\System32\GroupPolicy\gpt.ini"

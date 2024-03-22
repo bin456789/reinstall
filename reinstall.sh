@@ -1645,8 +1645,8 @@ if is_in_windows; then
     fi
 
     # 更改 windows 命令输出语言为英文
-    # chcp.com 65001 # 会清屏
-    mode.com con cp select=65001 >/dev/null
+    # chcp 会清屏
+    mode.com con cp select=437 >/dev/null
 fi
 
 # 检查 root
