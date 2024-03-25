@@ -18,8 +18,8 @@ rem 进入脚本目录
 cd /d %~dp0
 
 rem 检查是否有管理员权限
-openfiles 1>nul 2>&1
-if not !errorlevel! == 0 (
+fltmc >nul 2>&1
+if errorlevel 1 (
     echo Please run as administrator^^!
     exit /b
 )
@@ -36,13 +36,13 @@ if not exist %tmp%\geoip (
     call :download http://dash.cloudflare.com/cdn-cgi/trace %tmp%\geoip
 )
 findstr /c:"loc=CN" %tmp%\geoip >nul
-if !errorlevel! == 0 (
+if not errorlevel 1 (
     rem mirrors.tuna.tsinghua.edu.cn 会强制跳转 https
     set mirror=http://mirror.nju.edu.cn
 
     if defined github_proxy (
         echo !confhome! | findstr /c:"://raw.githubusercontent.com/" >nul
-        if !errorlevel! == 0 (
+        if not errorlevel 1 (
             rem set confhome=!github_proxy!/!confhome!
             set confhome=!confhome:raw.githubusercontent.com=%github_proxy%!
         )
@@ -52,7 +52,7 @@ if !errorlevel! == 0 (
 )
 
 rem pkgs 改动了才重新运行 Cygwin 安装程序
-set pkgs="curl,cpio,p7zip,bind-utils,ipcalc"
+set pkgs="curl,cpio,p7zip,bind-utils,ipcalc,dos2unix"
 set tags=%tmp%\cygwin-installed-!pkgs!
 if not exist !tags! (
     rem win10 arm 支持运行 x86 软件
@@ -120,12 +120,13 @@ rem 在c盘根目录下执行 cygpath -ua . 会得到 /cygdrive/c，因此末尾
 for /f %%a in ('%SystemDrive%\cygwin\bin\cygpath -ua ./') do set thisdir=%%a
 
 rem 方法1
+%SystemDrive%\cygwin\bin\dos2unix -q '%thisdir%reinstall.sh'
 %SystemDrive%\cygwin\bin\bash -l -c '%thisdir%reinstall.sh !param!'
 
 rem 方法2
 rem %SystemDrive%\cygwin\bin\bash reinstall.sh %*
 rem 再在 reinstall.sh 里运行 source /etc/profile
-exit /b !errorlevel!
+exit /b
 
 
 
@@ -137,4 +138,4 @@ rem https://learn.microsoft.com/en-us/windows/win32/bits/http-requirements-for-b
 rem certutil 会被 windows Defender 报毒
 echo Download: %~1 %~2
 certutil -urlcache -f -split %~1 %~2
-exit /b !errorlevel!
+exit /b
