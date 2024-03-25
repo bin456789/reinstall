@@ -83,7 +83,7 @@ if not exist !tags! (
     rem win7/8 cygwin 已 EOL，不能用最新 cygwin 源，而要用 Cygwin Time Machine 源
     rem 但 Cygwin Time Machine 没有国内源
     rem 为了保证国内下载速度, cygwin EOL 统一使用 cygwin-archive x86 源
-    if !CygwinEOL! == "1" (
+    if !CygwinEOL! == 1 (
         set CygwinArch=x86
         set dir=/sourceware/cygwin-archive/20221123
     ) else (
