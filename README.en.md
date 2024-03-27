@@ -78,7 +78,7 @@ bash reinstall.sh centos   7|8|9  (8|9 for the stream version)
                   alpine   3.16|3.17|3.18|3.19
                   opensuse 15.5|tumbleweed
                   arch     (not supports ARM)
-                  gentoo   (not supports ARM)
+                  gentoo
 
                   If no version number is entered, the latest version will be installed.
 ```
@@ -190,7 +190,7 @@ Use `Dism++` File menu > Open Image File, select the iso to be installed to get 
 | Alpine                                | 256M                     | -           |
 | openSUSE                              | -                        | 512M        |
 | Arch                                  | -                        | 512M        |
-| Gentoo                                | -                        | 512M        |
+| Gentoo                                | 512M                     | -           |
 | Windows 8.1 (Server 2012 R2) or below | 512M                     | -           |
 | Windows 10 (Server 2016) or above     | 1G                       | -           |
 

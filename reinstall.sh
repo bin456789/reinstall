@@ -458,8 +458,6 @@ setos() {
     }
 
     setos_arch() {
-        cloud_image=1
-
         # cloud image
         if is_in_china; then
             ci_mirror=https://mirrors.tuna.tsinghua.edu.cn/archlinux
@@ -471,25 +469,31 @@ setos() {
     }
 
     setos_gentoo() {
-        cloud_image=1
         if is_in_china; then
-            ci_mirror=https://mirrors.tuna.tsinghua.edu.cn/gentoo
+            mirror=https://mirrors.tuna.tsinghua.edu.cn/gentoo
         else
-            # ci_mirror=https://mirror.leaseweb.com/gentoo  # 不支持 ipv6
-            ci_mirror=https://distfiles.gentoo.org
+            # mirror=https://mirror.leaseweb.com/gentoo  # 不支持 ipv6
+            mirror=https://distfiles.gentoo.org
         fi
 
-        if [ "$basearch_alt" = arm64 ]; then
-            error_and_exit 'Not support arm64 for gentoo cloud image.'
-        fi
+        if is_use_cloud_image; then
+            if [ "$basearch_alt" = arm64 ]; then
+                error_and_exit 'Not support arm64 for gentoo cloud image.'
+            fi
 
-        # openrc 镜像没有附带兼容 cloud-init 的网络管理器
-        eval ${step}_img=$ci_mirror/experimental/$basearch_alt/openstack/gentoo-openstack-$basearch_alt-systemd-latest.qcow2
+            # openrc 镜像没有附带兼容 cloud-init 的网络管理器
+            eval ${step}_img=$mirror/experimental/$basearch_alt/openstack/gentoo-openstack-$basearch_alt-systemd-latest.qcow2
+        else
+            prefix=stage3-$basearch_alt-systemd-mergedusr
+            dir=releases/$basearch_alt/autobuilds/current-$prefix
+            file=$(curl -L $mirror/$dir/latest-$prefix.txt | grep '.tar.xz' | awk '{print $1}')
+            stage3=$mirror/$dir/$file
+            test_url $stage3 'xz'
+            eval ${step}_img=$stage3
+        fi
     }
 
     setos_opensuse() {
-        cloud_image=1
-
         # aria2 有 mata4 问题
         # https://download.opensuse.org/
 
@@ -809,6 +813,31 @@ install_pkg() {
 }
 
 check_ram() {
+    ram_standard=$(
+        case "$distro" in
+        netboot.xyz) echo 0 ;;
+        alpine | dd) echo 256 ;; # 192 无法启动 netboot
+        debian) echo 384 ;;
+        gentoo | windows) echo 512 ;;
+        centos | alma | rocky | fedora | ubuntu) echo 1024 ;;
+        arch | opensuse) echo max ;; # 没有安装模式
+        esac
+    )
+
+    # 不用检查内存的情况
+    if [ "$ram_standard" -eq 0 ]; then
+        return
+    fi
+
+    ram_cloud_image=512
+
+    has_cloud_image=$(
+        case "$distro" in
+        centos | alma | rocky | fedora | debian | ubuntu | opensuse | arch) echo true ;;
+        netboot.xyz | alpine | dd | gentoo | windows) echo false ;;
+        esac
+    )
+
     if is_in_windows; then
         ram_size=$(wmic memorychip get capacity | tail +2 | awk '{sum+=$1} END {print sum/1024/1024}')
     else
@@ -837,27 +866,19 @@ check_ram() {
         error_and_exit "Could not detect RAM size."
     fi
 
-    case "$distro" in
-    alpine) ram_installer=256 ;; # 192 无法启动 netboot
-    debian) ram_installer=384 ;;
-    *) ram_installer=1024 ;;
-    esac
-
-    ram_cloud_image=512
-
-    case "$distro" in
-    opensuse | arch | gentoo) cloud_image=1 ;;
-    esac
-
     # ram 足够就用普通方法安装，否则如果内存大于512就用 cloud image
     # TODO: 测试 256 384 内存
-    if [ ! "$cloud_image" = 1 ] && [ $ram_size -lt $ram_installer ]; then
-        if [ $ram_size -ge $ram_cloud_image ]; then
-            info "RAM < $ram_installer MB. Switch to cloud image mode"
+    if ! is_use_cloud_image && [ $ram_size -lt $ram_standard ]; then
+        if $has_cloud_image; then
+            info "RAM < $ram_standard MB. Fallback to cloud image mode"
             cloud_image=1
         else
-            error_and_exit "Could not install $distro: RAM < $ram_cloud_image MB."
+            error_and_exit "Could not install $distro: RAM < $ram_standard MB."
         fi
+    fi
+
+    if is_use_cloud_image && [ $ram_size -lt $ram_cloud_image ]; then
+        error_and_exit "Could not install $distro using cloud image: RAM < $ram_cloud_image MB."
     fi
 }
 
@@ -1722,18 +1743,21 @@ fi
 # 必备组件
 install_pkg curl grep
 
-# 检查内存
-if ! { [ "$distro" = dd ] || [ "$distro" = windows ] || [ "$distro" = netboot.xyz ]; }; then
-    check_ram
-fi
+# 强制忽略/强制添加 --ci 参数
+case "$distro" in
+dd | windows | netboot.xyz | alpine | gentoo)
+    if is_use_cloud_image; then
+        echo "ignored --ci"
+        cloud_image=0
+    fi
+    ;;
+opensuse | arch)
+    cloud_image=1
+    ;;
+esac
 
-# 以下系统忽略 --ci 参数
-if is_use_cloud_image && {
-    [ "$distro" = dd ] || [ "$distro" = windows ] || [ "$distro" = netboot.xyz ] || [ "$distro" = alpine ]
-}; then
-    echo "ignored --ci"
-    cloud_image=0
-fi
+# 检查内存
+check_ram
 
 # 检查硬件架构
 if is_in_windows; then

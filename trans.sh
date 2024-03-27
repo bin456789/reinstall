@@ -185,7 +185,7 @@ setup_nginx() {
 
 get_approximate_ram_size() {
     # lsmem 需要 util-linux
-    if is_have_cmd lsmem; then
+    if false && is_have_cmd lsmem; then
         ram_size=$(lsmem -b 2>/dev/null | grep 'Total online memory:' | awk '{ print $NF/1024/1024 }')
     fi
 
@@ -862,6 +862,208 @@ install_alpine() {
     fi
 }
 
+install_gentoo() {
+    os_dir=/os
+
+    # 挂载分区
+    if is_efi || is_xda_gt_2t; then
+        os_part_num=2
+    else
+        os_part_num=1
+    fi
+
+    mkdir -p /os
+    mount -t ext4 /dev/${xda}*${os_part_num} /os
+
+    if is_efi; then
+        mkdir -p /os/boot/efi
+        mount -t vfat /dev/${xda}*1 /os/boot/efi
+    fi
+
+    # 添加 swap
+    create_swap_if_ram_less_than 2048 $os_dir/swapfile
+
+    # 解压系统
+    apk add tar xz
+    # shellcheck disable=SC2154
+    download "$img" $os_dir/gentoo.tar.xz
+    echo "Uncompressing Gentoo..."
+    tar xpf $os_dir/gentoo.tar.xz -C $os_dir --xattrs-include='*.*' --numeric-owner
+    rm $os_dir/gentoo.tar.xz
+    apk del tar xz
+
+    # dns
+    cp -f /etc/resolv.conf $os_dir/etc/resolv.conf
+
+    # 挂载伪文件系统
+    mount_pseudo_fs $os_dir
+
+    # 网络配置
+    apk add cloud-init
+    useradd systemd-network
+    touch net.cfg
+    create_cloud_init_network_config net.cfg
+    # 正常应该是 -D gentoo，但 alpine 的 cloud-init 包缺少 gentoo 配置
+    cloud-init devel net-convert -p net.cfg -k yaml -d $os_dir -D alpine -O networkd
+
+    # 删除网卡名匹配
+    sed -i '/^Name=/d' $os_dir/etc/systemd/network/10-cloud-init-eth*.network
+    rm -rf net.cfg
+    apk del cloud-init
+
+    # 修复 onlink 网关
+    if is_staticv4 || is_staticv6; then
+        fix_sh=cloud-init-fix-onlink.sh
+        download $confhome/$fix_sh $os_dir/$fix_sh
+        chroot $os_dir bash /$fix_sh
+        rm -f $os_dir/$fix_sh
+    fi
+
+    # 修改密码
+    sed -i 's/enforce=everyone/enforce=none/' $os_dir/etc/security/passwdqc.conf
+    echo 'root:123@@@' | chroot $os_dir chpasswd >/dev/null
+    sed -i 's/enforce=none/enforce=everyone/' $os_dir/etc/security/passwdqc.conf
+
+    # 下载仓库，选择 profile
+    chroot $os_dir emerge-webrsync
+    profile=$(
+        # 筛选 stable systemd，再选择最短的
+        if false; then
+            chroot $os_dir eselect profile list | grep stable | grep systemd |
+                awk '(NR == 1 || length($2) < length(shortest)) { shortest = $2 } END { print shortest }'
+        else
+            chroot $os_dir eselect profile list | grep stable | grep systemd |
+                awk '{print length($2), $2}' | sort -n | head -1 | awk '{print $2}'
+        fi
+    )
+    echo "Select profile: $profile"
+    chroot $os_dir eselect profile set $profile
+
+    # 设置线程
+    # 根据 cpu 核数，2G内存一个线程，取最小值
+    threads_by_core=$(nproc --all)
+    phy_ram=$(get_approximate_ram_size)
+    threads_by_ram=$((phy_ram / 2048))
+    if [ $threads_by_ram -eq 0 ]; then
+        threads_by_ram=1
+    fi
+    threads=$(printf "%d\n" $threads_by_ram $threads_by_core | sort -n | head -1)
+    cat <<EOF >>$os_dir/etc/portage/make.conf
+MAKEOPTS="-j$threads"
+EOF
+
+    # 设置 http repo + binpkg repo
+    # https://mirrors.tuna.tsinghua.edu.cn/gentoo/releases/amd64/autobuilds/current-stage3-amd64-systemd-mergedusr/stage3-amd64-systemd-mergedusr-20240317T170433Z.tar.xz
+    mirror_short=$(echo "$img" | sed 's,/releases/.*,,')
+    mirror_long=$(echo "$img" | sed 's,/autobuilds/.*,,')
+    profile_ver=$(chroot $os_dir eselect profile show | grep -Eo '/[0-9.]*/' | cut -d/ -f2)
+
+    if [ "$(uname -m)" = x86_64 ]; then
+        if chroot $os_dir ld.so --help | grep supported | grep -q x86-64-v3; then
+            binpkg_type=x86-64-v3
+        else
+            binpkg_type=x86-64
+        fi
+    else
+        binpkg_type=arm64
+    fi
+
+    cat <<EOF >>$os_dir/etc/portage/make.conf
+GENTOO_MIRRORS="$mirror_short"
+FEATURES="getbinpkg"
+EOF
+
+    cat <<EOF >$os_dir/etc/portage/binrepos.conf/gentoobinhost.conf
+[binhost]
+priority = 9999
+sync-uri = $mirror_long/binpackages/$profile_ver/$binpkg_type
+EOF
+
+    # 下载公钥
+    chroot $os_dir getuto
+
+    # 初始化
+    # /etc/locale.gen 不能为空，否则编译 glibc 时会提示生成所有 locale
+    # Generating all locales; edit /etc/locale.gen to save time/space
+    echo "C.UTF-8 UTF-8" >>$os_dir/etc/locale.gen
+    chroot $os_dir locale-gen
+    chroot $os_dir systemctl preset-all
+    chroot $os_dir systemd-firstboot --force --setup-machine-id
+    chroot $os_dir systemd-firstboot --force --timezone=Asia/Shanghai
+
+    # 安装 git
+    chroot $os_dir emerge dev-vcs/git
+
+    # 设置 git repo
+    if is_in_china; then
+        git_uri=https://mirrors.tuna.tsinghua.edu.cn/git/gentoo-portage.git
+    else
+        # github 不支持 ipv6
+        # git_uri=https://github.com/gentoo-mirror/gentoo.git
+        git_uri=https://anongit.gentoo.org/git/repo/gentoo.git
+    fi
+
+    mkdir -p $os_dir/etc/portage/repos.conf
+    cat <<EOF >$os_dir/etc/portage/repos.conf/gentoo.conf
+[gentoo]
+location = /var/db/repos/gentoo
+sync-type = git
+sync-uri = $git_uri
+EOF
+    rm -rf $os_dir/var/db/repos/gentoo
+    chroot $os_dir emerge --sync
+
+    if [ "$(uname -m)" = x86_64 ]; then
+        # https://packages.gentoo.org/packages/sys-block/io-scheduler-udev-rules
+        chroot $os_dir emerge sys-block/io-scheduler-udev-rules
+    fi
+
+    # 网络
+    chroot $os_dir systemctl enable systemd-networkd
+    chroot $os_dir systemctl enable systemd-resolved
+
+    # ssh
+    chroot $os_dir systemctl enable sshd
+    allow_root_password_login $os_dir
+
+    # ntp 用 systemd 自带的
+    # TODO: firmware + 微码 + vm agent
+
+    # 内核 + grub
+    # TODO: 先判断是否有 binpkg，有的话不修改 GRUB_PLATFORMS
+    is_efi && grub_platforms="efi-64" || grub_platforms="pc"
+    echo GRUB_PLATFORMS=\"$grub_platforms\" >>$os_dir/etc/portage/make.conf
+    echo "sys-kernel/installkernel dracut grub" >$os_dir/etc/portage/package.use/installkernel
+    chroot $os_dir emerge sys-kernel/gentoo-kernel-bin
+    if is_efi; then
+        chroot $os_dir grub-install --efi-directory=/boot/efi --removable
+    else
+        chroot $os_dir grub-install /dev/$xda
+    fi
+
+    # cmdline
+    if [ -d $os_dir/etc/default/grub.d ]; then
+        file=$os_dir/etc/default/grub.d/cmdline.conf
+    else
+        file=$os_dir/etc/default/grub
+    fi
+    ttys_cmdline=$(get_ttys console=)
+    echo GRUB_CMDLINE_LINUX=\"$ttys_cmdline\" >>$file
+    chroot $os_dir grub-mkconfig -o /boot/grub/grub.cfg
+
+    # fstab
+    apk add arch-install-scripts
+    genfstab -U $os_dir | sed '/swap/d' >$os_dir/etc/fstab
+    apk del arch-install-scripts
+
+    # 删除 resolv.conf，不然 systemd-resolved 无法创建软链接
+    rm -f $os_dir/etc/resolv.conf
+
+    # 删除 swap
+    swapoff -a
+    rm -rf $os_dir/swapfile
+}
+
 get_http_file_size_to() {
     var_name=$1
     url=$2
@@ -1026,7 +1228,7 @@ create_part() {
             mkfs.ext4 -F -L os /dev/$xda*1        #1 os
             mkfs.ext4 -F -L installer /dev/$xda*2 #2 installer
         fi
-    elif [ "$distro" = alpine ]; then
+    elif [ "$distro" = alpine ] || [ "$distro" = gentoo ]; then
         if is_efi; then
             # efi
             parted /dev/$xda -s -- \
@@ -1464,6 +1666,7 @@ EOF
     if [ -f $os_dir/etc/gentoo-release ]; then
         # 挂载伪文件系统
         mount_pseudo_fs $os_dir
+        cp -f /etc/resolv.conf $os_dir/etc/resolv.conf
 
         # 在这里修改密码，而不是用cloud-init，因为我们的默认密码太弱
         sed -i 's/enforce=everyone/enforce=none/' $os_dir/etc/security/passwdqc.conf
@@ -1471,14 +1674,10 @@ EOF
         sed -i 's/enforce=none/enforce=everyone/' $os_dir/etc/security/passwdqc.conf
 
         # 下载仓库，选择 profile
-        if [ ! -d $os_dir/var/db/repos/gentoo/ ]; then
-            cp -f /etc/resolv.conf $os_dir/etc/resolv.conf
-
-            chroot $os_dir emerge-webrsync
-            profile=$(chroot $os_dir eselect profile list |
-                grep stable | grep systemd | grep -v desktop | tail -1 | awk '{print $2}')
-            chroot $os_dir eselect profile set $profile
-        fi
+        chroot $os_dir emerge-webrsync
+        profile=$(chroot $os_dir eselect profile list | grep stable | grep systemd |
+            awk '{print length($2), $2}' | sort -n | head -1 | awk '{print $2}')
+        chroot $os_dir eselect profile set $profile
 
         # 删除 resolv.conf，不然 systemd-resolved 无法创建软链接
         rm -f $os_dir/etc/resolv.conf
@@ -1572,6 +1771,23 @@ create_swap() {
         chmod 0600 $swapfile
         mkswap $swapfile
         swapon $swapfile
+    fi
+}
+
+# gentoo 常规安装用
+allow_root_password_login() {
+    os_dir=$1
+
+    # 允许 root 密码登录
+    # arch 没有 /etc/ssh/sshd_config.d/ 文件夹
+    # opensuse tumbleweed 有 /etc/ssh/sshd_config.d/ 文件夹，但没有 /etc/ssh/sshd_config，但有/usr/etc/ssh/sshd_config
+    if grep 'Include.*/etc/ssh/sshd_config.d' $os_dir/etc/ssh/sshd_config; then
+        mkdir -p $os_dir/etc/ssh/sshd_config.d/
+        echo 'PermitRootLogin yes' >$os_dir/etc/ssh/sshd_config.d/01-permitrootlogin.conf
+    else
+        if ! grep -x 'PermitRootLogin yes' $os_dir/etc/ssh/sshd_config; then
+            echo 'PermitRootLogin yes' >>$os_dir/etc/ssh/sshd_config
+        fi
     fi
 }
 
@@ -2604,6 +2820,9 @@ elif is_use_cloud_image; then
         resize_after_install_cloud_image
         modify_os_on_disk linux
     fi
+elif [ "$distro" = "gentoo" ]; then
+    create_part
+    install_gentoo
 else
     # 安装模式: windows windows ubuntu 红帽
     create_part

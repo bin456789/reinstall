@@ -77,7 +77,7 @@ bash reinstall.sh centos   7|8|9  (8|9 为 stream 版本)
                   alpine   3.16|3.17|3.18|3.19
                   opensuse 15.5|tumbleweed
                   arch     (暂不支持 ARM)
-                  gentoo   (暂不支持 ARM)
+                  gentoo
 
                   不输入版本号，则安装最新版
 ```
@@ -189,7 +189,7 @@ Windows Server 2022 SERVERDATACENTER
 | Alpine                              | 256M     | -      |
 | openSUSE                            | -        | 512M   |
 | Arch                                | -        | 512M   |
-| Gentoo                              | -        | 512M   |
+| Gentoo                              | 512M     | -      |
 | Windows 8.1 (Server 2012 R2) 或以下 | 512M     | -      |
 | Windows 10 (Server 2016) 或以上     | 1G       | -      |
 
