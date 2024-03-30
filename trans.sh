@@ -48,8 +48,8 @@ add_community_repo() {
     fi
 
     if ! grep -q "^http.*/$alpine_ver/community$" /etc/apk/repositories; then
-        mirror=$(grep '^http.*/main$' /etc/apk/repositories | sed 's,/[^/]*/main$,,' | head -1)
-        echo $mirror/$alpine_ver/community >>/etc/apk/repositories
+        alpine_mirror=$(grep '^http.*/main$' /etc/apk/repositories | sed 's,/[^/]*/main$,,' | head -1)
+        echo $alpine_mirror/$alpine_ver/community >>/etc/apk/repositories
     fi
 }
 
@@ -862,7 +862,228 @@ install_alpine() {
     fi
 }
 
-install_gentoo() {
+get_cpu_vendor() {
+    cpu_vendor=$(grep 'vendor_id' /proc/cpuinfo | head -n 1 | cut -d: -f2 | xargs)
+    case "$cpu_vendor" in
+    GenuineIntel) echo intel ;;
+    AuthenticAMD) echo amd ;;
+    *) echo other ;;
+    esac
+}
+
+install_arch_gentoo() {
+    set_locale() {
+        echo "C.UTF-8 UTF-8" >>$os_dir/etc/locale.gen
+        chroot $os_dir locale-gen
+    }
+
+    # shellcheck disable=SC2317
+    install_arch() {
+        # 添加 swap
+        create_swap_if_ram_less_than 1024 $os_dir/swapfile
+
+        apk add arch-install-scripts
+
+        # 设置 repo
+        insert_into_file /etc/pacman.conf before '\[core\]' <<EOF
+SigLevel = Never
+ParallelDownloads = 5
+EOF
+        cat <<EOF >>/etc/pacman.conf
+[core]
+Include = /etc/pacman.d/mirrorlist
+
+[extra]
+Include = /etc/pacman.d/mirrorlist
+EOF
+        mkdir -p /etc/pacman.d
+        # shellcheck disable=SC2016
+        case "$(uname -m)" in
+        x86_64) dir='$repo/os/$arch' ;;
+        aarch64) dir='$arch/$repo' ;;
+        esac
+        # shellcheck disable=SC2154
+        echo "Server = $mirror/$dir" >/etc/pacman.d/mirrorlist
+
+        # 安装系统
+        # 要安装分区工具(包含 fsck.xxx)，用于 initramfs 检查分区数据
+        # base 包含 e2fsprogs
+        pkgs="base grub openssh"
+        if is_efi; then
+            pkgs="$pkgs efibootmgr dosfstools"
+        fi
+        if [ "$(uname -m)" = aarch64 ]; then
+            pkgs="$pkgs archlinuxarm-keyring"
+        fi
+        pacstrap -K $os_dir $pkgs
+
+        # dns
+        cp -f /etc/resolv.conf $os_dir/etc/resolv.conf
+
+        # 挂载伪文件系统
+        mount_pseudo_fs $os_dir
+
+        # 要先设置语言，再安装内核，不然出现
+        # ==> Creating gzip-compressed initcpio image: '/boot/initramfs-linux.img'
+        # bsdtar: bsdtar: Failed to set default locale
+        # Failed to set default locale
+        set_locale
+        if [ "$(uname -m)" = aarch64 ]; then
+            chroot $os_dir pacman-key --lsign-key builder@archlinuxarm.org
+        fi
+
+        # firmware + microcode
+        if ! is_virt; then
+            chroot $os_dir pacman -Syu --noconfirm linux-firmware
+
+            # amd microcode 包括在 linux-firmware 里面
+            if [ "$(uname -m)" = x86_64 ]; then
+                cpu_vendor="$(get_cpu_vendor)"
+                case "$cpu_vendor" in
+                intel | amd) chroot $os_dir pacman -Syu --noconfirm "$cpu_vendor-ucode" ;;
+                esac
+            fi
+        fi
+
+        # arm 的内核有多种选择，默认是 linux-aarch64，所以要添加 --noconfirm
+        chroot $os_dir pacman -Syu --noconfirm linux
+    }
+
+    # shellcheck disable=SC2317
+    install_gentoo() {
+        # 添加 swap
+        create_swap_if_ram_less_than 2048 $os_dir/swapfile
+
+        # 解压系统
+        apk add tar xz
+        # shellcheck disable=SC2154
+        download "$img" $os_dir/gentoo.tar.xz
+        echo "Uncompressing Gentoo..."
+        tar xpf $os_dir/gentoo.tar.xz -C $os_dir --xattrs-include='*.*' --numeric-owner
+        rm $os_dir/gentoo.tar.xz
+        apk del tar xz
+
+        # dns
+        cp -f /etc/resolv.conf $os_dir/etc/resolv.conf
+
+        # 挂载伪文件系统
+        mount_pseudo_fs $os_dir
+
+        # 下载仓库，选择 profile
+        chroot $os_dir emerge-webrsync
+        profile=$(
+            # 筛选 stable systemd，再选择最短的
+            if false; then
+                chroot $os_dir eselect profile list | grep stable | grep systemd |
+                    awk '(NR == 1 || length($2) < length(shortest)) { shortest = $2 } END { print shortest }'
+            else
+                chroot $os_dir eselect profile list | grep stable | grep systemd |
+                    awk '{print length($2), $2}' | sort -n | head -1 | awk '{print $2}'
+            fi
+        )
+        echo "Select profile: $profile"
+        chroot $os_dir eselect profile set $profile
+
+        # 设置 license
+        cat <<EOF >>$os_dir/etc/portage/make.conf
+ACCEPT_LICENSE="*"
+EOF
+
+        # 设置线程
+        # 根据 cpu 核数，2G内存一个线程，取最小值
+        threads_by_core=$(nproc --all)
+        phy_ram=$(get_approximate_ram_size)
+        threads_by_ram=$((phy_ram / 2048))
+        if [ $threads_by_ram -eq 0 ]; then
+            threads_by_ram=1
+        fi
+        threads=$(printf "%d\n" $threads_by_ram $threads_by_core | sort -n | head -1)
+        cat <<EOF >>$os_dir/etc/portage/make.conf
+MAKEOPTS="-j$threads"
+EOF
+
+        # 设置 http repo + binpkg repo
+        # https://mirrors.tuna.tsinghua.edu.cn/gentoo/releases/amd64/autobuilds/current-stage3-amd64-systemd-mergedusr/stage3-amd64-systemd-mergedusr-20240317T170433Z.tar.xz
+        mirror_short=$(echo "$img" | sed 's,/releases/.*,,')
+        mirror_long=$(echo "$img" | sed 's,/autobuilds/.*,,')
+        profile_ver=$(chroot $os_dir eselect profile show | grep -Eo '/[0-9.]*/' | cut -d/ -f2)
+
+        if [ "$(uname -m)" = x86_64 ]; then
+            if chroot $os_dir ld.so --help | grep supported | grep -q x86-64-v3; then
+                binpkg_type=x86-64-v3
+            else
+                binpkg_type=x86-64
+            fi
+        else
+            binpkg_type=arm64
+        fi
+
+        cat <<EOF >>$os_dir/etc/portage/make.conf
+GENTOO_MIRRORS="$mirror_short"
+FEATURES="getbinpkg"
+EOF
+
+        cat <<EOF >$os_dir/etc/portage/binrepos.conf/gentoobinhost.conf
+[binhost]
+priority = 9999
+sync-uri = $mirror_long/binpackages/$profile_ver/$binpkg_type
+EOF
+
+        # 下载公钥
+        chroot $os_dir getuto
+
+        set_locale
+
+        # 安装 git 会升级 glibc，此时 /etc/locale.gen 不能为空，否则会提示生成所有 locale
+        # Generating all locales; edit /etc/locale.gen to save time/space
+        chroot $os_dir emerge dev-vcs/git
+
+        # 设置 git repo
+        if is_in_china; then
+            git_uri=https://mirrors.tuna.tsinghua.edu.cn/git/gentoo-portage.git
+        else
+            # github 不支持 ipv6
+            # git_uri=https://github.com/gentoo-mirror/gentoo.git
+            git_uri=https://anongit.gentoo.org/git/repo/gentoo.git
+        fi
+
+        mkdir -p $os_dir/etc/portage/repos.conf
+        cat <<EOF >$os_dir/etc/portage/repos.conf/gentoo.conf
+[gentoo]
+location = /var/db/repos/gentoo
+sync-type = git
+sync-uri = $git_uri
+EOF
+        rm -rf $os_dir/var/db/repos/gentoo
+        chroot $os_dir emerge --sync
+
+        if [ "$(uname -m)" = x86_64 ]; then
+            # https://packages.gentoo.org/packages/sys-block/io-scheduler-udev-rules
+            chroot $os_dir emerge sys-block/io-scheduler-udev-rules
+        fi
+
+        if is_efi; then
+            chroot $os_dir emerge sys-fs/dosfstools
+        fi
+
+        # firmware + microcode
+        if ! is_virt; then
+            chroot $os_dir emerge sys-kernel/linux-firmware
+
+            # amd microcode 包括在 linux-firmware 里面
+            if [ "$(uname -m)" = x86_64 ] && [ "$(get_cpu_vendor)" = intel ]; then
+                chroot $os_dir emerge sys-firmware/intel-microcode
+            fi
+        fi
+
+        # 安装 grub + 内核
+        # TODO: 先判断是否有 binpkg，有的话不修改 GRUB_PLATFORMS
+        is_efi && grub_platforms="efi-64" || grub_platforms="pc"
+        echo GRUB_PLATFORMS=\"$grub_platforms\" >>$os_dir/etc/portage/make.conf
+        echo "sys-kernel/installkernel dracut grub" >$os_dir/etc/portage/package.use/installkernel
+        chroot $os_dir emerge sys-kernel/gentoo-kernel-bin
+    }
+
     os_dir=/os
 
     # 挂载分区
@@ -876,27 +1097,25 @@ install_gentoo() {
     mount -t ext4 /dev/${xda}*${os_part_num} /os
 
     if is_efi; then
-        mkdir -p /os/boot/efi
-        mount -t vfat /dev/${xda}*1 /os/boot/efi
+        mkdir -p /os/efi
+        mount -t vfat /dev/${xda}*1 /os/efi
     fi
 
-    # 添加 swap
-    create_swap_if_ram_less_than 2048 $os_dir/swapfile
+    install_$distro
 
-    # 解压系统
-    apk add tar xz
-    # shellcheck disable=SC2154
-    download "$img" $os_dir/gentoo.tar.xz
-    echo "Uncompressing Gentoo..."
-    tar xpf $os_dir/gentoo.tar.xz -C $os_dir --xattrs-include='*.*' --numeric-owner
-    rm $os_dir/gentoo.tar.xz
-    apk del tar xz
+    # 初始化
+    chroot $os_dir systemctl preset-all
+    chroot $os_dir systemd-firstboot --force --setup-machine-id
+    chroot $os_dir systemd-firstboot --force --timezone=Asia/Shanghai
+    chroot $os_dir systemctl enable systemd-networkd
+    chroot $os_dir systemctl enable systemd-resolved
+    chroot $os_dir systemctl enable sshd
+    allow_root_password_login $os_dir
 
-    # dns
-    cp -f /etc/resolv.conf $os_dir/etc/resolv.conf
-
-    # 挂载伪文件系统
-    mount_pseudo_fs $os_dir
+    # 修改密码
+    [ "$distro" = gentoo ] && sed -i 's/enforce=everyone/enforce=none/' $os_dir/etc/security/passwdqc.conf
+    echo 'root:123@@@' | chroot $os_dir chpasswd >/dev/null
+    [ "$distro" = gentoo ] && sed -i 's/enforce=none/enforce=everyone/' $os_dir/etc/security/passwdqc.conf
 
     # 网络配置
     apk add cloud-init
@@ -904,7 +1123,9 @@ install_gentoo() {
     touch net.cfg
     create_cloud_init_network_config net.cfg
     # 正常应该是 -D gentoo，但 alpine 的 cloud-init 包缺少 gentoo 配置
-    cloud-init devel net-convert -p net.cfg -k yaml -d $os_dir -D alpine -O networkd
+    cloud-init devel net-convert -p net.cfg -k yaml -d out -D alpine -O networkd
+    cp out/etc/systemd/network/10-cloud-init-eth*.network $os_dir/etc/systemd/network/
+    rm -rf out
 
     # 删除网卡名匹配
     sed -i '/^Name=/d' $os_dir/etc/systemd/network/10-cloud-init-eth*.network
@@ -919,129 +1140,19 @@ install_gentoo() {
         rm -f $os_dir/$fix_sh
     fi
 
-    # 修改密码
-    sed -i 's/enforce=everyone/enforce=none/' $os_dir/etc/security/passwdqc.conf
-    echo 'root:123@@@' | chroot $os_dir chpasswd >/dev/null
-    sed -i 's/enforce=none/enforce=everyone/' $os_dir/etc/security/passwdqc.conf
-
-    # 下载仓库，选择 profile
-    chroot $os_dir emerge-webrsync
-    profile=$(
-        # 筛选 stable systemd，再选择最短的
-        if false; then
-            chroot $os_dir eselect profile list | grep stable | grep systemd |
-                awk '(NR == 1 || length($2) < length(shortest)) { shortest = $2 } END { print shortest }'
-        else
-            chroot $os_dir eselect profile list | grep stable | grep systemd |
-                awk '{print length($2), $2}' | sort -n | head -1 | awk '{print $2}'
-        fi
-    )
-    echo "Select profile: $profile"
-    chroot $os_dir eselect profile set $profile
-
-    # 设置线程
-    # 根据 cpu 核数，2G内存一个线程，取最小值
-    threads_by_core=$(nproc --all)
-    phy_ram=$(get_approximate_ram_size)
-    threads_by_ram=$((phy_ram / 2048))
-    if [ $threads_by_ram -eq 0 ]; then
-        threads_by_ram=1
-    fi
-    threads=$(printf "%d\n" $threads_by_ram $threads_by_core | sort -n | head -1)
-    cat <<EOF >>$os_dir/etc/portage/make.conf
-MAKEOPTS="-j$threads"
-EOF
-
-    # 设置 http repo + binpkg repo
-    # https://mirrors.tuna.tsinghua.edu.cn/gentoo/releases/amd64/autobuilds/current-stage3-amd64-systemd-mergedusr/stage3-amd64-systemd-mergedusr-20240317T170433Z.tar.xz
-    mirror_short=$(echo "$img" | sed 's,/releases/.*,,')
-    mirror_long=$(echo "$img" | sed 's,/autobuilds/.*,,')
-    profile_ver=$(chroot $os_dir eselect profile show | grep -Eo '/[0-9.]*/' | cut -d/ -f2)
-
-    if [ "$(uname -m)" = x86_64 ]; then
-        if chroot $os_dir ld.so --help | grep supported | grep -q x86-64-v3; then
-            binpkg_type=x86-64-v3
-        else
-            binpkg_type=x86-64
-        fi
-    else
-        binpkg_type=arm64
-    fi
-
-    cat <<EOF >>$os_dir/etc/portage/make.conf
-GENTOO_MIRRORS="$mirror_short"
-FEATURES="getbinpkg"
-EOF
-
-    cat <<EOF >$os_dir/etc/portage/binrepos.conf/gentoobinhost.conf
-[binhost]
-priority = 9999
-sync-uri = $mirror_long/binpackages/$profile_ver/$binpkg_type
-EOF
-
-    # 下载公钥
-    chroot $os_dir getuto
-
-    # 初始化
-    # /etc/locale.gen 不能为空，否则编译 glibc 时会提示生成所有 locale
-    # Generating all locales; edit /etc/locale.gen to save time/space
-    echo "C.UTF-8 UTF-8" >>$os_dir/etc/locale.gen
-    chroot $os_dir locale-gen
-    chroot $os_dir systemctl preset-all
-    chroot $os_dir systemd-firstboot --force --setup-machine-id
-    chroot $os_dir systemd-firstboot --force --timezone=Asia/Shanghai
-
-    # 安装 git
-    chroot $os_dir emerge dev-vcs/git
-
-    # 设置 git repo
-    if is_in_china; then
-        git_uri=https://mirrors.tuna.tsinghua.edu.cn/git/gentoo-portage.git
-    else
-        # github 不支持 ipv6
-        # git_uri=https://github.com/gentoo-mirror/gentoo.git
-        git_uri=https://anongit.gentoo.org/git/repo/gentoo.git
-    fi
-
-    mkdir -p $os_dir/etc/portage/repos.conf
-    cat <<EOF >$os_dir/etc/portage/repos.conf/gentoo.conf
-[gentoo]
-location = /var/db/repos/gentoo
-sync-type = git
-sync-uri = $git_uri
-EOF
-    rm -rf $os_dir/var/db/repos/gentoo
-    chroot $os_dir emerge --sync
-
-    if [ "$(uname -m)" = x86_64 ]; then
-        # https://packages.gentoo.org/packages/sys-block/io-scheduler-udev-rules
-        chroot $os_dir emerge sys-block/io-scheduler-udev-rules
-    fi
-
-    # 网络
-    chroot $os_dir systemctl enable systemd-networkd
-    chroot $os_dir systemctl enable systemd-resolved
-
-    # ssh
-    chroot $os_dir systemctl enable sshd
-    allow_root_password_login $os_dir
-
     # ntp 用 systemd 自带的
-    # TODO: firmware + 微码 + vm agent
+    # TODO: vm agent + 随机数生成器
 
-    # 内核 + grub
-    # TODO: 先判断是否有 binpkg，有的话不修改 GRUB_PLATFORMS
-    is_efi && grub_platforms="efi-64" || grub_platforms="pc"
-    echo GRUB_PLATFORMS=\"$grub_platforms\" >>$os_dir/etc/portage/make.conf
-    echo "sys-kernel/installkernel dracut grub" >$os_dir/etc/portage/package.use/installkernel
-    chroot $os_dir emerge sys-kernel/gentoo-kernel-bin
+    # grub
     if is_efi; then
-        chroot $os_dir grub-install --efi-directory=/boot/efi --removable
+        # arch gentoo 推荐 efi 挂载在 /efi
+        chroot $os_dir grub-install --efi-directory=/efi
+        chroot $os_dir grub-install --efi-directory=/efi --removable
     else
         chroot $os_dir grub-install /dev/$xda
     fi
 
-    # cmdline
+    # cmdline + 生成 grub.cfg
     if [ -d $os_dir/etc/default/grub.d ]; then
         file=$os_dir/etc/default/grub.d/cmdline.conf
     else
@@ -1052,6 +1163,7 @@ EOF
     chroot $os_dir grub-mkconfig -o /boot/grub/grub.cfg
 
     # fstab
+    # fstab 可不写 efi 条目， systemd automount 会自动挂载
     apk add arch-install-scripts
     genfstab -U $os_dir | sed '/swap/d' >$os_dir/etc/fstab
     apk del arch-install-scripts
@@ -1228,7 +1340,7 @@ create_part() {
             mkfs.ext4 -F -L os /dev/$xda*1        #1 os
             mkfs.ext4 -F -L installer /dev/$xda*2 #2 installer
         fi
-    elif [ "$distro" = alpine ] || [ "$distro" = gentoo ]; then
+    elif [ "$distro" = alpine ] || [ "$distro" = arch ] || [ "$distro" = gentoo ]; then
         if is_efi; then
             # efi
             parted /dev/$xda -s -- \
@@ -2820,9 +2932,9 @@ elif is_use_cloud_image; then
         resize_after_install_cloud_image
         modify_os_on_disk linux
     fi
-elif [ "$distro" = "gentoo" ]; then
+elif [ "$distro" = "arch" ] || [ "$distro" = "gentoo" ]; then
     create_part
-    install_gentoo
+    install_arch_gentoo
 else
     # 安装模式: windows windows ubuntu 红帽
     create_part

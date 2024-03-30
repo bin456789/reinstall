@@ -458,14 +458,33 @@ setos() {
     }
 
     setos_arch() {
-        # cloud image
-        if is_in_china; then
-            ci_mirror=https://mirrors.tuna.tsinghua.edu.cn/archlinux
+        if [ "$basearch" = "x86_64" ]; then
+            if is_in_china; then
+                mirror=https://mirrors.tuna.tsinghua.edu.cn/archlinux
+            else
+                mirror=https://geo.mirror.pkgbuild.com
+            fi
         else
-            ci_mirror=https://geo.mirror.pkgbuild.com
+            if is_in_china; then
+                mirror=https://mirrors.tuna.tsinghua.edu.cn/archlinuxarm
+            else
+                # https 证书有问题
+                mirror=http://mirror.archlinuxarm.org
+            fi
         fi
-        # eval ${step}_img=$ci_mirror/images/latest/Arch-Linux-x86_64-basic.qcow2
-        eval ${step}_img=$ci_mirror/images/latest/Arch-Linux-x86_64-cloudimg.qcow2
+
+        if is_use_cloud_image; then
+            # cloud image
+            eval ${step}_img=$mirror/images/latest/Arch-Linux-x86_64-cloudimg.qcow2
+        else
+            # 传统安装
+            case "$basearch" in
+            x86_64) dir="core/os/$basearch" ;;
+            aarch64) dir="$basearch/core" ;;
+            esac
+            test_url $mirror/$dir/core.db gzip
+            eval ${step}_mirror=$mirror
+        fi
     }
 
     setos_gentoo() {
@@ -818,9 +837,9 @@ check_ram() {
         netboot.xyz) echo 0 ;;
         alpine | dd) echo 256 ;; # 192 无法启动 netboot
         debian) echo 384 ;;
-        gentoo | windows) echo 512 ;;
+        arch | gentoo | windows) echo 512 ;;
         centos | alma | rocky | fedora | ubuntu) echo 1024 ;;
-        arch | opensuse) echo max ;; # 没有安装模式
+        opensuse) echo max ;; # 没有安装模式
         esac
     )
 
@@ -833,8 +852,8 @@ check_ram() {
 
     has_cloud_image=$(
         case "$distro" in
-        centos | alma | rocky | fedora | debian | ubuntu | opensuse | arch) echo true ;;
-        netboot.xyz | alpine | dd | gentoo | windows) echo false ;;
+        centos | alma | rocky | fedora | debian | ubuntu | opensuse) echo true ;;
+        netboot.xyz | alpine | dd | arch | gentoo | windows) echo false ;;
         esac
     )
 
@@ -1745,13 +1764,13 @@ install_pkg curl grep
 
 # 强制忽略/强制添加 --ci 参数
 case "$distro" in
-dd | windows | netboot.xyz | alpine | gentoo)
+dd | windows | netboot.xyz | alpine | arch | gentoo)
     if is_use_cloud_image; then
         echo "ignored --ci"
         cloud_image=0
     fi
     ;;
-opensuse | arch)
+opensuse)
     cloud_image=1
     ;;
 esac
