@@ -116,7 +116,7 @@ fix_networkd_conf() {
     # Gateway=2602::1
     # GatewayOnLink=yes
 
-    if ! confs=$(ls /etc/systemd/network/10-cloud-init-*.network); then
+    if ! confs=$(ls /etc/systemd/network/10-cloud-init-*.network 2>/dev/null); then
         return
     fi
 
@@ -163,7 +163,7 @@ fix_wicked_conf() {
     # default 1.1.1.1 - -
     # default 2602::1 - -
 
-    if ! confs=$(ls /etc/sysconfig/network/ifroute-*); then
+    if ! confs=$(ls /etc/sysconfig/network/ifroute-* 2>/dev/null); then
         return
     fi
 

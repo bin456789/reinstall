@@ -1528,25 +1528,25 @@ EOF
 }
 
 mod_initrd_alpine() {
-    # virt 内核添加 ipv6 模块
+    # hack 1 virt 内核添加 ipv6 模块
     if virt_dir=$(ls -d $tmp_dir/lib/modules/*-virt 2>/dev/null); then
         ipv6_dir=$virt_dir/kernel/net/ipv6
-        mkdir -p $ipv6_dir
-        modloop_file=/tmp/modloop_file
-        modloop_dir=/tmp/modloop_dir
-        curl -Lo $modloop_file $nextos_modloop
-        if is_in_windows; then
-            # cygwin 没有 unsquashfs
-            7z e $modloop_file ipv6.ko -r -y -o$ipv6_dir
-        else
-            install_pkg unsquashfs
-            mkdir_clear $modloop_dir
-            unsquashfs -f -d $modloop_dir $modloop_file 'modules/*/kernel/net/ipv6/ipv6.ko'
-            find $modloop_dir -name ipv6.ko -exec cp {} $ipv6_dir/ \;
+        if ! [ -f $ipv6_dir/ipv6.ko ]; then
+            mkdir -p $ipv6_dir
+            modloop_file=/tmp/modloop_file
+            modloop_dir=/tmp/modloop_dir
+            curl -Lo $modloop_file $nextos_modloop
+            if is_in_windows; then
+                # cygwin 没有 unsquashfs
+                7z e $modloop_file ipv6.ko -r -y -o$ipv6_dir
+            else
+                install_pkg unsquashfs
+                mkdir_clear $modloop_dir
+                unsquashfs -f -d $modloop_dir $modloop_file 'modules/*/kernel/net/ipv6/ipv6.ko'
+                find $modloop_dir -name ipv6.ko -exec cp {} $ipv6_dir/ \;
+            fi
         fi
     fi
-
-    # hack 1 添加 ipv6 模块
     insert_into_file init after 'configure_ip\(\)' <<EOF
         depmod
         modprobe ipv6
@@ -2055,4 +2055,9 @@ else
     echo "Username: $username"
     echo "Password: 123@@@"
     echo "Reboot to start the installation."
+fi
+
+if is_in_windows; then
+    echo 'Run this command to reboot:'
+    echo 'shutdown /r /t 0'
 fi

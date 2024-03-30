@@ -11,7 +11,6 @@ One-click reinstallation script
 ## Highlights
 
 - Installing using official cloud images (Cloud Image) allows bypassing the [memory requirements](https://access.redhat.com/articles/rhel-limits#minimum-required-memory-3) of traditional network installations, resulting in faster installation speed.
-- Using official cloud images for installation ensures fast installation speed and can also avoid issues with netboot installation on machines with limited memory.
 - Compatible with 512M + 5G small servers and supports installing Alpine on 256M small servers.
 - Compatible with all network conditions, including dynamic/static IPv4/IPv6 and pure IPv4/IPv6.
 - Supports installing Windows using the official ISO.
@@ -92,7 +91,6 @@ Parameters:
 ### Feature 2: DD
 
 - Supports gzip, xz formats.
-
 - For machines with static IP, DD Windows, and the script will automatically configure the IP.
 
 ```bash
@@ -102,7 +100,6 @@ bash reinstall.sh dd --img https://example.com/xxx.xz
 ### Feature 3: Reboot to Alpine Rescue System (Live OS)
 
 - Can be connected via SSH to perform manual DD, modify partitions, manually install Arch / Gentoo, etc.
-
 - If the disk content is not modified, rebooting again will return to the original system.
 
 ```bash

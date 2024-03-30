@@ -708,7 +708,6 @@ EOF
 install_alpine() {
     hack_lowram_modloop=true
     hack_lowram_swap=true
-    mount / -o remount,size=100%
 
     if $hack_lowram_modloop; then
         # 预先加载需要的模块
@@ -2870,6 +2869,9 @@ EOF
 # debian initrd 会寻找 main
 # 并调用本文件的 create_ifupdown_config 方法
 : main
+
+# 允许 ramdisk 使用所有内存，默认是 50%
+mount / -o remount,size=100%
 
 # arm要手动从硬件同步时间，避免访问https出错
 # do 机器第二次运行会报错

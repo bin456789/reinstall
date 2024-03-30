@@ -20,11 +20,7 @@ for %%F in ("X:\drivers\*.inf") do (
 )
 
 rem 等待加载分区
-rem 没有 timeout 命令
-rem 没有加载网卡驱动，无法用 ping 来等待
-echo wscript.sleep(5000) > X:\sleep.vbs
-cscript //nologo X:\sleep.vbs
-del X:\sleep.vbs
+call :sleep 5000
 echo rescan | diskpart
 
 rem 判断 efi 还是 bios
@@ -110,4 +106,14 @@ rename X:\setup.exe.disabled setup.exe
 rem 运行 X:\setup.exe 的话
 rem vista 会找不到安装源
 rem server 23h2 会无法运行
-Y:\setup.exe /emsport:COM1 /emsbaudrate:115200
+rem Y:\setup.exe /emsport:COM1 /emsbaudrate:115200
+Y:\setup.exe
+exit /b
+
+:sleep
+rem 没有 timeout 命令
+rem 没有加载网卡驱动，无法用 ping 来等待
+echo wscript.sleep(%~1) > X:\sleep.vbs
+cscript //nologo X:\sleep.vbs
+del X:\sleep.vbs
+exit /b

@@ -91,7 +91,6 @@ bash reinstall.sh centos   7|8|9  (8|9 为 stream 版本)
 ### 功能 2: DD
 
 - 支持 gzip、xz 格式
-
 - 静态 IP 的机器 DD Windows，会自动配置好 IP
 
 ```bash
@@ -101,7 +100,6 @@ bash reinstall.sh dd --img https://example.com/xxx.xz
 ### 功能 3: 重启到 Alpine 救援系统 (Live OS)
 
 - 可用 ssh 连接，进行手动 DD、修改分区、手动安装 Arch / Gentoo 等操作
-
 - 如果没有修改硬盘内容，再次重启将回到原系统
 
 ```bash
