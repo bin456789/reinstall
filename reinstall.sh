@@ -835,8 +835,7 @@ check_ram() {
     ram_standard=$(
         case "$distro" in
         netboot.xyz) echo 0 ;;
-        alpine | dd) echo 256 ;; # 192 无法启动 netboot
-        debian) echo 384 ;;
+        alpine | debian | dd) echo 256 ;;
         arch | gentoo | windows) echo 512 ;;
         centos | alma | rocky | fedora | ubuntu) echo 1024 ;;
         opensuse) echo max ;; # 没有安装模式
@@ -1504,6 +1503,9 @@ EOF
         sed "s|@mac_addr|$mac_addr|" |
         sed "s|@netconf|$netconf|" >var/lib/dpkg/info/netcfg.postinst
 
+    # 将 use_level 2 9 修改为 use_level 1
+    sed -i 's/use_level=[29]/use_level=1/' lib/debian-installer-startup.d/S15lowmem
+
     # hack 3
     # 修改 trans.sh
     # 1. 直接调用 create_ifupdown_config
@@ -1662,6 +1664,40 @@ mod_initrd() {
     curl -Lo $tmp_dir/alpine-network.sh $confhome/alpine-network.sh
 
     mod_initrd_$nextos_distro
+
+    # 删除 initrd 里面没用的文件/驱动
+    if is_virt && ! is_alpine_live; then
+        rm -rf bin/brltty
+        rm -rf etc/brltty
+        rm -rf sbin/wpa_supplicant
+        rm -rf usr/lib/libasound.so.*
+        (
+            cd lib/modules/*/kernel/drivers/net/ethernet/
+            for item in *; do
+                case "$item" in
+                intel | amazon | google) ;;
+                *) rm -rf $item ;;
+                esac
+            done
+        )
+        (
+            cd lib/modules/*/kernel
+            for item in \
+                drivers/mmc \
+                drivers/net/bonding \
+                drivers/net/usb \
+                drivers/net/wireless \
+                drivers/pcmcia \
+                drivers/staging \
+                drivers/usb/serial \
+                drivers/usb/storage \
+                net/bluetooth \
+                net/mac80211 \
+                net/wireless; do
+                rm -rf $item
+            done
+        )
+    fi
 
     # 重建
     # 注意要用 cpio -H newc 不要用 cpio -c ，不同版本的 -c 作用不一样，很坑
