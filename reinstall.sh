@@ -41,6 +41,7 @@ Usage: $reinstall____ centos   7|8|9
                       netboot.xyz
 
 Manual: https://github.com/bin456789/reinstall
+
 EOF
     exit 1
 }
@@ -737,6 +738,17 @@ install_pkg() {
     cmd_to_pkg() {
         unset USE
         case $cmd in
+        ar)
+            case "$pkg_mgr" in
+            *) pkg="binutils" ;;
+            esac
+            ;;
+        xz)
+            case "$pkg_mgr" in
+            apt) pkg="xz-utils" ;;
+            *) pkg="xz" ;;
+            esac
+            ;;
         lsblk | findmnt)
             case "$pkg_mgr" in
             apk) pkg="$cmd" ;;
@@ -775,12 +787,40 @@ install_pkg() {
         esac
     }
 
+    is_need_epel_repo() {
+        [ "$pkg" = dpkg ] && { [ "$pkg_mgr" = yum ] || [ "$pkg_mgr" = dnf ]; }
+    }
+
+    add_epel_repo() {
+        # epel 名称可能是 epel 或 ol9_developer_EPEL
+        # 如果没启用
+        if ! $pkg_mgr repolist | awk '{print $1}' | grep -qi 'epel$'; then
+            #  删除 epel repo，因为可能安装了但未启用
+            rm -rf /etc/yum.repos.d/*epel*.repo
+            epel_release="$($pkg_mgr list | grep 'epel-release' | awk '{print $1}' | cut -d. -f1 | head -1)"
+
+            # 如果已安装
+            if rpm -qa | grep -q $epel_release; then
+                # 检查是否为最新
+                if $pkg_mgr check-update $epel_release; then
+                    $pkg_mgr reinstall -y $epel_release
+                else
+                    $pkg_mgr update -y $epel_release
+                fi
+            else
+                # 如果未安装
+                $pkg_mgr install -y $epel_release
+            fi
+        fi
+    }
+
     install_pkg_real() {
         text="$pkg"
         if [ "$pkg" != "$cmd" ]; then
             text+=" ($cmd)"
         fi
         echo "Installing package '$text'..."
+
         case $pkg_mgr in
         dnf) dnf install -y --setopt=install_weak_deps=False $pkg ;;
         yum) yum install -y $pkg ;;
@@ -826,6 +866,9 @@ install_pkg() {
                 error_and_exit "Can't find compatible package manager. Please manually install $cmd."
             fi
             cmd_to_pkg
+            if is_need_epel_repo; then
+                add_epel_repo
+            fi
             install_pkg_real
         fi
     done
@@ -859,7 +902,7 @@ check_ram() {
     if is_in_windows; then
         ram_size=$(wmic memorychip get capacity | tail +2 | awk '{sum+=$1} END {print sum/1024/1024}')
     else
-        # lsmem最准确但centos7 arm 和alpine不能用
+        # lsmem最准确但 centos7 arm 和 alpine 不能用，debian 9 util-linux 没有 lsmem
         # arm 24g dmidecode 显示少了128m
         # arm 24g lshw 显示23BiB
         # ec2 t4g arm alpine 用 lsmem 和 dmidecode 都无效，要用 lshw，但结果和free -m一致，其他平台则没问题
@@ -951,6 +994,10 @@ del_empty_lines() {
 
 # 记录主硬盘
 find_main_disk() {
+    if [ -n "$main_disk" ]; then
+        return
+    fi
+
     if is_in_windows; then
         # TODO:
         # 已测试 vista
@@ -1108,6 +1155,7 @@ collect_netconf() {
     echo "IPv4 Gateway: $ipv4_gateway"
     echo "IPv6 Address: $ipv6_addr"
     echo "IPv6 Gateway: $ipv6_gateway"
+    echo
 }
 
 add_efi_entry_in_windows() {
@@ -1480,6 +1528,7 @@ id-assoc na 0 {
 EOF
         dhcp6c -c /var/lib/netcfg/dhcp6c.conf "$iface"
         sleep 10
+        # kill-all-dhcp
         kill -9 "$(cat /var/run/dhcp6c.pid)"
         db_progress STEP 1
 
@@ -1491,7 +1540,7 @@ EOF
 
         # 运行trans.sh，保存配置
         db_progress INFO base-installer/progress/netcfg
-        . /trans.sh
+        sh /trans.sh
         db_progress STEP 1
     }
 
@@ -1503,7 +1552,183 @@ EOF
         sed "s|@mac_addr|$mac_addr|" |
         sed "s|@netconf|$netconf|" >var/lib/dpkg/info/netcfg.postinst
 
+    # shellcheck disable=SC2317
+    expand_packages() {
+        expand_packages_real "$@" | while read -r k_ v; do
+            # shellcheck disable=SC2001
+            case $(echo "$k_" | sed 's/://') in
+            Package)
+                package="$v"
+                ;;
+            Priority)
+                # shellcheck disable=SC2154
+                if [ "$v" = standard ] && echo "$disabled_list" | grep -qx "$package"; then
+                    v=optional
+                fi
+                ;;
+            esac
+
+            if [ -z "$k_" ]; then
+                echo
+            else
+                echo "$k_ $v"
+            fi
+        done
+    }
+
+    # shellcheck disable=SC2012
+    kver=$(ls -d lib/modules/* | awk -F/ '{print $NF}')
+
+    net_retriever=usr/lib/debian-installer/retriever/net-retriever
+    sed -i 's/^expand_packages()/expand_packages_real()/' $net_retriever
+    insert_into_file $net_retriever after '#!/bin/sh' <<EOF
+disabled_list="
+depthcharge-tools-installer
+kickseed-common
+nobootloader
+partman-btrfs
+partman-cros
+partman-iscsi
+partman-jfs
+partman-md
+partman-xfs
+rescue-check
+wpasupplicant-udeb
+nic-modules-$kver-di
+nic-pcmcia-modules-$kver-di
+nic-usb-modules-$kver-di
+nic-wireless-modules-$kver-di
+nic-shared-modules-$kver-di
+pcmcia-modules-$kver-di
+pcmcia-storage-modules-$kver-di
+cdrom-core-modules-$kver-di
+firewire-core-modules-$kver-di
+usb-storage-modules-$kver-di
+isofs-modules-$kver-di
+jfs-modules-$kver-di
+xfs-modules-$kver-di
+loop-modules-$kver-di
+pata-modules-$kver-di
+sata-modules-$kver-di
+scsi-modules-$kver-di
+"
+
+expand_packages() {
+    $(get_function_content expand_packages)
+}
+EOF
+
+    # https://debian.pkgs.org/12/debian-main-amd64/linux-image-6.1.0-18-cloud-amd64_6.1.76-1_amd64.deb.html
+    # scsi-core-modules 是 ata-modules 的依赖，包含 sd_mod.ko scsi_mod.ko
+    # ata-modules       是下方模块的依赖，Priority 是 optional。只有 ata_generic.ko 和 libata.ko 两个驱动
+    # pata-modules      里面的驱动都是 pata_ 开头
+    #                   但只有 pata_legacy.ko 在云内核中
+    # sata-modules      里面的驱动大部分是 sata_ 开头的，其他重要的还有 ahci.ko ata_piix.ko libahci.ko
+    #                   云内核没有 sata 模块，也没有内嵌，有一个 CONFIG_SATA_HOST=y，libata-$(CONFIG_SATA_HOST)	+= libata-sata.o
+    # scsi-modules      包含 virtio_scsi.ko virtio_blk.ko
+
+    download_and_extract_udeb() {
+        package=$1
+        extract_dir=$2
+
+        # 获取 udeb 列表
+        udeb_list=$tmp/udeb_list
+        if ! [ -f $udeb_list ]; then
+            curl -L http://$deb_hostname/debian/dists/$codename/main/debian-installer/binary-$basearch_alt/Packages.gz |
+                zcat | grep 'Filename:' | awk '{print $2}' >$udeb_list
+        fi
+
+        # 下载 udeb
+        curl -Lo $tmp/tmp.udeb http://$deb_hostname/debian/"$(grep /$package $udeb_list)"
+
+        if false; then
+            # 使用 dpkg
+            # cygwin 没有 dpkg
+            install_pkg dpkg
+            dpkg -x $tmp/tmp.udeb $extract_dir
+        else
+            # 使用 ar tar xz
+            # cygwin 需安装 binutils
+            # centos7 ar 不支持 --output
+            install_pkg ar tar xz
+            (cd $tmp && ar x $tmp/tmp.udeb)
+            tar xf $tmp/data.tar.xz -C $extract_dir
+        fi
+    }
+
+    # 不用在 windows 判断是哪种硬盘控制器，因为 256M 运行 windows 只可能是 xp，而脚本本来就不支持 xp
+    get_disk_controller() {
+        (
+            cd "$(readlink -f /sys/block/$xda)"
+            while ! [ "$(pwd)" = / ]; do
+                if [ -d driver ]; then
+                    basename "$(readlink -f driver)"
+                fi
+                cd ..
+            done
+        )
+    }
+
+    # 提前下载 fdisk
+    # 因为 fdisk-udeb 包含 fdisk 和 sfdisk，提前下载可减少占用
+    mkdir_clear $tmp/fdisk
+    download_and_extract_udeb fdisk-udeb $tmp/fdisk
+    cp -f $tmp/fdisk/usr/sbin/fdisk usr/sbin/
+
+    if [ $ram_size -gt 256 ]; then
+        sed -i '/^pata-modules/d' $net_retriever
+        sed -i '/^sata-modules/d' $net_retriever
+        sed -i '/^scsi-modules/d' $net_retriever
+    else
+        # <=256M 极限优化
+        find_main_disk
+        extra_drivers=
+        for driver in $(get_disk_controller); do
+            echo "using driver: $driver"
+            case $driver in
+            nvme | virtio_blk | virtio_scsi | hv_storvsc) extra_drivers+=" $driver" ;;
+            pata_legacy) sed -i '/^pata-modules/d' $net_retriever ;;
+            pata_* | sata_* | ahci) error_and_exit "Debain cloud kernel does not support this driver: $driver" ;;
+            esac
+        done
+
+        # extra drivers
+        # 先不管 xen vmware
+        if [ -n "$extra_drivers" ]; then
+            mkdir_clear $tmp/scsi
+            download_and_extract_udeb scsi-modules-$kver-di $tmp/scsi
+            (
+                cd lib/modules/*/kernel/drivers/
+                for driver in $extra_drivers; do
+                    echo "adding driver: $driver"
+                    case $driver in
+                    nvme)
+                        mkdir -p nvme/host
+                        cp -f $tmp/scsi/lib/modules/*/kernel/drivers/nvme/host/nvme.ko nvme/host/
+                        cp -f $tmp/scsi/lib/modules/*/kernel/drivers/nvme/host/nvme-core.ko nvme/host/
+                        ;;
+                    virtio_blk)
+                        mkdir -p block
+                        cp -f $tmp/scsi/lib/modules/*/kernel/drivers/block/virtio_blk.ko block/
+                        ;;
+                    virtio_scsi)
+                        mkdir -p scsi
+                        cp -f $tmp/scsi/lib/modules/*/kernel/drivers/scsi/virtio_scsi.ko scsi/
+                        ;;
+                    hv_storvsc)
+                        mkdir -p scsi
+                        cp -f $tmp/scsi/lib/modules/*/kernel/drivers/scsi/hv_storvsc.ko scsi/
+                        cp -f $tmp/scsi/lib/modules/*/kernel/drivers/scsi/scsi_transport_fc.ko scsi/
+                        ;;
+                    esac
+                done
+            )
+        fi
+    fi
+
     # 将 use_level 2 9 修改为 use_level 1
+    # x86 use_level 2 会出现 No root file system is defined.
+    # arm 即使 use_level 1 也会出现 No root file system is defined.
     sed -i 's/use_level=[29]/use_level=1/' lib/debian-installer-startup.d/S15lowmem
 
     # hack 3
@@ -1671,6 +1896,7 @@ mod_initrd() {
         rm -rf etc/brltty
         rm -rf sbin/wpa_supplicant
         rm -rf usr/lib/libasound.so.*
+        rm -rf usr/share/alsa
         (
             cd lib/modules/*/kernel/drivers/net/ethernet/
             for item in *; do
@@ -1683,17 +1909,29 @@ mod_initrd() {
         (
             cd lib/modules/*/kernel
             for item in \
-                drivers/mmc \
-                drivers/net/bonding \
-                drivers/net/usb \
-                drivers/net/wireless \
-                drivers/pcmcia \
-                drivers/staging \
-                drivers/usb/serial \
-                drivers/usb/storage \
-                net/bluetooth \
                 net/mac80211 \
-                net/wireless; do
+                net/wireless \
+                net/bluetooth \
+                drivers/hid \
+                drivers/mmc \
+                drivers/mtd \
+                drivers/usb \
+                drivers/ssb \
+                drivers/mfd \
+                drivers/bcma \
+                drivers/pcmcia \
+                drivers/parport \
+                drivers/platform \
+                drivers/staging \
+                drivers/net/usb \
+                drivers/net/bonding \
+                drivers/net/wireless \
+                drivers/input/rmi4 \
+                drivers/input/keyboard \
+                drivers/input/touchscreen \
+                drivers/bus/mhi \
+                drivers/char/pcmcia \
+                drivers/misc/cardreader; do
                 rm -rf $item
             done
         )
@@ -1707,6 +1945,7 @@ mod_initrd() {
     #       (ASCII) archive format, use "-H odc" instead.
     find . | cpio --quiet -o -H newc | gzip -1 >/reinstall-initrd
     cd - >/dev/null
+    ls -lh /reinstall-initrd
 }
 
 # 脚本入口
@@ -2059,7 +2298,7 @@ if is_use_grub; then
     # 生成 grub 配置
     # 实测 centos 7 lvm 要手动加载 lvm 模块
     echo $target_cfg
-    cat <<EOF | del_empty_lines | tee $target_cfg
+    del_empty_lines <<EOF | tee $target_cfg
 set timeout=5
 menuentry "$(get_entry_name)" {
     $(! is_in_windows && echo 'insmod lvm')
