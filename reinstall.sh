@@ -130,12 +130,12 @@ get_os_part() {
 }
 
 cp_to_btrfs_root() {
-    mount_dir=/tmp/reinstall-btrfs-root
+    mount_dir=$tmp/reinstall-btrfs-root
     if ! grep -q $mount_dir /proc/mounts; then
         mkdir -p $mount_dir
         mount "$(get_os_part)" $mount_dir -t btrfs -o subvol=/
     fi
-    cp -rf "$@" /tmp/reinstall-btrfs-root
+    cp -rf "$@" $tmp/reinstall-btrfs-root
 }
 
 is_host_has_ipv4_and_ipv6() {
@@ -209,7 +209,7 @@ test_url_real() {
         error_and_exit "$@"
     }
 
-    tmp_file=/tmp/reinstall-img-test
+    tmp_file=$tmp/reinstall-img-test
 
     # 有的服务器不支持 range，curl会下载整个文件
     # 用 dd 限制下载 1M
@@ -1231,7 +1231,7 @@ install_grub_linux_efi() {
             mirror=https://mirror.fcix.net/fedora/linux
         fi
 
-        curl -Lo /tmp/$grub_efi $mirror/releases/$fedora_ver/Everything/$basearch/os/EFI/BOOT/$grub_efi
+        curl -Lo $tmp/$grub_efi $mirror/releases/$fedora_ver/Everything/$basearch/os/EFI/BOOT/$grub_efi
     else
         if is_in_china; then
             mirror=https://mirror.sjtu.edu.cn/opensuse
@@ -1241,10 +1241,10 @@ install_grub_linux_efi() {
 
         [ "$basearch" = x86_64 ] && ports='' || ports=/ports/$basearch
 
-        curl -Lo /tmp/$grub_efi $mirror$ports/tumbleweed/repo/oss/EFI/BOOT/grub.efi
+        curl -Lo $tmp/$grub_efi $mirror$ports/tumbleweed/repo/oss/EFI/BOOT/grub.efi
     fi
 
-    add_efi_entry_in_linux /tmp/$grub_efi
+    add_efi_entry_in_linux $tmp/$grub_efi
 }
 
 install_grub_win() {
@@ -1253,10 +1253,10 @@ install_grub_win() {
     grub_ver=2.06
     is_in_china && grub_url=https://mirrors.tuna.tsinghua.edu.cn/gnu/grub/grub-$grub_ver-for-windows.zip ||
         grub_url=https://ftpmirror.gnu.org/gnu/grub/grub-$grub_ver-for-windows.zip
-    curl -Lo /tmp/grub.zip $grub_url
-    # unzip -qo /tmp/grub.zip
-    7z x /tmp/grub.zip -o/tmp -r -y -xr!i386-efi -xr!locale -xr!themes -bso0
-    grub_dir=/tmp/grub-$grub_ver-for-windows
+    curl -Lo $tmp/grub.zip $grub_url
+    # unzip -qo $tmp/grub.zip
+    7z x $tmp/grub.zip -o$tmp -r -y -xr!i386-efi -xr!locale -xr!themes -bso0
+    grub_dir=$tmp/grub-$grub_ver-for-windows
     grub=$grub_dir/grub
 
     # 设置 grub 包含的模块
@@ -1280,9 +1280,9 @@ install_grub_win() {
             alpine_ver=3.19
             is_in_china && mirror=http://mirrors.tuna.tsinghua.edu.cn/alpine || mirror=https://dl-cdn.alpinelinux.org/alpine
             grub_efi_apk=$(curl -L $mirror/v$alpine_ver/main/aarch64/ | grep -oP 'grub-efi-.*?apk' | head -1)
-            mkdir -p /tmp/grub-efi
-            curl -L "$mirror/v$alpine_ver/main/aarch64/$grub_efi_apk" | tar xz --warning=no-unknown-keyword -C /tmp/grub-efi/
-            cp -r /tmp/grub-efi/usr/lib/grub/arm64-efi/ $grub_dir
+            mkdir -p $tmp/grub-efi
+            curl -L "$mirror/v$alpine_ver/main/aarch64/$grub_efi_apk" | tar xz --warning=no-unknown-keyword -C $tmp/grub-efi/
+            cp -r $tmp/grub-efi/usr/lib/grub/arm64-efi/ $grub_dir
             $grub-mkimage -p $prefix -O arm64-efi -o "$(cygpath -w $grub_dir/grubaa64.efi)" $grub_modules
             add_efi_entry_in_windows $grub_dir/grubaa64.efi
         else
@@ -1302,8 +1302,8 @@ install_grub_win() {
             # 部分国内机无法访问 ftp.cn.debian.org
             is_in_china && host=mirrors.tuna.tsinghua.edu.cn || host=deb.debian.org
             curl -LO http://$host/debian/tools/win32-loader/stable/win32-loader.exe
-            7z x win32-loader.exe 'g2ldr.mbr' -o/tmp/win32-loader -r -y -bso0
-            find /tmp/win32-loader -name 'g2ldr.mbr' -exec cp {} /cygdrive/$c/ \;
+            7z x win32-loader.exe 'g2ldr.mbr' -o$tmp/win32-loader -r -y -bso0
+            find $tmp/win32-loader -name 'g2ldr.mbr' -exec cp {} /cygdrive/$c/ \;
 
             # g2ldr
             # 配置文件 c:\grub.cfg
@@ -1535,8 +1535,8 @@ mod_initrd_alpine() {
         ipv6_dir=$virt_dir/kernel/net/ipv6
         if ! [ -f $ipv6_dir/ipv6.ko ]; then
             mkdir -p $ipv6_dir
-            modloop_file=/tmp/modloop_file
-            modloop_dir=/tmp/modloop_dir
+            modloop_file=$tmp/modloop_file
+            modloop_dir=$tmp/modloop_dir
             curl -Lo $modloop_file $nextos_modloop
             if is_in_windows; then
                 # cygwin 没有 unsquashfs
@@ -1641,7 +1641,7 @@ mod_initrd() {
 
     # 解压
     # 先删除临时文件，避免之前运行中断有残留文件
-    tmp_dir=/tmp/reinstall
+    tmp_dir=$tmp/reinstall
     mkdir_clear $tmp_dir
     cd $tmp_dir
 
@@ -1797,6 +1797,10 @@ fi
 
 # 必备组件
 install_pkg curl grep
+
+# /tmp 挂载在内存的话，可能不够空间
+tmp=/reinstall-tmp
+mkdir -p "$tmp"
 
 # 强制忽略/强制添加 --ci 参数
 case "$distro" in
