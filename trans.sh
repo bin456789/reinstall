@@ -712,10 +712,13 @@ install_alpine() {
     if $hack_lowram_modloop; then
         # 预先加载需要的模块
         if rc-service modloop status; then
-            modules="ext4 vfat nls_utf8 nls_cp437 crc32c"
+            modules="ext4 vfat nls_utf8 nls_cp437"
             for mod in $modules; do
                 modprobe $mod
             done
+            # crc32c 等于 crc32c-intel
+            # 没有 sse4.2 的机器加载 crc32c 时会报错 modprobe: ERROR: could not insert 'crc32c_intel': No such device
+            modprobe crc32c || modprobe crc32c-generic
         fi
 
         # 删除 modloop ，释放内存
