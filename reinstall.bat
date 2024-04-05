@@ -3,7 +3,7 @@ mode con cp select=437 >nul
 setlocal EnableDelayedExpansion
 
 set confhome=https://raw.githubusercontent.com/bin456789/reinstall/main
-set github_proxy=raw.gitmirror.com
+set github_proxy=https://mirror.ghproxy.com/https://raw.githubusercontent.com
 
 rem 65001 代码页会乱码
 
@@ -43,8 +43,8 @@ if not errorlevel 1 (
     if defined github_proxy (
         echo !confhome! | findstr /c:"://raw.githubusercontent.com/" >nul
         if not errorlevel 1 (
-            rem set confhome=!github_proxy!/!confhome!
-            set confhome=!confhome:raw.githubusercontent.com=%github_proxy%!
+            set confhome=!confhome:http://=https://!
+            set confhome=!confhome:https://raw.githubusercontent.com=%github_proxy%!
         )
     )
 ) else (
