@@ -122,17 +122,25 @@ bash reinstall.sh netboot.xyz
 
 ```bash
 bash reinstall.sh windows \
-     --iso 'https://drive.massgrave.dev/en-us_windows_10_enterprise_ltsc_2021_x64_dvd_d289cf96.iso' \
+     --image-name 'Windows 10 Enterprise LTSC 2021' \
+     --iso 'https://drive.massgrave.dev/en-us_windows_10_enterprise_ltsc_2021_x64_dvd_d289cf96.iso'
+```
+
+- Now supports automatically searching for Windows (including LTSC) and Windows Server ISO links.
+- Need to set the language using `--lang`, default `en-us`.
+- Search Source: <https://massgrave.dev/genuine-installation-media.html>
+
+```bash
+bash reinstall.sh windows \
      --image-name 'Windows 10 Enterprise LTSC 2021'
+     --lang zh-cn
 ```
 
 ![Installing Windows](https://github.com/bin456789/reinstall/assets/7548515/07c1aea2-1ce3-4967-904f-aaf9d6eec3f7)
 
-Parameters:
+Parameters Description:
 
-`--iso` Original image link
-
-`--image-name` Specify the image to install, case-insensitive, for example:
+`--image-name` Specify the image to install, case-insensitive, Commonly used images include:
 
 ```text
 Windows 7 Ultimate
@@ -153,11 +161,11 @@ Use `Dism++` File menu > Open Image File, select the iso to be installed to get 
      - Hyper-V Server
      - Azure Stack HCI
 2. The script will install the following drivers as needed:
-    - KVM ([Virtio](https://fedorapeople.org/groups/virt/virtio-win/direct-downloads/))
-    - XEN ([XEN PV](https://xenproject.org/windows-pv-drivers/), [AWS PV](https://docs.aws.amazon.com/zh_cn/AWSEC2/latest/WindowsGuide/xen-drivers-overview.html))
-    - AWS ([ENA Network Adapter](https://docs.aws.amazon.com/zh_cn/AWSEC2/latest/WindowsGuide/enhanced-networking-ena.html), [NVMe Storage Controller](https://docs.aws.amazon.com/zh_cn/AWSEC2/latest/WindowsGuide/aws-nvme-drivers.html))
-    - GCP ([gVNIC Network Adapter](https://cloud.google.com/compute/docs/networking/using-gvnic), [GGA Graphics](https://cloud.google.com/compute/docs/instances/enable-instance-virtual-display))
-    - Azure ([MANA Network Adapter](https://learn.microsoft.com/zh-cn/azure/virtual-network/accelerated-networking-mana-windows))
+   - KVM ([Virtio](https://fedorapeople.org/groups/virt/virtio-win/direct-downloads/))
+   - XEN ([XEN PV](https://xenproject.org/windows-pv-drivers/), [AWS PV](https://docs.aws.amazon.com/zh_cn/AWSEC2/latest/WindowsGuide/xen-drivers-overview.html))
+   - AWS ([ENA Network Adapter](https://docs.aws.amazon.com/zh_cn/AWSEC2/latest/WindowsGuide/enhanced-networking-ena.html), [NVMe Storage Controller](https://docs.aws.amazon.com/zh_cn/AWSEC2/latest/WindowsGuide/aws-nvme-drivers.html))
+   - GCP ([gVNIC Network Adapter](https://cloud.google.com/compute/docs/networking/using-gvnic), [GGA Graphics](https://cloud.google.com/compute/docs/instances/enable-instance-virtual-display))
+   - Azure ([MANA Network Adapter](https://learn.microsoft.com/zh-cn/azure/virtual-network/accelerated-networking-mana-windows))
 3. Vista (Server 2008) and 32-bit systems may lack drivers.
 4. For EFI machines without CSM enabled, Windows 7 (Server 2008 R2) cannot be installed.
 5. If the machine has a static IP, the IP will be automatically set after installation.
@@ -173,6 +181,8 @@ Use `Dism++` File menu > Open Image File, select the iso to be installed to get 
 
    <https://massgrave.dev/genuine-installation-media.html> (Recommended, iso sourced from official channels, updated monthly, includes the latest patches)
 
+   <https://www.microsoft.com/software-download/windows8>
+
    <https://www.microsoft.com/software-download/windows10> (Need to open it with a mobile User-Agent)
 
    <https://www.microsoft.com/software-download/windows11>
@@ -184,8 +194,8 @@ Use `Dism++` File menu > Open Image File, select the iso to be installed to get 
 | Debian                                | 384M                     | 512M        |
 | Ubuntu                                | 1G                       | 512M        |
 | CentOS / Alma / Rocky / Fedora        | 1G                       | 512M        |
-| Alpine                                | 256M                     | -           |
 | openSUSE                              | -                        | 512M        |
+| Alpine                                | 256M                     | -           |
 | Arch                                  | 512M                     | -           |
 | Gentoo                                | 512M                     | -           |
 | Windows 8.1 (Server 2012 R2) or below | 512M                     | -           |

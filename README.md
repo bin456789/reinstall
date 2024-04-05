@@ -122,17 +122,25 @@ bash reinstall.sh netboot.xyz
 
 ```bash
 bash reinstall.sh windows \
-     --iso 'https://drive.massgrave.dev/en-us_windows_10_enterprise_ltsc_2021_x64_dvd_d289cf96.iso' \
+     --image-name 'Windows 10 Enterprise LTSC 2021' \
+     --iso 'https://drive.massgrave.dev/en-us_windows_10_enterprise_ltsc_2021_x64_dvd_d289cf96.iso'
+```
+
+- 现在脚本支持自动查找 Windows (含 LTSC) 和 Windows Server iso 链接
+- 需设置语言 `--lang`，默认 `en-us`
+- 查找源：<https://massgrave.dev/genuine-installation-media.html>
+
+```bash
+bash reinstall.sh windows \
      --image-name 'Windows 10 Enterprise LTSC 2021'
+     --lang zh-cn
 ```
 
 ![Installing Windows](https://github.com/bin456789/reinstall/assets/7548515/07c1aea2-1ce3-4967-904f-aaf9d6eec3f7)
 
-参数:
+参数说明:
 
-`--iso` 原版镜像链接
-
-`--image-name` 指定要安装的映像，不区分大小写，例如：
+`--image-name` 指定要安装的映像，不区分大小写，常用映像有：
 
 ```text
 Windows 7 Ultimate
@@ -146,18 +154,18 @@ Windows Server 2022 SERVERDATACENTER
 ![image-name](https://github.com/bin456789/reinstall/assets/7548515/5aae0a9b-61e2-4f66-bb98-d470a6beaac2)
 
 1. 支持的系统：
-    - Windows Vista 到 11
-    - Windows Server 2008 到 2022，包括以下衍生版
-        - Windows Server Essentials
-        - Windows Server Annual Channel
-        - Hyper-V Server
-        - Azure Stack HCI
+   - Windows Vista 到 11
+   - Windows Server 2008 到 2022，包括以下衍生版
+     - Windows Server Essentials
+     - Windows Server Annual Channel
+     - Hyper-V Server
+     - Azure Stack HCI
 2. 脚本会按需安装以下驱动：
-    - KVM ([Virtio](https://fedorapeople.org/groups/virt/virtio-win/direct-downloads/))
-    - XEN ([XEN PV](https://xenproject.org/windows-pv-drivers/)、[AWS PV](https://docs.aws.amazon.com/zh_cn/AWSEC2/latest/WindowsGuide/xen-drivers-overview.html))
-    - AWS ([ENA 网卡](https://docs.aws.amazon.com/zh_cn/AWSEC2/latest/WindowsGuide/enhanced-networking-ena.html)、[NVME 存储控制器](https://docs.aws.amazon.com/zh_cn/AWSEC2/latest/WindowsGuide/aws-nvme-drivers.html))
-    - GCP ([gVNIC 网卡](https://cloud.google.com/compute/docs/networking/using-gvnic)、[GGA 显卡](https://cloud.google.com/compute/docs/instances/enable-instance-virtual-display))
-    - Azure ([MANA 网卡](https://learn.microsoft.com/zh-cn/azure/virtual-network/accelerated-networking-mana-windows))
+   - KVM ([Virtio](https://fedorapeople.org/groups/virt/virtio-win/direct-downloads/))
+   - XEN ([XEN PV](https://xenproject.org/windows-pv-drivers/)、[AWS PV](https://docs.aws.amazon.com/zh_cn/AWSEC2/latest/WindowsGuide/xen-drivers-overview.html))
+   - AWS ([ENA 网卡](https://docs.aws.amazon.com/zh_cn/AWSEC2/latest/WindowsGuide/enhanced-networking-ena.html)、[NVME 存储控制器](https://docs.aws.amazon.com/zh_cn/AWSEC2/latest/WindowsGuide/aws-nvme-drivers.html))
+   - GCP ([gVNIC 网卡](https://cloud.google.com/compute/docs/networking/using-gvnic)、[GGA 显卡](https://cloud.google.com/compute/docs/instances/enable-instance-virtual-display))
+   - Azure ([MANA 网卡](https://learn.microsoft.com/zh-cn/azure/virtual-network/accelerated-networking-mana-windows))
 3. Vista (Server 2008) 和 32 位系统可能会缺少驱动
 4. 未开启 CSM 的 EFI 机器，无法安装 Windows 7 (Server 2008 R2)
 5. 静态 IP 的机器，安装后会自动配置好 IP
@@ -173,6 +181,8 @@ Windows Server 2022 SERVERDATACENTER
 
    <https://massgrave.dev/genuine-installation-media.html> (推荐，iso 来自官方，每月更新，包含最新补丁)
 
+   <https://www.microsoft.com/software-download/windows8>
+
    <https://www.microsoft.com/software-download/windows10> (需用手机 User-Agent 打开)
 
    <https://www.microsoft.com/software-download/windows11>
@@ -184,8 +194,8 @@ Windows Server 2022 SERVERDATACENTER
 | Debian                              | 384M     | 512M   |
 | Ubuntu                              | 1G       | 512M   |
 | CentOS / Alma / Rocky / Fedora      | 1G       | 512M   |
-| Alpine                              | 256M     | -      |
 | openSUSE                            | -        | 512M   |
+| Alpine                              | 256M     | -      |
 | Arch                                | 512M     | -      |
 | Gentoo                              | 512M     | -      |
 | Windows 8.1 (Server 2012 R2) 或以下 | 512M     | -      |

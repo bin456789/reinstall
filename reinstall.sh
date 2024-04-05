@@ -329,6 +329,337 @@ is_virt() {
     $_is_virt
 }
 
+# sr-latn-rs 到 sr-latn
+en_us() {
+    echo "$lang" | awk -F- '{print $1"-"$2}'
+
+    # zh-hk 可回落到 zh-tw
+    if [ "$lang" = zh-hk ]; then
+        echo zh-tw
+    fi
+}
+
+# fr-ca 到 fr
+us() {
+    # 葡萄牙准确对应 pp
+    if [ "$lang" = pt-pt ]; then
+        echo pp
+        return
+    fi
+    # 巴西准确对应 pt
+    if [ "$lang" = pt-br ]; then
+        echo pt
+        return
+    fi
+
+    echo "$lang" | awk -F- '{print $2}'
+
+    # hk 额外回落到 tw
+    if [ "$lang" = zh-hk ]; then
+        echo tw
+    fi
+}
+
+# fr-ca 到 fr-fr
+en_en() {
+    echo "$lang" | awk -F- '{print $1"-"$1}'
+
+    # en-gb 额外回落到 en-us
+    if [ "$lang" = en-gb ]; then
+        echo en-us
+    fi
+}
+
+# zh-cn 到 zh
+en() {
+    # 巴西/葡萄牙回落到葡萄牙语
+    if [ "$lang" = pt-br ] || [ "$lang" = pt-br ]; then
+        echo "pp"
+        return
+    fi
+
+    echo "$lang" | awk -F- '{print $1}'
+}
+
+english() {
+    case "$lang" in
+    ar-sa) echo Arabic ;;
+    bg-bg) echo Bulgarian ;;
+    cs-cz) echo Czech ;;
+    da-dk) echo Danish ;;
+    de-de) echo German ;;
+    el-gr) echo Greek ;;
+    en-gb) echo Eng_Intl ;;
+    en-us) echo English ;;
+    es-es) echo Spanish ;;
+    es-mx) echo Spanish_Latam ;;
+    et-ee) echo Estonian ;;
+    fi-fi) echo Finnish ;;
+    fr-ca) echo FrenchCanadian ;;
+    fr-fr) echo French ;;
+    he-il) echo Hebrew ;;
+    hr-hr) echo Croatian ;;
+    hu-hu) echo Hungarian ;;
+    it-it) echo Italian ;;
+    ja-jp) echo Japanese ;;
+    ko-kr) echo Korean ;;
+    lt-lt) echo Lithuanian ;;
+    lv-lv) echo Latvian ;;
+    nb-no) echo Norwegian ;;
+    nl-nl) echo Dutch ;;
+    pl-pl) echo Polish ;;
+    pt-pt) echo Portuguese ;;
+    pt-br) echo Brazilian ;;
+    ro-ro) echo Romanian ;;
+    ru-ru) echo Russian ;;
+    sk-sk) echo Slovak ;;
+    sl-si) echo Slovenian ;;
+    sr-latn | sr-latn-rs) echo Serbian_Latin ;;
+    sv-se) echo Swedish ;;
+    th-th) echo Thai ;;
+    tr-tr) echo Turkish ;;
+    uk-ua) echo Ukrainian ;;
+    zh-cn) echo ChnSimp ;;
+    zh-hk | zh-tw) echo ChnTrad ;;
+    esac
+}
+
+parse_windows_image_name() {
+    set -- $image_name
+
+    if ! [ "$1" = windows ]; then
+        return 1
+    fi
+    shift
+
+    if [ "$1" = server ]; then
+        server=server
+        shift
+    fi
+    version=$1
+    shift
+
+    if [ "$1" = r2 ]; then
+        version+=" r2"
+        shift
+    fi
+
+    edition=
+    for i in "$@"; do
+        case "$i" in
+        # windows 10 enterprise n ltsc 2021
+        k | n | kn) ;;
+        *)
+            if [ -n "$edition" ]; then
+                edition+=" "
+            fi
+            edition+="$1"
+            ;;
+        esac
+        shift
+    done
+}
+
+is_have_arm_version() {
+    case "$version" in
+    10)
+        case "$edition" in
+        pro | 'pro for workstations' | education | 'pro education' | enterprise) return ;;
+        'iot enterprise') return ;;
+        'iot enterprise ltsc 2021' | 'enterprise ltsc 2021') return ;;
+        esac
+        ;;
+    11)
+        case "$edition" in
+        pro | 'pro for workstations' | education | 'pro education' | enterprise) return ;;
+        'iot enterprise') return ;;
+        esac
+        ;;
+    esac
+    return 1
+}
+
+find_windows_iso() {
+    parse_windows_image_name || error_and_exit "--image-name wrong: $image_name"
+    if ! [ "$version" = 8.1 ] && [ -z "$edition" ]; then
+        error_and_exit "Edition is not set."
+    fi
+    if [ "$basearch" = 'aarch64' ] && ! is_have_arm_version; then
+        error_and_exit "No ARM iso for this Windows Version."
+    fi
+
+    if [ -z "$lang" ]; then
+        lang=en-us
+    fi
+    langs="$lang $(en_us) $(us) $(en_en) $(en)"
+    langs=$(echo "$langs" | xargs -n 1 | awk '!seen[$0]++')
+    full_lang=$(english)
+
+    case "$basearch" in
+    x86_64) arch_win=x64 ;;
+    aarch64) arch_win=arm64 ;;
+    esac
+
+    get_windows_iso_links
+    get_windows_iso_link
+}
+
+get_windows_iso_links() {
+    label_msdn=$(
+        if [ -n "$server" ]; then
+            case "$version" in
+            2008 | '2008 r2')
+                case "$edition" in
+                serverweb | serverwebcore) echo _ ;;
+                serverstandard | serverstandardcore) echo _ ;;
+                serverenterprise | serverenterprisecore) echo _ ;;
+                serverdatacenter | serverdatacentercore) echo _ ;;
+                esac
+                ;;
+            '2012 r2' | 2016 | 2019 | 2022)
+                case "$edition" in
+                serverstandard | serverstandardcore) echo _ ;;
+                serverdatacenter | serverdatacentercore) echo _ ;;
+                esac
+                ;;
+            esac
+        else
+            case "$version" in
+            vista)
+                case "$edition" in
+                enterprise) echo _ ;;
+                homebasic | homepremium | business | ultimate) echo _ ;;
+                esac
+                ;;
+            7)
+                case "$edition" in
+                professional) echo professional ;;
+                business | enterprise) echo enterprise ;;
+                homebasic | homepremium | ultimate) echo ultimate ;;
+                esac
+                ;;
+            8.1)
+                case "$edition" in
+                '') echo _ ;;
+                pro) echo pro ;;
+                enterprise) echo enterprise ;;
+                esac
+                ;;
+            10)
+                case "$edition" in
+                home | 'home single language') echo consumer ;;
+                pro | 'pro for workstations' | education | 'pro education' | enterprise) echo business ;;
+                'iot enterprise') echo 'iot enterprise' ;;
+                'enterprise 2015 ltsb' | 'enterprise 2016 ltsb') echo "$edition" ;;
+                'enterprise ltsc 2019' | 'iot enterprise ltsc 2019' | 'iot enterprise ltsc 2021') echo "$edition" ;;
+                'enterprise ltsc 2021')
+                    # arm64 的 enterprise ltsc 2021 要下载 iot enterprise ltsc 2021 iso
+                    case "$arch_win" in
+                    arm64) echo 'iot enterprise ltsc 2021' ;;
+                    x86 | x64) echo 'enterprise ltsc 2021' ;;
+                    esac
+                    ;;
+                esac
+                ;;
+            11)
+                case "$edition" in
+                home | 'home single language') echo consumer ;;
+                pro | 'pro for workstations' | education | 'pro education' | enterprise) echo business ;;
+                'iot enterprise') echo 'iot enterprise' ;;
+                esac
+                ;;
+            esac
+        fi
+    )
+
+    label_vlsc=$(
+        case "$version" in
+        10 | 11)
+            case "$edition" in
+            pro | 'pro for workstations' | education | 'pro education' | enterprise) echo pro ;;
+            esac
+            ;;
+        esac
+    )
+
+    page=$(
+        if [ "$arch_win" = arm64 ]; then
+            echo arm
+        elif grep -Ewq 'ltsb|ltsc' <<<"$edition"; then
+            echo ltsc
+        elif [ "$server" = 'server' ]; then
+            echo server
+        else
+            case "$version" in
+            vista | 7 | 8.1 | 10 | 11)
+                echo "$version"
+                ;;
+            esac
+        fi
+    )
+    page_url=https://massgrave.dev/windows_${page}_links.html
+
+    info "Find windows iso"
+    echo "Version:    $version"
+    echo "Edition:    $edition"
+    echo "Label msdn: $label_msdn"
+    echo "Label vlsc: $label_vlsc"
+    echo "List:       $page_url"
+    echo
+
+    if [ -n "$page" ] && { [ -n "$label_msdn" ] || [ -n "$label_vlsc" ]; }; then
+        if [ "$label_msdn" = _ ]; then
+            label_msdn=
+        fi
+        if [ "$label_vlsc" = _ ]; then
+            label_vlsc=
+        fi
+    else
+        error_and_exit "Not support find this iso. Check --image-name or set --iso manually."
+    fi
+
+    curl -L "$page_url" | grep -ioP 'https://.*?.iso' | awk -F/ '{print $NF}' >$tmp/win.list
+}
+
+get_shortest_line() {
+    # awk '{print length($0), $0}' | sort -n | head -1 | awk '{print $2}'
+    awk '(NR == 1 || length($0) < length(shortest)) { shortest = $0 } END { print shortest }'
+}
+
+get_windows_iso_link() {
+    regexs=()
+
+    # msdn
+    for lang in $langs; do
+        regex=
+        for i in ${lang} windows ${server} ${version} ${label_msdn}; do
+            if [ -n "$i" ]; then
+                regex+="${i}_"
+            fi
+        done
+        regex+=".*${arch_win}.*.iso"
+
+        regexs+=("$regex")
+    done
+
+    # vlsc
+    regex="sw_dvd9_win_${label_vlsc}_${version}.*${arch_win}_${full_lang}.*.iso"
+    regexs+=("$regex")
+
+    # 查找
+    for regex in "${regexs[@]}"; do
+        regex=${regex// /_}
+
+        echo "finding: $regex" >&2
+        if file=$(grep -Eix "$regex" "$tmp/win.list" | get_shortest_line | grep .); then
+            iso="https://drive.massgrave.dev/$file"
+            return
+        fi
+    done
+
+    error_and_exit "Could not find windows iso."
+}
+
 setos() {
     local step=$1
     local distro=$2
@@ -548,6 +879,11 @@ setos() {
     }
 
     setos_windows() {
+        if [ -z "$iso" ]; then
+            echo "iso url is not set. Try to find it."
+            find_windows_iso
+        fi
+
         test_url $iso 'iso|dos/mbr'
         eval "${step}_iso='$iso'"
         eval "${step}_image_name='$image_name'"
@@ -705,8 +1041,8 @@ verify_os_args() {
     case "$distro" in
     dd) [ -n "$img" ] || error_and_exit "dd need --img" ;;
     windows)
-        if [ -z "$iso" ] || [ -z "$image_name" ]; then
-            error_and_exit "Install Windows need --iso and --image-name"
+        if [ -z "$image_name" ]; then
+            error_and_exit "Install Windows need --image-name."
         fi
         ;;
     esac
@@ -881,7 +1217,7 @@ check_ram() {
         alpine | debian | dd) echo 256 ;;
         arch | gentoo | windows) echo 512 ;;
         centos | alma | rocky | fedora | ubuntu) echo 1024 ;;
-        opensuse) echo max ;; # 没有安装模式
+        opensuse) echo -1 ;; # 没有安装模式
         esac
     )
 
@@ -1977,7 +2313,7 @@ else
 fi
 
 # 整理参数
-if ! opts=$(getopt -n $0 -o "" --long debug,hold:,sleep:,iso:,image-name:,img:,ci,cloud-image -- "$@"); then
+if ! opts=$(getopt -n $0 -o "" --long ci,debug,hold:,sleep:,iso:,image-name:,img:,lang: -- "$@"); then
     usage_and_exit
 fi
 
@@ -1989,12 +2325,15 @@ while true; do
         set -x
         shift
         ;;
-    --ci | --cloud-image)
+    --ci)
         cloud_image=1
         shift
         ;;
     --hold | --sleep)
         hold=$2
+        if ! { [ "$hold" = 1 ] || [ "$hold" = 2 ]; }; then
+            error_and_exit "Invalid --hold value: $hold."
+        fi
         shift 2
         ;;
     --img)
@@ -2006,7 +2345,11 @@ while true; do
         shift 2
         ;;
     --image-name)
-        image_name=$2
+        image_name=$(echo "$2" | to_lower)
+        shift 2
+        ;;
+    --lang)
+        lang=$(echo "$2" | to_lower)
         shift 2
         ;;
     --)
