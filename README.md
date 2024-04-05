@@ -11,7 +11,7 @@
 ## 亮点
 
 - 使用官方云镜像 (Cloud Image) 安装，可绕过传统网络安装的 [内存要求](https://access.redhat.com/articles/rhel-limits#minimum-required-memory-3)，且安装速度更快
-- 支持 512M + 5G 小鸡，也支持 256M 小鸡安装 Alpine
+- 支持 512M + 5G 小鸡，也支持 256M 小鸡安装 Alpine、Debian
 - 支持所有网络情况，包括动静态 IPv4/IPv6，纯 IPv4/IPv6
 - 支持用官方 iso 安装 Windows
 - 支持 Windows 重装成 Linux，也支持重装 Windows
@@ -33,7 +33,7 @@ curl -O https://raw.githubusercontent.com/bin456789/reinstall/main/reinstall.sh
 国内：
 
 ```bash
-curl -O https://raw.gitmirror.com/bin456789/reinstall/main/reinstall.sh
+curl -O https://mirror.ghproxy.com/https://raw.githubusercontent.com/bin456789/reinstall/main/reinstall.sh
 ```
 
 ## 下载（当前系统是 Windows）
@@ -51,7 +51,7 @@ certutil -urlcache -f -split https://raw.githubusercontent.com/bin456789/reinsta
 国内：
 
 ```batch
-certutil -urlcache -f -split https://raw.gitmirror.com/bin456789/reinstall/main/reinstall.bat
+certutil -urlcache -f -split https://mirror.ghproxy.com/https://raw.githubusercontent.com/bin456789/reinstall/main/reinstall.bat
 ```
 
 ## 使用
@@ -109,6 +109,7 @@ bash reinstall.sh alpine --hold=1
 ### 功能 4: 重启到 netboot.xyz
 
 - 可使用后台 VNC 安装 [更多系统](https://github.com/netbootxyz/netboot.xyz?tab=readme-ov-file#what-operating-systems-are-currently-available-on-netbootxyz)
+- 如果没有修改硬盘内容，再次重启将回到原系统
 
 ```bash
 bash reinstall.sh netboot.xyz
@@ -191,7 +192,7 @@ Windows Server 2022 SERVERDATACENTER
 
 | 系统                                | 传统安装 | 云镜像 |
 | ----------------------------------- | -------- | ------ |
-| Debian                              | 384M     | 512M   |
+| Debian                              | 256M     | 512M   |
 | Ubuntu                              | 1G       | 512M   |
 | CentOS / Alma / Rocky / Fedora      | 1G       | 512M   |
 | openSUSE                            | -        | 512M   |

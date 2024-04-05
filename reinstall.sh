@@ -36,8 +36,9 @@ Usage: $reinstall____ centos   7|8|9
                       opensuse 15.5|tumbleweed
                       arch
                       gentoo
-                      dd       --img=http://xxx
-                      windows  --iso=http://xxx --image-name='windows xxx'
+                      dd       --img='http://xxx'
+                      windows  --image-name='windows xxx yyy' --lang=xx-yy
+                      windows  --image-name='windows xxx yyy' --iso='http://xxx'
                       netboot.xyz
 
 Manual: https://github.com/bin456789/reinstall
@@ -516,7 +517,8 @@ get_windows_iso_links() {
                 serverdatacenter | serverdatacentercore) echo _ ;;
                 esac
                 ;;
-            '2012 r2' | 2016 | 2019 | 2022)
+            '2012 r2' | \
+                2016 | 2019 | 2022)
                 case "$edition" in
                 serverstandard | serverstandardcore) echo _ ;;
                 serverdatacenter | serverdatacentercore) echo _ ;;

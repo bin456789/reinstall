@@ -11,7 +11,7 @@ One-click reinstallation script
 ## Highlights
 
 - Installing using official cloud images (Cloud Image) allows bypassing the [memory requirements](https://access.redhat.com/articles/rhel-limits#minimum-required-memory-3) of traditional network installations, resulting in faster installation speed.
-- Compatible with 512M + 5G small servers and supports installing Alpine on 256M small servers.
+- Compatible with 512M + 5G small servers and supports installing Alpine or Debain on 256M small servers.
 - Compatible with all network conditions, including dynamic/static IPv4/IPv6 and pure IPv4/IPv6.
 - Supports installing Windows using the official ISO.
 - Supports reinstalling Windows as Linux or Windows itself.
@@ -33,7 +33,7 @@ curl -O https://raw.githubusercontent.com/bin456789/reinstall/main/reinstall.sh
 For users in China:
 
 ```bash
-curl -O https://raw.gitmirror.com/bin456789/reinstall/main/reinstall.sh
+curl -O https://mirror.ghproxy.com/https://raw.githubusercontent.com/bin456789/reinstall/main/reinstall.sh
 ```
 
 ## Download (Current system is Windows)
@@ -51,7 +51,7 @@ certutil -urlcache -f -split https://raw.githubusercontent.com/bin456789/reinsta
 For users in China:
 
 ```batch
-certutil -urlcache -f -split https://raw.gitmirror.com/bin456789/reinstall/main/reinstall.bat
+certutil -urlcache -f -split https://mirror.ghproxy.com/https://raw.githubusercontent.com/bin456789/reinstall/main/reinstall.bat
 ```
 
 ## Usage
@@ -109,6 +109,7 @@ bash reinstall.sh alpine --hold=1
 ### Feature 4: Reboot to netboot.xyz
 
 - Can install [more systems](https://github.com/netbootxyz/netboot.xyz?tab=readme-ov-file#what-operating-systems-are-currently-available-on-netbootxyz) using web panel VNC.
+- If the disk content is not modified, rebooting again will return to the original system.
 
 ```bash
 bash reinstall.sh netboot.xyz
@@ -191,7 +192,7 @@ Use `Dism++` File menu > Open Image File, select the iso to be installed to get 
 
 | System                                | Traditional Installation | Cloud Image |
 | ------------------------------------- | ------------------------ | ----------- |
-| Debian                                | 384M                     | 512M        |
+| Debian                                | 256M                     | 512M        |
 | Ubuntu                                | 1G                       | 512M        |
 | CentOS / Alma / Rocky / Fedora        | 1G                       | 512M        |
 | openSUSE                              | -                        | 512M        |
