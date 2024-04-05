@@ -505,7 +505,7 @@ find_windows_iso() {
 }
 
 get_windows_iso_links() {
-    label_msdn=$(
+    get_label_msdn() {
         if [ -n "$server" ]; then
             case "$version" in
             2008 | '2008 r2')
@@ -570,9 +570,9 @@ get_windows_iso_links() {
                 ;;
             esac
         fi
-    )
+    }
 
-    label_vlsc=$(
+    get_label_vlsc() {
         case "$version" in
         10 | 11)
             case "$edition" in
@@ -580,7 +580,11 @@ get_windows_iso_links() {
             esac
             ;;
         esac
-    )
+    }
+
+    # 部分 bash 不支持 $() 里面嵌套case，所以定义成函数
+    label_msdn=$(get_label_msdn)
+    label_vlsc=$(get_label_vlsc)
 
     page=$(
         if [ "$arch_win" = arm64 ]; then
