@@ -122,13 +122,14 @@ download() {
     #     return
     # fi
 
+    # --user-agent=Wget/1.21.1 \
+
     echo "$url"
     for i in $(seq 5); do
         stdbuf -oL -eL \
             aria2c -x4 \
             --allow-overwrite=true \
             --summary-interval=0 \
-            --user-agent=Wget/1.21.1 \
             --max-tries 1 \
             $save $url && return
         sleep 1
@@ -1928,7 +1929,7 @@ disable_selinux_kdump() {
     chroot $os_dir grubby --update-kernel ALL --args crashkernel=no
     if [ "$releasever" -eq 7 ]; then
         # el7 上面那条 grubby 命令不能设置 /etc/default/grub
-        sed -iE 's/crashkernel=[^ "]*/crashkernel=no/' $os_dir/etc/default/grub
+        sed -i 's/crashkernel=[^ "]*/crashkernel=no/' $os_dir/etc/default/grub
     fi
     rm -rf $os_dir/etc/systemd/system/multi-user.target.wants/kdump.service
 }

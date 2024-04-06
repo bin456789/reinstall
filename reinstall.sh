@@ -340,7 +340,7 @@ en_us() {
     fi
 }
 
-# fr-ca 到 fr
+# fr-ca 到 ca
 us() {
     # 葡萄牙准确对应 pp
     if [ "$lang" = pt-pt ]; then
@@ -371,7 +371,7 @@ en_en() {
     fi
 }
 
-# zh-cn 到 zh
+# fr-ca 到 fr
 en() {
     # 巴西/葡萄牙回落到葡萄牙语
     if [ "$lang" = pt-br ] || [ "$lang" = pt-br ]; then
@@ -529,15 +529,25 @@ get_windows_iso_links() {
             case "$version" in
             vista)
                 case "$edition" in
-                enterprise) echo _ ;;
+                starter)
+                    case "$arch_win" in
+                    x86) echo _ ;;
+                    esac
+                    ;;
                 homebasic | homepremium | business | ultimate) echo _ ;;
+                enterprise) echo enterprise ;;
                 esac
                 ;;
             7)
                 case "$edition" in
+                starter)
+                    case "$arch_win" in
+                    x86) echo ultimate ;;
+                    esac
+                    ;;
                 professional) echo professional ;;
-                business | enterprise) echo enterprise ;;
                 homebasic | homepremium | ultimate) echo ultimate ;;
+                enterprise) echo enterprise ;;
                 esac
                 ;;
             8.1)
@@ -552,8 +562,7 @@ get_windows_iso_links() {
                 home | 'home single language') echo consumer ;;
                 pro | 'pro for workstations' | education | 'pro education' | enterprise) echo business ;;
                 'iot enterprise') echo 'iot enterprise' ;;
-                'enterprise 2015 ltsb' | 'enterprise 2016 ltsb') echo "$edition" ;;
-                'enterprise ltsc 2019' | 'iot enterprise ltsc 2019' | 'iot enterprise ltsc 2021') echo "$edition" ;;
+                'enterprise 2015 ltsb' | 'enterprise 2016 ltsb' | 'enterprise ltsc 2019') echo "$edition" ;;
                 'enterprise ltsc 2021')
                     # arm64 的 enterprise ltsc 2021 要下载 iot enterprise ltsc 2021 iso
                     case "$arch_win" in
@@ -561,6 +570,7 @@ get_windows_iso_links() {
                     x86 | x64) echo 'enterprise ltsc 2021' ;;
                     esac
                     ;;
+                'iot enterprise ltsc 2019' | 'iot enterprise ltsc 2021') echo "$edition" ;;
                 esac
                 ;;
             11)
@@ -588,10 +598,16 @@ get_windows_iso_links() {
     label_msdn=$(get_label_msdn)
     label_vlsc=$(get_label_vlsc)
 
+    if grep -Ewq 'ltsb|ltsc' <<<"$edition"; then
+        is_ltsc=true
+    else
+        is_ltsc=false
+    fi
+
     page=$(
         if [ "$arch_win" = arm64 ]; then
             echo arm
-        elif grep -Ewq 'ltsb|ltsc' <<<"$edition"; then
+        elif $is_ltsc; then
             echo ltsc
         elif [ "$server" = 'server' ]; then
             echo server
@@ -613,18 +629,22 @@ get_windows_iso_links() {
     echo "List:       $page_url"
     echo
 
-    if [ -n "$page" ] && { [ -n "$label_msdn" ] || [ -n "$label_vlsc" ]; }; then
-        if [ "$label_msdn" = _ ]; then
-            label_msdn=
-        fi
-        if [ "$label_vlsc" = _ ]; then
-            label_vlsc=
-        fi
-    else
+    if [ -z "$page" ] || { [ -z "$label_msdn" ] && [ -z "$label_vlsc" ]; }; then
         error_and_exit "Not support find this iso. Check --image-name or set --iso manually."
     fi
 
     curl -L "$page_url" | grep -ioP 'https://.*?.iso' | awk -F/ '{print $NF}' >$tmp/win.list
+
+    # 如果不是 ltsc ，应该先去除 ltsc 链接，否则最终链接有 ltsc 的
+    # 例如查找 windows 10 iot enterprise，会得到
+    # en-us_windows_10_iot_enterprise_ltsc_2021_arm64_dvd_e8d4fc46.iso
+    # en-us_windows_10_iot_enterprise_version_22h2_arm64_dvd_39566b6b.iso
+    # sed -Ei 和 sed -iE 是不同的
+    if $is_ltsc; then
+        sed -Ei '/ltsc|ltsb/!d' $tmp/win.list
+    else
+        sed -Ei '/ltsc|ltsb/d' $tmp/win.list
+    fi
 }
 
 get_shortest_line() {
@@ -636,21 +656,27 @@ get_windows_iso_link() {
     regexs=()
 
     # msdn
-    for lang in $langs; do
-        regex=
-        for i in ${lang} windows ${server} ${version} ${label_msdn}; do
-            if [ -n "$i" ]; then
-                regex+="${i}_"
-            fi
+    if [ -n "$label_msdn" ]; then
+        if [ "$label_msdn" = _ ]; then
+            label_msdn=
+        fi
+        for lang in $langs; do
+            regex=
+            for i in ${lang} windows ${server} ${version} ${label_msdn}; do
+                if [ -n "$i" ]; then
+                    regex+="${i}_"
+                fi
+            done
+            regex+=".*${arch_win}.*.iso"
+            regexs+=("$regex")
         done
-        regex+=".*${arch_win}.*.iso"
-
-        regexs+=("$regex")
-    done
+    fi
 
     # vlsc
-    regex="sw_dvd9_win_${label_vlsc}_${version}.*${arch_win}_${full_lang}.*.iso"
-    regexs+=("$regex")
+    if [ -n "$label_vlsc" ]; then
+        regex="sw_dvd9_win_${label_vlsc}_${version}.*${arch_win}_${full_lang}.*.iso"
+        regexs+=("$regex")
+    fi
 
     # 查找
     for regex in "${regexs[@]}"; do
