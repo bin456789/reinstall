@@ -136,6 +136,10 @@ exit /b
 rem bits 要求有 Content-Length 才能下载
 rem https://learn.microsoft.com/en-us/windows/win32/bits/http-requirements-for-bits-downloads
 rem certutil 会被 windows Defender 报毒
+rem windows server 2019 要用第二条 certutil 命令
 echo Download: %~1 %~2
 certutil -urlcache -f -split %~1 %~2
+if not exist %~2 (
+    certutil -urlcache -split %~1 %~2
+)
 exit /b
