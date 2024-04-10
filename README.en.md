@@ -133,7 +133,7 @@ bash reinstall.sh windows \
 
 ```bash
 bash reinstall.sh windows \
-     --image-name 'Windows 10 Enterprise LTSC 2021'
+     --image-name 'Windows 10 Enterprise LTSC 2021' \
      --lang zh-cn
 ```
 

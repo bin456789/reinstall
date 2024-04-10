@@ -594,20 +594,10 @@ get_windows_iso_links() {
         esac
     }
 
-    # 部分 bash 不支持 $() 里面嵌套case，所以定义成函数
-    label_msdn=$(get_label_msdn)
-    label_vlsc=$(get_label_vlsc)
-
-    if grep -Ewq 'ltsb|ltsc' <<<"$edition"; then
-        is_ltsc=true
-    else
-        is_ltsc=false
-    fi
-
-    page=$(
+    get_page() {
         if [ "$arch_win" = arm64 ]; then
             echo arm
-        elif $is_ltsc; then
+        elif is_ltsc; then
             echo ltsc
         elif [ "$server" = 'server' ]; then
             echo server
@@ -618,7 +608,17 @@ get_windows_iso_links() {
                 ;;
             esac
         fi
-    )
+    }
+
+    is_ltsc() {
+        grep -Ewq 'ltsb|ltsc' <<<"$edition"
+    }
+
+    # 部分 bash 不支持 $() 里面嵌套case，所以定义成函数
+    label_msdn=$(get_label_msdn)
+    label_vlsc=$(get_label_vlsc)
+    page=$(get_page)
+
     page_url=https://massgrave.dev/windows_${page}_links.html
 
     info "Find windows iso"
@@ -640,7 +640,7 @@ get_windows_iso_links() {
     # en-us_windows_10_iot_enterprise_ltsc_2021_arm64_dvd_e8d4fc46.iso
     # en-us_windows_10_iot_enterprise_version_22h2_arm64_dvd_39566b6b.iso
     # sed -Ei 和 sed -iE 是不同的
-    if $is_ltsc; then
+    if is_ltsc; then
         sed -Ei '/ltsc|ltsb/!d' $tmp/win.list
     else
         sed -Ei '/ltsc|ltsb/d' $tmp/win.list
