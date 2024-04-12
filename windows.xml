@@ -73,7 +73,12 @@
                 <!-- 启用 administrator 账户 -->
                 <RunSynchronousCommand wcm:action="add">
                     <Order>4</Order>
-                    <Path>net user Administrator /active:yes</Path>
+                    <!-- vista 没有自带 powershell -->
+                    <!-- <Path>powershell "$User = Get-WmiObject Win32_UserAccount | where SID -like *-500; $User.Disabled = $False; $User.Put()"</Path> -->
+                    <!-- win7 此时无法用 wmic useraccount -->
+                    <!-- <Path>wmic useraccount where "sid like '%-500'" set Disabled=false</Path> -->
+                    <!-- https://learn.microsoft.com/archive/technet-wiki/13813.localized-names-for-administrator-account-in-windows -->
+                    <Path>cmd /c "for %a in (Administrator Administrador Administrateur Administratör Администратор Järjestelmänvalvoja Rendszergazda) do (net user %a /active:yes &amp;&amp; exit)"</Path>
                 </RunSynchronousCommand>
                 <!-- win7 在此阶段找不到网卡 -->
                 <!-- <RunSynchronousCommand wcm:action="add">
