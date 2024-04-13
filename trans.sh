@@ -2363,28 +2363,24 @@ install_windows() {
     mkdir -p /iso
     mount -o ro /os/windows.iso /iso
 
+    # 复制 boot.wim 到 /os，用于临时编辑
+    cp /iso/sources/boot.wim /os/boot.wim
+
     # 从iso复制文件
-    # efi: 复制boot开头的文件+efi目录到efi分区，复制iso全部文件(除了boot.wim)到installer分区
-    # bios: 复制iso全部文件到installer分区
+    # 复制iso全部文件(除了boot.wim)到installer分区
+    # efi: 额外复制boot开头的文件+efi目录到efi分区，
     if is_efi; then
-        mkdir -p /os/boot/efi/sources/
         cp -rv /iso/boot* /os/boot/efi/
         cp -rv /iso/efi/ /os/boot/efi/
-        cp -rv /iso/sources/boot.wim /os/boot/efi/sources/
+    fi
 
-        if false; then
-            rsync -rv --exclude=/sources/boot.wim /iso/* /os/installer/
-        else
-            cd /iso
-            echo 'Copying installer files...'
-            find . -type f -not -name boot.wim -exec cp -r --parents {} /os/installer/ \;
-            cd -
-        fi
-        boot_wim=/os/boot/efi/sources/boot.wim
+    if false; then
+        rsync -rv --exclude=/sources/boot.wim /iso/* /os/installer/
     else
+        cd /iso
         echo 'Copying installer files...'
-        cp -r /iso/* /os/installer/
-        boot_wim=/os/installer/sources/boot.wim
+        find . -type f -not -name boot.wim -exec cp -r --parents {} /os/installer/ \;
+        cd -
     fi
 
     if [ -e /os/installer/sources/install.esd ]; then
@@ -2662,7 +2658,7 @@ install_windows() {
 
     # 挂载 boot.wim
     mkdir -p /wim
-    wimmountrw $boot_wim 2 /wim/
+    wimmountrw /os/boot.wim 2 /wim/
 
     cp_drivers() {
         src=$1
@@ -2729,6 +2725,25 @@ install_windows() {
 
     # 提交修改 boot.wim
     wimunmount --commit /wim/
+
+    # 优化 boot.wim 大小
+    # vista 删除镜像1 会报错
+    # Windows cannot access the required file Drive:\Sources\Boot.wim.
+    # Make sure all files required for installation are available and restart the installation.
+    # Error code: 0x80070491
+    ls -lh /iso/sources/boot.wim
+    ls -lh /os/boot.wim
+    # wimdelete /os/boot.wim 1
+    wimoptimize /os/boot.wim
+    ls -lh /os/boot.wim
+
+    # 将 boot.wim 放到正确的位置
+    if is_efi; then
+        mkdir -p /os/boot/efi/sources/
+        cp /os/boot.wim /os/boot/efi/sources/boot.wim
+    else
+        cp /os/boot.wim /os/installer/sources/boot.wim
+    fi
 
     # windows 7 没有 invoke-webrequest
     # installer分区盘符不一定是D盘
