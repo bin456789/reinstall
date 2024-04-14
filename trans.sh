@@ -2059,6 +2059,13 @@ install_qcow_el() {
     # 部分镜像例如 centos7 要手动删除 machine-id
     truncate_machine_id /os
 
+    # centos 7 yum 可能会使用 ipv6，即使没有 ipv6 网络
+    if grep 'centos:7' /os/etc/system-release-cpe; then
+        if [ "$(cat /dev/ipv6_has_internet)" = "0" ]; then
+            echo 'ip_resolve=4' >>/os/etc/yum.conf
+        fi
+    fi
+
     # 为 centos 7 ci 安装 NetworkManager
     # 1. 能够自动配置 onlink 网关
     # 2. 解决 cloud-init 关闭了 ra，因为 nm 无视内核 ra 设置

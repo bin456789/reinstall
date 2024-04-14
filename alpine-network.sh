@@ -202,3 +202,5 @@ echo "$ipv4_addr" >/dev/ipv4_addr
 echo "$ipv4_gateway" >/dev/ipv4_gateway
 echo "$ipv6_addr" >/dev/ipv6_addr
 echo "$ipv6_gateway" >/dev/ipv6_gateway
+$ipv4_has_internet && echo 1 >/dev/ipv4_has_internet || echo 0 >/dev/ipv4_has_internet
+$ipv6_has_internet && echo 1 >/dev/ipv6_has_internet || echo 0 >/dev/ipv6_has_internet
