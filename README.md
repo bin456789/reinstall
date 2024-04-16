@@ -163,10 +163,10 @@ Windows Server 2022 SERVERDATACENTER
      - Azure Stack HCI
 2. 脚本会按需安装以下驱动：
    - KVM ([Virtio](https://fedorapeople.org/groups/virt/virtio-win/direct-downloads/))
-   - XEN ([XEN PV](https://xenproject.org/windows-pv-drivers/)、[AWS PV](https://docs.aws.amazon.com/zh_cn/AWSEC2/latest/WindowsGuide/xen-drivers-overview.html))
-   - AWS ([ENA 网卡](https://docs.aws.amazon.com/zh_cn/AWSEC2/latest/WindowsGuide/enhanced-networking-ena.html)、[NVME 存储控制器](https://docs.aws.amazon.com/zh_cn/AWSEC2/latest/WindowsGuide/aws-nvme-drivers.html))
+   - XEN ([XEN](https://xenproject.org/windows-pv-drivers/)、[Citrix](https://docs.aws.amazon.com/AWSEC2/latest/WindowsGuide/Upgrading_PV_drivers.html#win2008-citrix-upgrade)、[AWS](https://docs.aws.amazon.com/AWSEC2/latest/WindowsGuide/xen-drivers-overview.html))
+   - AWS ([ENA 网卡](https://docs.aws.amazon.com/AWSEC2/latest/WindowsGuide/enhanced-networking-ena.html)、[NVME 存储控制器](https://docs.aws.amazon.com/AWSEC2/latest/WindowsGuide/aws-nvme-drivers.html))
    - GCP ([gVNIC 网卡](https://cloud.google.com/compute/docs/networking/using-gvnic)、[GGA 显卡](https://cloud.google.com/compute/docs/instances/enable-instance-virtual-display))
-   - Azure ([MANA 网卡](https://learn.microsoft.com/zh-cn/azure/virtual-network/accelerated-networking-mana-windows))
+   - Azure ([MANA 网卡](https://learn.microsoft.com/azure/virtual-network/accelerated-networking-mana-windows))
 3. Vista (Server 2008) 和 32 位系统可能会缺少驱动
 4. 未开启 CSM 的 EFI 机器，无法安装 Windows 7 (Server 2008 R2)
 5. 静态 IP 的机器，安装后会自动配置好 IP

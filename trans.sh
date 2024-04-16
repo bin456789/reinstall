@@ -1582,9 +1582,9 @@ EOF
 modify_windows() {
     os_dir=$1
 
-    # https://learn.microsoft.com/zh-cn/windows-hardware/manufacture/desktop/windows-setup-states
-    # https://learn.microsoft.com/zh-cn/troubleshoot/azure/virtual-machines/reset-local-password-without-agent
-    # https://learn.microsoft.com/zh-cn/windows-hardware/manufacture/desktop/add-a-custom-script-to-windows-setup
+    # https://learn.microsoft.com/windows-hardware/manufacture/desktop/windows-setup-states
+    # https://learn.microsoft.com/troubleshoot/azure/virtual-machines/reset-local-password-without-agent
+    # https://learn.microsoft.com/windows-hardware/manufacture/desktop/add-a-custom-script-to-windows-setup
 
     # 判断用 SetupComplete 还是组策略
     state_ini=$os_dir/Windows/Setup/State/State.ini
@@ -2368,6 +2368,14 @@ is_dmi_contains() {
     echo "$_dmi" | grep -Eiw "$1"
 }
 
+get_aws_repo() {
+    if is_in_china >&2; then
+        echo https://s3.cn-north-1.amazonaws.com.cn/ec2-windows-drivers-downloads-cn
+    else
+        echo https://s3.amazonaws.com/ec2-windows-drivers-downloads
+    fi
+}
+
 install_windows() {
     apk add wimlib pev
 
@@ -2453,54 +2461,76 @@ install_windows() {
     mkdir -p $drv
 
     # aws nitro
-    # 可能不支持 vista
-    # https://docs.aws.amazon.com/zh_cn/AWSEC2/latest/WindowsGuide/aws-nvme-drivers.html
-    # https://docs.aws.amazon.com/zh_cn/AWSEC2/latest/WindowsGuide/enhanced-networking-ena.html
+    # 不支持 vista
+    # https://docs.aws.amazon.com/AWSEC2/latest/WindowsGuide/aws-nvme-drivers.html
+    # https://docs.aws.amazon.com/AWSEC2/latest/WindowsGuide/enhanced-networking-ena.html
     if is_virt_contains aws &&
         is_virt_contains kvm &&
-        [ "$arch_wim" = x86_64 ]; then
+        { [ "$arch_wim" = x86_64 ] || [ "$arch_wim" = arm64 ]; } &&
+        ! [ "$nt_ver" = 6.0 ]; then
 
         # 未打补丁的 win7 无法使用 sha256 签名的驱动
         nvme_ver=$(
             case "$nt_ver" in
-            6.0 | 6.1) echo 1.3.2 ;; # sha1 签名
+            6.1) echo 1.3.2 ;; # sha1 签名
             *) echo Latest ;;
             esac
         )
 
         ena_ver=$(
             case "$nt_ver" in
-            6.0 | 6.1) echo 2.1.4 ;; # sha1 签名
-            # 6.0 | 6.1) echo 2.2.3 ;; # sha256 签名
+            6.1) echo 2.1.4 ;; # sha1 签名
+            # 6.1) echo 2.2.3 ;; # sha256 签名
             6.2 | 6.3) echo 2.6.0 ;;
             *) echo Latest ;;
             esac
         )
 
-        download https://s3.amazonaws.com/ec2-windows-drivers-downloads/NVMe/$nvme_ver/AWSNVMe.zip $drv/AWSNVMe.zip
-        download https://s3.amazonaws.com/ec2-windows-drivers-downloads/ENA/$ena_ver/AwsEnaNetworkDriver.zip $drv/AwsEnaNetworkDriver.zip
+        [ "$arch_wim" = arm64 ] && arch_dir=/ARM64 || arch_dir=
+
+        download "$(get_aws_repo)/NVMe$arch_dir/$nvme_ver/AWSNVMe.zip" $drv/AWSNVMe.zip
+        download "$(get_aws_repo)/ENA$arch_dir/$ena_ver/AwsEnaNetworkDriver.zip" $drv/AwsEnaNetworkDriver.zip
 
         unzip -o -d $drv/aws/ $drv/AWSNVMe.zip
         unzip -o -d $drv/aws/ $drv/AwsEnaNetworkDriver.zip
     fi
 
-    # aws xen
-    # 可能不支持 vista
-    # https://docs.aws.amazon.com/zh_cn/AWSEC2/latest/WindowsGuide/xen-drivers-overview.html
+    # citrix xen
+    # 仅支持 vista
     if is_virt_contains xen &&
-        [ "$arch_wim" = x86_64 ]; then
+        { [ "$arch_wim" = x86 ] || [ "$arch_wim" = x86_64 ]; } &&
+        [ "$nt_ver" = 6.0 ]; then
+
+        apk add 7zip
+        download https://s3.amazonaws.com/ec2-downloads-windows/Drivers/Citrix-Win_PV.zip $drv/Citrix-Win_PV.zip
+        unzip -o -d $drv $drv/Citrix-Win_PV.zip
+        case "$arch_wim" in
+        x86) override=s ;;    # skip
+        x86_64) override=a ;; # always
+        esac
+        # 排除 $PLUGINSDIR $TEMP
+        exclude='$*'
+        7z x $drv/Citrix_xensetup.exe -o$drv/aws/ -ao$override -x!$exclude
+    fi
+
+    # aws xen
+    # 不支持 vista
+    # https://docs.aws.amazon.com/AWSEC2/latest/WindowsGuide/xen-drivers-overview.html
+    if is_virt_contains xen &&
+        [ "$arch_wim" = x86_64 ] &&
+        ! [ "$nt_ver" = 6.0 ]; then
 
         apk add msitools
 
         aws_pv_ver=$(
             case "$nt_ver" in
-            6.0 | 6.1) echo 8.3.2 ;; # sha1 签名
-            # 6.0 | 6.1) echo 8.3.5 ;; # sha256 签名
+            6.1) echo 8.3.2 ;; # sha1 签名
+            # 6.1) echo 8.3.5 ;; # sha256 签名
             *) echo Latest ;;
             esac
         )
 
-        download https://s3.amazonaws.com/ec2-windows-drivers-downloads/AWSPV/$aws_pv_ver/AWSPVDriver.zip $drv/AWSPVDriver.zip
+        download "$(get_aws_repo)/AWSPV/$aws_pv_ver/AWSPVDriver.zip" $drv/AWSPVDriver.zip
 
         unzip -o -d $drv $drv/AWSPVDriver.zip
         msiextract $drv/AWSPVDriverSetup.msi -C $drv
@@ -2611,22 +2641,30 @@ install_windows() {
     fi
 
     # gcp
-    if { is_dmi_contains "Google Compute Engine" || is_dmi_contains "GoogleCloud"; } &&
-        { [ "$arch_wim" = x86 ] || [ "$arch_wim" = x86_64 ]; }; then
+    # x86 x86_64 arm64 都有
+    if { is_dmi_contains "Google Compute Engine" || is_dmi_contains "GoogleCloud"; }; then
 
         gce_repo=https://packages.cloud.google.com/yuck
         download $gce_repo/repos/google-compute-engine-stable/index /tmp/gce.json
-        # gga 好像只是用于调节后台vnc分辨率
         for name in gvnic gga; do
+            # gvnic 没有 arm64
+            if [ "$name" = gvnic ] && [ "$arch_wim" = arm64 ]; then
+                continue
+            fi
+
             mkdir -p $drv/gce/$name
             link=$(grep -o "/pool/.*-google-compute-engine-driver-$name\.goo" /tmp/gce.json)
             wget $gce_repo$link -O- | tar -xzf- -C $drv/gce/$name
 
             # 没有 win6.0 文件夹
+            # 但 inf 没限制
             # TODO: 测试是否可用
             if false; then
-                mkdir -p $drv/gce/$name/win6.0/
-                cp -r $drv/gce/$name/win6.1/* $drv/gce/$name/win6.0/
+                for suffix in '' '-32'; do
+                    if [ -d "$drv/gce/$name/win6.1$suffix" ]; then
+                        cp -r "$drv/gce/$name/win6.1$suffix" "$drv/gce/$name/win6.0$suffix"
+                    fi
+                done
             fi
         done
     fi

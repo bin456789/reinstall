@@ -56,7 +56,7 @@
         <component name="Microsoft-Windows-Deployment" processorArchitecture="%arch%" publicKeyToken="31bf3856ad364e35" language="neutral" versionScope="nonSxS" xmlns:wcm="http://schemas.microsoft.com/WMIConfig/2002/State" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance">
             <RunSynchronous>
                 <!-- aws和华为云都要求设置为从不关闭显示器
-                https://docs.aws.amazon.com/zh_cn/AWSEC2/latest/WindowsGuide/migrating-latest-types.html
+                https://docs.aws.amazon.com/AWSEC2/latest/WindowsGuide/migrating-latest-types.html
                 https://support.huaweicloud.com/usermanual-ims/zh-cn_topic_0047501112.html -->
                 <RunSynchronousCommand wcm:action="add">
                     <Order>1</Order>
