@@ -374,7 +374,7 @@ en_en() {
 # fr-ca 到 fr
 en() {
     # 巴西/葡萄牙回落到葡萄牙语
-    if [ "$lang" = pt-br ] || [ "$lang" = pt-br ]; then
+    if [ "$lang" = pt-br ] || [ "$lang" = pt-pt ]; then
         echo "pp"
         return
     fi

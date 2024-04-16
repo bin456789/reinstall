@@ -233,11 +233,12 @@ find_xda() {
         error_and_exit "cmdline main_disk is empty."
     fi
 
-    # busybox fdisk 不显示 mbr 分区表 id
+    # busybox fdisk/lsblk/blkid 不显示 mbr 分区表 id
     # 可用以下工具：
     # fdisk 在 util-linux-misc 里面，占用大
     # sfdisk 占用小
     # lsblk
+    # blkid
 
     tool=sfdisk
 
@@ -2385,13 +2386,14 @@ install_windows() {
         cp -rv /iso/efi/ /os/boot/efi/
     fi
 
+    echo 'Copying installer files...'
     if false; then
         rsync -rv --exclude=/sources/boot.wim /iso/* /os/installer/
     else
-        cd /iso
-        echo 'Copying installer files...'
-        find . -type f -not -name boot.wim -exec cp -r --parents {} /os/installer/ \;
-        cd -
+        (
+            cd /iso
+            find . -type f -not -name boot.wim -exec cp -r --parents {} /os/installer/ \;
+        )
     fi
 
     if [ -e /os/installer/sources/install.esd ]; then
@@ -2937,45 +2939,64 @@ fi
 
 # dd qemu 切换成云镜像模式，暂时没用到
 if [ "$distro" = "dd" ] && [ "$img_type" = "qemu" ]; then
+    # 移到 reinstall.sh ?
+    distro=any
     cloud_image=1
 fi
 
-if [ "$distro" = "alpine" ]; then
-    install_alpine
-elif [ "$distro" = "dd" ] && [ "$img_type" != "qemu" ]; then
-    dd_gzip_xz
-    modify_os_on_disk windows
-elif is_use_cloud_image; then
-    if [ "$img_type" = "qemu" ]; then
+if is_use_cloud_image; then
+    case "$img_type" in
+    qemu)
         create_part
         download_qcow
-        # 这几个系统云镜像系统盘是8~9g xfs，而我们的目标是能在5g硬盘上运行，因此改成复制系统文件
-        if [ "$distro" = centos ] || [ "$distro" = alma ] || [ "$distro" = rocky ]; then
+        case "$distro" in
+        centos | alma | rocky)
+            # 这几个系统云镜像系统盘是8~9g xfs，而我们的目标是能在5g硬盘上运行，因此改成复制系统文件
             install_qcow_el
-        else
-            # debian ubuntu fedora opensuse arch gentoo
+            ;;
+        *)
+            # debian ubuntu fedora opensuse arch gentoo any
             dd_qcow
             resize_after_install_cloud_image
             modify_os_on_disk linux
-        fi
-    else
-        # gzip xz 格式的云镜像，暂时没用到
+            ;;
+        esac
+        ;;
+    gzip | xz)
+        # 暂时没用到 gzip xz 格式的云镜像
         dd_gzip_xz
         resize_after_install_cloud_image
         modify_os_on_disk linux
-    fi
-elif [ "$distro" = "arch" ] || [ "$distro" = "gentoo" ]; then
-    create_part
-    install_arch_gentoo
+        ;;
+    esac
+elif [ "$distro" = "dd" ]; then
+    case "$img_type" in
+    gzip | xz)
+        dd_gzip_xz
+        modify_os_on_disk windows
+        ;;
+    qemu) # dd qemu 不可能到这里，因为上面已处理
+        ;;
+    esac
 else
-    # 安装模式: windows windows ubuntu 红帽
-    create_part
-    mount_part_for_install_mode
-    if [ "$distro" = "windows" ]; then
-        install_windows
-    else
-        install_redhat_ubuntu
-    fi
+    # 安装模式
+    case "$distro" in
+    alpine)
+        install_alpine
+        ;;
+    arch | gentoo)
+        create_part
+        install_arch_gentoo
+        ;;
+    *)
+        create_part
+        mount_part_for_install_mode
+        case "$distro" in
+        centos | alma | rocky | fedora | ubuntu) install_redhat_ubuntu ;;
+        windows) install_windows ;;
+        esac
+        ;;
+    esac
 fi
 
 # alpine 因内存容量问题，单独处理
