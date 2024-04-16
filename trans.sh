@@ -2066,6 +2066,10 @@ install_qcow_el() {
         fi
     fi
 
+    # 删除云镜像自带的 dhcp 配置，防止歧义
+    # clout-init 网络配置在 /etc/sysconfig/network-scripts/
+    rm -rf /os/etc/NetworkManager/system-connections/*.nmconnection
+
     # 为 centos 7 ci 安装 NetworkManager
     # 1. 能够自动配置 onlink 网关
     # 2. 解决 cloud-init 关闭了 ra，因为 nm 无视内核 ra 设置
