@@ -36,7 +36,7 @@ jobs:
           ${{ matrix.command }} centos --ci
           ${{ matrix.command }} alma --ci
           ${{ matrix.command }} rocky --ci
-          ${{ matrix.command }} fedora-38 --ci
+          ${{ matrix.command }} fedora-40 --ci
           ${{ matrix.command }} ubuntu 22.04 --ci
           ${{ matrix.command }} debian --ci
           ${{ matrix.command }} opensuse

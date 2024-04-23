@@ -29,7 +29,7 @@ usage_and_exit() {
 Usage: $reinstall____ centos   7|8|9
                       alma     8|9
                       rocky    8|9
-                      fedora   38|39
+                      fedora   38|39|40
                       debian   10|11|12
                       ubuntu   20.04|22.04
                       alpine   3.16|3.17|3.18|3.19
@@ -961,9 +961,16 @@ setos() {
                 ;;
             "rocky") ci_image=$ci_mirror/Rocky-$releasever-GenericCloud-Base.latest.$basearch.qcow2 ;;
             "fedora")
-                filename=$(curl -L $ci_mirror | grep -oP "Fedora-Cloud-Base-$releasever.*?$basearch" | head -1)
-                # ci_image=$ci_mirror/$filename.raw.xz
-                ci_image=$ci_mirror/$filename.qcow2
+                # Fedora-Cloud-Base-39-1.5.x86_64.qcow2
+                # Fedora-Cloud-Base-Generic.x86_64-40-1.14.qcow2
+                page=$(curl -L $ci_mirror)
+                # 40
+                filename=$(grep -oP "Fedora-Cloud-Base-Generic.*?.qcow2" <<<"$page" | head -1)
+                # 38/39
+                if [ -z "$filename" ]; then
+                    filename=$(grep -oP "Fedora-Cloud-Base-$releasever.*?.qcow2" <<<"$page" | head -1)
+                fi
+                ci_image=$ci_mirror/$filename
                 ;;
             esac
 
@@ -1041,7 +1048,7 @@ verify_os_name() {
         'centos   7|8|9' \
         'alma     8|9' \
         'rocky    8|9' \
-        'fedora   38|39' \
+        'fedora   38|39|40' \
         'debian   10|11|12' \
         'ubuntu   20.04|22.04' \
         'alpine   3.16|3.17|3.18|3.19' \
@@ -2424,7 +2431,7 @@ dd | windows | netboot.xyz | alpine | arch | gentoo)
         cloud_image=0
     fi
     ;;
-opensuse)
+fedora | opensuse)
     cloud_image=1
     ;;
 esac

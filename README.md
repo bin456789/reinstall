@@ -71,7 +71,7 @@ certutil -urlcache -f -split https://mirror.ghproxy.com/https://raw.githubuserco
 bash reinstall.sh centos   7|8|9  (8|9 为 stream 版本)
                   alma     8|9
                   rocky    8|9
-                  fedora   38|39
+                  fedora   38|39|40
                   debian   10|11|12
                   ubuntu   20.04|22.04
                   opensuse 15.5|tumbleweed
@@ -194,7 +194,8 @@ Windows Server 2022 SERVERDATACENTER
 | ----------------------------------- | -------- | ------ |
 | Debian                              | 256M     | 512M   |
 | Ubuntu                              | 1G       | 512M   |
-| CentOS / Alma / Rocky / Fedora      | 1G       | 512M   |
+| CentOS / Alma / Rocky               | 1G       | 512M   |
+| Fedora                              | -        | 512M   |
 | openSUSE                            | -        | 512M   |
 | Alpine                              | 256M     | -      |
 | Arch                                | 512M     | -      |
