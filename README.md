@@ -63,9 +63,7 @@ certutil -urlcache -f -split https://mirror.ghproxy.com/https://raw.githubuserco
 
 ### 功能 1: 安装 Linux
 
-- 参数 `--ci` 表示强制使用云镜像安装
-- 静态 IP 的机器安装 CentOS、Alma、Rocky、Fedora、Ubuntu，必须使用 `--ci` 参数
-- 如果不清楚机器是静态 IP 还是动态 IP，也可使用 `--ci`
+- 不输入版本号，则安装最新版
 
 ```bash
 bash reinstall.sh centos   7|8|9  (8|9 为 stream 版本)
@@ -78,14 +76,6 @@ bash reinstall.sh centos   7|8|9  (8|9 为 stream 版本)
                   alpine   3.16|3.17|3.18|3.19
                   arch
                   gentoo
-
-                  不输入版本号，则安装最新版
-```
-
-参数:
-
-```bash
---ci              强制使用云镜像
 ```
 
 ### 功能 2: DD
@@ -192,11 +182,11 @@ Windows Server 2022 SERVERDATACENTER
 
 | 系统                                | 传统安装 | 云镜像 |
 | ----------------------------------- | -------- | ------ |
-| Debian                              | 256M     | 512M   |
-| Ubuntu                              | 1G       | 512M   |
-| CentOS / Alma / Rocky               | 1G       | 512M   |
+| CentOS / Alma / Rocky               | -        | 512M   |
 | Fedora                              | -        | 512M   |
 | openSUSE                            | -        | 512M   |
+| Ubuntu                              | -        | 512M   |
+| Debian                              | 256M     | -      |
 | Alpine                              | 256M     | -      |
 | Arch                                | 512M     | -      |
 | Gentoo                              | 512M     | -      |

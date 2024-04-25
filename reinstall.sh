@@ -1266,7 +1266,8 @@ check_ram() {
         return
     fi
 
-    ram_cloud_image=512
+    # 未测试
+    ram_cloud_image=256
 
     has_cloud_image=$(
         case "$distro" in
@@ -2266,6 +2267,9 @@ mod_initrd() {
 
     mod_initrd_$nextos_distro
 
+    # 显示精简前的大小
+    du -sh .
+
     # 删除 initrd 里面没用的文件/驱动
     if is_virt && ! is_alpine_live; then
         rm -rf bin/brltty
@@ -2313,6 +2317,9 @@ mod_initrd() {
         )
     fi
 
+    # 显示精简后的大小
+    du -sh .
+
     # 重建
     # 注意要用 cpio -H newc 不要用 cpio -c ，不同版本的 -c 作用不一样，很坑
     # -c    Use the old portable (ASCII) archive format
@@ -2321,7 +2328,6 @@ mod_initrd() {
     #       (ASCII) archive format, use "-H odc" instead.
     find . | cpio --quiet -o -H newc | gzip -1 >/reinstall-initrd
     cd - >/dev/null
-    ls -lh /reinstall-initrd
 }
 
 # 脚本入口
@@ -2426,13 +2432,13 @@ mkdir -p "$tmp"
 
 # 强制忽略/强制添加 --ci 参数
 case "$distro" in
-dd | windows | netboot.xyz | alpine | arch | gentoo)
+dd | windows | netboot.xyz | debian | alpine | arch | gentoo)
     if is_use_cloud_image; then
         echo "ignored --ci"
         cloud_image=0
     fi
     ;;
-fedora | opensuse)
+centos | alma | rocky | ubuntu | fedora | opensuse)
     cloud_image=1
     ;;
 esac

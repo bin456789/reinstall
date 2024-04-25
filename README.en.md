@@ -63,9 +63,7 @@ All features can be used on both Linux and Windows.
 
 ### Feature 1: Install Linux
 
-- The parameter --ci indicates forced usage of the cloud image for installation.
-- Machines with static IP installing CentOS, Alma, Rocky, Fedora, Ubuntu must include the parameter `--ci`.
-- If it is uncertain whether the machine has a static or dynamic IP, you can also add the parameter `--ci`.
+- If no version number is entered, the latest version will be installed.
 
 ```bash
 bash reinstall.sh centos   7|8|9  (8|9 for the stream version)
@@ -78,14 +76,6 @@ bash reinstall.sh centos   7|8|9  (8|9 for the stream version)
                   alpine   3.16|3.17|3.18|3.19
                   arch
                   gentoo
-
-                  If no version number is entered, the latest version will be installed.
-```
-
-Parameters:
-
-```bash
---ci              Force the use of the cloud image
 ```
 
 ### Feature 2: DD
@@ -192,11 +182,11 @@ Use `Dism++` File menu > Open Image File, select the iso to be installed to get 
 
 | System                                | Traditional Installation | Cloud Image |
 | ------------------------------------- | ------------------------ | ----------- |
-| Debian                                | 256M                     | 512M        |
-| Ubuntu                                | 1G                       | 512M        |
-| CentOS / Alma / Rocky                 | 1G                       | 512M        |
+| CentOS / Alma / Rocky                 | -                        | 512M        |
 | Fedora                                | -                        | 512M        |
 | openSUSE                              | -                        | 512M        |
+| Ubuntu                                | -                        | 512M        |
+| Debian                                | 256M                     |             |
 | Alpine                                | 256M                     | -           |
 | Arch                                  | 512M                     | -           |
 | Gentoo                                | 512M                     | -           |

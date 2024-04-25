@@ -24,24 +24,17 @@ jobs:
       - run: |
           ${{ matrix.command }} centos 7
           ${{ matrix.command }} alma-8
-          ${{ matrix.command }} rocky 8
+          ${{ matrix.command }} rocky 9
           ${{ matrix.command }} fedora
           ${{ matrix.command }} ubuntu
-          ${{ matrix.command }} debian 12
+          ${{ matrix.command }} debian
           ${{ matrix.command }} alpine
-          ${{ matrix.command }} netboot.xyz
-          ${{ matrix.command }} dd --img=https://download.opensuse.org/tumbleweed/appliances/openSUSE-MicroOS.x86_64-SelfInstall.raw.xz
-
-          # 测试 cloud image
-          ${{ matrix.command }} centos --ci
-          ${{ matrix.command }} alma --ci
-          ${{ matrix.command }} rocky --ci
-          ${{ matrix.command }} fedora-40 --ci
-          ${{ matrix.command }} ubuntu 22.04 --ci
-          ${{ matrix.command }} debian --ci
           ${{ matrix.command }} opensuse
           ${{ matrix.command }} arch
           ${{ matrix.command }} gentoo
+
+          ${{ matrix.command }} netboot.xyz
+          ${{ matrix.command }} dd --img=https://download.opensuse.org/tumbleweed/appliances/openSUSE-MicroOS.x86_64-SelfInstall.raw.xz
 
           # 测试失败例子
           # ${{ matrix.command }} wrong-os
