@@ -73,8 +73,8 @@ bash reinstall.sh centos   7|8|9  (8|9 for the stream version)
                   rocky    8|9
                   fedora   38|39|40
                   debian   10|11|12
-                  ubuntu   20.04|22.04
                   opensuse 15.5|tumbleweed
+                  ubuntu   20.04|22.04|24.04
                   alpine   3.16|3.17|3.18|3.19
                   arch
                   gentoo

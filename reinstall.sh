@@ -31,7 +31,7 @@ Usage: $reinstall____ centos   7|8|9
                       rocky    8|9
                       fedora   38|39|40
                       debian   10|11|12
-                      ubuntu   20.04|22.04
+                      ubuntu   20.04|22.04|24.04
                       alpine   3.16|3.17|3.18|3.19
                       opensuse 15.5|tumbleweed
                       arch
@@ -776,6 +776,7 @@ setos() {
         case "$releasever" in
         20.04) codename=focal ;;
         22.04) codename=jammy ;;
+        24.04) codename=noble ;;
         esac
 
         if is_use_cloud_image; then
@@ -1050,7 +1051,7 @@ verify_os_name() {
         'rocky    8|9' \
         'fedora   38|39|40' \
         'debian   10|11|12' \
-        'ubuntu   20.04|22.04' \
+        'ubuntu   20.04|22.04|24.04' \
         'alpine   3.16|3.17|3.18|3.19' \
         'opensuse 15.5|tumbleweed' \
         'arch' \
