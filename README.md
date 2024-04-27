@@ -64,6 +64,7 @@ certutil -urlcache -f -split https://mirror.ghproxy.com/https://raw.githubuserco
 ### 功能 1: 安装 Linux
 
 - 不输入版本号，则安装最新版
+- 在虚拟机上，会自动安装精简内核
 
 ```bash
 bash reinstall.sh centos   7|8|9  (8|9 为 stream 版本)

@@ -1305,14 +1305,17 @@ create_part() {
             mkfs.ntfs -f -F -L installer /dev/$xda*2 #2 installer
         fi
     elif is_use_cloud_image; then
-        # 这几个系统不使用dd，而是复制文件，因为dd这几个系统的qcow2需要10g硬盘
-        if { [ "$distro" = centos ] || [ "$distro" = alma ] || [ "$distro" = rocky ]; }; then
+        installer_part_size="$(get_ci_installer_part_size)"
+        # 这几个系统不使用dd，而是复制文件
+        if [ "$distro" = centos ] || [ "$distro" = alma ] || [ "$distro" = rocky ] ||
+            [ "$distro" = ubuntu ]; then
+            fs="$(get_os_fs)"
             if is_efi; then
                 parted /dev/$xda -s -- \
                     mklabel gpt \
-                    mkpart '" "' fat32 1MiB 601MiB \
-                    mkpart '" "' xfs 601MiB -2GiB \
-                    mkpart '" "' ext4 -2GiB 100% \
+                    mkpart '" "' fat32 1MiB 101MiB \
+                    mkpart '" "' $fs 101MiB -$installer_part_size \
+                    mkpart '" "' ext4 -$installer_part_size 100% \
                     set 1 esp on
                 update_part /dev/$xda
 
@@ -1323,8 +1326,8 @@ create_part() {
                 parted /dev/$xda -s -- \
                     mklabel gpt \
                     mkpart '" "' ext4 1MiB 2MiB \
-                    mkpart '" "' xfs 2MiB -2GiB \
-                    mkpart '" "' ext4 -2GiB 100% \
+                    mkpart '" "' $fs 2MiB -$installer_part_size \
+                    mkpart '" "' ext4 -$installer_part_size 100% \
                     set 1 bios_grub on
                 update_part /dev/$xda
 
@@ -1333,8 +1336,8 @@ create_part() {
                 mkfs.ext4 -F -L installer /dev/$xda*3 #3 installer
             fi
         else
-            # fedora debian ubuntu opensuse arch gentoo
-            installer_part_size=1GiB
+            # 使用 dd qcow2
+            # fedora debian opensuse arch gentoo
             parted /dev/$xda -s -- \
                 mklabel gpt \
                 mkpart '" "' ext4 1MiB -$installer_part_size \
@@ -1718,6 +1721,7 @@ EOF
     fi
 
     # debian 网络问题
+    # 注意 ubuntu 也有 /etc/debian_version
     if [ -f $os_dir/etc/debian_version ]; then
         # 修复 onlink 网关
         add_onlink_script_if_need
@@ -1731,7 +1735,8 @@ EOF
             if true; then
                 # 将 debian 10/11 设置为 12 一样的网络管理器
                 # 可解决 ifupdown dhcp 不支持 24位掩码+不规则网关的问题
-                chroot $os_dir apt install -y netplan.io
+                chroot $os_dir apt update
+                DEBIAN_FRONTEND=noninteractive chroot $os_dir apt install -y netplan.io
                 chroot $os_dir systemctl disable networking resolvconf
                 chroot $os_dir systemctl enable systemd-networkd systemd-resolved
                 rm -f $os_dir/etc/resolv.conf $os_dir/etc/resolv.conf.orig
@@ -1745,7 +1750,8 @@ EOF
 
             else
                 # debian 10/11 默认不支持 rdnss，要安装 rdnssd 或者 nm
-                chroot $os_dir apt install -y rdnssd
+                chroot $os_dir apt update
+                DEBIAN_FRONTEND=noninteractive chroot $os_dir apt install -y rdnssd
                 # 不会自动建立链接，因此不能删除
                 mv $os_dir/etc/resolv.conf.orig $os_dir/etc/resolv.conf
             fi
@@ -1968,7 +1974,21 @@ disconnect_qcow() {
     fi
 }
 
-install_qcow_el() {
+get_os_fs() {
+    case "$distro" in
+    ubuntu) echo ext4 ;;
+    centos | alma | rocky) echo xfs ;;
+    esac
+}
+
+get_ci_installer_part_size() {
+    case "$distro" in
+    centos | alma | rocky) echo 2GiB ;;
+    *) echo 1GiB ;;
+    esac
+}
+
+install_qcow_by_copy() {
     yum() {
         if [ "$releasever" = 7 ]; then
             chroot /os/ yum -y --disablerepo=* --enablerepo=base,updates "$@"
@@ -1977,12 +1997,35 @@ install_qcow_el() {
         fi
     }
 
+    mount_nouuid() {
+        case "$fs" in
+        ext4) mount "$@" ;;
+        xfs) mount -o nouuid "$@" ;;
+        esac
+    }
+
+    efi_label=$(
+        case "$distro" in
+        ubuntu) echo UEFI ;;
+        *) echo ;;
+        esac
+    )
+
+    efi_mount_opts=$(
+        case "$distro" in
+        ubuntu) echo "umask=0077" ;;
+        *) echo "defaults,uid=0,gid=0,umask=077,shortname=winnt" ;;
+        esac
+    )
+
+    fs="$(get_os_fs)"
+
     connect_qcow
 
     # TODO: 改成循环mount找出os+fstab查找剩余分区？
-    os_part=$(lsblk /dev/nbd0p*[0-9] --sort SIZE -no NAME,FSTYPE | grep xfs | tail -1 | cut -d' ' -f1)
+    os_part=$(lsblk /dev/nbd0p*[0-9] --sort SIZE -no NAME,FSTYPE | grep $fs | tail -1 | cut -d' ' -f1)
     efi_part=$(lsblk /dev/nbd0p*[0-9] --sort SIZE -no NAME,FSTYPE | grep fat | tail -1 | cut -d' ' -f1)
-    boot_part=$(lsblk /dev/nbd0p*[0-9] --sort SIZE -no NAME,FSTYPE | grep xfs | sed '$d' | tail -1 | cut -d' ' -f1)
+    boot_part=$(lsblk /dev/nbd0p*[0-9] --sort SIZE -no NAME,FSTYPE | grep $fs | sed '$d' | tail -1 | cut -d' ' -f1)
 
     os_part_uuid=$(lsblk /dev/$os_part -no UUID)
     if [ -n "$efi_part" ]; then
@@ -1993,26 +2036,30 @@ install_qcow_el() {
 
     # 使用目标系统的格式化程序
     # centos8 如果用alpine格式化xfs，grub2-mkconfig和grub2里面都无法识别xfs分区
-    mount -o nouuid /dev/$os_part /nbd/
+    mount_nouuid /dev/$os_part /nbd/
     mount_pseudo_fs /nbd/
-    chroot /nbd mkfs.xfs -f -m uuid=$os_part_uuid /dev/$xda*2
+    case "$distro" in
+    ubuntu) chroot /nbd mkfs.ext4 -F -L cloudimg-rootfs -U $os_part_uuid /dev/$xda*2 ;;
+    *) chroot /nbd mkfs.xfs -f -m uuid=$os_part_uuid /dev/$xda*2 ;;
+    esac
     umount -R /nbd/
 
+    # TODO: ubuntu 镜像缺少 mkfs.fat/vfat/dosfstools? initrd 不需要检查fs完整性？
+
     # 复制系统
-    echo Copying os partition
-    mount -o ro,nouuid /dev/$os_part /nbd/
+    echo Copying os partition...
+    mount_nouuid -o ro /dev/$os_part /nbd/
     mount -o noatime /dev/$xda*2 /os/
     cp -a /nbd/* /os/
 
     # 复制boot分区，如果有
     if [ -n "$boot_part" ]; then
-        echo Copying boot partition
-        mount -o ro,nouuid /dev/$boot_part /nbd-boot/
+        echo Copying boot partition...
+        mount_nouuid -o ro /dev/$boot_part /nbd-boot/
         cp -a /nbd-boot/* /os/boot/
     fi
 
     # efi 分区
-    efi_mount_opts="defaults,uid=0,gid=0,umask=077,shortname=winnt"
     if is_efi; then
         # 挂载 efi
         mkdir -p /os/boot/efi/
@@ -2020,7 +2067,7 @@ install_qcow_el() {
 
         # 复制文件
         if [ -n "$efi_part" ]; then
-            echo Copying efi partition
+            echo Copying efi partition...
             mount -o ro /dev/$efi_part /nbd-efi/
             cp -a /nbd-efi/* /os/boot/efi/
         fi
@@ -2036,7 +2083,7 @@ install_qcow_el() {
     if is_efi && [ -n "$efi_part_uuid" ]; then
         umount /os/boot/efi/
         apk add mtools
-        mlabel -N "$(echo $efi_part_uuid | sed 's/-//')" -i /dev/$xda*1
+        mlabel -N "$(echo $efi_part_uuid | sed 's/-//')" -i /dev/$xda*1 ::$efi_label
         update_part /dev/$xda
         mount -o $efi_mount_opts /dev/$xda*1 /os/boot/efi/
     fi
@@ -2045,119 +2092,213 @@ install_qcow_el() {
     mount_pseudo_fs /os/
 
     # 创建 swap
-    rm -rf /installer/*
-    create_swap 1024 /installer/swapfile
-
-    # resolv.conf
-    cp /etc/resolv.conf /os/etc/resolv.conf
-
-    # selinux kdump
-    disable_selinux_kdump /os
+    umount /installer/
+    mkswap /dev/$xda*3
+    swapon /dev/$xda*3
 
     # cloud-init
     download_cloud_init_config /os
 
-    # 部分镜像例如 centos7 要手动删除 machine-id
-    truncate_machine_id /os
+    modify_el() {
+        # resolv.conf
+        cp /etc/resolv.conf /os/etc/resolv.conf
 
-    # centos 7 yum 可能会使用 ipv6，即使没有 ipv6 网络
-    if grep 'centos:7' /os/etc/system-release-cpe; then
-        if [ "$(cat /dev/ipv6_has_internet)" = "0" ]; then
-            echo 'ip_resolve=4' >>/os/etc/yum.conf
+        # selinux kdump
+        disable_selinux_kdump /os
+
+        # 部分镜像例如 centos7 要手动删除 machine-id
+        truncate_machine_id /os
+
+        # centos 7 yum 可能会使用 ipv6，即使没有 ipv6 网络
+        if grep 'centos:7' /os/etc/system-release-cpe; then
+            if [ "$(cat /dev/ipv6_has_internet)" = "0" ]; then
+                echo 'ip_resolve=4' >>/os/etc/yum.conf
+            fi
         fi
-    fi
 
-    # 删除云镜像自带的 dhcp 配置，防止歧义
-    # clout-init 网络配置在 /etc/sysconfig/network-scripts/
-    rm -rf /os/etc/NetworkManager/system-connections/*.nmconnection
+        # 删除云镜像自带的 dhcp 配置，防止歧义
+        # clout-init 网络配置在 /etc/sysconfig/network-scripts/
+        rm -rf /os/etc/NetworkManager/system-connections/*.nmconnection
 
-    # 为 centos 7 ci 安装 NetworkManager
-    # 1. 能够自动配置 onlink 网关
-    # 2. 解决 cloud-init 关闭了 ra，因为 nm 无视内核 ra 设置
-    if grep 'centos:7' /os/etc/system-release-cpe; then
-        yum install -y NetworkManager
-        chroot /os/ systemctl enable NetworkManager
-    fi
-
-    # fstab 删除 boot 分区
-    # alma/rocky 镜像本身有boot分区，但我们不需要
-    sed -i '/[[:space:]]\/boot[[:space:]]/d' /os/etc/fstab
-
-    # fstab 添加 efi 分区
-    if is_efi; then
-        # centos 要创建efi条目
-        if ! grep /boot/efi /os/etc/fstab; then
-            efi_part_uuid=$(lsblk /dev/$xda*1 -no UUID)
-            echo "UUID=$efi_part_uuid /boot/efi vfat $efi_mount_opts 0 0" >>/os/etc/fstab
+        # 为 centos 7 ci 安装 NetworkManager
+        # 1. 能够自动配置 onlink 网关
+        # 2. 解决 cloud-init 关闭了 ra，因为 nm 无视内核 ra 设置
+        if grep 'centos:7' /os/etc/system-release-cpe; then
+            yum install -y NetworkManager
+            chroot /os/ systemctl enable NetworkManager
         fi
-    else
-        # 删除 efi 条目
-        sed -i '/[[:space:]]\/boot\/efi[[:space:]]/d' /os/etc/fstab
-    fi
 
-    distro_full=$(awk -F: '{ print $3 }' </os/etc/system-release-cpe)
-    releasever=$(awk -F: '{ print $5 }' </os/etc/system-release-cpe)
+        # fstab 删除 boot 分区
+        # alma/rocky 镜像本身有boot分区，但我们不需要
+        sed -i '/[[:space:]]\/boot[[:space:]]/d' /os/etc/fstab
 
-    remove_grub_conflict_files() {
-        # bios 和 efi 转换前先删除
+        # fstab 添加 efi 分区
+        if is_efi; then
+            # centos 要创建efi条目
+            if ! grep /boot/efi /os/etc/fstab; then
+                efi_part_uuid=$(lsblk /dev/$xda*1 -no UUID)
+                echo "UUID=$efi_part_uuid /boot/efi vfat $efi_mount_opts 0 0" >>/os/etc/fstab
+            fi
+        else
+            # 删除 efi 条目
+            sed -i '/[[:space:]]\/boot\/efi[[:space:]]/d' /os/etc/fstab
+        fi
 
-        # bios转efi出错
-        # centos7是bios镜像，/boot/grub2/grubenv 是真身
-        # 安装grub-efi时，grubenv 会改成指向efi分区grubenv软连接
-        # 如果安装grub-efi前没有删除原来的grubenv，原来的grubenv将不变，新建的软连接将变成 grubenv.rpmnew
-        # 后续grubenv的改动无法同步到efi分区，会造成grub2-setdefault失效
+        distro_full=$(awk -F: '{ print $3 }' </os/etc/system-release-cpe)
+        releasever=$(awk -F: '{ print $5 }' </os/etc/system-release-cpe)
 
-        # efi转bios出错
-        # 如果是指向efi目录的软连接（例如el8），先删除它，否则 grub2-install 会报错
-        rm -rf /os/boot/grub2/grubenv /os/boot/grub2/grub.cfg
+        remove_grub_conflict_files() {
+            # bios 和 efi 转换前先删除
+
+            # bios转efi出错
+            # centos7是bios镜像，/boot/grub2/grubenv 是真身
+            # 安装grub-efi时，grubenv 会改成指向efi分区grubenv软连接
+            # 如果安装grub-efi前没有删除原来的grubenv，原来的grubenv将不变，新建的软连接将变成 grubenv.rpmnew
+            # 后续grubenv的改动无法同步到efi分区，会造成grub2-setdefault失效
+
+            # efi转bios出错
+            # 如果是指向efi目录的软连接（例如el8），先删除它，否则 grub2-install 会报错
+            rm -rf /os/boot/grub2/grubenv /os/boot/grub2/grub.cfg
+        }
+
+        # 安装 efi 引导
+        # 只有centos镜像没有efi，其他系统镜像已经从efi分区复制了文件
+        if [ "$distro" = "centos" ] && is_efi; then
+            remove_grub_conflict_files
+            [ "$(uname -m)" = x86_64 ] && arch=x64 || arch=aa64
+            yum install efibootmgr grub2-efi-$arch grub2-efi-$arch-modules shim-$arch
+        fi
+
+        # 安装 bios 引导
+        if ! is_efi; then
+            remove_grub_conflict_files
+            yum install grub2-pc grub2-pc-modules
+            chroot /os/ grub2-install /dev/$xda
+        fi
+
+        # blscfg 启动项
+        # rocky/alma镜像是独立的boot分区，但我们不是
+        # 因此要添加boot目录
+        if [ -d /os/boot/loader/entries/ ] && ! grep -q 'initrd /boot/' /os/boot/loader/entries/*.conf; then
+            sed -i -E 's,((linux|initrd) /),\1boot/,g' /os/boot/loader/entries/*.conf
+        fi
+
+        # efi 分区 grub.cfg
+        # https://github.com/rhinstaller/anaconda/blob/346b932a26a19b339e9073c049b08bdef7f166c3/pyanaconda/modules/storage/bootloader/efi.py#L198
+        if is_efi && [ "$releasever" -ge 9 ]; then
+            cat <<EOF >/os/boot/efi/EFI/$distro_full/grub.cfg
+search --no-floppy --fs-uuid --set=dev $os_part_uuid
+set prefix=(\$dev)/boot/grub2
+export \$prefix
+configfile \$prefix/grub.cfg
+EOF
+        fi
+
+        # 主 grub.cfg
+        if is_efi && [ "$releasever" -le 8 ]; then
+            chroot /os/ grub2-mkconfig -o /boot/efi/EFI/$distro_full/grub.cfg
+        else
+            chroot /os/ grub2-mkconfig -o /boot/grub2/grub.cfg
+        fi
+
+        # 不删除可能网络管理器不会写入dns
+        rm -f /os/etc/resolv.conf
     }
 
-    # 安装 efi 引导
-    # 只有centos镜像没有efi，其他系统镜像已经从efi分区复制了文件
-    if [ "$distro" = "centos" ] && is_efi; then
-        remove_grub_conflict_files
-        [ "$(uname -m)" = x86_64 ] && arch=x64 || arch=aa64
-        yum install efibootmgr grub2-efi-$arch grub2-efi-$arch-modules shim-$arch
-    fi
+    modify_ubuntu() {
+        os_dir=/os
 
-    # 安装 bios 引导
-    if ! is_efi; then
-        remove_grub_conflict_files
-        yum install grub2-pc grub2-pc-modules
-        chroot /os/ grub2-install /dev/$xda
-    fi
+        mv $os_dir/etc/resolv.conf $os_dir/etc/resolv.conf.orig
+        cp /etc/resolv.conf $os_dir/etc/resolv.conf
 
-    # blscfg 启动项
-    # rocky/alma镜像是独立的boot分区，但我们不是
-    # 因此要添加boot目录
-    if [ -d /os/boot/loader/entries/ ] && ! grep -q 'initrd /boot/' /os/boot/loader/entries/*.conf; then
-        sed -i -E 's,((linux|initrd) /),\1boot/,g' /os/boot/loader/entries/*.conf
-    fi
+        # 关闭 os prober，因为 os prober 有时很慢
+        cp $os_dir/etc/default/grub $os_dir/etc/default/grub.orig
+        echo 'GRUB_DISABLE_OS_PROBER=true' >>$os_dir/etc/default/grub
 
-    # efi 分区 grub.cfg
-    # https://github.com/rhinstaller/anaconda/blob/346b932a26a19b339e9073c049b08bdef7f166c3/pyanaconda/modules/storage/bootloader/efi.py#L198
-    if is_efi && [ "$releasever" -ge 9 ]; then
-        cat <<EOF >/os/boot/efi/EFI/$distro_full/grub.cfg
-                    search --no-floppy --fs-uuid --set=dev $os_part_uuid
-                    set prefix=(\$dev)/boot/grub2
-                    export \$prefix
-                    configfile \$prefix/grub.cfg
-EOF
-    fi
+        # 更改源
+        if is_in_china; then
+            sed -i 's/archive.ubuntu.com/cn.archive.ubuntu.com/' $os_dir/etc/apt/sources.list
+        fi
 
-    # 主 grub.cfg
-    if is_efi && [ "$releasever" -le 8 ]; then
-        chroot /os/ grub2-mkconfig -o /boot/efi/EFI/$distro_full/grub.cfg
-    else
-        chroot /os/ grub2-mkconfig -o /boot/grub2/grub.cfg
-    fi
+        # 安装最佳内核
+        flavor=$(get_ubuntu_kernel_flavor)
+        echo "Use kernel flavor: $flavor"
+        chroot $os_dir apt update
+        DEBIAN_FRONTEND=noninteractive chroot $os_dir apt install -y "linux-image-$flavor"
 
-    # 不删除可能网络管理器不会写入dns
-    rm -f /os/etc/resolv.conf
+        # 自带内核：
+        # 常规版本             generic
+        # minimal 20.04/22.04 kvm      # 后台 vnc 无显示
+        # minimal 24.04       virtual
+
+        # 标记旧内核包
+        # 注意排除 linux-base
+        pkgs=$(chroot $os_dir apt-mark showmanual linux-* | grep -E 'generic|virtual|kvm' | grep -v $flavor)
+        chroot $os_dir apt-mark auto $pkgs
+
+        # 使用 autoremove
+        conf=$os_dir/etc/apt/apt.conf.d/01autoremove
+        sed -i.orig 's/VersionedKernelPackages/x/; s/NeverAutoRemove/x/' $conf
+        DEBIAN_FRONTEND=noninteractive chroot $os_dir apt autoremove --purge -y
+        mv $conf.orig $conf
+
+        # 安装 bios 引导
+        if ! is_efi; then
+            chroot $os_dir grub-install /dev/$xda
+        fi
+
+        # 更改 efi 目录的 grub.cfg 写死的 fsuuid
+        # 因为 24.04 fsuuid 对应 boot 分区
+        efi_grub_cfg=$os_dir/boot/efi/EFI/ubuntu/grub.cfg
+        if is_efi; then
+            os_uuid=$(lsblk -rno UUID /dev/$xda*2)
+            sed -Ei "s|[0-9a-f-]{36}|$os_uuid|i" $efi_grub_cfg
+
+            # 24.04 移除 boot 分区后，需要添加 /boot 路径
+            if grep "'/grub'" $efi_grub_cfg; then
+                sed -i "s|'/grub'|'/boot/grub'|" $efi_grub_cfg
+            fi
+        fi
+
+        # 处理 40-force-partuuid.cfg
+        force_partuuid_cfg=$os_dir/etc/default/grub.d/40-force-partuuid.cfg
+        if [ -e $force_partuuid_cfg ]; then
+            if is_virt; then
+                # 更改写死的 partuuid
+                os_part_uuid=$(lsblk -rno PARTUUID /dev/$xda*2)
+                sed -i "s/^GRUB_FORCE_PARTUUID=.*/GRUB_FORCE_PARTUUID=$os_part_uuid/" $force_partuuid_cfg
+            else
+                # 独服不应该使用 initrdless boot
+                sed -i "/^GRUB_FORCE_PARTUUID=/d" $force_partuuid_cfg
+            fi
+        fi
+
+        # 要重新生成 grub.cfg，因为
+        # 1 我们删除了 boot 分区
+        # 2 改动了 /etc/default/grub.d/40-force-partuuid.cfg
+        chroot $os_dir update-grub
+
+        # 还原 grub 配置（os prober）
+        mv $os_dir/etc/default/grub.orig $os_dir/etc/default/grub
+
+        # fstab
+        # 24.04 镜像有boot分区，但我们不需要
+        sed -i '/[[:space:]]\/boot[[:space:]]/d' $os_dir/etc/fstab
+        if ! is_efi; then
+            # bios 删除 efi 条目
+            sed -i '/[[:space:]]\/boot\/efi[[:space:]]/d' $os_dir/etc/fstab
+        fi
+
+        mv $os_dir/etc/resolv.conf.orig $os_dir/etc/resolv.conf
+    }
+
+    case "$distro" in
+    ubuntu) modify_ubuntu ;;
+    *) modify_el ;;
+    esac
 
     # 删除installer分区，重启后cloud init会自动扩容
     swapoff -a
-    umount /installer
     parted /dev/$xda -s rm 3
 }
 
@@ -2782,11 +2923,11 @@ install_windows() {
     # Windows cannot access the required file Drive:\Sources\Boot.wim.
     # Make sure all files required for installation are available and restart the installation.
     # Error code: 0x80070491
-    ls -lh /iso/sources/boot.wim
-    ls -lh /os/boot.wim
+    du -h /iso/sources/boot.wim
+    du -h /os/boot.wim
     # wimdelete /os/boot.wim 1
     wimoptimize /os/boot.wim
-    ls -lh /os/boot.wim
+    du -h /os/boot.wim
 
     # 将 boot.wim 放到正确的位置
     if is_efi; then
@@ -2853,6 +2994,32 @@ refind_main_disk() {
     fi
 }
 
+get_ubuntu_kernel_flavor() {
+    # 20.04/22.04 kvm 内核 vnc 没显示
+    # 24.04 kvm = virtual
+    # linux-image-virtual = linux-image-6.x-generic
+    # linux-image-generic = linux-image-6.x-generic + amd64-microcode + intel-microcode + linux-firmware + linux-modules-extra-generic
+    # https://github.com/systemd/systemd/blob/main/src/basic/virt.c
+    # https://github.com/canonical/cloud-init/blob/main/tools/ds-identify
+    # http://git.annexia.org/?p=virt-what.git;a=blob;f=virt-what.in;hb=HEAD
+    {
+        if is_dmi_contains "amazon" || is_dmi_contains "ec2"; then
+            flavor=aws
+        elif is_dmi_contains "Google Compute Engine" || is_dmi_contains "GoogleCloud"; then
+            flavor=gcp
+        elif is_dmi_contains "OracleCloud"; then
+            flavor=oracle
+        elif is_dmi_contains "7783-7084-3265-9085-8269-3286-77"; then
+            flavor=azure
+        elif is_virt; then
+            flavor=virtual-hwe-$releasever
+        else
+            flavor=generic-hwe-$releasever
+        fi
+    } >&2
+    echo $flavor
+}
+
 install_redhat_ubuntu() {
     # 安装 grub2
     if is_efi; then
@@ -2887,20 +3054,7 @@ install_redhat_ubuntu() {
     if [ "$distro" = "ubuntu" ]; then
         download $iso /os/installer/ubuntu.iso
 
-        # https://github.com/systemd/systemd/blob/main/src/basic/virt.c
-        # https://github.com/canonical/cloud-init/blob/main/tools/ds-identify
-        # http://git.annexia.org/?p=virt-what.git;a=blob;f=virt-what.in;hb=HEAD
-        if is_dmi_contains "amazon" || is_dmi_contains "ec2"; then
-            kernel=aws
-        elif is_dmi_contains "Google Compute Engine" || is_dmi_contains "GoogleCloud"; then
-            kernel=gcp
-        elif is_dmi_contains "OracleCloud"; then
-            kernel=oracle
-        elif is_dmi_contains "7783-7084-3265-9085-8269-3286-77"; then
-            kernel=azure
-        else
-            kernel=generic
-        fi
+        kernel=$(get_ubuntu_kernel_flavor)
 
         # 正常写法应该是 ds="nocloud-net;s=https://xxx/" 但是甲骨文云的ds更优先，自己的ds根本无访问记录
         # $seed 是 https://xxx/
@@ -2990,10 +3144,14 @@ if is_use_cloud_image; then
         case "$distro" in
         centos | alma | rocky)
             # 这几个系统云镜像系统盘是8~9g xfs，而我们的目标是能在5g硬盘上运行，因此改成复制系统文件
-            install_qcow_el
+            install_qcow_by_copy
+            ;;
+        ubuntu)
+            # 24.04 云镜像有 boot 分区（在系统分区之前），因此不直接 dd 云镜像
+            install_qcow_by_copy
             ;;
         *)
-            # debian ubuntu fedora opensuse arch gentoo any
+            # debian fedora opensuse arch gentoo any
             dd_qcow
             resize_after_install_cloud_image
             modify_os_on_disk linux

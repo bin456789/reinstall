@@ -786,15 +786,12 @@ setos() {
             else
                 ci_mirror=https://cloud-images.ubuntu.com
             fi
-
-            eval ${step}_img=$ci_mirror/releases/$releasever/release/ubuntu-$releasever-server-cloudimg-$basearch_alt.img
-
-            # minimal 镜像内核风味是 kvm，后台 vnc 无显示
-            # 没有 aarch64 minimal 镜像
-            # TODO: 在 trans 里安装普通内核/云内核
-            use_minimal_image=false
-            if $use_minimal_image && [ "$basearch" = x86_64 ]; then
+            # 20.04/22.04 minimal 镜像没有 aarch64
+            if { { [ "$releasever" = 20.04 ] || [ "$releasever" = 22.04 ]; } && [ "$basearch_alt" = amd64 ]; } ||
+                [ "$releasever" = 24.04 ]; then
                 eval ${step}_img=$ci_mirror/minimal/releases/$codename/release/ubuntu-$releasever-minimal-cloudimg-$basearch_alt.img
+            else
+                eval ${step}_img=$ci_mirror/releases/$releasever/release/ubuntu-$releasever-server-cloudimg-$basearch_alt.img
             fi
         else
             # 传统安装
@@ -1022,6 +1019,8 @@ setos() {
     }
 
     eval ${step}_distro=$distro
+    eval ${step}_releasever=$releasever
+
     if is_distro_like_redhat $distro; then
         setos_redhat
     else

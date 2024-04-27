@@ -64,6 +64,7 @@ All features can be used on both Linux and Windows.
 ### Feature 1: Install Linux
 
 - If no version number is entered, the latest version will be installed.
+- When installing on a virtual machine, it will automatically select a slimmed-down kernel.
 
 ```bash
 bash reinstall.sh centos   7|8|9  (8|9 for the stream version)
