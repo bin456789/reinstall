@@ -854,6 +854,9 @@ install_alpine() {
         del_invalid_efi_entry
     fi
 
+    # 关闭 swap 前删除应用，避免占用内存
+    apk del chrony grub* efibootmgr
+
     # 是否保留 swap
     if [ -e /os/swapfile ]; then
         if false; then
@@ -1539,6 +1542,8 @@ create_cloud_init_network_config() {
 
     # 如果 network.config[1] 没有 address，则删除，避免低版本 cloud-init 报错
     yq -i 'del(.network.config[1] | select(has("address") | not))' $ci_file
+
+    apk del yq
 }
 
 truncate_machine_id() {
@@ -2077,6 +2082,9 @@ install_qcow_by_copy() {
     umount /nbd/ /nbd-boot/ /nbd-efi/ || true
     disconnect_qcow
 
+    # 已复制并断开连接 qcow，可删除 qemu-img
+    apk del qemu-img
+
     # 如果镜像有efi分区，复制其uuid
     # 如果有相同uuid的fat分区，则无法挂载
     # 所以要先复制efi分区，断开nbd再复制uuid
@@ -2376,6 +2384,9 @@ dd_qcow() {
         qemu-img dd if=$qcow_file of=/first-1M bs=1M count=1
         qemu-img dd if=$qcow_file of=/dev/disk/by-label/os bs=1M skip=1
     fi
+
+    # 已 dd 并断开连接 qcow，可删除 qemu-img
+    apk del qemu-img
 
     # 将前1M从内存 dd 到硬盘
     umount /installer/
@@ -2902,6 +2913,7 @@ install_windows() {
     # 移除注释，否则 windows-setup.bat 重新生成的 autounattend.xml 有问题
     apk add xmlstarlet
     xmlstarlet ed -d '//comment()' /tmp/autounattend.xml >/wim/autounattend.xml
+    apk del xmlstarlet
     unix2dos /wim/autounattend.xml
 
     # 复制安装脚本
