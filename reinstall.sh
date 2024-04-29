@@ -1875,7 +1875,8 @@ mod_initrd_debian() {
         db_progress START 0 5 debian-installer/netcfg/title
 
         # 找到主网卡
-        # debian 11 initrd 没有 awk
+        # debian 11 initrd 没有 xargs awk
+        # debian 12 initrd 没有 xargs
         if false; then
             iface=$(ip -o link | grep "@mac_addr" | awk '{print $2}' | cut -d: -f1)
         else
@@ -1994,14 +1995,16 @@ expand_packages() {
 }
 EOF
 
+    # https://github.com/linuxhw/LsPCI?tab=readme-ov-file#storageata-pci
     # https://debian.pkgs.org/12/debian-main-amd64/linux-image-6.1.0-18-cloud-amd64_6.1.76-1_amd64.deb.html
-    # scsi-core-modules 是 ata-modules 的依赖，包含 sd_mod.ko scsi_mod.ko
-    # ata-modules       是下方模块的依赖，Priority 是 optional。只有 ata_generic.ko 和 libata.ko 两个驱动
+    # 以下是 debian-installer 有的驱动，这些驱动云内核不一定都有，(+)表示有
+    # scsi-core-modules 是 ata-modules 的依赖，包含 sd_mod.ko(+) scsi_mod.ko(+)
+    # ata-modules       是下方模块的依赖，Priority 是 optional。只有 ata_generic.ko(+) 和 libata.ko(+) 两个驱动
     # pata-modules      里面的驱动都是 pata_ 开头
-    #                   但只有 pata_legacy.ko 在云内核中
-    # sata-modules      里面的驱动大部分是 sata_ 开头的，其他重要的还有 ahci.ko ata_piix.ko libahci.ko
+    #                   但只有 pata_legacy.ko(+) 在云内核中
+    # sata-modules      里面的驱动大部分是 sata_ 开头的，其他重要的还有 ahci.ko libahci.ko ata_piix.ko(+)
     #                   云内核没有 sata 模块，也没有内嵌，有一个 CONFIG_SATA_HOST=y，libata-$(CONFIG_SATA_HOST)	+= libata-sata.o
-    # scsi-modules      包含 virtio_scsi.ko virtio_blk.ko
+    # scsi-modules      包含 virtio_scsi.ko(+) virtio_blk.ko(+)
 
     download_and_extract_udeb() {
         package=$1
@@ -2045,6 +2048,27 @@ EOF
         )
     }
 
+    can_use_cloud_kernel() {
+        # xen 是 vbd
+        # 有些虚拟机用了 ahci，但云内核没有 ahci 驱动
+        # shellcheck disable=SC2317
+        get_disk_controller | grep -Ewq \
+            'ata_generic|ata_piix|pata_legacy|nvme|virtio_blk|virtio_scsi|vbd|hv_storvsc|vmw_pvscsi'
+    }
+
+    # 在 debian installer 中判断能否用云内核
+    cat <<EOF >can_use_cloud_kernel.sh
+        get_disk_controller(){
+            $(get_function_content get_disk_controller)
+        }
+
+        can_use_cloud_kernel(){
+            $(get_function_content can_use_cloud_kernel)
+        }
+
+        can_use_cloud_kernel
+EOF
+
     # 提前下载 fdisk
     # 因为 fdisk-udeb 包含 fdisk 和 sfdisk，提前下载可减少占用
     mkdir_clear $tmp/fdisk
@@ -2062,9 +2086,10 @@ EOF
         for driver in $(get_disk_controller); do
             echo "using driver: $driver"
             case $driver in
-            nvme | virtio_blk | virtio_scsi | hv_storvsc) extra_drivers+=" $driver" ;;
+            # xen 是 vbd
+            nvme | virtio_blk | virtio_scsi | vbd | hv_storvsc | vmw_pvscsi) extra_drivers+=" $driver" ;;
             pata_legacy) sed -i '/^pata-modules/d' $net_retriever ;;
-            pata_* | sata_* | ahci) error_and_exit "Debain cloud kernel does not support this driver: $driver" ;;
+            pata_* | sata_* | ahci) error_and_exit "Debian cloud kernel does not support this driver: $driver" ;;
             esac
         done
 

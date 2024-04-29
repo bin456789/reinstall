@@ -493,7 +493,8 @@ is_need_manual_set_dnsv6() {
 }
 
 get_current_dns_v4() {
-    # debian 11 initrd 没有 awk
+    # debian 11 initrd 没有 xargs awk
+    # debian 12 initrd 没有 xargs
     if false; then
         grep '^nameserver' /etc/resolv.conf | awk '{print $2}' | grep '\.'
     else
@@ -502,7 +503,8 @@ get_current_dns_v4() {
 }
 
 get_current_dns_v6() {
-    # debian 11 initrd 没有 awk
+    # debian 11 initrd 没有 xargs awk
+    # debian 12 initrd 没有 xargs
     if false; then
         grep '^nameserver' /etc/resolv.conf | awk '{print $2}' | grep ':'
     else
@@ -3002,6 +3004,7 @@ refind_main_disk() {
         main_disk=$(sfdisk --disk-id /dev/$xda | sed 's/0x//')
     else
         apk add lsblk
+        # main_disk=$(blkid --match-tag PTUUID -o value /dev/$xda)
         main_disk=$(lsblk --nodeps -rno PTUUID /dev/$xda)
     fi
 }
@@ -3015,6 +3018,9 @@ get_ubuntu_kernel_flavor() {
     # https://github.com/canonical/cloud-init/blob/main/tools/ds-identify
     # http://git.annexia.org/?p=virt-what.git;a=blob;f=virt-what.in;hb=HEAD
     {
+        # busybox blkid 不显示 sr0 的 UUID
+        apk add lsblk
+
         if is_dmi_contains "amazon" || is_dmi_contains "ec2"; then
             flavor=aws
         elif is_dmi_contains "Google Compute Engine" || is_dmi_contains "GoogleCloud"; then
@@ -3023,6 +3029,8 @@ get_ubuntu_kernel_flavor() {
             flavor=oracle
         elif is_dmi_contains "7783-7084-3265-9085-8269-3286-77"; then
             flavor=azure
+        elif lsblk -o UUID,LABEL | grep -i 9796-932E | grep -i config-2; then
+            flavor=ibm
         elif is_virt; then
             flavor=virtual-hwe-$releasever
         else
