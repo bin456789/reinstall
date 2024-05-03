@@ -637,8 +637,7 @@ create_ifupdown_config() {
 
     rm -f $conf_file
 
-    # shellcheck disable=SC2154
-    if [ "$distro" = debian ]; then
+    if [ "$distro" = debian ] || [ "$distro" = kali ]; then
         cat <<EOF >>$conf_file
 source /etc/network/interfaces.d/*
 

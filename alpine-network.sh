@@ -32,7 +32,8 @@ else
 fi
 
 get_first_ipv4_addr() {
-    # debian 11 initrd 没有 awk
+    # debian 11 initrd 没有 xargs awk
+    # debian 12 initrd 没有 xargs
     if false; then
         ip -4 -o addr show scope global dev "$ethx" | head -1 | awk '{print $4}'
     else

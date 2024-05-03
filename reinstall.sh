@@ -34,6 +34,7 @@ Usage: $reinstall____ centos   7|8|9
                       ubuntu   20.04|22.04|24.04
                       alpine   3.16|3.17|3.18|3.19
                       opensuse 15.5|tumbleweed
+                      kali
                       arch
                       gentoo
                       dd       --img='http://xxx'
@@ -160,6 +161,10 @@ is_alpine_live() {
 
 is_have_initrd() {
     ! is_netboot_xyz
+}
+
+is_use_firmware() {
+    [ "$distro" = debian ] && ! is_virt
 }
 
 get_host_by_url() {
@@ -738,18 +743,18 @@ setos() {
         12) codename=bookworm ;;
         esac
 
+        if is_in_china; then
+            cdimage_mirror=https://mirrors.ustc.edu.cn/debian-cdimage
+        else
+            cdimage_mirror=https://cdimage.debian.org/images
+        fi
+
         if is_use_cloud_image; then
             # cloud image
-            if is_in_china; then
-                ci_mirror=https://mirror.nju.edu.cn/debian-cdimage
-            else
-                ci_mirror=https://cdimage.debian.org/images
-            fi
-
             is_virt && ci_type=genericcloud || ci_type=generic
             # 甲骨文 debian 10 amd64 genericcloud vnc 没有显示
             [ "$releasever" -eq 10 ] && [ "$basearch_alt" = amd64 ] && ci_type=generic
-            eval ${step}_img=$ci_mirror/cloud/$codename/latest/debian-$releasever-$ci_type-$basearch_alt.qcow2
+            eval ${step}_img=$cdimage_mirror/cloud/$codename/latest/debian-$releasever-$ci_type-$basearch_alt.qcow2
         else
             # 传统安装
             if is_in_china; then
@@ -758,17 +763,44 @@ setos() {
             else
                 deb_hostname=deb.debian.org
             fi
-
             mirror=http://$deb_hostname/debian/dists/$codename/main/installer-$basearch_alt/current/images/netboot/debian-installer/$basearch_alt
-            eval ${step}_vmlinuz=$mirror/linux
-            eval ${step}_initrd=$mirror/initrd.gz
-            eval ${step}_ks=$confhome/debian.cfg
 
             is_virt && flavour=-cloud || flavour=
             # 甲骨文 debian 10 amd64 cloud 内核 vnc 没有显示
             [ "$releasever" -eq 10 ] && [ "$basearch_alt" = amd64 ] && flavour=
-            # shellcheck disable=SC2034
-            kernel=linux-image$flavour-$basearch_alt
+
+            eval ${step}_vmlinuz=$mirror/linux
+            eval ${step}_initrd=$mirror/initrd.gz
+            eval ${step}_ks=$confhome/debian.cfg
+            eval ${step}_firmware=$cdimage_mirror/firmware/$codename/current/firmware.cpio.gz
+            eval ${step}_deb_hostname=$deb_hostname
+            eval ${step}_codename=$codename
+            eval ${step}_kernel=linux-image$flavour-$basearch_alt
+        fi
+    }
+
+    setos_kali() {
+        if is_use_cloud_image; then
+            :
+        else
+            # 传统安装
+            if is_in_china; then
+                deb_hostname=mirrors.tuna.tsinghua.edu.cn
+            else
+                deb_hostname=kali.download
+            fi
+            codename=kali-rolling
+            mirror=http://$deb_hostname/kali/dists/$codename/main/installer-$basearch_alt/current/images/netboot/debian-installer/$basearch_alt
+
+            is_virt && flavour=-cloud || flavour=
+
+            eval ${step}_vmlinuz=$mirror/linux
+            eval ${step}_initrd=$mirror/initrd.gz
+            eval ${step}_ks=$confhome/debian.cfg
+            eval ${step}_deb_hostname=$deb_hostname
+            eval ${step}_codename=$codename
+            eval ${step}_kernel=linux-image$flavour-$basearch_alt
+            # 缺少 firmware 下载
         fi
     }
 
@@ -1035,7 +1067,11 @@ setos() {
 }
 
 is_distro_like_redhat() {
-    [ "$1" = centos ] || [ "$1" = alma ] || [ "$1" = rocky ] || [ "$1" = fedora ]
+    [ "$distro" = centos ] || [ "$distro" = alma ] || [ "$distro" = rocky ] || [ "$distro" = fedora ]
+}
+
+is_distro_like_debian() {
+    [ "$distro" = debian ] || [ "$distro" = kali ]
 }
 
 # 检查是否为正确的系统名
@@ -1053,6 +1089,7 @@ verify_os_name() {
         'ubuntu   20.04|22.04|24.04' \
         'alpine   3.16|3.17|3.18|3.19' \
         'opensuse 15.5|tumbleweed' \
+        'kali' \
         'arch' \
         'gentoo' \
         'windows' \
@@ -1253,7 +1290,7 @@ check_ram() {
     ram_standard=$(
         case "$distro" in
         netboot.xyz) echo 0 ;;
-        alpine | debian | dd) echo 256 ;;
+        alpine | debian | kali | dd) echo 256 ;;
         arch | gentoo | windows) echo 512 ;;
         centos | alma | rocky | fedora | ubuntu) echo 1024 ;;
         opensuse) echo -1 ;; # 没有安装模式
@@ -1271,7 +1308,7 @@ check_ram() {
     has_cloud_image=$(
         case "$distro" in
         centos | alma | rocky | fedora | debian | ubuntu | opensuse) echo true ;;
-        netboot.xyz | alpine | dd | arch | gentoo | windows) echo false ;;
+        netboot.xyz | alpine | dd | arch | gentoo | kali | windows) echo false ;;
         esac
     )
 
@@ -1773,7 +1810,7 @@ build_finalos_cmdline() {
 }
 
 build_extra_cmdline() {
-    for key in confhome hold cloud_image kernel deb_hostname main_disk; do
+    for key in confhome hold cloud_image main_disk; do
         value=${!key}
         if [ -n "$value" ]; then
             extra_cmdline+=" extra.$key='$value'"
@@ -1804,14 +1841,22 @@ get_entry_name() {
 build_nextos_cmdline() {
     if [ $nextos_distro = alpine ]; then
         nextos_cmdline="alpine_repo=$nextos_repo modloop=$nextos_modloop"
-    elif [ $nextos_distro = debian ]; then
-        nextos_cmdline="lowmem/low=1 auto=true priority=critical url=$nextos_ks"
-    else
+    elif is_distro_like_debian; then
+        nextos_cmdline="lowmem/low=1 auto=true priority=critical"
+        nextos_cmdline+=" url=$nextos_ks"
+        nextos_cmdline+=" mirror/http/hostname=$nextos_deb_hostname"
+        nextos_cmdline+=" mirror/http/directory=/$nextos_distro"
+        nextos_cmdline+=" base-installer/kernel/image=$nextos_kernel"
+        # kali 安装好后网卡是 eth0 这种格式，但安装时不是
+        if [ "$nextos_distro" = kali ]; then
+            nextos_cmdline+=" net.ifnames=0"
+        fi
+    elif is_distro_like_redhat; then
         # redhat
         nextos_cmdline="root=live:$nextos_squashfs inst.ks=$nextos_ks"
     fi
 
-    if [ $nextos_distro = debian ]; then
+    if is_distro_like_debian; then
         if [ "$basearch" = "x86_64" ]; then
             # debian 安装界面不遵循最后一个 tty 为主 tty 的规则
             # 设置ttyS0,tty0,安装界面还是显示在ttyS0
@@ -1826,6 +1871,7 @@ build_nextos_cmdline() {
         nextos_cmdline+=" console=ttyS0,115200 console=ttyAMA0,115200 console=tty0"
     fi
     # nextos_cmdline+=" mem=256M"
+    # nextos_cmdline+=" lowmem=+1"
 }
 
 build_cmdline() {
@@ -1931,25 +1977,22 @@ EOF
 
     # shellcheck disable=SC2317
     expand_packages() {
-        expand_packages_real "$@" | while read -r k_ v; do
-            # shellcheck disable=SC2001
-            case $(echo "$k_" | sed 's/://') in
-            Package)
-                package="$v"
+        expand_packages_real "$@" | while IFS= read -r line; do
+            key_=$(echo "$line" | cut -d' ' -f1)
+            value=$(echo "$line" | cut -d' ' -f2-)
+
+            case "$key_" in
+            Package:)
+                package="$value"
                 ;;
-            Priority)
+            Priority:)
                 # shellcheck disable=SC2154
-                if [ "$v" = standard ] && echo "$disabled_list" | grep -qx "$package"; then
-                    v=optional
+                if [ "$value" = standard ] && echo "$disabled_list" | grep -qx "$package"; then
+                    line="Priority: optional"
                 fi
                 ;;
             esac
-
-            if [ -z "$k_" ]; then
-                echo
-            else
-                echo "$k_ $v"
-            fi
+            echo "$line"
         done
     }
 
@@ -2013,12 +2056,13 @@ EOF
         # 获取 udeb 列表
         udeb_list=$tmp/udeb_list
         if ! [ -f $udeb_list ]; then
-            curl -L http://$deb_hostname/debian/dists/$codename/main/debian-installer/binary-$basearch_alt/Packages.gz |
+            # shellcheck disable=SC2154
+            curl -L http://$nextos_deb_hostname/$distro/dists/$nextos_codename/main/debian-installer/binary-$basearch_alt/Packages.gz |
                 zcat | grep 'Filename:' | awk '{print $2}' >$udeb_list
         fi
 
         # 下载 udeb
-        curl -Lo $tmp/tmp.udeb http://$deb_hostname/debian/"$(grep /$package $udeb_list)"
+        curl -Lo $tmp/tmp.udeb http://$nextos_deb_hostname/$distro/"$(grep /$package $udeb_list)"
 
         if false; then
             # 使用 dpkg
@@ -2089,7 +2133,7 @@ EOF
             # xen 是 vbd
             nvme | virtio_blk | virtio_scsi | vbd | hv_storvsc | vmw_pvscsi) extra_drivers+=" $driver" ;;
             pata_legacy) sed -i '/^pata-modules/d' $net_retriever ;;
-            pata_* | sata_* | ahci) error_and_exit "Debian cloud kernel does not support this driver: $driver" ;;
+            pata_* | sata_* | ahci) error_and_exit "Cloud kernel does not support this driver: $driver" ;;
             esac
         done
 
@@ -2136,7 +2180,7 @@ EOF
     # 修改 trans.sh
     # 1. 直接调用 create_ifupdown_config
     insert_into_file $tmp_dir/trans.sh after ': main' <<EOF
-        distro=debian
+        distro=$nextos_distro
         create_ifupdown_config /etc/network/interfaces
         exit
 EOF
@@ -2289,7 +2333,11 @@ mod_initrd() {
     curl -Lo $tmp_dir/trans.sh $confhome/trans.sh
     curl -Lo $tmp_dir/alpine-network.sh $confhome/alpine-network.sh
 
-    mod_initrd_$nextos_distro
+    if is_distro_like_debian; then
+        mod_initrd_debian
+    else
+        mod_initrd_$nextos_distro
+    fi
 
     # 显示精简前的大小
     du -sh .
@@ -2452,11 +2500,11 @@ install_pkg curl grep
 
 # /tmp 挂载在内存的话，可能不够空间
 tmp=/reinstall-tmp
-mkdir -p "$tmp"
+mkdir_clear "$tmp"
 
 # 强制忽略/强制添加 --ci 参数
 case "$distro" in
-dd | windows | netboot.xyz | debian | alpine | arch | gentoo)
+dd | windows | netboot.xyz | debian | kali | alpine | arch | gentoo)
     if is_use_cloud_image; then
         echo "ignored --ci"
         cloud_image=0
@@ -2514,10 +2562,10 @@ fi
 # el8/9/fedora 任何架构 >=2g
 if is_netboot_xyz ||
     { ! is_use_cloud_image && {
-        [ "$distro" = "alpine" ] || [ "$distro" = "debian" ] ||
-            { is_distro_like_redhat "$distro" && [ $releasever -eq 7 ] && [ $ram_size -ge 1024 ] && [ $basearch = "x86_64" ]; } ||
-            { is_distro_like_redhat "$distro" && [ $releasever -eq 7 ] && [ $ram_size -ge 1536 ] && [ $basearch = "aarch64" ]; } ||
-            { is_distro_like_redhat "$distro" && [ $releasever -ge 8 ] && [ $ram_size -ge 2048 ]; }
+        [ "$distro" = "alpine" ] || is_distro_like_debian ||
+            { is_distro_like_redhat && [ $releasever -eq 7 ] && [ $ram_size -ge 1024 ] && [ $basearch = "x86_64" ]; } ||
+            { is_distro_like_redhat && [ $releasever -eq 7 ] && [ $ram_size -ge 1536 ] && [ $basearch = "aarch64" ]; } ||
+            { is_distro_like_redhat && [ $releasever -ge 8 ] && [ $ram_size -ge 2048 ]; }
     }; }; then
     setos nextos $distro $releasever
 else
@@ -2572,10 +2620,13 @@ else
     info download vmlnuz and initrd
     curl -Lo /reinstall-vmlinuz $nextos_vmlinuz
     curl -Lo /reinstall-initrd $nextos_initrd
+    if is_use_firmware; then
+        curl -Lo /reinstall-firmware $nextos_firmware
+    fi
 fi
 
-# 修改 alpine debian initrd
-if [ "$nextos_distro" = alpine ] || [ "$nextos_distro" = debian ]; then
+# 修改 alpine debian kali initrd
+if [ "$nextos_distro" = alpine ] || is_distro_like_debian; then
     mod_initrd
 fi
 
@@ -2697,6 +2748,7 @@ if is_use_grub; then
 
     vmlinuz=${dir}reinstall-vmlinuz
     initrd=${dir}reinstall-initrd
+    firmware=${dir}reinstall-firmware
 
     # 生成 linux initrd 命令
     if is_netboot_xyz; then
@@ -2706,6 +2758,9 @@ if is_use_grub; then
         build_cmdline
         linux_cmd="linux$efi $vmlinuz $cmdline"
         initrd_cmd="initrd$efi $initrd"
+        if is_use_firmware; then
+            initrd_cmd+=" $firmware"
+        fi
     fi
 
     # 生成 grub 配置

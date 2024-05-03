@@ -28,6 +28,7 @@ jobs:
           ${{ matrix.command }} fedora
           ${{ matrix.command }} ubuntu
           ${{ matrix.command }} debian
+          ${{ matrix.command }} kali
           ${{ matrix.command }} alpine
           ${{ matrix.command }} opensuse
           ${{ matrix.command }} arch

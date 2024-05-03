@@ -10,17 +10,34 @@
 
 ## 亮点
 
-- 使用官方云镜像 (Cloud Image) 安装，可绕过传统网络安装的 [内存要求](https://access.redhat.com/articles/rhel-limits#minimum-required-memory-3)，且安装速度更快
-- 支持 512M + 5G 小鸡，也支持 256M 小鸡安装 Alpine、Debian
-- 支持所有网络情况，包括动静态 IPv4/IPv6，纯 IPv4/IPv6
+- 支持以下系统任意转换（包括 Windows 转 Linux）
+- 适配低配小鸡，并自动选择合适的官方精简内核
 - 支持用官方 iso 安装 Windows
-- 支持 Windows 重装成 Linux，也支持重装 Windows
-- 支持 BIOS、EFI、ARM
-- 原系统分区支持 LVM、Btrfs
-- 支持安装 Alpine、Arch、openSUSE、Gentoo，也可从这些系统安装
-- 可通过 SSH、浏览器、串行控制台、后台 VNC 查看 DD、云镜像安装进度
-- 不含第三方链接和自制包，所有资源均实时从源站点获得
+- 自动判断动静态 IPv4 / IPv6，无需填写 IP / 掩码 / 网关（即使是 DD / ISO 安装 Windows）
+- 支持 BIOS、EFI、ARM，原系统分区支持 lvm、btrfs
+- 可通过 SSH、HTTP 80 端口、串行控制台、商家后台 VNC 查看 DD、云镜像安装进度
+- 不含第三方自制包，所有资源均实时从源站点获得
 - 有很多注释
+
+## 配置要求
+
+| 目标系统                                       | 内存      | 硬盘       |
+| ---------------------------------------------- | --------- | ---------- |
+| Alpine                                         | 256 MB    | 1 GB       |
+| Debian / Kali                                  | 256 MB    | 1~1.5 GB ^ |
+| Ubuntu                                         | 512 MB \* | 2 GB       |
+| CentOS / Alma / Rocky                          | 512 MB \* | 5 GB       |
+| Fedora                                         | 512 MB \* | 5 GB       |
+| openSUSE                                       | 512 MB \* | 5 GB       |
+| Arch                                           | 512 MB    | 5 GB       |
+| Gentoo                                         | 512 MB    | 5 GB       |
+| DD                                             | 512 MB    | 取决于镜像 |
+| Windows 8.1 (Server 2012 R2) 或以下 (ISO 安装) | 512 MB    | 20~25 GB   |
+| Windows 10 (Server 2016) 或以上 (ISO 安装)     | 1024 MB   | 20~25 GB   |
+
+(\*) 表示使用云镜像安装
+
+(^) 需要 256 MB 内存 + 1.5 GB 硬盘，或 512 MB 内存 + 1 GB 硬盘
 
 ## 下载（当前系统是 Linux）
 
@@ -75,6 +92,7 @@ bash reinstall.sh centos   7|8|9  (8|9 为 stream 版本)
                   opensuse 15.5|tumbleweed
                   ubuntu   20.04|22.04|24.04
                   alpine   3.16|3.17|3.18|3.19
+                  kali
                   arch
                   gentoo
 ```
@@ -99,7 +117,7 @@ bash reinstall.sh alpine --hold=1
 
 ### 功能 4: 重启到 netboot.xyz
 
-- 可使用后台 VNC 安装 [更多系统](https://github.com/netbootxyz/netboot.xyz?tab=readme-ov-file#what-operating-systems-are-currently-available-on-netbootxyz)
+- 可使用商家后台 VNC 安装 [更多系统](https://github.com/netbootxyz/netboot.xyz?tab=readme-ov-file#what-operating-systems-are-currently-available-on-netbootxyz)
 - 如果没有修改硬盘内容，再次重启将回到原系统
 
 ```bash
@@ -111,21 +129,20 @@ bash reinstall.sh netboot.xyz
 ### 功能 5: 安装 Windows ISO
 
 - 注意参数两边的引号
-
-```bash
-bash reinstall.sh windows \
-     --image-name 'Windows 10 Enterprise LTSC 2021' \
-     --iso 'https://drive.massgrave.dev/en-us_windows_10_enterprise_ltsc_2021_x64_dvd_d289cf96.iso'
-```
-
-- 现在脚本支持自动查找 Windows (含 LTSC) 和 Windows Server iso 链接
-- 需设置语言 `--lang`，默认 `en-us`
-- 查找源：<https://massgrave.dev/genuine-installation-media.html>
+- 支持自动查找部分 iso 链接，需设置语言 `--lang`，默认 `en-us`
 
 ```bash
 bash reinstall.sh windows \
      --image-name 'Windows 10 Enterprise LTSC 2021' \
      --lang zh-cn
+```
+
+- 也可以指定 iso 链接
+
+```bash
+bash reinstall.sh windows \
+     --image-name 'Windows 10 Enterprise LTSC 2021' \
+     --iso 'https://drive.massgrave.dev/en-us_windows_10_enterprise_ltsc_2021_x64_dvd_d289cf96.iso'
 ```
 
 ![Installing Windows](https://github.com/bin456789/reinstall/assets/7548515/07c1aea2-1ce3-4967-904f-aaf9d6eec3f7)
@@ -178,21 +195,6 @@ Windows Server 2022 SERVERDATACENTER
    <https://www.microsoft.com/software-download/windows10> (需用手机 User-Agent 打开)
 
    <https://www.microsoft.com/software-download/windows11>
-
-## 内存要求
-
-| 系统                                | 传统安装 | 云镜像 |
-| ----------------------------------- | -------- | ------ |
-| CentOS / Alma / Rocky               | -        | 512M   |
-| Fedora                              | -        | 512M   |
-| openSUSE                            | -        | 512M   |
-| Ubuntu                              | -        | 512M   |
-| Debian                              | 256M     | -      |
-| Alpine                              | 256M     | -      |
-| Arch                                | 512M     | -      |
-| Gentoo                              | 512M     | -      |
-| Windows 8.1 (Server 2012 R2) 或以下 | 512M     | -      |
-| Windows 10 (Server 2016) 或以上     | 1G       | -      |
 
 ## 虚拟化要求
 
