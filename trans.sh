@@ -334,6 +334,12 @@ umount_all() {
 
 # 可能脚本不是首次运行，先清理之前的残留
 clear_previous() {
+    if is_have_cmd vgchange; then
+        umount -R /os /nbd || true
+        vgchange -an
+        apk add device-mapper
+        dmsetup remove_all
+    fi
     disconnect_qcow
     swapoff -a
     umount_all
@@ -1311,7 +1317,7 @@ create_part() {
     elif is_use_cloud_image; then
         installer_part_size="$(get_ci_installer_part_size)"
         # 这几个系统不使用dd，而是复制文件
-        if [ "$distro" = centos ] || [ "$distro" = alma ] || [ "$distro" = rocky ] ||
+        if [ "$distro" = centos ] || [ "$distro" = alma ] || [ "$distro" = rocky ] || [ "$distro" = oracle ] ||
             [ "$distro" = ubuntu ]; then
             fs="$(get_os_fs)"
             if is_efi; then
@@ -1521,7 +1527,7 @@ create_cloud_init_network_config() {
         # centos7 不认识 static6，但可改成 static，作用相同
         # https://github.com/canonical/cloud-init/commit/dacdd30080bd8183d1f1c1dc9dbcbc8448301529
         if [ -f /os/etc/system-release-cpe ] &&
-            grep centos:7 /os/etc/system-release-cpe; then
+            grep -E 'centos:7|oracle:linux:7' /os/etc/system-release-cpe; then
             type_ipv6_static=static
         else
             type_ipv6_static=static6
@@ -1728,7 +1734,7 @@ EOF
 
     # debian 网络问题
     # 注意 ubuntu 也有 /etc/debian_version
-    if [ -f $os_dir/etc/debian_version ]; then
+    if false && [ "$distro" = debian ]; then
         # 修复 onlink 网关
         add_onlink_script_if_need
 
@@ -1924,11 +1930,7 @@ disable_selinux_kdump() {
     releasever=$(awk -F: '{ print $5 }' <$os_dir/etc/system-release-cpe)
 
     if ! chroot $os_dir command -v grubby; then
-        if [ "$releasever" = 7 ]; then
-            chroot $os_dir yum -y --disablerepo=* --enablerepo=base,updates grubby
-        else
-            chroot $os_dir dnf -y --disablerepo=* --enablerepo=baseos --setopt=install_weak_deps=False grubby
-        fi
+        yum install grubby
     fi
 
     # selinux
@@ -1983,26 +1985,34 @@ disconnect_qcow() {
 get_os_fs() {
     case "$distro" in
     ubuntu) echo ext4 ;;
-    centos | alma | rocky) echo xfs ;;
+    centos | alma | rocky | oracle) echo xfs ;;
     esac
 }
 
 get_ci_installer_part_size() {
     case "$distro" in
-    centos | alma | rocky) echo 2GiB ;;
+    centos | alma | rocky | oracle) echo 2GiB ;;
     *) echo 1GiB ;;
     esac
 }
 
-install_qcow_by_copy() {
-    yum() {
+yum() {
+    if [ "$distro" = oracle ]; then
+        if [ "$releasever" = 7 ]; then
+            chroot /os/ yum -y --disablerepo=* --enablerepo=ol${releasever}_latest "$@"
+        else
+            chroot /os/ dnf -y --disablerepo=* --enablerepo=ol${releasever}_baseos_latest --setopt=install_weak_deps=False "$@"
+        fi
+    else
         if [ "$releasever" = 7 ]; then
             chroot /os/ yum -y --disablerepo=* --enablerepo=base,updates "$@"
         else
             chroot /os/ dnf -y --disablerepo=* --enablerepo=baseos --setopt=install_weak_deps=False "$@"
         fi
-    }
+    fi
+}
 
+install_qcow_by_copy() {
     mount_nouuid() {
         case "$fs" in
         ext4) mount "$@" ;;
@@ -2024,14 +2034,24 @@ install_qcow_by_copy() {
         esac
     )
 
-    fs="$(get_os_fs)"
-
     connect_qcow
 
-    # TODO: 改成循环mount找出os+fstab查找剩余分区？
-    os_part=$(lsblk /dev/nbd0p*[0-9] --sort SIZE -no NAME,FSTYPE | grep $fs | tail -1 | cut -d' ' -f1)
-    efi_part=$(lsblk /dev/nbd0p*[0-9] --sort SIZE -no NAME,FSTYPE | grep fat | tail -1 | cut -d' ' -f1)
-    boot_part=$(lsblk /dev/nbd0p*[0-9] --sort SIZE -no NAME,FSTYPE | grep $fs | sed '$d' | tail -1 | cut -d' ' -f1)
+    # 镜像分区格式
+    # centos/rocky/alma:    xfs
+    # oracle x86_64:        lvm + xfs
+    # oracle aarch64 cloud: ext4
+    if lsblk -f /dev/nbd0p* | grep LVM2_member; then
+        apk add lvm2
+        lvscan
+        lvchange -ay vg_main
+        os_part=mapper/vg_main-lv_root
+        boot_part=nbd0p1
+    else
+        # TODO: 改成循环mount找出os+fstab查找剩余分区？
+        os_part=$(lsblk /dev/nbd0p* --sort SIZE -no NAME,FSTYPE | grep -E 'ext4|xfs' | tail -1 | cut -d' ' -f1)
+        boot_part=$(lsblk /dev/nbd0p* --sort SIZE -no NAME,FSTYPE | grep -E 'ext4|xfs' | sed '$d' | tail -1 | cut -d' ' -f1)
+        efi_part=$(lsblk /dev/nbd0p* --sort SIZE -no NAME,FSTYPE | grep fat | tail -1 | cut -d' ' -f1)
+    fi
 
     os_part_uuid=$(lsblk /dev/$os_part -no UUID)
     if [ -n "$efi_part" ]; then
@@ -2081,6 +2101,9 @@ install_qcow_by_copy() {
 
     # 取消挂载 nbd
     umount /nbd/ /nbd-boot/ /nbd-efi/ || true
+    if is_have_cmd vgchange; then
+        vgchange -an
+    fi
     disconnect_qcow
 
     # 已复制并断开连接 qcow，可删除 qemu-img
@@ -2108,7 +2131,7 @@ install_qcow_by_copy() {
     # cloud-init
     download_cloud_init_config /os
 
-    modify_el() {
+    modify_el_ol() {
         # resolv.conf
         cp /etc/resolv.conf /os/etc/resolv.conf
 
@@ -2119,7 +2142,7 @@ install_qcow_by_copy() {
         truncate_machine_id /os
 
         # centos 7 yum 可能会使用 ipv6，即使没有 ipv6 网络
-        if grep 'centos:7' /os/etc/system-release-cpe; then
+        if grep -E 'centos:7|oracle:linux:7' /os/etc/system-release-cpe; then
             if [ "$(cat /dev/ipv6_has_internet)" = "0" ]; then
                 echo 'ip_resolve=4' >>/os/etc/yum.conf
             fi
@@ -2132,18 +2155,37 @@ install_qcow_by_copy() {
         # 为 centos 7 ci 安装 NetworkManager
         # 1. 能够自动配置 onlink 网关
         # 2. 解决 cloud-init 关闭了 ra，因为 nm 无视内核 ra 设置
-        if grep 'centos:7' /os/etc/system-release-cpe; then
+        if grep -E 'centos:7|oracle:linux:7' /os/etc/system-release-cpe; then
             yum install -y NetworkManager
             chroot /os/ systemctl enable NetworkManager
         fi
 
-        # fstab 删除 boot 分区
-        # alma/rocky 镜像本身有boot分区，但我们不需要
+        # fstab 删除多余分区
+        # alma/rocky 镜像有 boot 分区
+        # oracle 镜像有 swap 分区
         sed -i '/[[:space:]]\/boot[[:space:]]/d' /os/etc/fstab
+        sed -i '/[[:space:]]swap[[:space:]]/d' /os/etc/fstab
+
+        # oracle linux 系统盘从 lvm 改成 uuid 挂载
+        sed -i "s,/dev/mapper/vg_main-lv_root,UUID=$os_part_uuid," /os/etc/fstab
+        if ls /os/boot/loader/entries/*.conf 2>/dev/null; then
+            sed -i "s,/dev/mapper/vg_main-lv_root,UUID=$os_part_uuid," /os/boot/loader/entries/*.conf
+        fi
+
+        # oracle linux 移除 lvm cmdline
+        if ! chroot /os command -v grubby; then
+            yum install grubby
+        fi
+        chroot /os grubby --update-kernel ALL --remove-args "resume rd.lvm.lv"
+        chroot /os grubby --update-kernel ALL --args UUID=$os_part_uuid
+        if [ "$releasever" -eq 7 ]; then
+            # el7 上面那条 grubby 命令不能设置 /etc/default/grub
+            sed -i 's/ rd.lvm.lv=[^ "]*//g' /os/etc/default/grub
+        fi
 
         # fstab 添加 efi 分区
         if is_efi; then
-            # centos 要创建efi条目
+            # centos/oracle 要创建efi条目
             if ! grep /boot/efi /os/etc/fstab; then
                 efi_part_uuid=$(lsblk /dev/$xda*1 -no UUID)
                 echo "UUID=$efi_part_uuid /boot/efi vfat $efi_mount_opts 0 0" >>/os/etc/fstab
@@ -2152,9 +2194,6 @@ install_qcow_by_copy() {
             # 删除 efi 条目
             sed -i '/[[:space:]]\/boot\/efi[[:space:]]/d' /os/etc/fstab
         fi
-
-        distro_full=$(awk -F: '{ print $3 }' </os/etc/system-release-cpe)
-        releasever=$(awk -F: '{ print $5 }' </os/etc/system-release-cpe)
 
         remove_grub_conflict_files() {
             # bios 和 efi 转换前先删除
@@ -2171,8 +2210,8 @@ install_qcow_by_copy() {
         }
 
         # 安装 efi 引导
-        # 只有centos镜像没有efi，其他系统镜像已经从efi分区复制了文件
-        if [ "$distro" = "centos" ] && is_efi; then
+        # 只有centos 和 oracle x86_64 镜像没有efi，其他系统镜像已经从efi分区复制了文件
+        if is_efi && [ -z "$efi_part" ]; then
             remove_grub_conflict_files
             [ "$(uname -m)" = x86_64 ] && arch=x64 || arch=aa64
             yum install efibootmgr grub2-efi-$arch grub2-efi-$arch-modules shim-$arch
@@ -2192,10 +2231,16 @@ install_qcow_by_copy() {
             sed -i -E 's,((linux|initrd) /),\1boot/,g' /os/boot/loader/entries/*.conf
         fi
 
+        if is_efi; then
+            # oracle linux 文件夹是 redhat
+            # shellcheck disable=SC2010
+            distro_efi=$(cd /os/boot/efi/EFI/ && ls -d -- * | grep -Eiv BOOT)
+        fi
+
         # efi 分区 grub.cfg
         # https://github.com/rhinstaller/anaconda/blob/346b932a26a19b339e9073c049b08bdef7f166c3/pyanaconda/modules/storage/bootloader/efi.py#L198
         if is_efi && [ "$releasever" -ge 9 ]; then
-            cat <<EOF >/os/boot/efi/EFI/$distro_full/grub.cfg
+            cat <<EOF >/os/boot/efi/EFI/$distro_efi/grub.cfg
 search --no-floppy --fs-uuid --set=dev $os_part_uuid
 set prefix=(\$dev)/boot/grub2
 export \$prefix
@@ -2205,7 +2250,7 @@ EOF
 
         # 主 grub.cfg
         if is_efi && [ "$releasever" -le 8 ]; then
-            chroot /os/ grub2-mkconfig -o /boot/efi/EFI/$distro_full/grub.cfg
+            chroot /os/ grub2-mkconfig -o /boot/efi/EFI/$distro_efi/grub.cfg
         else
             chroot /os/ grub2-mkconfig -o /boot/grub2/grub.cfg
         fi
@@ -2239,6 +2284,8 @@ EOF
         # 常规版本             generic
         # minimal 20.04/22.04 kvm      # 后台 vnc 无显示
         # minimal 24.04       virtual
+
+        # debian cloud 内核不支持 ahci，ubuntu virtual 支持
 
         # 标记旧内核包
         # 注意排除 linux-base
@@ -2303,7 +2350,7 @@ EOF
 
     case "$distro" in
     ubuntu) modify_ubuntu ;;
-    *) modify_el ;;
+    *) modify_el_ol ;;
     esac
 
     # 删除installer分区，重启后cloud init会自动扩容
@@ -3161,7 +3208,7 @@ if is_use_cloud_image; then
         create_part
         download_qcow
         case "$distro" in
-        centos | alma | rocky)
+        centos | alma | rocky | oracle)
             # 这几个系统云镜像系统盘是8~9g xfs，而我们的目标是能在5g硬盘上运行，因此改成复制系统文件
             install_qcow_by_copy
             ;;

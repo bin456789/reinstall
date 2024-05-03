@@ -52,7 +52,7 @@ if not errorlevel 1 (
 )
 
 rem pkgs 改动了才重新运行 Cygwin 安装程序
-set pkgs="curl,cpio,p7zip,bind-utils,ipcalc,dos2unix,binutils"
+set pkgs="curl,cpio,p7zip,bind-utils,ipcalc,dos2unix,binutils,jq"
 set tags=%tmp%\cygwin-installed-!pkgs!
 if not exist !tags! (
     rem win10 arm 支持运行 x86 软件

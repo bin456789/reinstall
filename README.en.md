@@ -26,7 +26,7 @@ One-click reinstallation script
 | Alpine                                                   | 256 MB    | 1 GB                   |
 | Debian / Kali                                            | 256 MB    | 1~1.5 GB ^             |
 | Ubuntu                                                   | 512 MB \* | 2 GB                   |
-| CentOS / Alma / Rocky                                    | 512 MB \* | 5 GB                   |
+| CentOS / Alma / Rocky / Oracle                           | 512 MB \* | 5 GB                   |
 | Fedora                                                   | 512 MB \* | 5 GB                   |
 | openSUSE                                                 | 512 MB \* | 5 GB                   |
 | Arch                                                     | 512 MB    | 5 GB                   |
@@ -85,6 +85,7 @@ All features can be used on both Linux and Windows.
 
 ```bash
 bash reinstall.sh centos   7|8|9  (8|9 for the stream version)
+                  oracle   7|8|9
                   alma     8|9
                   rocky    8|9
                   fedora   38|39|40

@@ -27,6 +27,7 @@ usage_and_exit() {
     fi
     cat <<EOF
 Usage: $reinstall____ centos   7|8|9
+                      oracle   7|8|9
                       alma     8|9
                       rocky    8|9
                       fedora   38|39|40
@@ -1050,10 +1051,30 @@ setos() {
         fi
     }
 
+    setos_oracle() {
+        if is_use_cloud_image; then
+            # ci
+            install_pkg jq
+            mirror=https://yum.oracle.com
+
+            [ "$basearch" = aarch64 ] &&
+                template_prefix=ol${releasever}_${basearch}-cloud ||
+                template_prefix=ol${releasever}
+            curl -Lo $tmp/oracle.json $mirror/templates/OracleLinux/$template_prefix-template.json
+            dir=$(jq -r .base_url $tmp/oracle.json)
+            file=$(jq -r .kvm.image $tmp/oracle.json)
+            ci_image=$mirror$dir/$file
+
+            eval ${step}_img=${ci_image}
+        else
+            :
+        fi
+    }
+
     eval ${step}_distro=$distro
     eval ${step}_releasever=$releasever
 
-    if is_distro_like_redhat $distro; then
+    if is_distro_like_redhat $distro && ! [ "$distro" = oracle ]; then
         setos_redhat
     else
         setos_$distro
@@ -1067,7 +1088,7 @@ setos() {
 }
 
 is_distro_like_redhat() {
-    [ "$distro" = centos ] || [ "$distro" = alma ] || [ "$distro" = rocky ] || [ "$distro" = fedora ]
+    [ "$distro" = centos ] || [ "$distro" = alma ] || [ "$distro" = rocky ] || [ "$distro" = fedora ] || [ "$distro" = oracle ]
 }
 
 is_distro_like_debian() {
@@ -1082,6 +1103,7 @@ verify_os_name() {
 
     for os in \
         'centos   7|8|9' \
+        'oracle   7|8|9' \
         'alma     8|9' \
         'rocky    8|9' \
         'fedora   38|39|40' \
@@ -1200,7 +1222,11 @@ install_pkg() {
     }
 
     is_need_epel_repo() {
-        [ "$pkg" = dpkg ] && { [ "$pkg_mgr" = yum ] || [ "$pkg_mgr" = dnf ]; }
+        case "$pkg" in
+        dpkg) [ "$pkg_mgr" = yum ] || [ "$pkg_mgr" = dnf ] ;;
+        jq) [ "$pkg_mgr" = yum ] ;; # el7/ol7
+        *) false ;;
+        esac
     }
 
     add_epel_repo() {
@@ -1292,7 +1318,7 @@ check_ram() {
         netboot.xyz) echo 0 ;;
         alpine | debian | kali | dd) echo 256 ;;
         arch | gentoo | windows) echo 512 ;;
-        centos | alma | rocky | fedora | ubuntu) echo 1024 ;;
+        centos | alma | rocky | fedora | oracle | ubuntu) echo 1024 ;;
         opensuse) echo -1 ;; # 没有安装模式
         esac
     )
@@ -1307,7 +1333,7 @@ check_ram() {
 
     has_cloud_image=$(
         case "$distro" in
-        centos | alma | rocky | fedora | debian | ubuntu | opensuse) echo true ;;
+        centos | alma | rocky | oracle | fedora | debian | ubuntu | opensuse) echo true ;;
         netboot.xyz | alpine | dd | arch | gentoo | kali | windows) echo false ;;
         esac
     )
@@ -2510,7 +2536,7 @@ dd | windows | netboot.xyz | debian | kali | alpine | arch | gentoo)
         cloud_image=0
     fi
     ;;
-centos | alma | rocky | ubuntu | fedora | opensuse)
+centos | alma | rocky | oracle | ubuntu | fedora | opensuse)
     cloud_image=1
     ;;
 esac
