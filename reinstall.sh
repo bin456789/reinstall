@@ -165,7 +165,8 @@ is_have_initrd() {
 }
 
 is_use_firmware() {
-    [ "$distro" = debian ] && ! is_virt
+    # shellcheck disable=SC2154
+    [ "$nextos_distro" = debian ] && ! is_virt
 }
 
 get_host_by_url() {
@@ -1074,7 +1075,7 @@ setos() {
     eval ${step}_distro=$distro
     eval ${step}_releasever=$releasever
 
-    if is_distro_like_redhat $distro && ! [ "$distro" = oracle ]; then
+    if is_distro_like_redhat && ! [ "$distro" = oracle ]; then
         setos_redhat
     else
         setos_$distro
@@ -1088,11 +1089,21 @@ setos() {
 }
 
 is_distro_like_redhat() {
-    [ "$distro" = centos ] || [ "$distro" = alma ] || [ "$distro" = rocky ] || [ "$distro" = fedora ] || [ "$distro" = oracle ]
+    if [ -n "$1" ]; then
+        _distro=$1
+    else
+        _distro=$distro
+    fi
+    [ "$_distro" = centos ] || [ "$_distro" = alma ] || [ "$_distro" = rocky ] || [ "$_distro" = fedora ] || [ "$_distro" = oracle ]
 }
 
 is_distro_like_debian() {
-    [ "$distro" = debian ] || [ "$distro" = kali ]
+    if [ -n "$1" ]; then
+        _distro=$1
+    else
+        _distro=$distro
+    fi
+    [ "$_distro" = debian ] || [ "$_distro" = kali ]
 }
 
 # 检查是否为正确的系统名
@@ -1874,7 +1885,7 @@ get_entry_name() {
 build_nextos_cmdline() {
     if [ $nextos_distro = alpine ]; then
         nextos_cmdline="alpine_repo=$nextos_repo modloop=$nextos_modloop"
-    elif is_distro_like_debian; then
+    elif is_distro_like_debian $nextos_distro; then
         nextos_cmdline="lowmem/low=1 auto=true priority=critical"
         nextos_cmdline+=" url=$nextos_ks"
         nextos_cmdline+=" mirror/http/hostname=$nextos_deb_hostname"
@@ -1884,12 +1895,12 @@ build_nextos_cmdline() {
         if [ "$nextos_distro" = kali ]; then
             nextos_cmdline+=" net.ifnames=0"
         fi
-    elif is_distro_like_redhat; then
+    elif is_distro_like_redhat $nextos_distro; then
         # redhat
         nextos_cmdline="root=live:$nextos_squashfs inst.ks=$nextos_ks"
     fi
 
-    if is_distro_like_debian; then
+    if is_distro_like_debian $nextos_distro; then
         if [ "$basearch" = "x86_64" ]; then
             # debian 安装界面不遵循最后一个 tty 为主 tty 的规则
             # 设置ttyS0,tty0,安装界面还是显示在ttyS0
@@ -2366,7 +2377,7 @@ mod_initrd() {
     curl -Lo $tmp_dir/trans.sh $confhome/trans.sh
     curl -Lo $tmp_dir/alpine-network.sh $confhome/alpine-network.sh
 
-    if is_distro_like_debian; then
+    if is_distro_like_debian $nextos_distro; then
         mod_initrd_debian
     else
         mod_initrd_$nextos_distro
@@ -2659,7 +2670,7 @@ else
 fi
 
 # 修改 alpine debian kali initrd
-if [ "$nextos_distro" = alpine ] || is_distro_like_debian; then
+if [ "$nextos_distro" = alpine ] || is_distro_like_debian "$nextos_distro"; then
     mod_initrd
 fi
 

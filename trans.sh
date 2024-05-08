@@ -401,6 +401,12 @@ get_netconf_to() {
     eval "$1='$res'"
 }
 
+is_ipv4_has_internet() {
+    get_netconf_to ipv4_has_internet
+    # shellcheck disable=SC2154
+    [ "$ipv4_has_internet" = 1 ]
+}
+
 is_in_china() {
     get_netconf_to is_in_china
     # shellcheck disable=SC2154
@@ -1057,8 +1063,8 @@ EOF
             git_uri=https://mirrors.tuna.tsinghua.edu.cn/git/gentoo-portage.git
         else
             # github 不支持 ipv6
-            # git_uri=https://github.com/gentoo-mirror/gentoo.git
-            git_uri=https://anongit.gentoo.org/git/repo/gentoo.git
+            is_ipv4_has_internet && git_uri=https://github.com/gentoo-mirror/gentoo.git ||
+                git_uri=https://anongit.gentoo.org/git/repo/gentoo.git
         fi
 
         mkdir -p $os_dir/etc/portage/repos.conf
@@ -1734,7 +1740,7 @@ EOF
 
     # debian 网络问题
     # 注意 ubuntu 也有 /etc/debian_version
-    if false && [ "$distro" = debian ]; then
+    if [ "$distro" = debian ]; then
         # 修复 onlink 网关
         add_onlink_script_if_need
 
@@ -1852,7 +1858,7 @@ modify_os_on_disk() {
 
     mkdir -p /os
     # 按分区容量大到小，依次寻找系统分区
-    for part in $(lsblk /dev/$xda --sort SIZE -no NAME | sed '$d' | tac); do
+    for part in $(lsblk /dev/$xda*[0-9] --sort SIZE -no NAME | tac); do
         # btrfs挂载的是默认子卷，如果没有默认子卷，挂载的是根目录
         # fedora 云镜像没有默认子卷，且系统在root子卷中
         if mount -o ro /dev/$part /os; then
@@ -2039,7 +2045,7 @@ install_qcow_by_copy() {
     # 镜像分区格式
     # centos/rocky/alma:    xfs
     # oracle x86_64:        lvm + xfs
-    # oracle aarch64 cloud: ext4
+    # oracle aarch64 cloud: xfs
     if lsblk -f /dev/nbd0p* | grep LVM2_member; then
         apk add lvm2
         lvscan
