@@ -2896,21 +2896,27 @@ install_windows() {
         sed -i "s|%installto_partitionid%|1|" /tmp/autounattend.xml
     fi
 
-    # shellcheck disable=SC2010
-    if ei_cfg="$(ls -d /os/installer/sources/* | grep -i ei.cfg)" &&
-        grep -i EVAL "$ei_cfg"; then
-        # 评估版 iso 需要删除 autounattend.xml 里面的 <Key><Key/>
-        # 否则会出现 Windows Cannot find Microsoft software license terms
-        sed -i "/%key%/d" /tmp/autounattend.xml
-    else
+    # 2012 r2，删除 key 字段，报错 Windows cannot read the <ProductKey> setting from the unattend answer file，即使创建 ei.cfg
+    # ltsc 2021，有 ei.cfg，填空白 key 正常
+    # ltsc 2021 n，有 ei.cfg，填空白 key 报错 Windows Cannot find Microsoft software license terms
+    # 评估版 iso ei.cfg 有 EVAL 字样，填空白 key 报错 Windows Cannot find Microsoft software license terms
+
+    # key
+    if [[ "$image_name" = 'Windows Vista'* ]]; then
         # vista 需密钥，密钥可与 edition 不一致
-        # 其他系统要空密钥
-        if [[ "$image_name" = 'Windows Vista'* ]]; then
-            key=VKK3X-68KWM-X2YGT-QR4M6-4BWMV
-        else
-            key=
-        fi
+        # TODO: 改成从网页获取？
+        # https://learn.microsoft.com/en-us/windows-server/get-started/kms-client-activation-keys
+        key=VKK3X-68KWM-X2YGT-QR4M6-4BWMV
         sed -i "s/%key%/$key/" /tmp/autounattend.xml
+    else
+        # shellcheck disable=SC2010
+        if ls -d /os/installer/sources/* | grep -iq ei.cfg; then
+            # 镜像有 ei.cfg，删除 key 字段
+            sed -i "/%key%/d" /tmp/autounattend.xml
+        else
+            # 镜像无 ei.cfg，填空白 key
+            sed -i "s/%key%//" /tmp/autounattend.xml
+        fi
     fi
 
     # 挂载 boot.wim
