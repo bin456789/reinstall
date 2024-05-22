@@ -5,6 +5,10 @@
 
 # 命令出错终止运行，将进入到登录界面，防止失联
 set -eE
+
+# debian 安装版、ubuntu 安装版、redhat 安装版不使用该密码
+PASSWORD=123@@@
+
 trap 'trap_err $LINENO $?' ERR
 
 # 复制本脚本到 /tmp/trans.sh，用于打印错误
@@ -1128,7 +1132,7 @@ EOF
 
     # 修改密码
     [ "$distro" = gentoo ] && sed -i 's/enforce=everyone/enforce=none/' $os_dir/etc/security/passwdqc.conf
-    echo 'root:123@@@' | chroot $os_dir chpasswd >/dev/null
+    echo "root:$PASSWORD" | chroot $os_dir chpasswd
     [ "$distro" = gentoo ] && sed -i 's/enforce=none/enforce=everyone/' $os_dir/etc/security/passwdqc.conf
 
     # 网络配置
@@ -1575,6 +1579,9 @@ download_cloud_init_config() {
     # 删除注释行，除了第一行
     sed -i '1!{/^[[:space:]]*#/d}' $ci_file
 
+    # 修改密码
+    sed -i "s/@PASSWORD@/$PASSWORD/" $ci_file
+
     # swapfile
     # 如果分区表中已经有swapfile就跳过，例如arch
     if ! grep -w swap $os_dir/etc/fstab; then
@@ -1859,7 +1866,7 @@ EOF
 
         # 在这里修改密码，而不是用cloud-init，因为我们的默认密码太弱
         sed -i 's/enforce=everyone/enforce=none/' $os_dir/etc/security/passwdqc.conf
-        echo 'root:123@@@' | chroot $os_dir chpasswd >/dev/null
+        echo "root:$PASSWORD" | chroot $os_dir chpasswd
         sed -i 's/enforce=none/enforce=everyone/' $os_dir/etc/security/passwdqc.conf
 
         # 下载仓库，选择 profile
@@ -2962,7 +2969,8 @@ install_windows() {
     # 修改应答文件
     download $confhome/windows.xml /tmp/autounattend.xml
     locale=$(wiminfo $install_wim | grep 'Default Language' | head -1 | awk '{print $NF}')
-    sed -i "s|%arch%|$arch|; s|%image_name%|$image_name|; s|%locale%|$locale|" /tmp/autounattend.xml
+    sed -i "s|%arch%|$arch|; s|%image_name%|$image_name|; s|%locale%|$locale|; s|%password%|$PASSWORD|" \
+        /tmp/autounattend.xml
 
     # 修改应答文件，分区配置
     if is_efi; then
@@ -3055,6 +3063,7 @@ install_windows() {
     xmlstarlet ed -d '//comment()' /tmp/autounattend.xml >/wim/autounattend.xml
     apk del xmlstarlet
     unix2dos /wim/autounattend.xml
+    cat /wim/autounattend.xml
 
     # 复制安装脚本
     # https://slightlyovercomplicated.com/2016/11/07/windows-pe-startup-sequence-explained/
@@ -3260,7 +3269,7 @@ mount / -o remount,size=100%
 hwclock -s || true
 
 # 设置密码，安装并打开 ssh
-echo root:123@@@ | chpasswd
+echo "root:$PASSWORD" | chpasswd
 printf '\nyes' | setup-sshd
 
 extract_env_from_cmdline

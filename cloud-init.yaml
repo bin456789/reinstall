@@ -10,10 +10,10 @@ chpasswd:
   expire: false
   # 20.04 arm 需要
   list: |
-    root:123@@@
+    root:@PASSWORD@
   users:
     - name: root
-      password: 123@@@
+      password: "@PASSWORD@"
       type: text
 runcmd:
   # opensuse tumbleweed 镜像有 /etc/ssh/sshd_config.d/ 文件夹，没有 /etc/ssh/sshd_config，有/usr/etc/ssh/sshd_config
