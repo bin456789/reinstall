@@ -2896,6 +2896,11 @@ install_windows() {
         sed -i "s|%installto_partitionid%|1|" /tmp/autounattend.xml
     fi
 
+    # vista/2008 有这行安装会报错
+    if [ "$nt_ver" = 6.0 ]; then
+        sed -i "/EnableFirewall/d" /tmp/autounattend.xml
+    fi
+
     # 2012 r2，删除 key 字段，报错 Windows cannot read the <ProductKey> setting from the unattend answer file，即使创建 ei.cfg
     # ltsc 2021，有 ei.cfg，填空白 key 正常
     # ltsc 2021 n，有 ei.cfg，填空白 key 报错 Windows Cannot find Microsoft software license terms
