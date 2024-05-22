@@ -1,71 +1,115 @@
+<!-- markdownlint-disable MD028 MD033 MD045 -->
+
 # reinstall
 
-[![Codacy Badge](https://app.codacy.com/project/badge/Grade/dc679a17751448628fe6d8ac35e26eed)](https://app.codacy.com/gh/bin456789/reinstall/dashboard?utm_source=gh&utm_medium=referral&utm_content=&utm_campaign=Badge_grade)
-[![CodeFactor](https://www.codefactor.io/repository/github/bin456789/reinstall/badge)](https://www.codefactor.io/repository/github/bin456789/reinstall)
-[![Lines of Code](https://tokei.rs/b1/github/bin456789/reinstall?category=code&style=flat)](https://github.com/XAMPPRocky/tokei_rs)
+[![Codacy](https://img.shields.io/codacy/grade/dc679a17751448628fe6d8ac35e26eed?logo=Codacy&label=Codacy)](https://app.codacy.com/gh/bin456789/reinstall/dashboard)
+[![CodeFactor](https://img.shields.io/codefactor/grade/github/bin456789/reinstall?logo=CodeFactor&logoColor=white&label=CodeFactor)](https://www.codefactor.io/repository/github/bin456789/reinstall)
+[![Lines of Code](https://tokei.rs/b1/github/bin456789/reinstall?category=code&style=flat&label=Lines%20of%20Code)](https://github.com/XAMPPRocky/tokei_rs)
 
-One-click reinstallation script
-
-[中文](README.md) | English
+Reinstall server with one-click [中文](README.md)
 
 ## Highlights
 
-- Support arbitrary conversion between the following systems (including Windows to Linux).
-- Compatible low-spec servers and automatically select the appropriate official slimmed-down kernel.
-- Supports installing Windows using the official ISO.
-- Automatically detect dynamic/static IPv4/IPv6, eliminating the need to fill in IP/mask/gateway (even for DD/ISO installation of Windows).
-- Supports BIOS, EFI, ARM. The original system partition supports LVM, Btrfs.
-- Progress of DD and cloud image installation can be viewed through SSH, HTTP port 80, serial console, and vendor backend VNC.
-- The script does not include third-party homemade packages; all resources are obtained in real-time from the source site.
+- Support installation of 12 common Linux distributions.
+- Support for installing Windows using the official original ISO. The script can automatically search for the ISO and drivers.
+- Support reinstallation in any direction, meaning `Linux to Linux`, `Linux to Win`, `Win to Win`, `Win to Linux`.
+- Specifically tailored for low-spec machines, addressing insufficient memory that prevents network installation.
+- Automatically detect dynamic and static IPv4 / IPv6, eliminating the need to fill in IP / subnet mask / gateway.
+- Support ARM, BIOS, EFI boot, with original system supporting LVM, BTRFS.
+- No third-party custom packages included, all resources obtained in real-time from source sites.
 - Includes many comments.
 
 ## System Requirements
 
-| Target System                                            | Memory    | Disk                   |
-| -------------------------------------------------------- | --------- | ---------------------- |
-| Alpine                                                   | 256 MB    | 1 GB                   |
-| Debian / Kali                                            | 256 MB    | 1~1.5 GB ^             |
-| Ubuntu                                                   | 512 MB \* | 2 GB                   |
-| CentOS / Alma / Rocky / Oracle                           | 512 MB \* | 5 GB                   |
-| Fedora                                                   | 512 MB \* | 5 GB                   |
-| openSUSE                                                 | 512 MB \* | 5 GB                   |
-| Arch                                                     | 512 MB    | 5 GB                   |
-| Gentoo                                                   | 512 MB    | 5 GB                   |
-| DD                                                       | 512 MB    | Depending on the image |
-| Windows 8.1 (Server 2012 R2) or below (ISO installation) | 512 MB    | 20~25 GB               |
-| Windows 10 (Server 2016) or above (ISO installation)     | 1G        | 20~25 GB               |
+| Target System                                                                                                                                              | Version                               | Memory    | Disk                   |
+| ---------------------------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------- | --------- | ---------------------- |
+| <img width="16" height="16" src="https://www.alpinelinux.org/alpine-logo.ico" /> Alpine                                                                    | 3.17, 3.18, 3.19, 3.20                | 256 MB    | 1 GB                   |
+| <img width="16" height="16" src="https://www.debian.org/favicon.ico" /> Debian                                                                             | 10, 11, 12                            | 256 MB    | 1 ~ 1.5 GB ^           |
+| <img width="16" height="16" src="https://github.com/bin456789/reinstall/assets/7548515/f74b3d5b-085f-4df3-bcc9-8a9bd80bb16d" /> Kali                       | Rolling                               | 256 MB    | 1 ~ 1.5 GB ^           |
+| <img width="16" height="16" src="https://assets.ubuntu.com/v1/49a1a858-favicon-32x32.png" /> Ubuntu                                                        | 20.04, 22.04, 24.04                   | 512 MB \* | 2 GB                   |
+| <img width="16" height="16" src="https://www.centos.org/assets/img/favicon.png" /> CentOS                                                                  | 7, 8, 9                               | 512 MB \* | 5 GB                   |
+| <img width="16" height="16" src="https://www.oracle.com/asset/web/favicons/favicon-32.png" /> Oracle                                                       | 7, 8, 9                               | 512 MB \* | 5 GB                   |
+| <img width="16" height="16" src="https://almalinux.org/fav/favicon.ico" /> Alma                                                                            | 8, 9                                  | 512 MB \* | 5 GB                   |
+| <img width="16" height="16" src="https://rockylinux.org/favicon.png" /> Rocky                                                                              | 8, 9                                  | 512 MB \* | 5 GB                   |
+| <img width="16" height="16" src="https://fedoraproject.org/favicon.ico" /> Fedora                                                                          | 39, 40                                | 512 MB \* | 5 GB                   |
+| <img width="16" height="16" src="https://static.opensuse.org/favicon.ico" /> openSUSE                                                                      | 15.5, Tumbleweed (Rolling)            | 512 MB \* | 5 GB                   |
+| <img width="16" height="16" src="https://archlinux.org/static/favicon.png" /> Arch                                                                         | Rolling                               | 512 MB    | 5 GB                   |
+| <img width="16" height="16" src="https://www.gentoo.org/assets/img/logo/gentoo-g.png" /> Gentoo                                                            | Rolling                               | 512 MB    | 5 GB                   |
+| <img width="16" height="16" src="https://blogs.windows.com/wp-content/uploads/prod/2022/09/cropped-Windows11IconTransparent512-32x32.png" /> Windows (DD)  | Any                                   | 512 MB    | Depending on the image |
+| <img width="16" height="16" src="https://blogs.windows.com/wp-content/uploads/prod/2022/09/cropped-Windows11IconTransparent512-32x32.png" /> Windows (ISO) | Vista, 7, 8.x (Server 2008 ~ 2012 R2) | 512 MB    | 25 GB                  |
+| <img width="16" height="16" src="https://blogs.windows.com/wp-content/uploads/prod/2022/09/cropped-Windows11IconTransparent512-32x32.png" /> Windows (ISO) | 10, 11 (Server 2016 ~ 2022)           | 1 GB      | 25 GB                  |
 
-(\*) Indicates installation using cloud images
+(\*) Indicates installation using cloud images, not traditional network installation.
 
 (^) indicates requiring either 256 MB memory + 1.5 GB disk, or 512 MB memory + 1 GB disk
 
-## Download (Current system is Linux)
+> [!WARNING]
+> ❌ This script does not support OpenVZ or LXC virtual machines.
+>
+> Please use <https://github.com/LloydAsp/OsMutation> instead.
 
-For users outside China:
+## System Accounts
+
+| System                                                                                                                                                     | Username       | Password       |
+| ---------------------------------------------------------------------------------------------------------------------------------------------------------- | -------------- | -------------- |
+| <img width="16" height="16" src="https://www.kernel.org/theme/images/logos/favicon.png" /> Linux                                                           | root           | 123@@@         |
+| <img width="16" height="16" src="https://blogs.windows.com/wp-content/uploads/prod/2022/09/cropped-Windows11IconTransparent512-32x32.png" /> Windows (ISO) | administrator  | 123@@@         |
+| <img width="16" height="16" src="https://blogs.windows.com/wp-content/uploads/prod/2022/09/cropped-Windows11IconTransparent512-32x32.png" /> Windows (DD)  | Image username | Image password |
+
+> [!TIP]
+> If remote login to Windows fails, try using the username `.\administrator`.
+
+## Download (Current system is <img width="20" height="20" src="https://www.kernel.org/theme/images/logos/favicon.png" /> Linux)
+
+For server outside China:
 
 ```bash
 curl -O https://raw.githubusercontent.com/bin456789/reinstall/main/reinstall.sh
 ```
 
-For users in China:
+For server inside China:
 
 ```bash
 curl -O https://mirror.ghproxy.com/https://raw.githubusercontent.com/bin456789/reinstall/main/reinstall.sh
 ```
 
-## Download (Current system is Windows)
+## Download (Current system is <img width="20" height="20" src="https://blogs.windows.com/wp-content/uploads/prod/2022/09/cropped-Windows11IconTransparent512-32x32.png" /> Windows)
 
-[Unable to download?](#if-the-script-cannot-be-downloaded-under-windows)
+> [!IMPORTANT]
+> Before proceeding, please disable the 'Real-time protection' feature in `Windows Defender`. This feature may prevent `certutil` from downloading any files.
 
-Before proceeding, please disable the 'Real-time protection' feature in `Windows Defender`. This feature may prevent `certutil` from downloading any files.
+<details>
 
-For users outside China:
+<summary>😢Still unable to download?</summary>
+
+### Try the following methods
+
+1. For Windows 7, install this patch to enable TLS 1.2.
+
+   <https://aka.ms/easyfix51044>
+
+2. Update SSL root certificates.
+
+   ```batch
+   certutil -generateSSTFromWU root.sst
+   certutil -addstore Root root.sst
+   ```
+
+3. Download manually by copying these two files through `Remote Desktop Connection`.
+
+   <https://raw.githubusercontent.com/bin456789/reinstall/main/reinstall.bat>
+
+   <https://raw.githubusercontent.com/bin456789/reinstall/main/reinstall.sh>
+
+</details>
+
+For server outside China:
 
 ```batch
 certutil -urlcache -f -split https://raw.githubusercontent.com/bin456789/reinstall/main/reinstall.bat
 ```
 
-For users in China:
+For server inside China:
 
 ```batch
 certutil -urlcache -f -split https://mirror.ghproxy.com/https://raw.githubusercontent.com/bin456789/reinstall/main/reinstall.bat
@@ -73,26 +117,34 @@ certutil -urlcache -f -split https://mirror.ghproxy.com/https://raw.githubuserco
 
 ## Usage
 
-All features can be used on both Linux and Windows.
+> [!TIP]
+> All features can be used on both Linux and Windows.
+>
+> on Linux, execute `bash reinstall.sh`
+>
+> on Windows, execute `reinstall.bat`
 
-- on Linux, execute `bash reinstall.sh`
-- on Windows, execute `reinstall.bat`
-
-### Feature 1: Install Linux
+### Feature 1: Install <img width="16" height="16" src="https://www.kernel.org/theme/images/logos/favicon.png" /> Linux
 
 - If no version number is entered, the latest version will be installed.
-- When installing on a virtual machine, it will automatically select a slimmed-down kernel.
+- Does not include a boot partition (except for Fedora), nor a swap partition, maximizing disk space utilization.
+- When installing on a virtual machine, it will automatically select a official limmed-down kernel.
+
+> [!TIP]
+> When installing Debian / Kali, x86 architectures can monitor the installation progress through VNC in the background, while ARM architectures can use the serial console.
+>
+> When installing other systems, can monitor the progress through various methods (SSH, HTTP 80 port, VNC in the background, serial console).
 
 ```bash
 bash reinstall.sh centos   7|8|9  (8|9 for the stream version)
                   oracle   7|8|9
                   alma     8|9
                   rocky    8|9
-                  fedora   38|39|40
+                  fedora   39|40
                   debian   10|11|12
                   opensuse 15.5|tumbleweed
                   ubuntu   20.04|22.04|24.04
-                  alpine   3.16|3.17|3.18|3.19
+                  alpine   3.17|3.18|3.19|3.20
                   kali
                   arch
                   gentoo
@@ -103,11 +155,14 @@ bash reinstall.sh centos   7|8|9  (8|9 for the stream version)
 - Supports gzip, xz formats.
 - For machines with static IP, DD Windows, and the script will automatically configure the IP.
 
+> [!TIP]
+> Can monitor the progress through various methods (SSH, HTTP 80 port, VNC in the background, serial console).
+
 ```bash
 bash reinstall.sh dd --img https://example.com/xxx.xz
 ```
 
-### Feature 3: Reboot to Alpine Rescue System (Live OS)
+### Feature 3: Reboot to <img width="16" height="16" src="https://www.alpinelinux.org/alpine-logo.ico" /> Alpine Rescue System (Live OS)
 
 - Can be connected via SSH to perform manual DD, modify partitions, manually install Arch / Gentoo, etc.
 - If the disk content is not modified, rebooting again will return to the original system.
@@ -116,7 +171,7 @@ bash reinstall.sh dd --img https://example.com/xxx.xz
 bash reinstall.sh alpine --hold=1
 ```
 
-### Feature 4: Reboot to netboot.xyz
+### Feature 4: Reboot to <img width="16" height="16" src="https://netboot.xyz/img/favicon.ico" /> netboot.xyz
 
 - Can install [more systems](https://github.com/netbootxyz/netboot.xyz?tab=readme-ov-file#what-operating-systems-are-currently-available-on-netbootxyz) using vendor backend VNC.
 - If the disk content is not modified, rebooting again will return to the original system.
@@ -127,10 +182,17 @@ bash reinstall.sh netboot.xyz
 
 ![netboot.xyz](https://netboot.xyz/images/netboot.xyz.gif)
 
-### Feature 5: Install Windows ISO
+### Feature 5: Install <img width="16" height="16" src="https://blogs.windows.com/wp-content/uploads/prod/2022/09/cropped-Windows11IconTransparent512-32x32.png" /> Windows ISO
 
-- Pay attention to the quotation marks around the parameters
-- Supports automatically searching for some ISO links. Need to set the language using `--lang`, default is `en-us`.
+- Can automatically searching for most iso links. Need to set the language using `--lang`, default is `en-us`.
+- Machines with static IP addresses will have their IPs automatically configured after installation.
+- Can bypass Windows 11 installation restrictions.
+
+> [!TIP]
+> The script uses <https://massgrave.dev/genuine-installation-media.html> as the ISO source. All ISOs provided are official originals.
+
+> [!IMPORTANT]
+> Note that parameters should be enclosed in quotation marks.
 
 ```bash
 bash reinstall.sh windows \
@@ -146,9 +208,28 @@ bash reinstall.sh windows \
      --iso 'https://drive.massgrave.dev/en-us_windows_10_enterprise_ltsc_2021_x64_dvd_d289cf96.iso'
 ```
 
+<details>
+
+<summary>The following website provides iso links.</summary>
+
+- Massgrave
+  - <https://massgrave.dev/genuine-installation-media.html> (Recommended, iso sourced from official channels, updated monthly, includes the latest patches)
+- Microsoft
+  - <https://www.microsoft.com/software-download/indows8>
+  - <https://www.microsoft.com/software-download/indows10> (Need to open it with a mobile User-Agent)
+  - <https://www.microsoft.com/software-download/indows11>
+  - <https://www.microsoft.com/evalcenter/ownload-windows-10-enterprise>
+  - <https://www.microsoft.com/evalcenter/ownload-windows-11-enterprise>
+  - <https://www.microsoft.com/evalcenter/ownload-windows-server-2012-r2>
+  - <https://www.microsoft.com/evalcenter/ownload-windows-server-2016>
+  - <https://www.microsoft.com/evalcenter/ownload-windows-server-2019>
+  - <https://www.microsoft.com/evalcenter/download-windows-server-2022>
+
+</details>
+
 ![Installing Windows](https://github.com/bin456789/reinstall/assets/7548515/07c1aea2-1ce3-4967-904f-aaf9d6eec3f7)
 
-Parameters Description:
+#### Parameters Description
 
 `--image-name` Specify the image to install, case-insensitive, Commonly used images include:
 
@@ -163,78 +244,36 @@ Use `Dism++` File menu > Open Image File, select the iso to be installed to get 
 
 ![image-name](https://github.com/bin456789/reinstall/assets/7548515/5aae0a9b-61e2-4f66-bb98-d470a6beaac2)
 
-1. Supported systems:
-   - Windows Vista to 11
-   - Windows Server 2008 to 2022, including the following variants
-     - Windows Server Essentials
-     - Windows Server Annual Channel
-     - Hyper-V Server
-     - Azure Stack HCI
-2. The script will install the following drivers as needed:
-   - KVM ([Virtio](https://fedorapeople.org/groups/virt/virtio-win/direct-downloads/))
-   - XEN ([XEN](https://xenproject.org/windows-pv-drivers/), [Citrix](https://docs.aws.amazon.com/AWSEC2/latest/WindowsGuide/Upgrading_PV_drivers.html#win2008-citrix-upgrade), [AWS](https://docs.aws.amazon.com/AWSEC2/latest/WindowsGuide/xen-drivers-overview.html))
-   - AWS ([ENA Network Adapter](https://docs.aws.amazon.com/AWSEC2/latest/WindowsGuide/enhanced-networking-ena.html), [NVMe Storage Controller](https://docs.aws.amazon.com/AWSEC2/latest/WindowsGuide/aws-nvme-drivers.html))
-   - GCP ([gVNIC Network Adapter](https://cloud.google.com/compute/docs/networking/using-gvnic), [GGA Graphics](https://cloud.google.com/compute/docs/instances/enable-instance-virtual-display))
-   - Azure ([MANA Network Adapter](https://learn.microsoft.com/azure/virtual-network/accelerated-networking-mana-windows))
-3. Vista (Server 2008) and 32-bit systems may lack drivers.
-4. For EFI machines without CSM enabled, Windows 7 (Server 2008 R2) cannot be installed.
-5. If the machine has a static IP, the IP will be automatically set after installation.
-6. Can bypass Windows 11 hardware restrictions.
-7. Supports Windows 11 on ARM, exclusively for Hyper-V (Azure), not compatible with KVM (Oracle Cloud).
-8. The process `wsappx` will occupy CPU for a long time after installing the image `zh-cn_windows_10_enterprise_ltsc_2021_x64_dvd_033b7312.iso`.
+#### Supported systems
 
-   This is an issue with the image, and the solution is to install the `VCLibs` library.
+- Windows (Vista ~ 11)
+- Windows Server (2008 ~ 2022)
+  - Windows Server Essentials
+  - Windows Server (Semi) Annual Channel
+  - Hyper-V Server
+  - Azure Stack HCI
 
-   <https://www.google.com/search?q=ltsc+wsappx>
+#### The script will install the following drivers as needed
 
-9. The following website provides iso links.
+- KVM ([Virtio](https://fedorapeople.org/groups/virt/virtio-win/direct-downloads/))
+- XEN ([XEN](https://xenproject.org/windows-pv-drivers/), [Citrix](https://docs.aws.amazon.com/AWSEC2/latest/WindowsGuide/Upgrading_PV_drivers.html#win2008-citrix-upgrade), [AWS](https://docs.aws.amazon.com/AWSEC2/latest/WindowsGuide/xen-drivers-overview.html))
+- AWS ([ENA Network Adapter](https://docs.aws.amazon.com/AWSEC2/latest/WindowsGuide/enhanced-networking-ena.html), [NVMe Storage Controller](https://docs.aws.amazon.com/AWSEC2/latest/WindowsGuide/aws-nvme-drivers.html))
+- GCP ([gVNIC Network Adapter](https://cloud.google.com/compute/docs/networking/using-gvnic), [GGA Graphics](https://cloud.google.com/compute/docs/instances/enable-instance-virtual-display))
+- Azure ([MANA Network Adapter](https://learn.microsoft.com/azure/virtual-network/accelerated-networking-mana-windows))
 
-   <https://massgrave.dev/genuine-installation-media.html> (Recommended, iso sourced from official channels, updated monthly, includes the latest patches)
+> [!WARNING]
+> Vista (Server 2008) and 32-bit systems may lack drivers.
 
-   <https://www.microsoft.com/software-download/windows8>
+> [!WARNING]
+> For EFI machines without CSM enabled, Windows 7 (Server 2008 R2) cannot be installed.
 
-   <https://www.microsoft.com/software-download/windows10> (Need to open it with a mobile User-Agent)
+> [!WARNING]
+> Supports installation of Windows 11 on ARM machines, limited to Hyper-V (Azure) only, not supported on KVM (Oracle Cloud).
 
-   <https://www.microsoft.com/software-download/windows11>
-
-## Virtualization Requirements
-
-Not supported on OpenVZ, LXC virtual machines.
-
-Please use <https://github.com/LloydAsp/OsMutation>.
-
-## Default Passwords
-
-| System        | Username       | Password       |
-| ------------- | -------------- | -------------- |
-| Linux         | root           | 123@@@         |
-| Windows (iso) | administrator  | 123@@@         |
-| Windows (dd)  | Image username | Image password |
-
-If encountering a password error during remote login to Windows, try using the username .\administrator.
-
-## If the script cannot be downloaded under Windows
-
-You can try the following methods:
-
-1. Disable Windows Defender Real-time Protection.
-
-2. For Windows 7, install this patch to enable TLS 1.2.
-
-   <https://aka.ms/easyfix51044>
-
-3. Update SSL root certificates.
-
-   ```batch
-   certutil -generateSSTFromWU root.sst
-   certutil -addstore Root root.sst
-   ```
-
-4. Download manually by copying these two files through `Remote Desktop Connection`.
-
-   <https://raw.githubusercontent.com/bin456789/reinstall/main/reinstall.bat>
-
-   <https://raw.githubusercontent.com/bin456789/reinstall/main/reinstall.sh>
+> [!WARNING]
+> In the Chinese version of Windows 10 LTSC 2021 ISO `zh-cn_windows_10_enterprise_ltsc_2021_x64_dvd_033b7312.iso`, the `wsappx` process may indefinitely consume CPU resources.
+>
+> The solution is to update the system patches or manually install the `VCLibs` library <https://www.google.com/search?q=ltsc+wsappx>.
 
 ## Thanks
 

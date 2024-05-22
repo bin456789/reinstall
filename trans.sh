@@ -112,7 +112,7 @@ download() {
         apk add coreutils
     fi
 
-    # 阿里云源检测 user-agent 禁止 axel/aria2 下载
+    # 阿里云源限速，而且检测 user-agent 禁止 axel/aria2 下载
     # aria2 默认 --max-tries 5
 
     # 默认 --max-tries=5，但以下情况服务器出错，aria2不会重试，而是直接返回错误
@@ -395,10 +395,10 @@ get_netconf_to() {
     # shellcheck disable=SC2154
     # debian initrd 没有 xargs
     case "$1" in
-    slaac) echo "$ra" | grep 'Autonomous address conf' | grep Yes && res=1 || res=0 ;;
-    dhcpv6) echo "$ra" | grep 'Stateful address conf' | grep Yes && res=1 || res=0 ;;
+    slaac) echo "$ra" | grep 'Autonomous address conf' | grep -q Yes && res=1 || res=0 ;;
+    dhcpv6) echo "$ra" | grep 'Stateful address conf' | grep -q Yes && res=1 || res=0 ;;
     rdnss) res=$(echo "$ra" | grep 'Recursive DNS server' | cut -d: -f2-) ;;
-    other) echo "$ra" | grep 'Stateful other conf' | grep Yes && res=1 || res=0 ;;
+    other) echo "$ra" | grep 'Stateful other conf' | grep -q Yes && res=1 || res=0 ;;
     *) res=$(cat /dev/$1) ;;
     esac
 
@@ -936,7 +936,7 @@ EOF
         pacstrap -K $os_dir $pkgs
 
         # dns
-        cp -f /etc/resolv.conf $os_dir/etc/resolv.conf
+        cp_resolv_conf $os_dir
 
         # 挂载伪文件系统
         mount_pseudo_fs $os_dir
@@ -982,7 +982,7 @@ EOF
         apk del tar xz
 
         # dns
-        cp -f /etc/resolv.conf $os_dir/etc/resolv.conf
+        cp_resolv_conf $os_dir
 
         # 挂载伪文件系统
         mount_pseudo_fs $os_dir
@@ -1187,7 +1187,7 @@ EOF
     apk del arch-install-scripts
 
     # 删除 resolv.conf，不然 systemd-resolved 无法创建软链接
-    rm -f $os_dir/etc/resolv.conf
+    rm_resolv_conf $os_dir
 
     # 删除 swap
     swapoff -a
@@ -1587,7 +1587,7 @@ download_cloud_init_config() {
     if ! grep -w swap $os_dir/etc/fstab; then
         # btrfs
         # 目前只有 arch 和 fedora 镜像使用 btrfs
-        # 等 fedora 38 cloud-init 升级到 v23.3 后删除
+        # 等 fedora 39 cloud-init 升级到 v23.3 后删除
         if mount | grep 'on /os type btrfs'; then
             insert_into_file $ci_file after '^runcmd:' <<EOF
   - btrfs filesystem mkswapfile --size 1G /swapfile
@@ -1711,12 +1711,16 @@ get_axx64() {
     esac
 }
 
-cp_resolv_conf() {
-    os_dir=$1
+is_file_or_link() {
     # -e / -f 坏软连接，返回 false
     # -L 坏软连接，返回 true
-    if { [ -e $os_dir/etc/resolv.conf ] || [ -L $os_dir/etc/resolv.conf ]; } &&
-        ! { [ -e $os_dir/etc/resolv.conf.orig ] || [ -L $os_dir/etc/resolv.conf.orig ]; }; then
+    [ -f $1 ] || [ -L $1 ]
+}
+
+cp_resolv_conf() {
+    os_dir=$1
+    if is_file_or_link $os_dir/etc/resolv.conf &&
+        ! is_file_or_link $os_dir/etc/resolv.conf.orig; then
         mv $os_dir/etc/resolv.conf $os_dir/etc/resolv.conf.orig
     fi
     cp -f /etc/resolv.conf $os_dir/etc/resolv.conf
@@ -1729,7 +1733,7 @@ rm_resolv_conf() {
 
 restore_resolv_conf() {
     os_dir=$1
-    if [ -f $os_dir/etc/resolv.conf.orig ]; then
+    if is_file_or_link $os_dir/etc/resolv.conf.orig; then
         mv -f $os_dir/etc/resolv.conf.orig $os_dir/etc/resolv.conf
     fi
 }
@@ -1770,7 +1774,7 @@ EOF
     # 修复 fedora 38 或以下用静态 ipv6 会掉线
     # el 全系也用 NetworkManager，但他们的配置文件是 sysconfig，因此不受影响
     # https://github.com/canonical/cloud-init/commit/5d440856cb6d2b4c908015fe4eb7227615c17c8b
-    if grep -E 'fedora:38' $os_dir/etc/os-release; then
+    if false && grep -E 'fedora:38' $os_dir/etc/os-release; then
         network_manager_py=$os_dir/usr/lib/python3.11/site-packages/cloudinit/net/network_manager.py
         if ! grep '"static6": "manual",' $network_manager_py; then
             echo '"static6": "manual",' | insert_into_file $network_manager_py after '"static": "manual",'
@@ -1850,19 +1854,18 @@ EOF
         add_onlink_script_if_need
 
         # 同步证书
-        rm $os_dir/etc/resolv.conf
-        cp /etc/resolv.conf $os_dir/etc/resolv.conf
+        cp_resolv_conf $os_dir
         mount_pseudo_fs $os_dir
         chroot $os_dir pacman-key --init
         chroot $os_dir pacman-key --populate
-        rm $os_dir/etc/resolv.conf
+        rm_resolv_conf $os_dir
     fi
 
     # gentoo
     if [ -f $os_dir/etc/gentoo-release ]; then
         # 挂载伪文件系统
         mount_pseudo_fs $os_dir
-        cp -f /etc/resolv.conf $os_dir/etc/resolv.conf
+        cp_resolv_conf $os_dir
 
         # 在这里修改密码，而不是用cloud-init，因为我们的默认密码太弱
         sed -i 's/enforce=everyone/enforce=none/' $os_dir/etc/security/passwdqc.conf
@@ -1876,7 +1879,7 @@ EOF
         chroot $os_dir eselect profile set $profile
 
         # 删除 resolv.conf，不然 systemd-resolved 无法创建软链接
-        rm -f $os_dir/etc/resolv.conf
+        rm_resolv_conf $os_dir
 
         # 启用网络服务
         chroot $os_dir systemctl enable systemd-networkd
@@ -2201,7 +2204,7 @@ install_qcow_by_copy() {
 
     modify_el_ol() {
         # resolv.conf
-        cp /etc/resolv.conf /os/etc/resolv.conf
+        cp_resolv_conf /os
 
         # selinux kdump
         disable_selinux_kdump /os
@@ -2219,6 +2222,7 @@ install_qcow_by_copy() {
         # 删除云镜像自带的 dhcp 配置，防止歧义
         # clout-init 网络配置在 /etc/sysconfig/network-scripts/
         rm -rf /os/etc/NetworkManager/system-connections/*.nmconnection
+        rm -rf /os/etc/sysconfig/network-scripts/ifcfg-*
 
         # 为 centos 7 ci 安装 NetworkManager
         # 1. 能够自动配置 onlink 网关
@@ -2332,14 +2336,13 @@ EOF
         fi
 
         # 不删除可能网络管理器不会写入dns
-        rm -f /os/etc/resolv.conf
+        rm_resolv_conf /os
     }
 
     modify_ubuntu() {
         os_dir=/os
 
-        mv $os_dir/etc/resolv.conf $os_dir/etc/resolv.conf.orig
-        cp /etc/resolv.conf $os_dir/etc/resolv.conf
+        cp_resolv_conf $os_dir
 
         # 关闭 os prober，因为 os prober 有时很慢
         cp $os_dir/etc/default/grub $os_dir/etc/default/grub.orig
@@ -3375,6 +3378,7 @@ if [ "$hold" = 2 ]; then
     exit
 fi
 
+cd /
 # 让 web 输出全部内容
 sleep 5
 reboot

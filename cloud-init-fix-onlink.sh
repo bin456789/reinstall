@@ -190,10 +190,12 @@ fix_wicked_conf() {
 }
 
 # debian 10/11/12: netplan + networkd/resolved
+# 23.1.1 修复
 fix_netplan_conf
 
 # arch: networkd/resolved
 # gentoo: networkd/resolved
+# 24.2 修复
 fix_networkd_conf
 
 # opensuse 15.5: ifcfg + netconfig (dns) + wicked

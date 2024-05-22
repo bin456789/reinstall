@@ -48,6 +48,7 @@ if not errorlevel 1 (
         )
     )
 ) else (
+    rem 服务器在美国 equinix 机房，不是 cdn
     set mirror=http://mirrors.kernel.org
 )
 

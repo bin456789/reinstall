@@ -30,11 +30,11 @@ Usage: $reinstall____ centos   7|8|9
                       oracle   7|8|9
                       alma     8|9
                       rocky    8|9
-                      fedora   38|39|40
+                      fedora   39|40
                       debian   10|11|12
-                      ubuntu   20.04|22.04|24.04
-                      alpine   3.16|3.17|3.18|3.19
                       opensuse 15.5|tumbleweed
+                      ubuntu   20.04|22.04|24.04
+                      alpine   3.17|3.18|3.19|3.20
                       kali
                       arch
                       gentoo
@@ -472,15 +472,16 @@ is_have_arm_version() {
     case "$version" in
     10)
         case "$edition" in
-        pro | 'pro for workstations' | education | 'pro education' | enterprise) return ;;
+        pro | education | enterprise | 'pro education' | 'pro for workstations') return ;;
         'iot enterprise') return ;;
-        'iot enterprise ltsc 2021' | 'enterprise ltsc 2021') return ;;
+        'enterprise ltsc 2021' | 'iot enterprise ltsc 2021') return ;;
         esac
         ;;
     11)
         case "$edition" in
-        pro | 'pro for workstations' | education | 'pro education' | enterprise) return ;;
+        pro | education | enterprise | 'pro education' | 'pro for workstations') return ;;
         'iot enterprise') return ;;
+        'enterprise ltsc 2024' | 'iot enterprise ltsc 2024' | 'iot enterprise ltsc 2024 subscription') return ;;
         esac
         ;;
     esac
@@ -567,7 +568,7 @@ get_windows_iso_links() {
             10)
                 case "$edition" in
                 home | 'home single language') echo consumer ;;
-                pro | 'pro for workstations' | education | 'pro education' | enterprise) echo business ;;
+                pro | education | enterprise | 'pro education' | 'pro for workstations') echo business ;;
                 'iot enterprise') echo 'iot enterprise' ;;
                 'enterprise 2015 ltsb' | 'enterprise 2016 ltsb' | 'enterprise ltsc 2019') echo "$edition" ;;
                 'enterprise ltsc 2021')
@@ -583,8 +584,10 @@ get_windows_iso_links() {
             11)
                 case "$edition" in
                 home | 'home single language') echo consumer ;;
-                pro | 'pro for workstations' | education | 'pro education' | enterprise) echo business ;;
+                pro | education | enterprise | 'pro education' | 'pro for workstations') echo business ;;
                 'iot enterprise') echo 'iot enterprise' ;;
+                'enterprise ltsc 2024') echo 'enterprise ltsc 2024' ;;
+                'iot enterprise ltsc 2024' | 'iot enterprise ltsc 2024 subscription') echo 'iot enterprise ltsc 2024' ;;
                 esac
                 ;;
             esac
@@ -595,7 +598,7 @@ get_windows_iso_links() {
         case "$version" in
         10 | 11)
             case "$edition" in
-            pro | 'pro for workstations' | education | 'pro education' | enterprise) echo pro ;;
+            pro | education | enterprise | 'pro education' | 'pro for workstations') echo pro ;;
             esac
             ;;
         esac
@@ -640,7 +643,7 @@ get_windows_iso_links() {
         error_and_exit "Not support find this iso. Check --image-name or set --iso manually."
     fi
 
-    curl -L "$page_url" | grep -ioP 'https://.*?.iso' | awk -F/ '{print $NF}' >$tmp/win.list
+    curl -L "$page_url" | grep -ioP 'https://.*?.iso' >$tmp/win.list
 
     # 如果不是 ltsc ，应该先去除 ltsc 链接，否则最终链接有 ltsc 的
     # 例如查找 windows 10 iot enterprise，会得到
@@ -689,9 +692,8 @@ get_windows_iso_link() {
     for regex in "${regexs[@]}"; do
         regex=${regex// /_}
 
-        echo "finding: $regex" >&2
-        if file=$(grep -Eix "$regex" "$tmp/win.list" | get_shortest_line | grep .); then
-            iso="https://drive.massgrave.dev/$file"
+        echo "looking for: $regex" >&2
+        if iso=$(grep -Ei "/$regex" "$tmp/win.list" | get_shortest_line | grep .); then
             return
         fi
     done
@@ -759,22 +761,25 @@ setos() {
         if is_in_china; then
             cdimage_mirror=https://mirrors.ustc.edu.cn/debian-cdimage
         else
-            cdimage_mirror=https://cdimage.debian.org/images
+            cdimage_mirror=https://cdimage.debian.org/images # 在瑞典，不是 cdn
+            # cloud.debian.org 同样在瑞典，不是 cdn
         fi
 
         if is_use_cloud_image; then
             # cloud image
             is_virt && ci_type=genericcloud || ci_type=generic
             # 甲骨文 debian 10 amd64 genericcloud vnc 没有显示
-            [ "$releasever" -eq 10 ] && [ "$basearch_alt" = amd64 ] && ci_type=generic
+            # 甲骨文 debian 10 arm64 没有 genericcloud 镜像
+            [ "$releasever" -eq 10 ] && ci_type=generic
             eval ${step}_img=$cdimage_mirror/cloud/$codename/latest/debian-$releasever-$ci_type-$basearch_alt.qcow2
         else
             # 传统安装
             if is_in_china; then
-                # 部分国内机无法访问 ftp.cn.debian.org
+                # ftp.cn.debian.org 不在国内还严重丢包
+                # https://www.itdog.cn/ping/ftp.cn.debian.org
                 deb_hostname=mirrors.tuna.tsinghua.edu.cn
             else
-                deb_hostname=deb.debian.org
+                deb_hostname=deb.debian.org # fastly
             fi
             mirror=http://$deb_hostname/debian/dists/$codename/main/installer-$basearch_alt/current/images/netboot/debian-installer/$basearch_alt
 
@@ -800,7 +805,8 @@ setos() {
             if is_in_china; then
                 deb_hostname=mirrors.tuna.tsinghua.edu.cn
             else
-                deb_hostname=kali.download
+                # http.kali.org (geoip 重定向) 到 kali.download (cf)
+                deb_hostname=http.kali.org
             fi
             codename=kali-rolling
             mirror=http://$deb_hostname/kali/dists/$codename/main/installer-$basearch_alt/current/images/netboot/debian-installer/$basearch_alt
@@ -827,6 +833,12 @@ setos() {
         if is_use_cloud_image; then
             # cloud image
             if is_in_china; then
+                # 有的源没有 releases 镜像
+                # https://mirrors.tuna.tsinghua.edu.cn/ubuntu-cloud-images/releases/
+                #   https://unicom.mirrors.ustc.edu.cn/ubuntu-cloud-images/releases/
+                #            https://mirror.nju.edu.cn/ubuntu-cloud-images/releases/
+
+                # mirrors.cloud.tencent.com
                 ci_mirror=https://mirror.nju.edu.cn/ubuntu-cloud-images
             else
                 ci_mirror=https://cloud-images.ubuntu.com
@@ -869,14 +881,14 @@ setos() {
             if is_in_china; then
                 mirror=https://mirrors.tuna.tsinghua.edu.cn/archlinux
             else
-                mirror=https://geo.mirror.pkgbuild.com
+                mirror=https://geo.mirror.pkgbuild.com # geoip
             fi
         else
             if is_in_china; then
                 mirror=https://mirrors.tuna.tsinghua.edu.cn/archlinuxarm
             else
                 # https 证书有问题
-                mirror=http://mirror.archlinuxarm.org
+                mirror=http://mirror.archlinuxarm.org # geoip
             fi
         fi
 
@@ -898,8 +910,7 @@ setos() {
         if is_in_china; then
             mirror=https://mirrors.tuna.tsinghua.edu.cn/gentoo
         else
-            # mirror=https://mirror.leaseweb.com/gentoo  # 不支持 ipv6
-            mirror=https://distfiles.gentoo.org
+            mirror=https://distfiles.gentoo.org # cdn77
         fi
 
         if is_use_cloud_image; then
@@ -995,13 +1006,7 @@ setos() {
                 "8" | "9") ci_image=$ci_mirror/$releasever-stream/$basearch/images/CentOS-Stream-GenericCloud-$releasever-latest.$basearch.qcow2 ;;
                 esac
                 ;;
-            "alma")
-                # alma8 x86_64 有独立的uefi镜像
-                if [ "$releasever" = 8 ] && is_efi && [ "$basearch" = x86_64 ]; then
-                    alma_efi=-UEFI
-                fi
-                ci_image=$ci_mirror/AlmaLinux-$releasever-GenericCloud$alma_efi-latest.$basearch.qcow2
-                ;;
+            "alma") ci_image=$ci_mirror/AlmaLinux-$releasever-GenericCloud-latest.$basearch.qcow2 ;;
             "rocky") ci_image=$ci_mirror/Rocky-$releasever-GenericCloud-Base.latest.$basearch.qcow2 ;;
             "fedora")
                 # Fedora-Cloud-Base-39-1.5.x86_64.qcow2
@@ -1128,11 +1133,11 @@ verify_os_name() {
         'oracle   7|8|9' \
         'alma     8|9' \
         'rocky    8|9' \
-        'fedora   38|39|40' \
+        'fedora   39|40' \
         'debian   10|11|12' \
-        'ubuntu   20.04|22.04|24.04' \
-        'alpine   3.16|3.17|3.18|3.19' \
         'opensuse 15.5|tumbleweed' \
+        'ubuntu   20.04|22.04|24.04' \
+        'alpine   3.17|3.18|3.19|3.20' \
         'kali' \
         'arch' \
         'gentoo' \
@@ -1690,7 +1695,7 @@ add_efi_entry_in_linux() {
     install_pkg efibootmgr
 
     for efi_part in $(get_maybe_efi_dirs_in_linux); do
-        if find $efi_part -name "*.efi" >/dev/null; then
+        if find $efi_part -iname "*.efi" >/dev/null; then
             dist_dir=$efi_part/EFI/reinstall
             basename=$(basename $source)
             mkdir -p $dist_dir
@@ -1740,9 +1745,10 @@ install_grub_linux_efi() {
 
     # 不要用 download.opensuse.org 和 download.fedoraproject.org
     # 因为 ipv6 访问有时跳转到 ipv4 地址，造成 ipv6 only 机器无法下载
-    # 日韩机器有时得到国内链接，且连不上
+    # 日韩机器有时得到国内镜像源，但镜像源屏蔽了国外 IP 导致连不上
+    # https://mirrors.bfsu.edu.cn/opensuse/ports/aarch64/tumbleweed/repo/oss/EFI/BOOT/grub.efi
     if [ "$efi_distro" = fedora ]; then
-        fedora_ver=39
+        fedora_ver=40
 
         if is_in_china; then
             mirror=https://mirrors.tuna.tsinghua.edu.cn/fedora
@@ -1770,6 +1776,8 @@ install_grub_win() {
     # 下载 grub
     info download grub
     grub_ver=2.06
+    # ftpmirror.gnu.org 是 geoip 重定向，不是 cdn
+    # 有可能重定义到一个拉黑了部分 IP 的服务器
     is_in_china && grub_url=https://mirrors.tuna.tsinghua.edu.cn/gnu/grub/grub-$grub_ver-for-windows.zip ||
         grub_url=https://ftpmirror.gnu.org/gnu/grub/grub-$grub_ver-for-windows.zip
     curl -Lo $tmp/grub.zip $grub_url
@@ -1796,6 +1804,7 @@ install_grub_win() {
         # efi
         info install grub for efi
         if [ "$basearch" = aarch64 ]; then
+            # 3.20 是 grub 2.12，可能会有问题
             alpine_ver=3.19
             is_in_china && mirror=http://mirrors.tuna.tsinghua.edu.cn/alpine || mirror=https://dl-cdn.alpinelinux.org/alpine
             grub_efi_apk=$(curl -L $mirror/v$alpine_ver/main/aarch64/ | grep -oP 'grub-efi-.*?apk' | head -1)
@@ -2436,7 +2445,7 @@ mod_initrd() {
 
     # 解压
     # 先删除临时文件，避免之前运行中断有残留文件
-    tmp_dir=$tmp/reinstall
+    tmp_dir=$tmp/initrd
     mkdir_clear $tmp_dir
     cd $tmp_dir
 
@@ -2562,7 +2571,7 @@ else
 fi
 
 # 整理参数
-if ! opts=$(getopt -n $0 -o "" --long ci,debug,hold:,sleep:,iso:,image-name:,img:,lang: -- "$@"); then
+if ! opts=$(getopt -n $0 -o "" --long ci,debug,hold:,sleep:,iso:,image-name:,img:,lang,commit: -- "$@"); then
     usage_and_exit
 fi
 
@@ -2570,6 +2579,10 @@ eval set -- "$opts"
 # shellcheck disable=SC2034
 while true; do
     case "$1" in
+    --commit)
+        commit=$2
+        shift 2
+        ;;
     --debug)
         set -x
         shift
@@ -2681,9 +2694,24 @@ esac
 # gitee 不支持ipv6
 # jsdelivr 有12小时缓存
 # https://github.com/XIU2/UserScript/blob/master/GithubEnhanced-High-Speed-Download.user.js#L31
-if [ -n "$github_proxy" ] && [[ "$confhome" = http*://raw.githubusercontent.com/* ]] && is_in_china; then
-    confhome=${confhome/http:\/\//https:\/\/}
-    confhome=${confhome/https:\/\/raw.githubusercontent.com/$github_proxy}
+if [ -n "$github_proxy" ] && [[ "$confhome" = http*://raw.githubusercontent.com/* ]]; then
+    # 未测试
+    if false; then
+        repo=$(echo $confhome | cut -d/ -f4,5)
+        branch=$(echo $confhome | cut -d/ -f6)
+        # 避免脚本更新时，文件不同步造成错误
+        if [ -z "$commit" ]; then
+            commit=$(curl -L https://api.github.com/repos/$repo/git/refs/heads/$branch |
+                grep '"sha"' | grep -Eo '[0-9a-f]{40}')
+        fi
+        # shellcheck disable=SC2001
+        confhome=$(echo "$confhome" | sed "s/main$/$commit/")
+    fi
+
+    if is_in_china; then
+        confhome=${confhome/http:\/\//https:\/\/}
+        confhome=${confhome/https:\/\/raw.githubusercontent.com/$github_proxy}
+    fi
 fi
 
 # 以下目标系统不需要两步安装
