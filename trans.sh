@@ -2184,9 +2184,6 @@ install_qcow_by_copy() {
     mkswap /dev/$xda*3
     swapon /dev/$xda*3
 
-    # cloud-init
-    download_cloud_init_config /os
-
     modify_el_ol() {
         # resolv.conf
         cp /etc/resolv.conf /os/etc/resolv.conf
@@ -2215,6 +2212,14 @@ install_qcow_by_copy() {
             yum install -y NetworkManager
             chroot /os/ systemctl enable NetworkManager
         fi
+
+        # 修复 cloud-init 添加了 IPV*_FAILURE_FATAL
+        # 甲骨文 dhcp6 获取不到 IP 将视为 fatal，原有的 ipv4 地址也会被删除
+        insert_into_file $ci_file after '^runcmd:' <<EOF
+  - sed -i '/IPV4_FAILURE_FATAL/d' /etc/sysconfig/network-scripts/ifcfg-* || true
+  - sed -i '/IPV6_FAILURE_FATAL/d' /etc/sysconfig/network-scripts/ifcfg-* || true
+  - systemctl restart NetworkManager
+EOF
 
         # fstab 删除多余分区
         # alma/rocky 镜像有 boot 分区
@@ -2401,10 +2406,16 @@ EOF
         restore_resolv_conf $os_dir
     }
 
+    # cloud-init
+    download_cloud_init_config /os
+
     case "$distro" in
     ubuntu) modify_ubuntu ;;
     *) modify_el_ol ;;
     esac
+
+    # 查看最终的 cloud-init 配置
+    cat /os/etc/cloud/cloud.cfg.d/99_*.cfg
 
     # 删除installer分区，重启后cloud init会自动扩容
     swapoff -a
