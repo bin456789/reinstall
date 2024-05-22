@@ -2926,7 +2926,7 @@ install_windows() {
             fi
 
             mkdir -p $drv/gce/$name
-            link=$(grep -o "/pool/.*-google-compute-engine-driver-$name\.goo" /tmp/gce.json)
+            link=$(grep -o "/pool/.*-google-compute-engine-driver-$name.*\.goo" /tmp/gce.json)
             wget $gce_repo$link -O- | tar -xzf- -C $drv/gce/$name
 
             # 没有 win6.0 文件夹
