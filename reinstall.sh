@@ -745,6 +745,17 @@ setos() {
         12) codename=bookworm ;;
         esac
 
+        # <=256M 必须要使用云内核，否则不够内存
+        if [ $ram_size -le 256 ]; then
+            find_main_disk
+            if ! can_use_cloud_kernel; then
+                for driver in $(get_disk_controller); do
+                    echo "using driver: $driver"
+                done
+                error_and_exit "Can't use cloud kernel. And not enough RAM to run normal kernel."
+            fi
+        fi
+
         if is_in_china; then
             cdimage_mirror=https://mirrors.ustc.edu.cn/debian-cdimage
         else
@@ -1905,17 +1916,17 @@ build_nextos_cmdline() {
 
     if is_distro_like_debian $nextos_distro; then
         if [ "$basearch" = "x86_64" ]; then
-            # debian 安装界面不遵循最后一个 tty 为主 tty 的规则
+            # debian installer 好像第一个 tty 是主 tty
             # 设置ttyS0,tty0,安装界面还是显示在ttyS0
             :
         else
             # debian arm 在没有ttyAMA0的机器上（aws t4g），最少要设置一个tty才能启动
             # 只设置tty0也行，但安装过程ttyS0没有显示
-            nextos_cmdline+=" console=ttyS0,115200 console=ttyAMA0,115200 console=tty0"
+            nextos_cmdline+=" console=ttyAMA0,115200 console=ttyS0,115200 console=tty0"
         fi
     else
         # nextos_cmdline+=" $(echo_tmp_ttys)"
-        nextos_cmdline+=" console=ttyS0,115200 console=ttyAMA0,115200 console=tty0"
+        nextos_cmdline+=" console=ttyAMA0,115200 console=ttyS0,115200 console=tty0"
     fi
     # nextos_cmdline+=" mem=256M"
     # nextos_cmdline+=" lowmem=+1"
@@ -1954,7 +1965,7 @@ mkdir_clear() {
     mkdir -p $dir
 }
 
-mod_initrd_debian() {
+mod_initrd_debian_kali() {
     # hack 1
     # 允许设置 ipv4 onlink 网关
     sed -Ei 's,&&( onlink=),||\1,' etc/udhcpc/default.script
@@ -2014,6 +2025,9 @@ EOF
         db_progress STEP 1
     }
 
+    # 直接覆盖 net-retriever，方便调试
+    # curl -Lo /usr/lib/debian-installer/retriever/net-retriever $confhome/net-retriever
+
     collect_netconf
     is_in_china && is_in_china=true || is_in_china=false
     netconf="'$mac_addr' '$ipv4_addr' '$ipv4_gateway' '$ipv6_addr' '$ipv6_gateway' '$is_in_china'"
@@ -2036,6 +2050,11 @@ EOF
                 # shellcheck disable=SC2154
                 if [ "$value" = standard ] && echo "$disabled_list" | grep -qx "$package"; then
                     line="Priority: optional"
+                elif [[ "$package" = ata-modules* ]]; then
+                    # 改成强制安装
+                    # 因为是 pata-modules sata-modules scsi-modules 的依赖
+                    # 但我们没安装它们，也就不会自动安装 ata-modules
+                    line="Priority: standard"
                 fi
                 ;;
             esac
@@ -2087,14 +2106,18 @@ EOF
 
     # https://github.com/linuxhw/LsPCI?tab=readme-ov-file#storageata-pci
     # https://debian.pkgs.org/12/debian-main-amd64/linux-image-6.1.0-18-cloud-amd64_6.1.76-1_amd64.deb.html
-    # 以下是 debian-installer 有的驱动，这些驱动云内核不一定都有，(+)表示有
-    # scsi-core-modules 是 ata-modules 的依赖，包含 sd_mod.ko(+) scsi_mod.ko(+)
-    # ata-modules       是下方模块的依赖，Priority 是 optional。只有 ata_generic.ko(+) 和 libata.ko(+) 两个驱动
-    # pata-modules      里面的驱动都是 pata_ 开头
-    #                   但只有 pata_legacy.ko(+) 在云内核中
-    # sata-modules      里面的驱动大部分是 sata_ 开头的，其他重要的还有 ahci.ko libahci.ko ata_piix.ko(+)
+    # https://deb.debian.org/debian/pool/main/l/linux-signed-amd64/
+    # https://deb.debian.org/debian/dists/bookworm/main/debian-installer/binary-all/Packages.xz
+    # https://deb.debian.org/debian/dists/bookworm/main/debian-installer/binary-amd64/Packages.xz
+    # 以下是 debian-installer 有的驱动，这些驱动云内核不一定都有，(+)表示云内核有
+    # scsi-core-modules 默认安装（不用修改），是 ata-modules 的依赖
+    #                   包含 sd_mod.ko(+) scsi_mod.ko(+) scsi_transport_fc.ko(+) scsi_transport_sas.ko(+) scsi_transport_spi.ko(+)
+    # ata-modules       默认可选（改成必装），是下方模块的依赖。只有 ata_generic.ko(+) 和 libata.ko(+) 两个驱动
+
+    # pata-modules      默认安装（改成可选），里面的驱动都是 pata_ 开头，但只有 pata_legacy.ko(+) 在云内核中
+    # sata-modules      默认安装（改成可选），里面的驱动大部分是 sata_ 开头的，其他重要的还有 ahci.ko libahci.ko ata_piix.ko(+)
     #                   云内核没有 sata 模块，也没有内嵌，有一个 CONFIG_SATA_HOST=y，libata-$(CONFIG_SATA_HOST)	+= libata-sata.o
-    # scsi-modules      包含 virtio_scsi.ko(+) virtio_blk.ko(+)
+    # scsi-modules      默认安装（改成可选），包含 nvme.ko(+) 和各种虚拟化驱动(+)
 
     download_and_extract_udeb() {
         package=$1
@@ -2127,38 +2150,12 @@ EOF
     }
 
     # 不用在 windows 判断是哪种硬盘控制器，因为 256M 运行 windows 只可能是 xp，而脚本本来就不支持 xp
-    get_disk_controller() {
-        (
-            cd "$(readlink -f /sys/block/$xda)"
-            while ! [ "$(pwd)" = / ]; do
-                if [ -d driver ]; then
-                    basename "$(readlink -f driver)"
-                fi
-                cd ..
-            done
-        )
-    }
-
-    can_use_cloud_kernel() {
-        # xen 是 vbd
-        # 有些虚拟机用了 ahci，但云内核没有 ahci 驱动
-        # shellcheck disable=SC2317
-        get_disk_controller | grep -Ewq \
-            'ata_generic|ata_piix|pata_legacy|nvme|virtio_blk|virtio_scsi|vbd|hv_storvsc|vmw_pvscsi'
-    }
-
     # 在 debian installer 中判断能否用云内核
-    cat <<EOF >can_use_cloud_kernel.sh
-        get_disk_controller(){
-            $(get_function_content get_disk_controller)
-        }
+    create_can_use_cloud_kernel_sh can_use_cloud_kernel.sh
 
-        can_use_cloud_kernel(){
-            $(get_function_content can_use_cloud_kernel)
-        }
-
-        can_use_cloud_kernel
-EOF
+    # 可以节省一点内存？
+    echo 'export DEBCONF_DROP_TRANSLATIONS=1' |
+        insert_into_file lib/debian-installer/menu before 'exec debconf'
 
     # 提前下载 fdisk
     # 因为 fdisk-udeb 包含 fdisk 和 sfdisk，提前下载可减少占用
@@ -2177,46 +2174,52 @@ EOF
         for driver in $(get_disk_controller); do
             echo "using driver: $driver"
             case $driver in
-            # xen 是 vbd
-            nvme | virtio_blk | virtio_scsi | vbd | hv_storvsc | vmw_pvscsi) extra_drivers+=" $driver" ;;
-            pata_legacy) sed -i '/^pata-modules/d' $net_retriever ;;
-            pata_* | sata_* | ahci) error_and_exit "Cloud kernel does not support this driver: $driver" ;;
+            nvme | virtio_blk | virtio_scsi | xen_blkfront | xen_scsifront | hv_storvsc | vmw_pvscsi) extra_drivers+=" $driver" ;;
+            pata_legacy) sed -i '/^pata-modules/d' $net_retriever ;; # 属于 pata-modules
+            ata_piix) sed -i '/^sata-modules/d' $net_retriever ;;    # 属于 sata-modules
+            ata_generic) ;;                                          # 属于 ata-modules，不用处理，因为我们设置强制安装了 ata-modules
             esac
         done
 
         # extra drivers
-        # 先不管 xen vmware
+        # xen 还需要以下两个？
+        # kernel/drivers/xen/xen-scsiback.ko
+        # kernel/drivers/block/xen-blkback/xen-blkback.ko
+        # 但反查也找不到 curl https://deb.debian.org/debian/dists/bookworm/main/Contents-udeb-amd64.gz | zcat | grep xen
         if [ -n "$extra_drivers" ]; then
             mkdir_clear $tmp/scsi
             download_and_extract_udeb scsi-modules-$kver-di $tmp/scsi
+            udeb_drivers_dir=$tmp/scsi/lib/modules/$kver/kernel/drivers
             (
                 cd lib/modules/*/kernel/drivers/
+                mkdir -p block scsi nvme/host
                 for driver in $extra_drivers; do
                     echo "adding driver: $driver"
                     case $driver in
+                    # debian 模块没有压缩
+                    # kali 模块有压缩
+                    # 因此要有 *
                     nvme)
-                        mkdir -p nvme/host
-                        cp -f $tmp/scsi/lib/modules/*/kernel/drivers/nvme/host/nvme.ko nvme/host/
-                        cp -f $tmp/scsi/lib/modules/*/kernel/drivers/nvme/host/nvme-core.ko nvme/host/
+                        cp -fv $udeb_drivers_dir/nvme/host/nvme.ko* nvme/host/
+                        cp -fv $udeb_drivers_dir/nvme/host/nvme-core.ko* nvme/host/
                         ;;
-                    virtio_blk)
-                        mkdir -p block
-                        cp -f $tmp/scsi/lib/modules/*/kernel/drivers/block/virtio_blk.ko block/
-                        ;;
-                    virtio_scsi)
-                        mkdir -p scsi
-                        cp -f $tmp/scsi/lib/modules/*/kernel/drivers/scsi/virtio_scsi.ko scsi/
-                        ;;
-                    hv_storvsc)
-                        mkdir -p scsi
-                        cp -f $tmp/scsi/lib/modules/*/kernel/drivers/scsi/hv_storvsc.ko scsi/
-                        cp -f $tmp/scsi/lib/modules/*/kernel/drivers/scsi/scsi_transport_fc.ko scsi/
-                        ;;
+                    virtio_blk) cp -fv $udeb_drivers_dir/block/virtio_blk.ko* block/ ;;
+                    virtio_scsi) cp -fv $udeb_drivers_dir/scsi/virtio_scsi.ko* scsi/ ;;
+                        # xen 的横杠特别不同
+                    xen_blkfront) cp -fv $udeb_drivers_dir/block/xen-blkfront.ko* block/ ;;
+                    xen_scsifront) cp -fv $udeb_drivers_dir/scsi/xen-scsifront.ko* scsi/ ;;
+                    hv_storvsc) cp -fv $udeb_drivers_dir/scsi/hv_storvsc.ko* scsi/ ;;
+                    vmw_pvscsi) cp -fv $udeb_drivers_dir/scsi/vmw_pvscsi.ko* scsi/ ;;
                     esac
                 done
             )
         fi
     fi
+
+    # amd64)
+    # 	level1=737 # MT=754108, qemu: -m 780
+    # 	level2=424 # MT=433340, qemu: -m 460
+    # 	min=316    # MT=322748, qemu: -m 350
 
     # 将 use_level 2 9 修改为 use_level 1
     # x86 use_level 2 会出现 No root file system is defined.
@@ -2244,6 +2247,58 @@ EOF
     sed -Ei "s/(^[[:space:]]*set[[:space:]].*)E/\1/" $tmp_dir/trans.sh
     sed -Ei "s/^[[:space:]]*apk[[:space:]]/$replace/" $tmp_dir/trans.sh
     sed -Ei "s/^[[:space:]]*trap[[:space:]]/$replace/" $tmp_dir/trans.sh
+}
+
+# 不用在 windows 判断是哪种硬盘控制器，因为 256M 运行 windows 只可能是 xp，而脚本本来就不支持 xp
+get_disk_controller() {
+    # 有以下结果组合出现
+    # sd_mod
+    # virtio_blk
+    # virtio_scsi
+    # virtio_pci
+    # pcieport
+    # xen_blkfront
+    # ahci
+    # nvme
+    (
+        cd "$(readlink -f /sys/block/$xda)"
+        while ! [ "$(pwd)" = / ]; do
+            if [ -d driver ]; then
+                if [ -d driver/module ]; then
+                    # 显示全名，例如 xen_blkfront sd_mod
+                    # 但 ahci 没有这个文件，所以 else 不能省略
+                    basename "$(readlink -f driver/module)"
+                else
+                    # 不显示全名，例如 vbd sd
+                    basename "$(readlink -f driver)"
+                fi
+            fi
+            cd ..
+        done
+    )
+}
+
+can_use_cloud_kernel() {
+    # 有些虚拟机用了 ahci，但云内核没有 ahci 驱动
+    # shellcheck disable=SC2317
+    get_disk_controller | grep -Ewq \
+        'ata_generic|ata_piix|pata_legacy|nvme|virtio_blk|virtio_scsi|xen_blkfront|xen_scsifront|hv_storvsc|vmw_pvscsi' &&
+        ! get_disk_controller | grep -Ewq 'pata_.*|sata_.*|ahci|mpt.*'
+
+}
+create_can_use_cloud_kernel_sh() {
+    cat <<EOF >$1
+        get_disk_controller(){
+            $(get_function_content get_disk_controller)
+        }
+
+        can_use_cloud_kernel(){
+            $(get_function_content can_use_cloud_kernel)
+        }
+
+        xda=\$1
+        can_use_cloud_kernel
+EOF
 }
 
 mod_initrd_alpine() {
@@ -2350,6 +2405,15 @@ EOF
         chmod a+x \$sysroot/etc/local.d/trans.start
         ln -s /etc/init.d/local \$sysroot/etc/runlevels/default/
 EOF
+
+    # 判断云镜像 debain 能否用云内核
+    if is_distro_like_debian; then
+        create_can_use_cloud_kernel_sh can_use_cloud_kernel.sh
+        insert_into_file init before '^exec (/bin/busybox )?switch_root' <<EOF
+        cp /can_use_cloud_kernel.sh \$sysroot/
+        chmod a+x \$sysroot/can_use_cloud_kernel.sh
+EOF
+    fi
 }
 
 mod_initrd() {
@@ -2381,63 +2445,16 @@ mod_initrd() {
     curl -Lo $tmp_dir/alpine-network.sh $confhome/alpine-network.sh
 
     if is_distro_like_debian $nextos_distro; then
-        mod_initrd_debian
+        mod_initrd_debian_kali
     else
         mod_initrd_$nextos_distro
     fi
 
-    # 显示精简前的大小
-    du -sh .
-
-    # 删除 initrd 里面没用的文件/驱动
+    # alpine live 不精简 initrd
+    # 因为不知道用户想干什么，可能会用到精简的文件
     if is_virt && ! is_alpine_live; then
-        rm -rf bin/brltty
-        rm -rf etc/brltty
-        rm -rf sbin/wpa_supplicant
-        rm -rf usr/lib/libasound.so.*
-        rm -rf usr/share/alsa
-        (
-            cd lib/modules/*/kernel/drivers/net/ethernet/
-            for item in *; do
-                case "$item" in
-                intel | amazon | google) ;;
-                *) rm -rf $item ;;
-                esac
-            done
-        )
-        (
-            cd lib/modules/*/kernel
-            for item in \
-                net/mac80211 \
-                net/wireless \
-                net/bluetooth \
-                drivers/hid \
-                drivers/mmc \
-                drivers/mtd \
-                drivers/usb \
-                drivers/ssb \
-                drivers/mfd \
-                drivers/bcma \
-                drivers/pcmcia \
-                drivers/parport \
-                drivers/platform \
-                drivers/staging \
-                drivers/net/usb \
-                drivers/net/bonding \
-                drivers/net/wireless \
-                drivers/input/rmi4 \
-                drivers/input/keyboard \
-                drivers/input/touchscreen \
-                drivers/bus/mhi \
-                drivers/char/pcmcia \
-                drivers/misc/cardreader; do
-                rm -rf $item
-            done
-        )
+        remove_useless_initrd_files
     fi
-
-    # 显示精简后的大小
-    du -sh .
 
     # 重建
     # 注意要用 cpio -H newc 不要用 cpio -c ，不同版本的 -c 作用不一样，很坑
@@ -2447,6 +2464,59 @@ mod_initrd() {
     #       (ASCII) archive format, use "-H odc" instead.
     find . | cpio --quiet -o -H newc | gzip -1 >/reinstall-initrd
     cd - >/dev/null
+}
+
+remove_useless_initrd_files() {
+    # 显示精简前的大小
+    du -sh .
+
+    # 删除 initrd 里面没用的文件/驱动
+    rm -rf bin/brltty
+    rm -rf etc/brltty
+    rm -rf sbin/wpa_supplicant
+    rm -rf usr/lib/libasound.so.*
+    rm -rf usr/share/alsa
+    (
+        cd lib/modules/*/kernel/drivers/net/ethernet/
+        for item in *; do
+            case "$item" in
+            intel | amazon | google) ;;
+            *) rm -rf $item ;;
+            esac
+        done
+    )
+    (
+        cd lib/modules/*/kernel
+        for item in \
+            net/mac80211 \
+            net/wireless \
+            net/bluetooth \
+            drivers/hid \
+            drivers/mmc \
+            drivers/mtd \
+            drivers/usb \
+            drivers/ssb \
+            drivers/mfd \
+            drivers/bcma \
+            drivers/pcmcia \
+            drivers/parport \
+            drivers/platform \
+            drivers/staging \
+            drivers/net/usb \
+            drivers/net/bonding \
+            drivers/net/wireless \
+            drivers/input/rmi4 \
+            drivers/input/keyboard \
+            drivers/input/touchscreen \
+            drivers/bus/mhi \
+            drivers/char/pcmcia \
+            drivers/misc/cardreader; do
+            rm -rf $item
+        done
+    )
+
+    # 显示精简后的大小
+    du -sh .
 }
 
 # 脚本入口
@@ -2550,8 +2620,9 @@ tmp=/reinstall-tmp
 mkdir_clear "$tmp"
 
 # 强制忽略/强制添加 --ci 参数
+# debian 不强制忽略 ci 留作测试
 case "$distro" in
-dd | windows | netboot.xyz | debian | kali | alpine | arch | gentoo)
+dd | windows | netboot.xyz | kali | alpine | arch | gentoo)
     if is_use_cloud_image; then
         echo "ignored --ci"
         cloud_image=0

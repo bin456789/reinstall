@@ -1689,6 +1689,36 @@ EOF
     fi
 }
 
+get_axx64() {
+    case "$(uname -m)" in
+    x86_64) echo amd64 ;;
+    aarch_64) echo arm64 ;;
+    esac
+}
+
+cp_resolv_conf() {
+    os_dir=$1
+    # -e / -f 坏软连接，返回 false
+    # -L 坏软连接，返回 true
+    if { [ -e $os_dir/etc/resolv.conf ] || [ -L $os_dir/etc/resolv.conf ]; } &&
+        ! { [ -e $os_dir/etc/resolv.conf.orig ] || [ -L $os_dir/etc/resolv.conf.orig ]; }; then
+        mv $os_dir/etc/resolv.conf $os_dir/etc/resolv.conf.orig
+    fi
+    cp -f /etc/resolv.conf $os_dir/etc/resolv.conf
+}
+
+rm_resolv_conf() {
+    os_dir=$1
+    rm -f $os_dir/etc/resolv.conf $os_dir/etc/resolv.conf.orig
+}
+
+restore_resolv_conf() {
+    os_dir=$1
+    if [ -f $os_dir/etc/resolv.conf.orig ]; then
+        mv -f $os_dir/etc/resolv.conf.orig $os_dir/etc/resolv.conf
+    fi
+}
+
 modify_linux() {
     os_dir=$1
 
@@ -1738,20 +1768,38 @@ EOF
         # 修复 onlink 网关
         add_onlink_script_if_need
 
+        mount_pseudo_fs $os_dir
+
+        # 检测机器是否能用 cloud 内核
+        axx64=$(get_axx64)
+        # shellcheck source=/dev/null
+        if ls $os_dir/boot/vmlinuz-*-cloud-$axx64 2>/dev/null && ! sh /can_use_cloud_kernel.sh $xda; then
+            cp_resolv_conf $os_dir
+            chroot $os_dir apt update
+            DEBIAN_FRONTEND=noninteractive chroot $os_dir apt install -y linux-image-$axx64
+
+            # 标记云内核包
+            # apt-mark showmanual 结果为空，返回值也是 0
+            if pkgs=$(chroot $os_dir apt-mark showmanual linux-*-cloud-$axx64 | grep .); then
+                chroot $os_dir apt-mark auto $pkgs
+
+                # 使用 autoremove
+                chroot_apt_autoremove $os_dir
+            fi
+            restore_resolv_conf $os_dir
+        fi
+
         if grep -E '^(10|11)' $os_dir/etc/debian_version; then
-            mv $os_dir/etc/resolv.conf $os_dir/etc/resolv.conf.orig
-            cp -f /etc/resolv.conf $os_dir/etc/resolv.conf
-            mount_pseudo_fs $os_dir
+            cp_resolv_conf $os_dir
             chroot $os_dir apt update
 
             if true; then
                 # 将 debian 10/11 设置为 12 一样的网络管理器
                 # 可解决 ifupdown dhcp 不支持 24位掩码+不规则网关的问题
-                chroot $os_dir apt update
                 DEBIAN_FRONTEND=noninteractive chroot $os_dir apt install -y netplan.io
                 chroot $os_dir systemctl disable networking resolvconf
                 chroot $os_dir systemctl enable systemd-networkd systemd-resolved
-                rm -f $os_dir/etc/resolv.conf $os_dir/etc/resolv.conf.orig
+                rm_resolv_conf $os_dir
                 ln -sf ../run/systemd/resolve/stub-resolv.conf $os_dir/etc/resolv.conf
                 insert_into_file $os_dir/etc/cloud/cloud.cfg.d/99_fallback.cfg after '#cloud-config' <<EOF
 system_info:
@@ -1762,10 +1810,9 @@ EOF
 
             else
                 # debian 10/11 默认不支持 rdnss，要安装 rdnssd 或者 nm
-                chroot $os_dir apt update
                 DEBIAN_FRONTEND=noninteractive chroot $os_dir apt install -y rdnssd
                 # 不会自动建立链接，因此不能删除
-                mv $os_dir/etc/resolv.conf.orig $os_dir/etc/resolv.conf
+                restore_resolv_conf $os_dir
             fi
         fi
     fi
@@ -2010,6 +2057,15 @@ yum() {
             chroot /os/ dnf -y --disablerepo=* --enablerepo=baseos --setopt=install_weak_deps=False "$@"
         fi
     fi
+}
+
+chroot_apt_autoremove() {
+    os_dir=$1
+
+    conf=$os_dir/etc/apt/apt.conf.d/01autoremove
+    sed -i.orig 's/VersionedKernelPackages/x/; s/NeverAutoRemove/x/' $conf
+    DEBIAN_FRONTEND=noninteractive chroot $os_dir apt autoremove --purge -y
+    mv $conf.orig $conf
 }
 
 install_qcow_by_copy() {
@@ -2289,15 +2345,12 @@ EOF
 
         # 标记旧内核包
         # 注意排除 linux-base
-        pkgs=$(chroot $os_dir apt-mark showmanual linux-* | grep -E 'generic|virtual|kvm' | grep -v $flavor)
-        chroot $os_dir apt-mark auto $pkgs
+        if pkgs=$(chroot $os_dir apt-mark showmanual linux-* | grep -E 'generic|virtual|kvm' | grep -v $flavor); then
+            chroot $os_dir apt-mark auto $pkgs
 
-        # 使用 autoremove
-        conf=$os_dir/etc/apt/apt.conf.d/01autoremove
-        sed -i.orig 's/VersionedKernelPackages/x/; s/NeverAutoRemove/x/' $conf
-        DEBIAN_FRONTEND=noninteractive chroot $os_dir apt autoremove --purge -y
-        mv $conf.orig $conf
-
+            # 使用 autoremove
+            chroot_apt_autoremove $os_dir
+        fi
         # 安装 bios 引导
         if ! is_efi; then
             chroot $os_dir grub-install /dev/$xda
@@ -2345,7 +2398,7 @@ EOF
             sed -i '/[[:space:]]\/boot\/efi[[:space:]]/d' $os_dir/etc/fstab
         fi
 
-        mv $os_dir/etc/resolv.conf.orig $os_dir/etc/resolv.conf
+        restore_resolv_conf $os_dir
     }
 
     case "$distro" in
