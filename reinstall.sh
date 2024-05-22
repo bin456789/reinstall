@@ -2316,10 +2316,10 @@ EOF
 }
 
 mod_initrd_alpine() {
-    # hack 1 virt 内核添加 ipv6 模块
+    # hack 1 v3.19 和之前的 virt 内核需添加 ipv6 模块
     if virt_dir=$(ls -d $tmp_dir/lib/modules/*-virt 2>/dev/null); then
         ipv6_dir=$virt_dir/kernel/net/ipv6
-        if ! [ -f $ipv6_dir/ipv6.ko ]; then
+        if ! [ -f $ipv6_dir/ipv6.ko ] || ! grep -q ipv6 $tmp_dir/lib/modules/*/modules.builtin; then
             mkdir -p $ipv6_dir
             modloop_file=$tmp/modloop_file
             modloop_dir=$tmp/modloop_dir
@@ -2337,7 +2337,7 @@ mod_initrd_alpine() {
     fi
     insert_into_file init after 'configure_ip\(\)' <<EOF
         depmod
-        modprobe ipv6
+        [ -d /sys/module/ipv6 ] || modprobe ipv6
 EOF
 
     # hack 2 设置 ethx
@@ -2701,8 +2701,8 @@ if is_netboot_xyz ||
     }; }; then
     setos nextos $distro $releasever
 else
-    # alpine 作为中间系统时，使用 3.19
-    alpine_ver_for_trans=3.19
+    # alpine 作为中间系统时，使用 3.20
+    alpine_ver_for_trans=3.20
     setos finalos $distro $releasever
     setos nextos alpine $alpine_ver_for_trans
 fi

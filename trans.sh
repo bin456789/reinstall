@@ -156,8 +156,8 @@ update_part() {
             udevadm settle
         else
             # busybox mdev
-            # -f 好像没用，而且 3.16 没有
-            mdev -s 2>/dev/null
+            # -f 好像没用
+            mdev -sf 2>/dev/null
         fi
     done
 }
@@ -1467,12 +1467,20 @@ mount_pseudo_fs() {
     fi
 }
 
+get_yq_name() {
+    if grep -q '3\.1[6789]' /etc/alpine-release; then
+        echo yq
+    else
+        echo yq-go
+    fi
+}
+
 create_cloud_init_network_config() {
     ci_file=$1
 
     get_netconf_to ethx
     get_netconf_to mac_addr
-    apk add yq
+    apk add "$(get_yq_name)"
 
     # shellcheck disable=SC2154
     yq -i ".network.version=1 |
@@ -1550,7 +1558,7 @@ create_cloud_init_network_config() {
     # 如果 network.config[1] 没有 address，则删除，避免低版本 cloud-init 报错
     yq -i 'del(.network.config[1] | select(has("address") | not))' $ci_file
 
-    apk del yq
+    apk del "$(get_yq_name)"
 }
 
 truncate_machine_id() {
