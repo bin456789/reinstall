@@ -2332,7 +2332,16 @@ EOF
 
         # 更改源
         if is_in_china; then
-            sed -i 's/archive.ubuntu.com/cn.archive.ubuntu.com/' $os_dir/etc/apt/sources.list
+            # 22.04 使用 /etc/apt/sources.list
+            # 24.04 使用 /etc/apt/sources.list.d/ubuntu.sources
+            for file in $os_dir/etc/apt/sources.list $os_dir/etc/apt/sources.list.d/ubuntu.sources; do
+                if [ -f $file ]; then
+                    # cn.archive.ubuntu.com 不在国内还严重丢包
+                    # https://www.itdog.cn/ping/cn.archive.ubuntu.com
+                    sed -i 's/archive.ubuntu.com/mirrors.tuna.tsinghua.edu.cn/' $file # x64
+                    sed -i 's/ports.ubuntu.com/mirrors.tuna.tsinghua.edu.cn/' $file   # arm
+                fi
+            done
         fi
 
         # 安装最佳内核
