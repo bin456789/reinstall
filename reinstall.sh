@@ -1474,11 +1474,14 @@ find_main_disk() {
         # 跨硬盘lvm         显示两个硬盘                                显示/dev/mapper/centos-root
         # 跨硬盘软raid      显示两个硬盘                                显示/dev/md127
 
+        # 还有 findmnt
+
         # 改成先检测 /boot/efi /efi /boot 分区？
 
         install_pkg lsblk
+        # 查找主硬盘时，优先查找 /boot 分区，再查找 / 分区
         # lvm 显示的是 /dev/mapper/xxx-yyy，再用第二条命令得到sda
-        mapper=$(mount | awk '$3=="/" {print $1}')
+        mapper=$(mount | awk '$3=="/boot" {print $1}' | grep . || mount | awk '$3=="/" {print $1}')
         xda=$(lsblk -rn --inverse $mapper | grep -w disk | awk '{print $1}' | sort -u)
 
         # 检测主硬盘是否横跨多个磁盘
