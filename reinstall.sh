@@ -1908,6 +1908,7 @@ build_nextos_cmdline() {
         # kali 安装好后网卡是 eth0 这种格式，但安装时不是
         if [ "$nextos_distro" = kali ]; then
             nextos_cmdline+=" net.ifnames=0"
+            nextos_cmdline+=" simple-cdd/profiles=kali"
         fi
     elif is_distro_like_redhat $nextos_distro; then
         # redhat
@@ -2156,6 +2157,19 @@ EOF
     # 可以节省一点内存？
     echo 'export DEBCONF_DROP_TRANSLATIONS=1' |
         insert_into_file lib/debian-installer/menu before 'exec debconf'
+
+    # 还原 kali netinst.iso 的 simple-cdd 机制
+    # 主要用于调用 kali.postinst 设置 zsh 为默认 shell
+    # 但 mini.iso 又没有这种机制
+    # https://gitlab.com/kalilinux/build-scripts/live-build-config/-/raw/master/kali-config/common/includes.installer/kali-finish-install?ref_type=heads
+    # https://salsa.debian.org/debian/simple-cdd/-/blob/master/debian/14simple-cdd?ref_type=heads
+    # https://http.kali.org/pool/main/s/simple-cdd/simple-cdd-profiles_0.6.9_all.udeb
+    if [ "$distro" = kali ]; then
+        # 但我们没有使用 iso，因此没有 kali.postinst，需要另外下载
+        mkdir -p cdrom/simple-cdd
+        curl -Lo cdrom/simple-cdd/kali.postinst https://gitlab.com/kalilinux/build-scripts/live-build-config/-/raw/master/kali-config/common/includes.installer/kali-finish-install?ref_type=heads
+        chmod a+x cdrom/simple-cdd/kali.postinst
+    fi
 
     # 提前下载 fdisk
     # 因为 fdisk-udeb 包含 fdisk 和 sfdisk，提前下载可减少占用
