@@ -765,36 +765,11 @@ install_alpine() {
         create_swap 256 /os/swapfile
     fi
 
-    # 网络
-    # 坑1 udhcpc下，ip -4 addr 无法知道是否是 dhcp
-    # 坑2 udhcpc不支持dhcpv6
-    # 坑3 dhcpcd的slaac默认开了隐私保护，造成ip和后台面板不一致
-
-    # slaac方案1: udhcpc + rdnssd
-    # slaac方案2: dhcpcd + 关闭隐私保护
-    # dhcpv6方案: dhcpcd
-
-    # 综合使用dhcpcd方案
-    # 1 无需改动/etc/network/interfaces，自动根据ra使用slaac和dhcpv6
-    # 2 自带rdnss支持
-    # 3 唯一要做的是关闭隐私保护
-
-    # 安装 dhcpcd
-    apk add dhcpcd
-    sed -i '/^slaac private/s/^/#/' /etc/dhcpcd.conf
-    sed -i '/^#slaac hwaddr/s/^#//' /etc/dhcpcd.conf
-    rc-update add networking boot
-
     # 网络配置
     create_ifupdown_config /etc/network/interfaces
     echo
     cat -n /etc/network/interfaces
     echo
-
-    # 设置
-    setup-keymap us us
-    setup-timezone -i Asia/Shanghai
-    setup-ntp chrony || true
 
     # 在 arm netboot initramfs init 中
     # 如果识别到rtc硬件，就往系统添加hwclock服务，否则添加swclock
@@ -804,18 +779,18 @@ install_alpine() {
     rc-update del swclock boot || true
     rc-update add hwclock boot
 
-    # 通过 setup-alpine 安装会多启用几个服务
+    # 通过 setup-alpine 安装会启用以下几个服务
     # https://github.com/alpinelinux/alpine-conf/blob/c5131e9a038b09881d3d44fb35e86851e406c756/setup-alpine.in#L189
-    # acpid | default
-    # crond | default
-    # seedrng | boot
+
+    # boot
+    rc-update add networking boot
+    rc-update add seedrng boot
+
+    # default
+    rc-update add crond
     if [ -e /dev/input/event0 ]; then
         rc-update add acpid
     fi
-
-    # 3.16 没有 seedrng
-    rc-update add crond
-    rc-update add seedrng boot || true
 
     # 如果是 vm 就用 virt 内核
     if is_virt; then
@@ -831,18 +806,6 @@ install_alpine() {
         setup-apkrepos -1
     fi
 
-    # 修复3.16安装后无法引导
-    # https://github.com/alpinelinux/alpine-conf/commit/bc7aeab868bf4d94dde2ff5d6eb97daede5975b9
-    if grep -F '3.16' /etc/alpine-release; then
-        file=/sbin/setup-disk
-        if ! [ -e $file.orig ]; then
-            cp $file $file.orig
-            # shellcheck disable=SC2016
-            echo 'apk add --quiet $(select_bootloader_pkg)' |
-                insert_into_file $file after '# install to given mounted root'
-        fi
-    fi
-
     # setup-disk 安装 grub 跳过了添加引导项到 nvram
     # 防止部分机器不会 fallback 到 bootx64.efi
     if is_efi; then
@@ -855,20 +818,51 @@ install_alpine() {
     KERNELOPTS="$(get_ttys console=)"
     export KERNELOPTS
     export BOOTLOADER="grub"
-    printf 'y' | setup-disk -m sys -k $kernel_flavor /os
+    setup-disk -m sys -k $kernel_flavor /os
+
+    # 安装到硬盘后才安装各种应用
+    # 避免占用 Live OS 内存
+
+    # 网络
+    # 坑1 udhcpc下，ip -4 addr 无法知道是否是 dhcp
+    # 坑2 udhcpc不支持dhcpv6
+    # 坑3 dhcpcd的slaac默认开了隐私保护，造成ip和后台面板不一致
+
+    # slaac方案1: udhcpc + rdnssd
+    # slaac方案2: dhcpcd + 关闭隐私保护
+    # dhcpv6方案: dhcpcd
+
+    # 综合使用dhcpcd方案
+    # 1 无需改动/etc/network/interfaces，自动根据ra使用slaac和dhcpv6
+    # 2 自带rdnss支持
+    # 3 唯一要做的是关闭隐私保护
+
+    # 安装 dhcpcd
+    chroot /os apk add dhcpcd
+    chroot /os sed -i '/^slaac private/s/^/#/' /etc/dhcpcd.conf
+    chroot /os sed -i '/^#slaac hwaddr/s/^#//' /etc/dhcpcd.conf
+
+    # 安装其他部件
+    chroot /os setup-keymap us us
+    chroot /os setup-timezone -i Asia/Shanghai
+    chroot /os setup-ntp chrony || true
 
     # 3.19 或以上，非 efi 需要手动安装 grub
-    if ! is_efi && grep -F '3.19' /etc/alpine-release; then
+    if ! is_efi; then
         grub-install --boot-directory=/os/boot --target=i386-pc /dev/$xda
     fi
 
-    # 删除无效的 efi 条目
+    # efi grub 添加 fwsetup 条目
     if is_efi; then
-        del_invalid_efi_entry
+        mount_pseudo_fs /os
+        chroot /os update-grub
     fi
 
+    # 删除 chroot 历史记录
+    rm -rf /os/root/.ash_history
+
     # 关闭 swap 前删除应用，避免占用内存
-    apk del chrony grub* efibootmgr
+    apk del e2fsprogs dosfstools grub*
 
     # 是否保留 swap
     if [ -e /os/swapfile ]; then
@@ -3278,8 +3272,9 @@ else
     esac
 fi
 
-# alpine 因内存容量问题，单独处理
-if is_efi && [ "$distro" != "alpine" ]; then
+# 需要用到 lsblk efibootmgr ，只要 1M 左右容量
+# 因此 alpine 不单独处理
+if is_efi; then
     del_invalid_efi_entry
     add_fallback_efi_to_nvram
 fi
