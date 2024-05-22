@@ -1297,10 +1297,10 @@ create_part() {
                 set 3 msftdata on
             update_part /dev/$xda
 
-            mkfs.fat -n efi /dev/$xda*1              #1 efi
-            echo                                     #2 msr
-            mkfs.ext4 -F -L os /dev/$xda*3           #3 os
-            mkfs.ntfs -f -F -L installer /dev/$xda*4 #4 installer
+            mkfs.fat -n efi /dev/$xda*1                 #1 efi
+            echo                                        #2 msr
+            mkfs.ext4 -E nodiscard -F -L os /dev/$xda*3 #3 os
+            mkfs.ntfs -f -F -L installer /dev/$xda*4    #4 installer
         else
             # bios + mbr 启动盘最大可用 2t
             is_xda_gt_2t && max_usable_size=2TiB || max_usable_size=100%
@@ -1311,8 +1311,8 @@ create_part() {
                 set 1 boot on
             update_part /dev/$xda
 
-            mkfs.ext4 -F -L os /dev/$xda*1           #1 os
-            mkfs.ntfs -f -F -L installer /dev/$xda*2 #2 installer
+            mkfs.ext4 -E nodiscard -F -L os /dev/$xda*1 #1 os
+            mkfs.ntfs -f -F -L installer /dev/$xda*2    #2 installer
         fi
     elif is_use_cloud_image; then
         installer_part_size="$(get_ci_installer_part_size)"
@@ -1329,9 +1329,9 @@ create_part() {
                     set 1 esp on
                 update_part /dev/$xda
 
-                mkfs.fat -n efi /dev/$xda*1           #1 efi
-                echo                                  #2 os 用目标系统的格式化工具
-                mkfs.ext4 -F -L installer /dev/$xda*3 #3 installer
+                mkfs.fat -n efi /dev/$xda*1                        #1 efi
+                echo                                               #2 os 用目标系统的格式化工具
+                mkfs.ext4 -E nodiscard -F -L installer /dev/$xda*3 #3 installer
             else
                 parted /dev/$xda -s -- \
                     mklabel gpt \
@@ -1341,9 +1341,9 @@ create_part() {
                     set 1 bios_grub on
                 update_part /dev/$xda
 
-                echo                                  #1 bios_boot
-                echo                                  #2 os 用目标系统的格式化工具
-                mkfs.ext4 -F -L installer /dev/$xda*3 #3 installer
+                echo                                               #1 bios_boot
+                echo                                               #2 os 用目标系统的格式化工具
+                mkfs.ext4 -E nodiscard -F -L installer /dev/$xda*3 #3 installer
             fi
         else
             # 使用 dd qcow2
@@ -1354,8 +1354,8 @@ create_part() {
                 mkpart '" "' ext4 -$installer_part_size 100%
             update_part /dev/$xda
 
-            mkfs.ext4 -F -L os /dev/$xda*1        #1 os
-            mkfs.ext4 -F -L installer /dev/$xda*2 #2 installer
+            mkfs.ext4 -E nodiscard -F -L os /dev/$xda*1        #1 os
+            mkfs.ext4 -E nodiscard -F -L installer /dev/$xda*2 #2 installer
         fi
     elif [ "$distro" = alpine ] || [ "$distro" = arch ] || [ "$distro" = gentoo ]; then
         if is_efi; then
@@ -1367,8 +1367,8 @@ create_part() {
                 set 1 boot on
             update_part /dev/$xda
 
-            mkfs.fat /dev/$xda*1     #1 efi
-            mkfs.ext4 -F /dev/$xda*2 #2 os
+            mkfs.fat /dev/$xda*1                  #1 efi
+            mkfs.ext4 -E nodiscard -F /dev/$xda*2 #2 os
         elif is_xda_gt_2t; then
             # bios > 2t
             parted /dev/$xda -s -- \
@@ -1378,8 +1378,8 @@ create_part() {
                 set 1 bios_grub on
             update_part /dev/$xda
 
-            echo                     #1 bios_boot
-            mkfs.ext4 -F /dev/$xda*2 #2 os
+            echo                                  #1 bios_boot
+            mkfs.ext4 -E nodiscard -F /dev/$xda*2 #2 os
         else
             # bios
             parted /dev/$xda -s -- \
@@ -1388,7 +1388,7 @@ create_part() {
                 set 1 boot on
             update_part /dev/$xda
 
-            mkfs.ext4 -F /dev/$xda*1 #1 os
+            mkfs.ext4 -E nodiscard -F /dev/$xda*1 #1 os
         fi
     else
         # 安装红帽系或ubuntu
@@ -1406,9 +1406,9 @@ create_part() {
                 set 1 boot on
             update_part /dev/$xda
 
-            mkfs.fat -n efi /dev/$xda*1       #1 efi
-            mkfs.ext4 -F -L os /dev/$xda*2    #2 os
-            mkfs.fat -n installer /dev/$xda*3 #3 installer
+            mkfs.fat -n efi /dev/$xda*1                 #1 efi
+            mkfs.ext4 -E nodiscard -F -L os /dev/$xda*2 #2 os
+            mkfs.fat -n installer /dev/$xda*3           #3 installer
         elif is_xda_gt_2t; then
             # bios > 2t
             parted /dev/$xda -s -- \
@@ -1419,9 +1419,9 @@ create_part() {
                 set 1 bios_grub on
             update_part /dev/$xda
 
-            echo                              #1 bios_boot
-            mkfs.ext4 -F -L os /dev/$xda*2    #2 os
-            mkfs.fat -n installer /dev/$xda*3 #3 installer
+            echo                                        #1 bios_boot
+            mkfs.ext4 -E nodiscard -F -L os /dev/$xda*2 #2 os
+            mkfs.fat -n installer /dev/$xda*3           #3 installer
         else
             # bios
             parted /dev/$xda -s -- \
@@ -1431,8 +1431,8 @@ create_part() {
                 set 1 boot on
             update_part /dev/$xda
 
-            mkfs.ext4 -F -L os /dev/$xda*1    #1 os
-            mkfs.fat -n installer /dev/$xda*2 #2 installer
+            mkfs.ext4 -E nodiscard -F -L os /dev/$xda*1 #1 os
+            mkfs.fat -n installer /dev/$xda*2           #2 installer
         fi
         update_part /dev/$xda
 
@@ -2065,8 +2065,8 @@ install_qcow_by_copy() {
     mount_nouuid /dev/$os_part /nbd/
     mount_pseudo_fs /nbd/
     case "$distro" in
-    ubuntu) chroot /nbd mkfs.ext4 -F -L cloudimg-rootfs -U $os_part_uuid /dev/$xda*2 ;;
-    *) chroot /nbd mkfs.xfs -f -m uuid=$os_part_uuid /dev/$xda*2 ;;
+    ubuntu) chroot /nbd mkfs.ext4 -E nodiscard -F -L cloudimg-rootfs -U $os_part_uuid /dev/$xda*2 ;;
+    *) chroot /nbd mkfs.xfs -K -f -m uuid=$os_part_uuid /dev/$xda*2 ;;
     esac
     umount -R /nbd/
 
