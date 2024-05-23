@@ -444,7 +444,13 @@ parse_windows_image_name() {
         server=server
         shift
     fi
+
     version=$1
+    # 填写 windows longhorn serverdatacenter 时，寻找 windows server 2008 serverdatacenter iso
+    if [ "$version" = longhorn ]; then
+        server=server
+        version=2008
+    fi
     shift
 
     if [ "$1" = r2 ]; then
@@ -968,6 +974,12 @@ setos() {
         if [ -z "$iso" ]; then
             echo "iso url is not set. Try to find it."
             find_windows_iso
+        fi
+
+        # 防呆设计
+        # 将 windows server 2008 改成 windows longhorn
+        if ! echo "$image_name" | grep -q r2; then
+            image_name=${image_name/server 2008/longhorn}
         fi
 
         test_url $iso 'iso|dos/mbr'
