@@ -8,6 +8,9 @@ github_proxy=https://mirror.ghproxy.com/https://raw.githubusercontent.com
 # https://www.gnu.org/software/gettext/manual/html_node/The-LANGUAGE-variable.html
 export LC_ALL=C
 
+# 处理部分用户用 su 切换成 root 导致环境变量没 sbin 目录
+export PATH=/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin:$PATH
+
 this_script=$(realpath "$0")
 trap 'trap_err $LINENO $?' ERR
 
