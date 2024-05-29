@@ -29,7 +29,7 @@
             <!-- <RunSynchronous>
                 <RunSynchronousCommand wcm:action="add">
                     <Order>1</Order>
-                    <Path>cmd /c for %a in (CPU RAM SecureBoot Storage TPM) do reg add HKLM\SYSTEM\Setup\LabConfig /t REG_DWORD /v Bypass%aCheck /d 1 /f</Path>
+                    <Path>cmd /c for %a in (CPU RAM SecureBoot Storage Disk TPM) do reg add HKLM\SYSTEM\Setup\LabConfig /t REG_DWORD /v Bypass%aCheck /d 1 /f</Path>
                 </RunSynchronousCommand>
             </RunSynchronous> -->
         </component>
@@ -81,6 +81,14 @@
                     <!-- <Path>wmic useraccount where "sid like '%-500'" set Disabled=false</Path> -->
                     <!-- https://learn.microsoft.com/archive/technet-wiki/13813.localized-names-for-administrator-account-in-windows -->
                     <Path>cmd /c "for %a in (Administrator Administrador Administrateur Administratör Администратор Järjestelmänvalvoja Rendszergazda) do (net user %a /active:yes &amp;&amp; exit)"</Path>
+                </RunSynchronousCommand>
+                <!-- 禁用保留空间 -->
+                <RunSynchronousCommand wcm:action="add">
+                    <Order>5</Order>
+                    <Path>reg add HKLM\SOFTWARE\Microsoft\Windows\CurrentVersion\ReserveManager /v ShippedWithReserves /t REG_DWORD /d 0 /f</Path>
+                    <!-- 此时以下命令无效 -->
+                    <!-- <Path>DISM /Online /Set-ReservedStorageState /State:Disabled</Path> -->
+                    <!-- <Path>powershell "Set-WindowsReservedStorageState -State Disabled; exit"</Path> -->
                 </RunSynchronousCommand>
                 <!-- win7 在此阶段找不到网卡 -->
                 <!-- <RunSynchronousCommand wcm:action="add">
