@@ -2583,7 +2583,7 @@ else
 fi
 
 # 整理参数
-if ! opts=$(getopt -n $0 -o "" --long ci,debug,hold:,sleep:,iso:,image-name:,img:,lang,commit: -- "$@"); then
+if ! opts=$(getopt -n $0 -o "" --long ci,debug,hold:,sleep:,iso:,image-name:,img:,lang:,commit: -- "$@"); then
     usage_and_exit
 fi
 
