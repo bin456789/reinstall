@@ -816,8 +816,9 @@ setos() {
             if is_in_china; then
                 deb_hostname=mirrors.tuna.tsinghua.edu.cn
             else
+                # http.kali.org 没有 ipv6 地址
                 # http.kali.org (geoip 重定向) 到 kali.download (cf)
-                deb_hostname=http.kali.org
+                deb_hostname=kali.download
             fi
             codename=kali-rolling
             mirror=http://$deb_hostname/kali/dists/$codename/main/installer-$basearch_alt/current/images/netboot/debian-installer/$basearch_alt
