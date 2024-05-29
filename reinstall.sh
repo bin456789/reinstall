@@ -795,6 +795,8 @@ setos() {
             is_virt && flavour=-cloud || flavour=
             # 甲骨文 debian 10 amd64 cloud 内核 vnc 没有显示
             [ "$releasever" -eq 10 ] && [ "$basearch_alt" = amd64 ] && flavour=
+            # 甲骨文 arm64 cloud 内核 vnc 没有显示
+            [ "$basearch_alt" = arm64 ] && flavour=
 
             eval ${step}_vmlinuz=$mirror/linux
             eval ${step}_initrd=$mirror/initrd.gz
