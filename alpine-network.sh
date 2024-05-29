@@ -31,6 +31,18 @@ else
     ipv6_dns2='2001:4860:4860::8888'
 fi
 
+get_ipv4_gateway() {
+    # debian 11 initrd 没有 xargs awk
+    # debian 12 initrd 没有 xargs
+    ip -4 route show default | head -1 | cut -d ' ' -f3
+}
+
+get_ipv6_gateway() {
+    # debian 11 initrd 没有 xargs awk
+    # debian 12 initrd 没有 xargs
+    ip -6 route show default | head -1 | cut -d ' ' -f3
+}
+
 get_first_ipv4_addr() {
     # debian 11 initrd 没有 xargs awk
     # debian 12 initrd 没有 xargs
@@ -38,6 +50,16 @@ get_first_ipv4_addr() {
         ip -4 -o addr show scope global dev "$ethx" | head -1 | awk '{print $4}'
     else
         ip -4 -o addr show scope global dev "$ethx" | head -1 | grep -o '[0-9\.]*/[0-9]*'
+    fi
+}
+
+get_first_ipv6_addr() {
+    # debian 11 initrd 没有 xargs awk
+    # debian 12 initrd 没有 xargs
+    if false; then
+        ip -6 -o addr show scope global dev "$ethx" | head -1 | awk '{print $4}'
+    else
+        ip -6 -o addr show scope global dev "$ethx" | head -1 | grep -o '[0-9a-f\:]*/[0-9]*'
     fi
 }
 
@@ -150,18 +172,43 @@ flush_ipv4_config() {
     ip -4 route flush dev "$ethx"
 }
 
+flush_ipv6_config() {
+    # 是否临时禁用 ra / slaac
+    if [ "$1" = true ]; then
+        echo 0 >"/proc/sys/net/ipv6/conf/$ethx/autoconf"
+    fi
+
+    ip -6 addr flush scope global dev "$ethx"
+    ip -6 route flush dev "$ethx"
+}
+
 test_internet
 
 # 处理云电脑 dhcp 获取的地址无法上网
 if $dhcpv4 && ! $ipv4_has_internet &&
     [ -n "$ipv4_addr" ] && [ -n "$ipv4_gateway" ] &&
-    ! [ "$ipv4_addr" = "$(get_first_ipv4_addr)" ]; then
-    echo "DHCPv4 can't access Internet. And not match static IPv4."
+    { ! [ "$ipv4_addr" = "$(get_first_ipv4_addr)" ] || ! [ "$ipv4_gateway" = "$(get_ipv4_gateway)" ]; }; then
+    echo "DHCPv4 can't access Internet. And not match static IPv4 Address or Gateway."
     flush_ipv4_config
     add_missing_ipv4_config
     test_internet
     if $ipv4_has_internet; then
         dhcpv4=false
+    fi
+fi
+
+should_disable_ra_slaac=false
+# 处理部分商家 slaac / dhcpv6 获取的 ip 无法上网
+if $dhcpv6_or_slaac && ! $ipv6_has_internet &&
+    [ -n "$ipv6_addr" ] && [ -n "$ipv6_gateway" ] &&
+    { ! [ "$ipv6_addr" = "$(get_first_ipv6_addr)" ] || ! [ "$ipv6_gateway" = "$(get_ipv6_gateway)" ]; }; then
+    echo "SLAAC can't access Internet. And not match static IPv6 Address or Gateway."
+    flush_ipv6_config true
+    add_missing_ipv6_config
+    test_internet
+    if $ipv6_has_internet; then
+        dhcpv6_or_slaac=false
+        should_disable_ra_slaac=true
     fi
 fi
 
@@ -196,6 +243,7 @@ fi
 
 # 传参给 trans.start
 $dhcpv4 && echo 1 >/dev/dhcpv4 || echo 0 >/dev/dhcpv4
+$should_disable_ra_slaac && echo 1 >/dev/should_disable_ra_slaac || echo 0 >/dev/should_disable_ra_slaac
 $is_in_china && echo 1 >/dev/is_in_china || echo 0 >/dev/is_in_china
 echo "$ethx" >/dev/ethx
 echo "$mac_addr" >/dev/mac_addr

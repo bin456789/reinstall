@@ -9,6 +9,9 @@ set -eE
 # debian 安装版、ubuntu 安装版、redhat 安装版不使用该密码
 PASSWORD=123@@@
 
+TRUE=0
+FALSE=1
+
 trap 'trap_err $LINENO $?' ERR
 
 # 复制本脚本到 /tmp/trans.sh，用于打印错误
@@ -447,13 +450,27 @@ is_staticv6() {
     return 1
 }
 
+should_disable_ra_slaac() {
+    get_netconf_to should_disable_ra_slaac
+    # shellcheck disable=SC2154
+    [ "$should_disable_ra_slaac" = 1 ]
+}
+
 is_slaac() {
+    # 防止部分机器slaac/dhcpv6获取的ip/网关无法上网
+    if should_disable_ra_slaac; then
+        return 1
+    fi
     get_netconf_to slaac
     # shellcheck disable=SC2154
     [ "$slaac" = 1 ]
 }
 
 is_dhcpv6() {
+    # 防止部分机器slaac/dhcpv6获取的ip/网关无法上网
+    if should_disable_ra_slaac; then
+        return 1
+    fi
     get_netconf_to dhcpv6
     # shellcheck disable=SC2154
     [ "$dhcpv6" = 1 ]
@@ -502,9 +519,10 @@ is_windows_support_rdnss() {
 
 is_need_manual_set_dnsv6() {
     # 有没有可能是静态但是有 rdnss？
-    is_have_ipv6 &&
-        ! is_dhcpv6 &&
-        ! is_enable_other_flag &&
+    ! is_have_ipv6 && return $FALSE
+    is_dhcpv6 && return $FALSE
+    is_staticv6 && return $TRUE
+    is_slaac && ! is_enable_other_flag &&
         { ! is_have_rdnss || { is_have_rdnss && is_windows && ! is_windows_support_rdnss; }; }
 }
 
@@ -721,6 +739,19 @@ EOF
     dns-nameserver $dns
 EOF
         done
+    fi
+
+    # 禁用 ra
+    if should_disable_ra_slaac; then
+        if [ "$distro" = alpine ]; then
+            cat <<EOF >>$conf_file
+    pre-up echo 0 >/proc/sys/net/ipv6/conf/$ethx/accept_ra
+EOF
+        else
+            cat <<EOF >>$conf_file
+    accept_ra 0
+EOF
+        fi
     fi
 }
 
@@ -1549,6 +1580,9 @@ create_cloud_init_network_config() {
                     \"address\": \"$ipv6_addr\",
                     \"gateway\": \"$ipv6_gateway\" }
                     " $ci_file
+        if should_disable_ra_slaac; then
+            yq -i ".network.config[0].accept-ra = false" $ci_file
+        fi
     fi
 
     # 有 ipv6 但需设置 dns 的情况

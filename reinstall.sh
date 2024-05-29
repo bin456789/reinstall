@@ -1622,16 +1622,28 @@ collect_netconf() {
     else
         # linux
         # 通过默认网关得到默认网卡
+
+        # 多个默认路由下
+        # ip -6 route show default dev ens3 完全不显示
+
+        # ip -6 route show default
+        # default proto static metric 1024 pref medium
+        #         nexthop via 2a01:1111:262:4940::2 dev ens3 weight 1 onlink
+        #         nexthop via fe80::5054:ff:fed4:5286 dev ens3 weight 1
+
+        # ip -6 route show default
+        # default via 2602:1111:0:80::1 dev eth0 metric 1024 onlink pref medium
+
         for v in 4 6; do
-            if ethx=$(ip -$v route show default | head -1 | awk '{print $5}' | grep .); then
+            if ethx=$(ip -$v route show default | awk '$4=="dev"' | head -1 | awk '{print $5}' | grep .); then
                 mac_addr=$(ip link show dev $ethx | grep link/ether | head -1 | awk '{print $2}')
                 break
             fi
         done
 
         for v in 4 6; do
-            if ip -$v route show default dev $ethx | head -1 | grep -q .; then
-                eval ipv${v}_gateway="$(ip -$v route show default dev $ethx | head -1 | awk '{print $3}')"
+            if ip -$v route show default | awk '$5=="'$ethx'"' | head -1 | grep -q .; then
+                eval ipv${v}_gateway="$(ip -$v route show default | awk '$5=="'$ethx'"' | head -1 | awk '{print $3}')"
                 eval ipv${v}_addr="$(ip -$v -o addr show scope global dev $ethx | head -1 | awk '{print $4}')"
             fi
         done
