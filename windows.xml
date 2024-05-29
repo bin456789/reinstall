@@ -25,7 +25,9 @@
                     </InstallTo>
                 </OSImage>
             </ImageInstall>
-            <!-- 有的机器不起作用 -->
+            <!-- 用注册表无法绕过 cpu 核数限制 -->
+            <!-- https://github.com/pbatard/rufus/issues/1990 -->
+            <!-- https://learn.microsoft.com/windows/iot/iot-enterprise/Hardware/System_Requirements -->
             <!-- <RunSynchronous>
                 <RunSynchronousCommand wcm:action="add">
                     <Order>1</Order>

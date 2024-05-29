@@ -2313,6 +2313,9 @@ get_disk_controller() {
     # xen_blkfront
     # ahci
     # nvme
+    # mptspi
+    # mptsas
+    # vmw_pvscsi
     (
         cd "$(readlink -f /sys/block/$xda)"
         while ! [ "$(pwd)" = / ]; do

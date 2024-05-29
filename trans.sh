@@ -277,17 +277,8 @@ find_xda() {
 }
 
 get_all_disks() {
-    # busybox blkid 不接受任何参数
-    # lsblk 要另外安装
-    disks=$(blkid | cut -d: -f1 | cut -d/ -f3 | sed -E 's/p?[0-9]+$//' | sort -u)
-
-    # blkid 会显示 sr0，经过上面的命令输出为 sr
-    # 因此要检测是否有效
-    for disk in $disks; do
-        if [ -b "/dev/$disk" ]; then
-            echo "$disk"
-        fi
-    done
+    # shellcheck disable=SC2010
+    ls /sys/block/ | grep -Ev '^(loop|sr|nbd)'
 }
 
 setup_tty_and_log() {
@@ -1805,16 +1796,6 @@ EOF
         disable_selinux_kdump $os_dir
     fi
 
-    # 修复 fedora 38 或以下用静态 ipv6 会掉线
-    # el 全系也用 NetworkManager，但他们的配置文件是 sysconfig，因此不受影响
-    # https://github.com/canonical/cloud-init/commit/5d440856cb6d2b4c908015fe4eb7227615c17c8b
-    if false && grep -E 'fedora:38' $os_dir/etc/os-release; then
-        network_manager_py=$os_dir/usr/lib/python3.11/site-packages/cloudinit/net/network_manager.py
-        if ! grep '"static6": "manual",' $network_manager_py; then
-            echo '"static6": "manual",' | insert_into_file $network_manager_py after '"static": "manual",'
-        fi
-    fi
-
     # debian 网络问题
     # 注意 ubuntu 也有 /etc/debian_version
     if [ "$distro" = debian ]; then
@@ -2750,10 +2731,15 @@ install_windows() {
 
     # 用内核版本号筛选驱动
     # 使得可以安装 Hyper-V Server / Azure Stack HCI 等 Windows Server 变种
-    nt_ver="$(peres -v /iso/setup.exe | grep 'Product Version:' | cut -d: -f2 | xargs | cut -d. -f 1,2)"
+    product_ver=$(peres -v /iso/setup.exe | grep 'Product Version:' | cut -d: -f2 | xargs)
+    nt_ver=$(echo "$product_ver" | cut -d. -f 1,2)
+    build_ver=$(echo "$product_ver" | cut -d. -f 3)
     echo "NT Version: $nt_ver"
+    echo "Build Version: $build_ver"
 
-    # 跳过 win11 硬件限制
+    # 解除 win11 硬件限制
+    # 24h2 26100 IoT 没有限制 TPM，但强制要求 2c2g
+    # https://learn.microsoft.com/windows/iot/iot-enterprise/Hardware/System_Requirements
     if [[ "$image_name" = "Windows 11"* ]]; then
         wiminfo "$install_wim" "$image_name" --image-property WINDOWS/INSTALLATIONTYPE=Server
     fi
