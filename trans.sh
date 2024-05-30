@@ -2719,14 +2719,34 @@ install_windows() {
 
     # 匹配映像版本
     # 需要整行匹配，因为要区分 Windows 10 Pro 和 Windows 10 Pro for Workstations
-    # TODO: 如果无法匹配，等待用户输入？安装第一个？
-    image_count=$(wiminfo $install_wim | grep "Image Count:" | cut -d: -f2 | xargs)
+    image_count=$(wiminfo $install_wim | grep "^Image Count:" | cut -d: -f2 | xargs)
+    all_image_names=$(wiminfo $install_wim | grep ^Name: | sed 's/^Name: *//')
+
     if [ "$image_count" = 1 ]; then
-        # 只有一个版本就使用第一个版本
-        image_name=$(wiminfo $install_wim | grep -ix "Name:[[:space:]]*.*" | cut -d: -f2 | xargs)
+        # 只有一个版本就用那个版本
+        image_name=$all_image_names
     else
-        # 否则改成正确的大小写
-        image_name=$(wiminfo $install_wim | grep -ix "Name:[[:space:]]*$image_name" | cut -d: -f2 | xargs)
+        while true; do
+            # 匹配成功
+            # 改成正确的大小写
+            if matched_image_name=$(echo "$all_image_names" | grep -ix "$image_name"); then
+                image_name=$matched_image_name
+                break
+            fi
+
+            # 匹配失败
+            error "Invalid image name: $image_name"
+            echo "Choose a correct image name by one of follow command and continue:"
+            while read -r line; do
+                echo "  echo '$line' >/image-name"
+            done < <(echo "$all_image_names")
+
+            # sleep 直到有输入
+            echo >/image-name
+            until [ -f /image-name ] && image_name=$(xargs </image-name) && [ -n "$image_name" ]; do
+                sleep 1
+            done
+        done
     fi
     echo "Image Name: $image_name"
 
