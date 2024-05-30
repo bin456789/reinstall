@@ -215,14 +215,15 @@ bash reinstall.sh windows \
 - Massgrave
   - <https://massgrave.dev/genuine-installation-media.html> (Recommended, iso sourced from official channels, updated monthly, includes the latest patches)
 - Microsoft
-  - <https://www.microsoft.com/software-download/indows8>
-  - <https://www.microsoft.com/software-download/indows10> (Need to open it with a mobile User-Agent)
-  - <https://www.microsoft.com/software-download/indows11>
-  - <https://www.microsoft.com/evalcenter/ownload-windows-10-enterprise>
-  - <https://www.microsoft.com/evalcenter/ownload-windows-11-enterprise>
-  - <https://www.microsoft.com/evalcenter/ownload-windows-server-2012-r2>
-  - <https://www.microsoft.com/evalcenter/ownload-windows-server-2016>
-  - <https://www.microsoft.com/evalcenter/ownload-windows-server-2019>
+  - <https://www.microsoft.com/software-download/windows8>
+  - <https://www.microsoft.com/software-download/windows10> (Need to open it with a mobile User-Agent)
+  - <https://www.microsoft.com/software-download/windows11>
+  - <https://www.microsoft.com/evalcenter/download-windows-10-enterprise>
+  - <https://www.microsoft.com/evalcenter/download-windows-11-enterprise>
+  - <https://www.microsoft.com/evalcenter/download-windows-11-iot-enterprise-ltsc>
+  - <https://www.microsoft.com/evalcenter/download-windows-server-2012-r2>
+  - <https://www.microsoft.com/evalcenter/download-windows-server-2016>
+  - <https://www.microsoft.com/evalcenter/download-windows-server-2019>
   - <https://www.microsoft.com/evalcenter/download-windows-server-2022>
 
 </details>

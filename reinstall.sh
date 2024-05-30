@@ -489,7 +489,7 @@ is_have_arm_version() {
     11)
         case "$edition" in
         pro | education | enterprise | 'pro education' | 'pro for workstations') return ;;
-        'iot enterprise') return ;;
+        'iot enterprise' | 'iot enterprise subscription') return ;;
         'enterprise ltsc 2024' | 'iot enterprise ltsc 2024' | 'iot enterprise ltsc 2024 subscription') return ;;
         esac
         ;;
@@ -535,7 +535,7 @@ get_windows_iso_links() {
                 esac
                 ;;
             '2012 r2' | \
-                2016 | 2019 | 2022)
+                2016 | 2019 | 2022 | 2025)
                 case "$edition" in
                 serverstandard | serverstandardcore) echo _ ;;
                 serverdatacenter | serverdatacentercore) echo _ ;;
@@ -594,7 +594,7 @@ get_windows_iso_links() {
                 case "$edition" in
                 home | 'home single language') echo consumer ;;
                 pro | education | enterprise | 'pro education' | 'pro for workstations') echo business ;;
-                'iot enterprise') echo 'iot enterprise' ;;
+                'iot enterprise' | 'iot enterprise subscription') echo 'iot enterprise' ;;
                 'enterprise ltsc 2024') echo 'enterprise ltsc 2024' ;;
                 'iot enterprise ltsc 2024' | 'iot enterprise ltsc 2024 subscription') echo 'iot enterprise ltsc 2024' ;;
                 esac

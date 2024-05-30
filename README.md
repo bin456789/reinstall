@@ -221,10 +221,12 @@ bash reinstall.sh windows \
   - <https://www.microsoft.com/software-download/windows11>
   - <https://www.microsoft.com/evalcenter/download-windows-10-enterprise>
   - <https://www.microsoft.com/evalcenter/download-windows-11-enterprise>
+  - <https://www.microsoft.com/evalcenter/download-windows-11-iot-enterprise-ltsc>
   - <https://www.microsoft.com/evalcenter/download-windows-server-2012-r2>
   - <https://www.microsoft.com/evalcenter/download-windows-server-2016>
   - <https://www.microsoft.com/evalcenter/download-windows-server-2019>
   - <https://www.microsoft.com/evalcenter/download-windows-server-2022>
+  - <https://www.microsoft.com/evalcenter/download-windows-server-2025>
 
 </details>
 

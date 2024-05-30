@@ -1304,7 +1304,8 @@ create_part() {
             size_bytes=$((7 * 1024 * 1024 * 1024))
         fi
 
-        # 按iso容量计算分区大小，200m用于驱动和文件系统自身占用
+        # 按iso容量计算分区大小
+        # 200m 用于驱动/文件系统自身占用 + pagefile (手动 dism 释放镜像时使用)
         part_size="$((size_bytes / 1024 / 1024 + 200))MiB"
 
         apk add ntfs-3g-progs

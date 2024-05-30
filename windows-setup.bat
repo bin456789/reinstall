@@ -40,8 +40,13 @@ for /f "tokens=2" %%a in ('echo list vol ^| diskpart ^| find "installer"') do (
 rem 将 installer 分区设为 Y 盘
 (echo select vol %VolIndex% & echo assign letter=Y) | diskpart
 
-rem 设置虚拟内存，好像没必要，安装时会自动在 C 盘设置虚拟内存
-rem wpeutil CreatePageFile /path=Y:\pagefile.sys
+rem 旧版安装程序会自动在 C 盘设置虚拟内存
+rem 新版安装程序(24h2)不会自动设置虚拟内存
+rem 在 installer 分区创建虚拟内存，不用白不用
+call :createPageFile
+
+rem 查看虚拟内存
+rem wmic pagefile
 
 rem 获取主硬盘 id
 rem vista pe 没有 wmic，因此用 diskpart
@@ -107,7 +112,13 @@ rem 运行 X:\setup.exe 的话
 rem vista 会找不到安装源
 rem server 23h2 会无法运行
 rem Y:\setup.exe /emsport:COM1 /emsbaudrate:115200
+
+rem 旧版安装程序
+rem Y:\sources\setup.exe
+
+rem 新版安装程序
 Y:\setup.exe
+
 exit /b
 
 :sleep
@@ -116,4 +127,14 @@ rem 没有加载网卡驱动，无法用 ping 来等待
 echo wscript.sleep(%~1) > X:\sleep.vbs
 cscript //nologo X:\sleep.vbs
 del X:\sleep.vbs
+exit /b
+
+:createPageFile
+rem 尽量填满空间，pagefile 默认 64M
+for /l %%i in (1, 1, 10) do (
+    wpeutil CreatePageFile /path=Y:\pagefile%%i.sys 2>nul
+    if errorlevel 1 (
+        exit /b
+    )
+)
 exit /b
