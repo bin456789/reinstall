@@ -225,6 +225,7 @@ bash reinstall.sh windows \
   - <https://www.microsoft.com/evalcenter/download-windows-server-2016>
   - <https://www.microsoft.com/evalcenter/download-windows-server-2019>
   - <https://www.microsoft.com/evalcenter/download-windows-server-2022>
+  - <https://www.microsoft.com/evalcenter/download-windows-server-2025>
 
 </details>
 
@@ -248,7 +249,7 @@ Use `Dism++` File menu > Open Image File, select the iso to be installed to get 
 #### Supported systems
 
 - Windows (Vista ~ 11)
-- Windows Server (2008 ~ 2022)
+- Windows Server (2008 ~ 2025)
   - Windows Server Essentials
   - Windows Server (Semi) Annual Channel
   - Hyper-V Server

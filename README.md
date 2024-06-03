@@ -250,7 +250,7 @@ Windows Server 2022 SERVERDATACENTER
 #### 支持的系统
 
 - Windows (Vista ~ 11)
-- Windows Server (2008 ~ 2022)
+- Windows Server (2008 ~ 2025)
   - Windows Server Essentials
   - Windows Server (Semi) Annual Channel
   - Hyper-V Server

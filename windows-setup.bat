@@ -108,17 +108,31 @@ move /y %tempFile% %file%
 
 rename X:\setup.exe.disabled setup.exe
 
-rem 运行 X:\setup.exe 的话
+rem 设置
+set EnableEMS=0
+set ForceOldSetup=0
+set DisableRecoveryPartition=1
+
+if %EnableEMS% EQU 1 (
+    set EMS=/EMSPort:COM1 /EMSBaudRate:115200
+)
+
+rem winre 分区会在 installer 分区前面创建
+rem 因此禁止创建 winre 分区，禁止后 winre 储存在 C 盘，依然有效
+if %DisableRecoveryPartition% EQU 1 if exist Y:\sources\reagent.* (
+    set ResizeRecoveryPartition=/ResizeRecoveryPartition disable
+)
+
+rem 运行 ramdisk X:\setup.exe 的话
 rem vista 会找不到安装源
 rem server 23h2 会无法运行
-rem Y:\setup.exe /emsport:COM1 /emsbaudrate:115200
+if %ForceOldSetup% EQU 1 (
+    set setup=Y:\sources\setup.exe
+) else (
+    set setup=Y:\setup.exe
+)
 
-rem 旧版安装程序
-rem Y:\sources\setup.exe
-
-rem 新版安装程序
-Y:\setup.exe
-
+%setup% %ResizeRecoveryPartition% %EMS%
 exit /b
 
 :sleep
