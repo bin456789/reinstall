@@ -29,7 +29,7 @@ usage_and_exit() {
         reinstall____='./reinstall.sh'
     fi
     cat <<EOF
-Usage: $reinstall____ centos   7|8|9
+Usage: $reinstall____ centos   7|9
                       oracle   7|8|9
                       alma     8|9
                       rocky    8|9
@@ -1021,7 +1021,7 @@ setos() {
             "centos")
                 case $releasever in
                 "7") ci_image=$ci_mirror/$releasever/images/CentOS-7-$basearch-GenericCloud.qcow2 ;;
-                "8" | "9") ci_image=$ci_mirror/$releasever-stream/$basearch/images/CentOS-Stream-GenericCloud-$releasever-latest.$basearch.qcow2 ;;
+                "9") ci_image=$ci_mirror/$releasever-stream/$basearch/images/CentOS-Stream-GenericCloud-$releasever-latest.$basearch.qcow2 ;;
                 esac
                 ;;
             "alma") ci_image=$ci_mirror/AlmaLinux-$releasever-GenericCloud-latest.$basearch.qcow2 ;;
@@ -1047,7 +1047,6 @@ setos() {
             "centos")
                 case $releasever in
                 "7") mirrorlist="http://mirrorlist.centos.org/?release=7&arch=$basearch&repo=os" ;;
-                "8") mirrorlist="http://mirrorlist.centos.org/?release=8-stream&arch=$basearch&repo=BaseOS" ;;
                 "9") mirrorlist="https://mirrors.centos.org/mirrorlist?repo=centos-baseos-9-stream&arch=$basearch" ;;
                 esac
                 ;;
@@ -1147,7 +1146,7 @@ verify_os_name() {
     fi
 
     for os in \
-        'centos   7|8|9' \
+        'centos   7|9' \
         'oracle   7|8|9' \
         'alma     8|9' \
         'rocky    8|9' \

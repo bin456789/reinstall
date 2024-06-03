@@ -37,7 +37,7 @@ Reinstall server with one-click [中文](README.md)
 | <img width="16" height="16" src="https://www.gentoo.org/assets/img/logo/gentoo-g.png" /> Gentoo                                                            | Rolling                               | 512 MB    | 5 GB                   |
 | <img width="16" height="16" src="https://blogs.windows.com/wp-content/uploads/prod/2022/09/cropped-Windows11IconTransparent512-32x32.png" /> Windows (DD)  | Any                                   | 512 MB    | Depending on the image |
 | <img width="16" height="16" src="https://blogs.windows.com/wp-content/uploads/prod/2022/09/cropped-Windows11IconTransparent512-32x32.png" /> Windows (ISO) | Vista, 7, 8.x (Server 2008 ~ 2012 R2) | 512 MB    | 25 GB                  |
-| <img width="16" height="16" src="https://blogs.windows.com/wp-content/uploads/prod/2022/09/cropped-Windows11IconTransparent512-32x32.png" /> Windows (ISO) | 10, 11 (Server 2016 ~ 2022)           | 1 GB      | 25 GB                  |
+| <img width="16" height="16" src="https://blogs.windows.com/wp-content/uploads/prod/2022/09/cropped-Windows11IconTransparent512-32x32.png" /> Windows (ISO) | 10, 11 (Server 2016 ~ 2025)           | 1 GB      | 25 GB                  |
 
 (\*) Indicates installation using cloud images, not traditional network installation.
 
@@ -136,7 +136,7 @@ certutil -urlcache -f -split https://mirror.ghproxy.com/https://raw.githubuserco
 > When installing other systems, can monitor the progress through various methods (SSH, HTTP 80 port, VNC in the background, serial console).
 
 ```bash
-bash reinstall.sh centos   7|8|9  (8|9 for the stream version)
+bash reinstall.sh centos   7|9  (9 is stream version)
                   oracle   7|8|9
                   alma     8|9
                   rocky    8|9

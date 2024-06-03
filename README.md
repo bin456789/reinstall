@@ -27,7 +27,7 @@
 | <img width="16" height="16" src="https://www.debian.org/favicon.ico" /> Debian                                                                             | 10, 11, 12                            | 256 MB    | 1 ~ 1.5 GB ^ |
 | <img width="16" height="16" src="https://github.com/bin456789/reinstall/assets/7548515/f74b3d5b-085f-4df3-bcc9-8a9bd80bb16d" /> Kali                       | 滚动                                  | 256 MB    | 1 ~ 1.5 GB ^ |
 | <img width="16" height="16" src="https://assets.ubuntu.com/v1/49a1a858-favicon-32x32.png" /> Ubuntu                                                        | 20.04, 22.04, 24.04                   | 512 MB \* | 2 GB         |
-| <img width="16" height="16" src="https://www.centos.org/assets/img/favicon.png" /> CentOS                                                                  | 7, 8, 9                               | 512 MB \* | 5 GB         |
+| <img width="16" height="16" src="https://www.centos.org/assets/img/favicon.png" /> CentOS                                                                  | 7, 9 (stream)                         | 512 MB \* | 5 GB         |
 | <img width="16" height="16" src="https://www.oracle.com/asset/web/favicons/favicon-32.png" /> Oracle                                                       | 7, 8, 9                               | 512 MB \* | 5 GB         |
 | <img width="16" height="16" src="https://almalinux.org/fav/favicon.ico" /> Alma                                                                            | 8, 9                                  | 512 MB \* | 5 GB         |
 | <img width="16" height="16" src="https://rockylinux.org/favicon.png" /> Rocky                                                                              | 8, 9                                  | 512 MB \* | 5 GB         |
@@ -37,7 +37,7 @@
 | <img width="16" height="16" src="https://www.gentoo.org/assets/img/logo/gentoo-g.png" /> Gentoo                                                            | 滚动                                  | 512 MB    | 5 GB         |
 | <img width="16" height="16" src="https://blogs.windows.com/wp-content/uploads/prod/2022/09/cropped-Windows11IconTransparent512-32x32.png" /> Windows (DD)  | 任何                                  | 512 MB    | 取决于镜像   |
 | <img width="16" height="16" src="https://blogs.windows.com/wp-content/uploads/prod/2022/09/cropped-Windows11IconTransparent512-32x32.png" /> Windows (ISO) | Vista, 7, 8.x (Server 2008 ~ 2012 R2) | 512 MB    | 25 GB        |
-| <img width="16" height="16" src="https://blogs.windows.com/wp-content/uploads/prod/2022/09/cropped-Windows11IconTransparent512-32x32.png" /> Windows (ISO) | 10, 11 (Server 2016 ~ 2022)           | 1 GB      | 25 GB        |
+| <img width="16" height="16" src="https://blogs.windows.com/wp-content/uploads/prod/2022/09/cropped-Windows11IconTransparent512-32x32.png" /> Windows (ISO) | 10, 11 (Server 2016 ~ 2025)           | 1 GB      | 25 GB        |
 
 (\*) 表示使用云镜像安装，非传统网络安装
 
@@ -137,7 +137,7 @@ certutil -urlcache -f -split https://mirror.ghproxy.com/https://raw.githubuserco
 > 安装其它系统时，可通过多种方式（SSH、HTTP 80 端口、后台 VNC、串行控制台）查看安装进度。
 
 ```bash
-bash reinstall.sh centos   7|8|9  (8|9 为 stream 版本)
+bash reinstall.sh centos   7|9  (9 为 stream 版本)
                   oracle   7|8|9
                   alma     8|9
                   rocky    8|9
