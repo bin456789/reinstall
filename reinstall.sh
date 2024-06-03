@@ -2193,6 +2193,12 @@ EOF
     # 在 debian installer 中判断能否用云内核
     create_can_use_cloud_kernel_sh can_use_cloud_kernel.sh
 
+    # 最近 kali initrd 删除了原版 wget
+    # 但 initrd 的 busybox wget 又不支持 https
+    # 因此改成在这里下载
+    curl -LO "$confhome/get-xda.sh"
+    curl -LO "$confhome/ttys.sh"
+
     # 可以节省一点内存？
     echo 'export DEBCONF_DROP_TRANSLATIONS=1' |
         insert_into_file lib/debian-installer/menu before 'exec debconf'
