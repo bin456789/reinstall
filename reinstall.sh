@@ -1435,6 +1435,14 @@ is_efi() {
     fi
 }
 
+is_grub_dir_linked() {
+    # cloudcone 重装前/重装后(方法1)
+    [ "$(readlink -f /boot/grub/grub.cfg)" = /boot/grub2/grub.cfg ] ||
+        [ "$(readlink -f /boot/grub2/grub.cfg)" = /boot/grub/grub.cfg ] ||
+        # cloudcone 重装后(方法2)
+        { [ -f /boot/grub2/grub.cfg ] && [ "$(cat /boot/grub2/grub.cfg)" = 'chainloader (hd0)+1' ]; }
+}
+
 is_secure_boot_enabled() {
     if is_efi; then
         if is_in_windows; then
@@ -1918,6 +1926,11 @@ build_extra_cmdline() {
         extra_cmdline+=" extra.mirrorlist='$finalos_mirrorlist'"
     elif [ -n "$nextos_mirrorlist" ]; then
         extra_cmdline+=" extra.mirrorlist='$nextos_mirrorlist'"
+    fi
+
+    # cloudcone 特殊处理
+    if is_grub_dir_linked; then
+        finalos_cmdline+=" extra.link_grub_dir=1"
     fi
 }
 
@@ -2961,10 +2974,49 @@ if is_use_grub; then
         fi
     fi
 
+    # cloudcone 从光驱的 grub 启动，再加载硬盘的 grub.cfg
+    # menuentry "Grub 2" --id grub2 {
+    #         set root=(hd0,msdos1)
+    #         configfile /boot/grub2/grub.cfg
+    # }
+
+    # 加载后 $prefix 依然是光驱的 (hd96)/boot/grub
+    # 导致找不到 $prefix 目录的 grubenv，因此读取不到 next_entry
+    # 以下方法为 cloudcone 重新加载 grubenv
+
+    # 需查找 2*2 个文件夹
+    # 分区：系统 / boot
+    # 文件夹：grub / grub2
+    # shellcheck disable=SC2121,SC2154
+    # cloudcone debian 能用但 ubuntu 模板用不了
+    # ubuntu 模板甚至没显示 reinstall menuentry
+    load_grubenv_if_not_loaded() {
+        if ! [ -s $prefix/grubenv ]; then
+            for dir in /boot/grub /boot/grub2 /grub /grub2; do
+                set grubenv="($root)$dir/grubenv"
+                if [ -s $grubenv ]; then
+                    load_env --file $grubenv
+                    if [ "${next_entry}" ]; then
+                        set default="${next_entry}"
+                        set next_entry=
+                        save_env --file $grubenv next_entry
+                    else
+                        set default="0"
+                    fi
+                    return
+                fi
+            done
+        fi
+    }
+
     # 生成 grub 配置
     # 实测 centos 7 lvm 要手动加载 lvm 模块
     echo $target_cfg
-    del_empty_lines <<EOF | tee $target_cfg
+
+    get_function_content load_grubenv_if_not_loaded >$target_cfg
+
+    del_empty_lines <<EOF | tee -a $target_cfg
+set timeout_style=menu
 set timeout=5
 menuentry "$(get_entry_name)" {
     $(! is_in_windows && echo 'insmod lvm')
