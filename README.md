@@ -26,7 +26,7 @@
 | <img width="16" height="16" src="https://www.alpinelinux.org/alpine-logo.ico" /> Alpine                                                                    | 3.17, 3.18, 3.19, 3.20                | 256 MB    | 1 GB         |
 | <img width="16" height="16" src="https://www.debian.org/favicon.ico" /> Debian                                                                             | 10, 11, 12                            | 256 MB    | 1 ~ 1.5 GB ^ |
 | <img width="16" height="16" src="https://github.com/bin456789/reinstall/assets/7548515/f74b3d5b-085f-4df3-bcc9-8a9bd80bb16d" /> Kali                       | 滚动                                  | 256 MB    | 1 ~ 1.5 GB ^ |
-| <img width="16" height="16" src="https://assets.ubuntu.com/v1/49a1a858-favicon-32x32.png" /> Ubuntu                                                        | 20.04, 22.04, 24.04                   | 512 MB \* | 2 GB         |
+| <img width="16" height="16" src="https://netplan.readthedocs.io/en/latest/_static/favicon.png" /> Ubuntu                                                   | 20.04, 22.04, 24.04                   | 512 MB \* | 2 GB         |
 | <img width="16" height="16" src="https://www.centos.org/assets/img/favicon.png" /> CentOS                                                                  | 7, 9 (stream)                         | 512 MB \* | 5 GB         |
 | <img width="16" height="16" src="https://www.oracle.com/asset/web/favicons/favicon-32.png" /> Oracle                                                       | 7, 8, 9                               | 512 MB \* | 5 GB         |
 | <img width="16" height="16" src="https://almalinux.org/fav/favicon.ico" /> Alma                                                                            | 8, 9                                  | 512 MB \* | 5 GB         |
@@ -219,6 +219,7 @@ bash reinstall.sh windows \
   - <https://www.microsoft.com/software-download/windows8>
   - <https://www.microsoft.com/software-download/windows10> (需用手机 User-Agent 打开)
   - <https://www.microsoft.com/software-download/windows11>
+  - <https://www.microsoft.com/software-download/windowsinsiderpreviewiso> (预览版)
   - <https://www.microsoft.com/evalcenter/download-windows-10-enterprise>
   - <https://www.microsoft.com/evalcenter/download-windows-11-enterprise>
   - <https://www.microsoft.com/evalcenter/download-windows-11-iot-enterprise-ltsc>

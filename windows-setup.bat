@@ -111,16 +111,9 @@ rename X:\setup.exe.disabled setup.exe
 rem 设置
 set EnableEMS=0
 set ForceOldSetup=0
-set DisableRecoveryPartition=1
 
 if %EnableEMS% EQU 1 (
     set EMS=/EMSPort:COM1 /EMSBaudRate:115200
-)
-
-rem winre 分区会在 installer 分区前面创建
-rem 因此禁止创建 winre 分区，禁止后 winre 储存在 C 盘，依然有效
-if %DisableRecoveryPartition% EQU 1 if exist Y:\sources\reagent.* (
-    set ResizeRecoveryPartition=/ResizeRecoveryPartition disable
 )
 
 rem 运行 ramdisk X:\setup.exe 的话
@@ -130,6 +123,15 @@ if %ForceOldSetup% EQU 1 (
     set setup=Y:\sources\setup.exe
 ) else (
     set setup=Y:\setup.exe
+    rem 26100 旧版安装程序不会创建 winre 分区
+    rem 26100 新版安装程序会创建 winre 分区
+    rem winre 分区创建在 installer 分区前面
+    rem 禁止 winre 分区后，winre 储存在 C 盘，依然有效
+    for /f "tokens=3" %%a in ('reg query "HKLM\SOFTWARE\Microsoft\Windows NT\CurrentVersion" /v CurrentBuildNumber') do (
+        if %%a GEQ 26100 (
+            set ResizeRecoveryPartition=/ResizeRecoveryPartition Disable
+        )
+    )
 )
 
 %setup% %ResizeRecoveryPartition% %EMS%
