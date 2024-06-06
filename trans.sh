@@ -1043,7 +1043,7 @@ MAKEOPTS="-j$threads"
 EOF
 
         # 设置 http repo + binpkg repo
-        # https://mirrors.tuna.tsinghua.edu.cn/gentoo/releases/amd64/autobuilds/current-stage3-amd64-systemd-mergedusr/stage3-amd64-systemd-mergedusr-20240317T170433Z.tar.xz
+        # https://mirrors.ustc.edu.cn/gentoo/releases/amd64/autobuilds/current-stage3-amd64-systemd-mergedusr/stage3-amd64-systemd-mergedusr-20240317T170433Z.tar.xz
         mirror_short=$(echo "$img" | sed 's,/releases/.*,,')
         mirror_long=$(echo "$img" | sed 's,/autobuilds/.*,,')
         profile_ver=$(chroot $os_dir eselect profile show | grep -Eo '/[0-9.]*/' | cut -d/ -f2)
@@ -1080,7 +1080,7 @@ EOF
 
         # 设置 git repo
         if is_in_china; then
-            git_uri=https://mirrors.tuna.tsinghua.edu.cn/git/gentoo-portage.git
+            git_uri=https://mirrors.ustc.edu.cn/gentoo.git
         else
             # github 不支持 ipv6
             is_ipv4_has_internet && git_uri=https://github.com/gentoo-mirror/gentoo.git ||
@@ -2372,8 +2372,8 @@ EOF
                 if [ -f $file ]; then
                     # cn.archive.ubuntu.com 不在国内还严重丢包
                     # https://www.itdog.cn/ping/cn.archive.ubuntu.com
-                    sed -i 's/archive.ubuntu.com/mirrors.tuna.tsinghua.edu.cn/' $file # x64
-                    sed -i 's/ports.ubuntu.com/mirrors.tuna.tsinghua.edu.cn/' $file   # arm
+                    sed -i 's/archive.ubuntu.com/mirrors.ustc.edu.cn/' $file # x64
+                    sed -i 's/ports.ubuntu.com/mirrors.ustc.edu.cn/' $file   # arm
                 fi
             done
         fi

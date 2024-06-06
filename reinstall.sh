@@ -739,7 +739,7 @@ setos() {
 
         # 不要用https 因为甲骨文云arm initramfs阶段不会从硬件同步时钟，导致访问https出错
         if is_in_china; then
-            mirror=http://mirrors.tuna.tsinghua.edu.cn/alpine/v$releasever
+            mirror=http://mirrors.ustc.edu.cn/alpine/v$releasever
         else
             mirror=http://dl-cdn.alpinelinux.org/alpine/v$releasever
         fi
@@ -786,7 +786,7 @@ setos() {
             if is_in_china; then
                 # ftp.cn.debian.org 不在国内还严重丢包
                 # https://www.itdog.cn/ping/ftp.cn.debian.org
-                deb_hostname=mirrors.tuna.tsinghua.edu.cn
+                deb_hostname=mirrors.ustc.edu.cn
             else
                 deb_hostname=deb.debian.org # fastly
             fi
@@ -814,7 +814,7 @@ setos() {
         else
             # 传统安装
             if is_in_china; then
-                deb_hostname=mirrors.tuna.tsinghua.edu.cn
+                deb_hostname=mirrors.ustc.edu.cn
             else
                 # http.kali.org 没有 ipv6 地址
                 # http.kali.org (geoip 重定向) 到 kali.download (cf)
@@ -866,8 +866,8 @@ setos() {
             # 传统安装
             if is_in_china; then
                 case "$basearch" in
-                "x86_64") mirror=https://mirrors.tuna.tsinghua.edu.cn/ubuntu-releases/$releasever ;;
-                "aarch64") mirror=https://mirrors.tuna.tsinghua.edu.cn/ubuntu-cdimage/releases/$releasever/release ;;
+                "x86_64") mirror=https://mirrors.ustc.edu.cn/ubuntu-releases/$releasever ;;
+                "aarch64") mirror=https://mirrors.ustc.edu.cn/ubuntu-cdimage/releases/$releasever/release ;;
                 esac
             else
                 case "$basearch" in
@@ -891,13 +891,13 @@ setos() {
     setos_arch() {
         if [ "$basearch" = "x86_64" ]; then
             if is_in_china; then
-                mirror=https://mirrors.tuna.tsinghua.edu.cn/archlinux
+                mirror=https://mirrors.ustc.edu.cn/archlinux
             else
                 mirror=https://geo.mirror.pkgbuild.com # geoip
             fi
         else
             if is_in_china; then
-                mirror=https://mirrors.tuna.tsinghua.edu.cn/archlinuxarm
+                mirror=https://mirrors.ustc.edu.cn/archlinuxarm
             else
                 # https 证书有问题
                 mirror=http://mirror.archlinuxarm.org # geoip
@@ -920,7 +920,7 @@ setos() {
 
     setos_gentoo() {
         if is_in_china; then
-            mirror=https://mirrors.tuna.tsinghua.edu.cn/gentoo
+            mirror=https://mirrors.ustc.edu.cn/gentoo
         else
             mirror=https://distfiles.gentoo.org # cdn77
         fi
@@ -1788,7 +1788,7 @@ install_grub_linux_efi() {
         fedora_ver=40
 
         if is_in_china; then
-            mirror=https://mirrors.tuna.tsinghua.edu.cn/fedora
+            mirror=https://mirrors.ustc.edu.cn/fedora
         else
             mirror=https://mirror.fcix.net/fedora/linux
         fi
@@ -1815,7 +1815,7 @@ install_grub_win() {
     grub_ver=2.06
     # ftpmirror.gnu.org 是 geoip 重定向，不是 cdn
     # 有可能重定义到一个拉黑了部分 IP 的服务器
-    is_in_china && grub_url=https://mirrors.tuna.tsinghua.edu.cn/gnu/grub/grub-$grub_ver-for-windows.zip ||
+    is_in_china && grub_url=https://mirrors.ustc.edu.cn/gnu/grub/grub-$grub_ver-for-windows.zip ||
         grub_url=https://ftpmirror.gnu.org/gnu/grub/grub-$grub_ver-for-windows.zip
     curl -Lo $tmp/grub.zip $grub_url
     # unzip -qo $tmp/grub.zip
@@ -1843,7 +1843,7 @@ install_grub_win() {
         if [ "$basearch" = aarch64 ]; then
             # 3.20 是 grub 2.12，可能会有问题
             alpine_ver=3.19
-            is_in_china && mirror=http://mirrors.tuna.tsinghua.edu.cn/alpine || mirror=https://dl-cdn.alpinelinux.org/alpine
+            is_in_china && mirror=http://mirrors.ustc.edu.cn/alpine || mirror=https://dl-cdn.alpinelinux.org/alpine
             grub_efi_apk=$(curl -L $mirror/v$alpine_ver/main/aarch64/ | grep -oP 'grub-efi-.*?apk' | head -1)
             mkdir -p $tmp/grub-efi
             curl -L "$mirror/v$alpine_ver/main/aarch64/$grub_efi_apk" | tar xz --warning=no-unknown-keyword -C $tmp/grub-efi/
@@ -1865,7 +1865,7 @@ install_grub_win() {
         if false; then
             # g2ldr.mbr
             # 部分国内机无法访问 ftp.cn.debian.org
-            is_in_china && host=mirrors.tuna.tsinghua.edu.cn || host=deb.debian.org
+            is_in_china && host=mirrors.ustc.edu.cn || host=deb.debian.org
             curl -LO http://$host/debian/tools/win32-loader/stable/win32-loader.exe
             7z x win32-loader.exe 'g2ldr.mbr' -o$tmp/win32-loader -r -y -bso0
             find $tmp/win32-loader -name 'g2ldr.mbr' -exec cp {} /cygdrive/$c/ \;
