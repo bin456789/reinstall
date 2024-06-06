@@ -9,6 +9,7 @@ github_proxy=https://mirror.ghproxy.com/https://raw.githubusercontent.com
 export LC_ALL=C
 
 # 处理部分用户用 su 切换成 root 导致环境变量没 sbin 目录
+# 不要漏了最后的 $PATH，否则会找不到 windows 系统程序例如 diskpart
 export PATH=/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin:$PATH
 
 this_script=$(realpath "$0")
@@ -3036,6 +3037,17 @@ fi
 
 info 'info'
 echo "$distro $releasever"
+
+if ! { is_netboot_xyz || is_use_dd; }; then
+    if [ "$distro" = windows ]; then
+        username="administrator"
+    else
+        username="root"
+    fi
+    echo "Username: $username"
+    echo "Password: 123@@@"
+fi
+
 if is_netboot_xyz; then
     echo 'Reboot to start netboot.xyz.'
 elif is_alpine_live; then
@@ -3043,14 +3055,6 @@ elif is_alpine_live; then
 elif is_use_dd; then
     echo 'Reboot to start DD.'
 else
-    if [ "$distro" = windows ]; then
-        username="administrator"
-    else
-        username="root"
-    fi
-
-    echo "Username: $username"
-    echo "Password: 123@@@"
     echo "Reboot to start the installation."
 fi
 
