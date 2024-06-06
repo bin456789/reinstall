@@ -1499,16 +1499,7 @@ find_main_disk() {
         # diskpart 命令结果
         # 磁盘 ID: E5FDE61C
         # 磁盘 ID: {92CF6564-9B2E-4348-A3BD-D84E3507EBD7}
-        if false; then
-            # https://github.com/bin456789/reinstall/issues/76
-            disk_index=$(wmic logicaldisk where "DeviceID='$c:'" assoc:value /resultclass:Win32_DiskPartition |
-                grep 'DiskIndex=' | cut -d= -f2 | del_cr)
-            select_cmd="select disk $disk_index"
-        else
-            volume_index=$(printf "list volume" | diskpart | grep 'Partition' | awk '$3=="'$c'" {print $2}')
-            select_cmd="select volume $volume_index"
-        fi
-        main_disk=$(printf "%s\n%s" "$select_cmd" "uniqueid disk" | diskpart |
+        main_disk=$(printf "%s\n%s" "select volume $c" "uniqueid disk" | diskpart |
             tail -1 | awk '{print $NF}' | sed 's,[{}],,g' | del_cr)
     else
         # centos7下测试     lsblk --inverse $mapper | grep -w disk     grub2-probe -t disk /
