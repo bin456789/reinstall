@@ -110,7 +110,7 @@ rename X:\setup.exe.disabled setup.exe
 
 rem 设置
 set EnableEMS=0
-set ForceOldSetup=0
+set ForceOldSetup=1
 
 if %EnableEMS% EQU 1 (
     set EMS=/EMSPort:COM1 /EMSBaudRate:115200
@@ -119,6 +119,8 @@ if %EnableEMS% EQU 1 (
 rem 运行 ramdisk X:\setup.exe 的话
 rem vista 会找不到安装源
 rem server 23h2 会无法运行
+
+rem 26100 新版安装程序不会创建 BIOS MBR 引导
 if %ForceOldSetup% EQU 1 (
     set setup=Y:\sources\setup.exe
 ) else (
