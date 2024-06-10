@@ -1807,8 +1807,9 @@ EOF
 
         # 检测机器是否能用 cloud 内核
         axx64=$(get_axx64)
+        ethx=$(cat /dev/ethx)
         # shellcheck source=/dev/null
-        if ls $os_dir/boot/vmlinuz-*-cloud-$axx64 2>/dev/null && ! sh /can_use_cloud_kernel.sh $xda; then
+        if ls $os_dir/boot/vmlinuz-*-cloud-$axx64 2>/dev/null && ! sh /can_use_cloud_kernel.sh "$xda" "$ethx"; then
             cp_resolv_conf $os_dir
             chroot $os_dir apt update
             DEBIAN_FRONTEND=noninteractive chroot $os_dir apt install -y linux-image-$axx64

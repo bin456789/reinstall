@@ -177,6 +177,10 @@ get_host_by_url() {
     cut -d/ -f3 <<<$1
 }
 
+get_function() {
+    declare -f "$1"
+}
+
 get_function_content() {
     declare -f "$1" | sed '1d;2d;$d'
 }
@@ -757,17 +761,6 @@ setos() {
         12) codename=bookworm ;;
         esac
 
-        # <=256M 必须要使用云内核，否则不够内存
-        if [ $ram_size -le 256 ]; then
-            find_main_disk
-            if ! can_use_cloud_kernel; then
-                for driver in $(get_disk_controller); do
-                    echo "using driver: $driver"
-                done
-                error_and_exit "Can't use cloud kernel. And not enough RAM to run normal kernel."
-            fi
-        fi
-
         if is_in_china; then
             cdimage_mirror=https://mirrors.ustc.edu.cn/debian-cdimage
         else
@@ -1115,10 +1108,30 @@ setos() {
         setos_$distro
     fi
 
+    # debian/kali <=256M 必须使用云内核，否则不够内存
+    if is_distro_like_debian && [ "$ram_size" -le 256 ]; then
+        exit_if_cant_use_cloud_kernel
+    fi
+
     # 集中测试云镜像格式
     if is_use_cloud_image && [ "$step" = finalos ]; then
         # shellcheck disable=SC2154
         test_url $finalos_img 'xz|gzip|qemu' finalos_img_type
+    fi
+}
+
+exit_if_cant_use_cloud_kernel() {
+    find_main_disk
+    collect_netconf
+
+    for driver in $(get_disk_drivers); do
+        echo "using disk driver: $driver"
+    done
+    for driver in $(get_net_drivers); do
+        echo "using net driver: $driver"
+    done
+    if ! can_use_cloud_kernel; then
+        error_and_exit "Can't use cloud kernel. And not enough RAM to run normal kernel."
     fi
 }
 
@@ -2234,7 +2247,7 @@ EOF
         # <=256M 极限优化
         find_main_disk
         extra_drivers=
-        for driver in $(get_disk_controller); do
+        for driver in $(get_disk_drivers); do
             echo "using driver: $driver"
             case $driver in
             nvme | virtio_blk | virtio_scsi | xen_blkfront | xen_scsifront | hv_storvsc | vmw_pvscsi) extra_drivers+=" $driver" ;;
@@ -2312,8 +2325,17 @@ EOF
     sed -Ei "s/^[[:space:]]*trap[[:space:]]/$replace/" $tmp_dir/trans.sh
 }
 
-# 不用在 windows 判断是哪种硬盘控制器，因为 256M 运行 windows 只可能是 xp，而脚本本来就不支持 xp
-get_disk_controller() {
+get_disk_drivers() {
+    get_drivers "/sys/block/$xda"
+}
+
+get_net_drivers() {
+    get_drivers "/sys/class/net/$ethx"
+}
+
+# 不用在 windows 判断是哪种硬盘/网络驱动，因为 256M 运行 windows 只可能是 xp，而脚本本来就不支持 xp
+# 而且安装过程也有二次判断
+get_drivers() {
     # 有以下结果组合出现
     # sd_mod
     # virtio_blk
@@ -2327,7 +2349,7 @@ get_disk_controller() {
     # mptsas
     # vmw_pvscsi
     (
-        cd "$(readlink -f /sys/block/$xda)"
+        cd "$(readlink -f $1)"
         while ! [ "$(pwd)" = / ]; do
             if [ -d driver ]; then
                 if [ -d driver/module ]; then
@@ -2347,22 +2369,20 @@ get_disk_controller() {
 can_use_cloud_kernel() {
     # 有些虚拟机用了 ahci，但云内核没有 ahci 驱动
     # shellcheck disable=SC2317
-    get_disk_controller | grep -Ewq \
+    get_disk_drivers | grep -Ewq \
         'ata_generic|ata_piix|pata_legacy|nvme|virtio_blk|virtio_scsi|xen_blkfront|xen_scsifront|hv_storvsc|vmw_pvscsi' &&
-        ! get_disk_controller | grep -Ewq 'pata_.*|sata_.*|ahci|mpt.*'
-
+        ! get_disk_drivers | grep -Ewq 'pata_.*|sata_.*|ahci|mpt.*' &&
+        ! get_net_drivers | grep -Ewq 'e1000'
 }
+
 create_can_use_cloud_kernel_sh() {
     cat <<EOF >$1
-        get_disk_controller(){
-            $(get_function_content get_disk_controller)
-        }
-
-        can_use_cloud_kernel(){
-            $(get_function_content can_use_cloud_kernel)
-        }
-
+        $(get_function get_drivers)
+        $(get_function get_net_drivers)
+        $(get_function get_disk_drivers)
+        $(get_function can_use_cloud_kernel)
         xda=\$1
+        ethx=\$2
         can_use_cloud_kernel
 EOF
 }
