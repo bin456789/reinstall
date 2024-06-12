@@ -491,21 +491,23 @@ is_windows() {
 }
 
 is_windows_support_rdnss() {
+    local build_ver
     apk add pev
     for dir in /os /wim; do
         dll=$dir/Windows/System32/kernel32.dll
-        # 15063 或之后才支持 rdnss
         if [ -f $dll ]; then
             build_ver="$(peres -v $dll | grep 'Product Version:' | cut -d. -f3)"
             echo "Windows Build Version: $build_ver"
-            if [ "$build_ver" -ge 15063 ]; then
-                return 0
-            else
-                return 1
-            fi
+            break
         fi
     done
-    error_and_exit "Not found kernel32.dll"
+    if [ -z "$build_ver" ]; then
+        error_and_exit "Not found kernel32.dll"
+    fi
+    apk del pev
+
+    # 15063 或之后才支持 rdnss
+    [ "$build_ver" -ge 15063 ]
 }
 
 is_need_manual_set_dnsv6() {
@@ -1223,12 +1225,10 @@ get_http_file_size_to() {
     size=''
     if wget --spider -S $url -o /tmp/headers.log; then
         # 网址重定向可能得到多个 Content-Length, 选最后一个
-        set -o pipefail
         if size=$(grep 'Content-Length:' /tmp/headers.log |
-            tail -1 | awk '{print $2}'); then
+            tail -1 | awk '{print $2}' | grep .); then
             eval "$var_name='$size'"
         fi
-        set +o pipefail
     else
         error_and_exit "Can't access $url"
     fi
@@ -1273,6 +1273,10 @@ dd_gzip_xz() {
 
 get_xda_size() {
     blockdev --getsize64 /dev/$xda
+}
+
+get_nbd_size() {
+    blockdev --getsize64 /dev/nbd0
 }
 
 is_xda_gt_2t() {
@@ -2684,8 +2688,54 @@ get_aws_repo() {
     fi
 }
 
+get_client_name_by_build_ver() {
+    build_ver=$1
+
+    if [ "$build_ver" -ge 22000 ]; then
+        echo 11
+    elif [ "$build_ver" -ge 10240 ]; then
+        echo 10
+    elif [ "$build_ver" -ge 9600 ]; then
+        echo 8.1
+    elif [ "$build_ver" -ge 9200 ]; then
+        echo 8
+    elif [ "$build_ver" -ge 7600 ]; then
+        echo 7
+    elif [ "$build_ver" -ge 6000 ]; then
+        echo vista
+    else
+        error_and_exit "Unknown Build Version: $build_ver"
+    fi
+}
+
+# 将 AC/SAC 版本号 转换为 LTSC 版本号
+# 用于查找驱动
+get_server_name_by_build_ver() {
+    build_ver=$1
+
+    if [ "$build_ver" -ge 26100 ]; then
+        echo 2025
+    elif [ "$build_ver" -ge 20348 ]; then
+        echo 2022
+    elif [ "$build_ver" -ge 17763 ]; then
+        echo 2019
+    elif [ "$build_ver" -ge 14393 ]; then
+        echo 2016
+    elif [ "$build_ver" -ge 9600 ]; then
+        echo 2012 r2
+    elif [ "$build_ver" -ge 9200 ]; then
+        echo 2012
+    elif [ "$build_ver" -ge 7600 ]; then
+        echo 2008 r2
+    elif [ "$build_ver" -ge 6000 ]; then
+        echo 2008
+    else
+        error_and_exit "Unknown Build Version: $build_ver"
+    fi
+}
+
 install_windows() {
-    apk add wimlib pev
+    apk add wimlib
 
     download $iso /os/windows.iso
     mkdir -p /iso
@@ -2751,13 +2801,37 @@ install_windows() {
     fi
     echo "Image Name: $image_name"
 
+    get_selected_image_prop() {
+        property=$1
+        wiminfo "$install_wim" "$image_name" | grep -i "^$property:" | cut -d: -f2- | xargs
+    }
+
+    # PRODUCTTYPE:
+    # - WinNT    (普通 windows)
+    # - ServerNT (windows server)
+
+    # INSTALLATIONTYPE:
+    # - Client      (普通 windows)
+    # - Server      (windows server 带桌面体验)
+    # - Server Core (windows server 不带桌面体验)
+
     # 用内核版本号筛选驱动
     # 使得可以安装 Hyper-V Server / Azure Stack HCI 等 Windows Server 变种
-    product_ver=$(peres -v /iso/setup.exe | grep 'Product Version:' | cut -d: -f2 | xargs)
-    nt_ver=$(echo "$product_ver" | cut -d. -f 1,2)
-    build_ver=$(echo "$product_ver" | cut -d. -f 3)
+    nt_ver=$(get_selected_image_prop "Major Version").$(get_selected_image_prop "Minor Version")
+    build_ver=$(get_selected_image_prop "Build")
+    product_type=$(get_selected_image_prop "Product Type")
+
+    product_ver=$(
+        case $product_type in
+        WinNT) get_client_name_by_build_ver "$build_ver" ;;
+        ServerNT) get_server_name_by_build_ver "$build_ver" ;;
+        esac
+    )
+
     echo "NT Version: $nt_ver"
     echo "Build Version: $build_ver"
+    echo "Product Type: $product_type"
+    echo "Product Version: $product_ver"
 
     # 解除 win11 硬件限制
     # 24h2 26100 IoT 没有限制 TPM，但强制要求 2c2g
@@ -2773,7 +2847,7 @@ install_windows() {
     # arch_xdd   virtio msi / xen驱动       x86  x64
 
     # 将 wim 的 arch 转为驱动和应答文件的 arch
-    arch_wim=$(wiminfo $install_wim 1 | grep Architecture: | awk '{print $2}' | to_lower)
+    arch_wim=$(get_selected_image_prop Architecture | to_lower)
     case "$arch_wim" in
     x86)
         arch=x86
@@ -2895,14 +2969,25 @@ install_windows() {
     if is_virt_contains kvm &&
         ! is_virt_contains aws; then
 
-        # 没有 vista 文件夹
-        case "$nt_ver" in
-        6.0) sys=2k8 ;;
-        6.1) sys=w7 ;;
-        6.2) sys=w8 ;;
-        6.3) sys=w8.1 ;;
-        10.0) sys=w10 ;;
-        esac
+        # 要区分 win10 / win11 驱动，虽然他们的 NT 版本号都是 10.0
+        # 但他们可能用不同的编译器编译
+        # 未来 inf 也有可能不同
+        # https://github.com/virtio-win/kvm-guest-drivers-windows/commit/9af43da9e16e2d4bf4ea4663cdc4f29275fff48f
+        # vista >>> 2k8
+        # 10 >>> w10
+        # 2012 r2 >>> 2k12R2
+        virtio_sys=$(
+            case "$(echo "$product_ver" | to_lower)" in
+            'vista') echo 2k8 ;; # 没有 vista 文件夹
+            '2025') echo 2k22 ;; # 暂时没有
+            *)
+                case "$product_type" in
+                WinNT) echo "w$product_ver" ;;
+                ServerNT) echo "$product_ver" | sed -E -e 's/ //' -e 's/^200?/2k/' -e 's/r2/R2/' ;;
+                esac
+                ;;
+            esac
+        )
 
         # https://github.com/virtio-win/virtio-win-pkg-scripts/issues/40
         # https://github.com/virtio-win/virtio-win-pkg-scripts/issues/61
@@ -2929,14 +3014,14 @@ install_windows() {
             # coreutils 的 cp mv rm 才有 -v 参数
             apk add 7zip file coreutils
             download $baseurl/$dir/virtio-win-gt-$arch_xdd.msi $drv/virtio.msi
-            match="FILE_*_${sys}_${arch}*"
+            match="FILE_*_${virtio_sys}_${arch}*"
             7z x $drv/virtio.msi -o$drv/virtio -i!$match -y -bb1
 
             (
                 cd $drv/virtio
                 # 为没有后缀名的文件添加后缀名
                 echo "Recognizing file extension..."
-                for file in *"${sys}_${arch}"; do
+                for file in *"${virtio_sys}_${arch}"; do
                     recognized=false
                     maybe_exts=$(file -b --extension "$file")
 
@@ -2966,7 +3051,7 @@ install_windows() {
                 # netkvm.cat
                 echo "Renaming files..."
                 for file in *; do
-                    new_file=$(echo "$file" | sed "s|FILE_||; s|_${sys}_${arch}||; s|.*_||")
+                    new_file=$(echo "$file" | sed "s|FILE_||; s|_${virtio_sys}_${arch}||; s|.*_||")
                     mv -v "$file" "$new_file"
                 done
             )
@@ -3013,7 +3098,7 @@ install_windows() {
 
     # 修改应答文件
     download $confhome/windows.xml /tmp/autounattend.xml
-    locale=$(wiminfo $install_wim | grep 'Default Language' | head -1 | awk '{print $NF}')
+    locale=$(get_selected_image_prop 'Default Language')
     sed -i "s|%arch%|$arch|; s|%image_name%|$image_name|; s|%locale%|$locale|; s|%password%|$PASSWORD|" \
         /tmp/autounattend.xml
 
@@ -3075,9 +3160,9 @@ install_windows() {
             # iso
             if [ "$nt_ver" = 6.0 ]; then
                 # win7 气球驱动有问题
-                cp_drivers $drv/virtio -ipath "*/$sys/$arch/*" -not -ipath "*/balloon/*"
+                cp_drivers $drv/virtio -ipath "*/$virtio_sys/$arch/*" -not -ipath "*/balloon/*"
             else
-                cp_drivers $drv/virtio -ipath "*/$sys/$arch/*"
+                cp_drivers $drv/virtio -ipath "*/$virtio_sys/$arch/*"
             fi
         else
             # msi
