@@ -366,7 +366,6 @@ get_ra_to() {
         apk add ndisc6
         # 有时会重复收取，所以设置收一份后退出
         echo "Gathering network info..."
-        get_netconf_to ethx
         # shellcheck disable=SC2154
         _ra="$(rdisc6 -1 "$ethx")"
         apk del ndisc6
@@ -393,7 +392,7 @@ get_netconf_to() {
     dhcpv6) echo "$ra" | grep 'Stateful address conf' | grep -q Yes && res=1 || res=0 ;;
     rdnss) res=$(echo "$ra" | grep 'Recursive DNS server' | cut -d: -f2-) ;;
     other) echo "$ra" | grep 'Stateful other conf' | grep -q Yes && res=1 || res=0 ;;
-    *) res=$(cat /dev/$1) ;;
+    *) res=$(cat /dev/netconf/$ethx/$1) ;;
     esac
 
     eval "$1='$res'"
@@ -659,6 +658,13 @@ insert_into_file() {
     fi
 }
 
+get_eths() {
+    (
+        cd /dev/netconf
+        ls
+    )
+}
+
 create_ifupdown_config() {
     conf_file=$1
 
@@ -671,81 +677,86 @@ source /etc/network/interfaces.d/*
 EOF
     fi
 
-    # 生成 lo配置 + ethx头部
-    get_netconf_to ethx
-    if [ -f /etc/network/devhotplug ] && grep -wo "$ethx" /etc/network/devhotplug; then
-        mode=allow-hotplug
-    else
-        mode=auto
-    fi
+    # 生成 lo配置
     cat <<EOF >>$conf_file
 auto lo
 iface lo inet loopback
+EOF
+
+    # ethx
+    for ethx in $(get_eths); do
+        if [ -f /etc/network/devhotplug ] && grep -wo "$ethx" /etc/network/devhotplug; then
+            mode=allow-hotplug
+        else
+            mode=auto
+        fi
+        cat <<EOF >>$conf_file
 
 $mode $ethx
 EOF
 
-    # ipv4
-    if is_dhcpv4; then
-        echo "iface $ethx inet dhcp" >>$conf_file
+        # ipv4
+        if is_dhcpv4; then
+            echo "iface $ethx inet dhcp" >>$conf_file
 
-    elif is_staticv4; then
-        get_netconf_to ipv4_addr
-        get_netconf_to ipv4_gateway
-        cat <<EOF >>$conf_file
+        elif is_staticv4; then
+            get_netconf_to ipv4_addr
+            get_netconf_to ipv4_gateway
+            cat <<EOF >>$conf_file
 iface $ethx inet static
     address $ipv4_addr
     gateway $ipv4_gateway
 EOF
-        # dns
-        if list=$(get_current_dns_v4); then
-            for dns in $list; do
-                cat <<EOF >>$conf_file
+            # dns
+            if list=$(get_current_dns_v4); then
+                for dns in $list; do
+                    cat <<EOF >>$conf_file
     dns-nameservers $dns
 EOF
-            done
+                done
+            fi
         fi
-    fi
 
-    # ipv6
-    if is_slaac; then
-        echo "iface $ethx inet6 auto" >>$conf_file
+        # ipv6
+        if is_slaac; then
+            echo "iface $ethx inet6 auto" >>$conf_file
 
-    elif is_dhcpv6; then
-        echo "iface $ethx inet6 dhcp" >>$conf_file
+        elif is_dhcpv6; then
+            echo "iface $ethx inet6 dhcp" >>$conf_file
 
-    elif is_staticv6; then
-        get_netconf_to ipv6_addr
-        get_netconf_to ipv6_gateway
-        cat <<EOF >>$conf_file
+        elif is_staticv6; then
+            get_netconf_to ipv6_addr
+            get_netconf_to ipv6_gateway
+            cat <<EOF >>$conf_file
 iface $ethx inet6 static
     address $ipv6_addr
     gateway $ipv6_gateway
 EOF
-    fi
+        fi
 
-    # dns
-    # 有 ipv6 但需设置 dns 的情况
-    if is_need_manual_set_dnsv6 && list=$(get_current_dns_v6); then
-        for dns in $list; do
-            cat <<EOF >>$conf_file
+        # dns
+        # 有 ipv6 但需设置 dns 的情况
+        if is_need_manual_set_dnsv6 && list=$(get_current_dns_v6); then
+            for dns in $list; do
+                cat <<EOF >>$conf_file
     dns-nameserver $dns
 EOF
-        done
-    fi
+            done
+        fi
 
-    # 禁用 ra
-    if should_disable_ra_slaac; then
-        if [ "$distro" = alpine ]; then
-            cat <<EOF >>$conf_file
+        # 禁用 ra
+        if should_disable_ra_slaac; then
+            if [ "$distro" = alpine ]; then
+                cat <<EOF >>$conf_file
     pre-up echo 0 >/proc/sys/net/ipv6/conf/$ethx/accept_ra
 EOF
-        else
-            cat <<EOF >>$conf_file
+            else
+                cat <<EOF >>$conf_file
     accept_ra 0
 EOF
+            fi
         fi
-    fi
+    done
 }
 
 install_alpine() {
@@ -1509,88 +1520,113 @@ get_yq_name() {
 create_cloud_init_network_config() {
     ci_file=$1
 
-    get_netconf_to ethx
-    get_netconf_to mac_addr
     apk add "$(get_yq_name)"
 
-    # shellcheck disable=SC2154
-    yq -i ".network.version=1 |
-           .network.config[0].type=\"physical\" |
-           .network.config[0].name=\"$ethx\" |
-           .network.config[0].mac_address=\"$mac_addr\" |
-           .network.config[1].type=\"nameserver\"
+    need_set_dns4=false
+    need_set_dns6=false
+
+    config_id=0
+    for ethx in $(get_eths); do
+        get_netconf_to mac_addr
+
+        # shellcheck disable=SC2154
+        yq -i ".network.version=1 |
+           .network.config[$config_id].type=\"physical\" |
+           .network.config[$config_id].name=\"$ethx\" |
+           .network.config[$config_id].mac_address=\"$mac_addr\"
            " $ci_file
 
-    ip_index=0
+        subnet_id=0
 
-    # ipv4
-    if is_dhcpv4; then
-        yq -i ".network.config[0].subnets[$ip_index] = {\"type\": \"dhcp4\"}" $ci_file
-        ip_index=$((ip_index + 1))
-    elif is_staticv4; then
-        get_netconf_to ipv4_addr
-        get_netconf_to ipv4_gateway
-        yq -i ".network.config[0].subnets[$ip_index] = {
+        # ipv4
+        if is_dhcpv4; then
+            yq -i ".network.config[$config_id].subnets[$subnet_id] = {\"type\": \"dhcp4\"}" $ci_file
+            subnet_id=$((subnet_id + 1))
+        elif is_staticv4; then
+            need_set_dns4=true
+            get_netconf_to ipv4_addr
+            get_netconf_to ipv4_gateway
+            yq -i ".network.config[$config_id].subnets[$subnet_id] = {
                     \"type\": \"static\",
                     \"address\": \"$ipv4_addr\",
                     \"gateway\": \"$ipv4_gateway\" }
                     " $ci_file
 
-        # 旧版 cloud-init 有 bug
-        # 有的版本会只从第一种配置中读取 dns，有的从第二种读取
-        # 因此写两种配置
-        if dns4_list=$(get_current_dns_v4); then
-            for cur in $dns4_list; do
-                yq -i ".network.config[0].subnets[$ip_index].dns_nameservers += [\"$cur\"]" $ci_file
-                yq -i ".network.config[1].address += [\"$cur\"]" $ci_file
-            done
+            # 旧版 cloud-init 有 bug
+            # 有的版本会只从第一种配置中读取 dns，有的从第二种读取
+            # 因此写两种配置
+            if dns4_list=$(get_current_dns_v4); then
+                for cur in $dns4_list; do
+                    yq -i ".network.config[$config_id].subnets[$subnet_id].dns_nameservers += [\"$cur\"]" $ci_file
+                done
+            fi
+            subnet_id=$((subnet_id + 1))
         fi
-        ip_index=$((ip_index + 1))
-    fi
 
-    # ipv6
-    if is_slaac; then
-        if is_enable_other_flag; then
-            type=ipv6_dhcpv6-stateless
-        else
-            type=ipv6_slaac
-        fi
-        yq -i ".network.config[0].subnets[$ip_index] = {\"type\": \"$type\"}" $ci_file
+        # ipv6
+        # slaac:  ipv6_slaac
+        # └─enable_other_flag: ipv6_dhcpv6-stateless
+        # dhcpv6: ipv6_dhcpv6-stateful
 
-    elif is_dhcpv6; then
-        yq -i ".network.config[0].subnets[$ip_index] = {\"type\": \"ipv6_dhcpv6-stateful\"}" $ci_file
+        # ipv6
+        if is_slaac; then
+            if is_enable_other_flag; then
+                type=ipv6_dhcpv6-stateless
+            else
+                type=ipv6_slaac
+            fi
+            yq -i ".network.config[$config_id].subnets[$subnet_id] = {\"type\": \"$type\"}" $ci_file
 
-    elif is_staticv6; then
-        get_netconf_to ipv6_addr
-        get_netconf_to ipv6_gateway
-        # centos7 不认识 static6，但可改成 static，作用相同
-        # https://github.com/canonical/cloud-init/commit/dacdd30080bd8183d1f1c1dc9dbcbc8448301529
-        if [ -f /os/etc/system-release-cpe ] &&
-            grep -E 'centos:7|oracle:linux:7' /os/etc/system-release-cpe; then
-            type_ipv6_static=static
-        else
-            type_ipv6_static=static6
-        fi
-        yq -i ".network.config[0].subnets[$ip_index] = {
+        elif is_dhcpv6; then
+            yq -i ".network.config[$config_id].subnets[$subnet_id] = {\"type\": \"ipv6_dhcpv6-stateful\"}" $ci_file
+
+        elif is_staticv6; then
+            get_netconf_to ipv6_addr
+            get_netconf_to ipv6_gateway
+            # centos7 不认识 static6，但可改成 static，作用相同
+            # https://github.com/canonical/cloud-init/commit/dacdd30080bd8183d1f1c1dc9dbcbc8448301529
+            if [ -f /os/etc/system-release-cpe ] &&
+                grep -E 'centos:7|oracle:linux:7' /os/etc/system-release-cpe; then
+                type_ipv6_static=static
+            else
+                type_ipv6_static=static6
+            fi
+            yq -i ".network.config[$config_id].subnets[$subnet_id] = {
                     \"type\": \"$type_ipv6_static\",
                     \"address\": \"$ipv6_addr\",
                     \"gateway\": \"$ipv6_gateway\" }
                     " $ci_file
-        if should_disable_ra_slaac; then
-            yq -i ".network.config[0].accept-ra = false" $ci_file
+            if should_disable_ra_slaac; then
+                yq -i ".network.config[$config_id].accept-ra = false" $ci_file
+            fi
         fi
-    fi
 
-    # 有 ipv6 但需设置 dns 的情况
-    if is_need_manual_set_dnsv6 && dns6_list=$(get_current_dns_v6); then
-        for cur in $dns6_list; do
-            yq -i ".network.config[0].subnets[$ip_index].dns_nameservers += [\"$cur\"]" $ci_file
-            yq -i ".network.config[1].address += [\"$cur\"]" $ci_file
-        done
-    fi
+        # 有 ipv6 但需设置 dns 的情况
+        if is_need_manual_set_dnsv6 && dns6_list=$(get_current_dns_v6); then
+            need_set_dns6=true
+            for cur in $dns6_list; do
+                yq -i ".network.config[$config_id].subnets[$subnet_id].dns_nameservers += [\"$cur\"]" $ci_file
+            done
+        fi
 
-    # 如果 network.config[1] 没有 address，则删除，避免低版本 cloud-init 报错
-    yq -i 'del(.network.config[1] | select(has("address") | not))' $ci_file
+        config_id=$((config_id + 1))
+    done
+
+    if $need_set_dns4 || $need_set_dns6; then
+        yq -i ".network.config[$config_id].type=\"nameserver\"" $ci_file
+        if $need_set_dns4 && dns4_list=$(get_current_dns_v4); then
+            for cur in $dns4_list; do
+                yq -i ".network.config[$config_id].address += [\"$cur\"]" $ci_file
+            done
+        fi
+        if $need_set_dns6 && dns6_list=$(get_current_dns_v6); then
+            for cur in $dns6_list; do
+                yq -i ".network.config[$config_id].address += [\"$cur\"]" $ci_file
+            done
+        fi
+        # 如果 network.config[$config_id] 没有 address，则删除，避免低版本 cloud-init 报错
+        yq -i "del(.network.config[$config_id] | select(has(\"address\") | not))" $ci_file
+    fi
 
     apk del "$(get_yq_name)"
 }
@@ -1657,9 +1693,12 @@ modify_windows() {
 
     # 下载共同的子脚本
     # 可能 unattend.xml 已经设置了ExtendOSPartition，不过运行resize没副作用
-    bats="windows-set-netconf.bat windows-resize.bat"
+    bats="windows-resize.bat"
     download $confhome/windows-resize.bat $os_dir/windows-resize.bat
-    create_win_set_netconf_script $os_dir/windows-set-netconf.bat
+    for ethx in $(get_eths); do
+        create_win_set_netconf_script $os_dir/windows-set-netconf-$ethx.bat
+        bats="$bats windows-set-netconf-$ethx.bat"
+    done
 
     if $use_gpo; then
         # 使用组策略
@@ -1811,9 +1850,10 @@ EOF
 
         # 检测机器是否能用 cloud 内核
         axx64=$(get_axx64)
-        ethx=$(cat /dev/ethx)
-        # shellcheck source=/dev/null
-        if ls $os_dir/boot/vmlinuz-*-cloud-$axx64 2>/dev/null && ! sh /can_use_cloud_kernel.sh "$xda" "$ethx"; then
+        eths=$(get_eths)
+        if ls $os_dir/boot/vmlinuz-*-cloud-$axx64 2>/dev/null &&
+            ! sh /can_use_cloud_kernel.sh "$xda" $eths; then
+
             cp_resolv_conf $os_dir
             chroot $os_dir apt update
             DEBIAN_FRONTEND=noninteractive chroot $os_dir apt install -y linux-image-$axx64
@@ -3238,7 +3278,9 @@ install_windows() {
             # 使用 autounattend.xml
             # win7 在此阶段找不到网卡
             download $confhome/windows-resize.bat /wim/windows-resize.bat
-            create_win_set_netconf_script /wim/windows-set-netconf.bat
+            for ethx in $(get_eths); do
+                create_win_set_netconf_script /wim/windows-set-netconf-$ethx.bat
+            done
         else
             modify_windows /wim
         fi

@@ -36,9 +36,9 @@ Usage: $reinstall____ centos   7|9
                       rocky    8|9
                       fedora   39|40
                       debian   10|11|12
-                      opensuse 15.5|tumbleweed
                       ubuntu   20.04|22.04|24.04
                       alpine   3.17|3.18|3.19|3.20
+                      opensuse 15.5|15.6|tumbleweed
                       kali
                       arch
                       gentoo
@@ -1109,7 +1109,7 @@ setos() {
     fi
 
     # debian/kali <=256M 必须使用云内核，否则不够内存
-    if is_distro_like_debian && [ "$ram_size" -le 256 ]; then
+    if is_distro_like_debian && ! is_in_windows && [ "$ram_size" -le 256 ]; then
         exit_if_cant_use_cloud_kernel
     fi
 
@@ -1117,21 +1117,6 @@ setos() {
     if is_use_cloud_image && [ "$step" = finalos ]; then
         # shellcheck disable=SC2154
         test_url $finalos_img 'xz|gzip|qemu' finalos_img_type
-    fi
-}
-
-exit_if_cant_use_cloud_kernel() {
-    find_main_disk
-    collect_netconf
-
-    for driver in $(get_disk_drivers); do
-        echo "using disk driver: $driver"
-    done
-    for driver in $(get_net_drivers); do
-        echo "using net driver: $driver"
-    done
-    if ! can_use_cloud_kernel; then
-        error_and_exit "Can't use cloud kernel. And not enough RAM to run normal kernel."
     fi
 }
 
@@ -1166,9 +1151,9 @@ verify_os_name() {
         'rocky    8|9' \
         'fedora   39|40' \
         'debian   10|11|12' \
-        'opensuse 15.5|tumbleweed' \
         'ubuntu   20.04|22.04|24.04' \
         'alpine   3.17|3.18|3.19|3.20' \
+        'opensuse 15.5|15.6|tumbleweed' \
         'kali' \
         'arch' \
         'gentoo' \
@@ -1562,7 +1547,7 @@ find_main_disk() {
     fi
 }
 
-# TODO: 多网卡 单网卡多IP
+# TODO: 单网卡多IP
 collect_netconf() {
     if is_in_windows; then
         convert_net_str_to_array() {
@@ -1578,12 +1563,22 @@ collect_netconf() {
 
         # 否        手动        0    0.0.0.0/0                  19  192.168.1.1
         # 否        手动        0    0.0.0.0/0                  59  nekoray-tun
-        ids="
-        $(netsh int ipv4 show route | grep --text -F '0.0.0.0/0' | awk '$6 ~ /\./ {print $5}')
-        $(netsh int ipv6 show route | grep --text -F '::/0' | awk '$6 ~ /:/ {print $5}')
-        "
-        ids=$(echo "$ids" | sort -u)
-        for id in $ids; do
+
+        for v in 4 6; do
+            if [ "$v" = 4 ]; then
+                # 或者 route print
+                route=$(netsh int ipv4 show route | awk '$4 == "0.0.0.0/0"' | head -1 | del_cr)
+            else
+                route=$(netsh int ipv6 show route | awk '$4 == "::/0"' | head -1 | del_cr)
+            fi
+
+            if [ -z "$route" ]; then
+                continue
+            fi
+
+            id=$(awk '{print $5}' <<<"$route")
+            gateway=$(awk '{print $6}' <<<"$route")
+
             config=$(wmic nicconfig where "InterfaceIndex='$id'" get MACAddress,IPAddress,IPSubnet,DefaultIPGateway /format:list | del_cr)
             # 排除 IP/子网/网关/MAC 为空的
             if grep -q '=$' <<<"$config"; then
@@ -1597,45 +1592,53 @@ collect_netconf() {
 
             # IPv4
             # shellcheck disable=SC2154
-            for ((i = 0; i < ${#ips[@]}; i++)); do
-                ip=${ips[i]}
-                subnet=${subnets[i]}
-                if [[ "$ip" = *.* ]]; then
-                    cidr=$(ipcalc -b "$ip/$subnet" | grep Netmask: | awk '{print $NF}')
-                    ipv4_addr="$ip/$cidr"
-                    break
-                fi
-            done
-
-            # IPv6
-            ipv6_type_list=$(netsh interface ipv6 show address $id normal)
-            for ((i = 0; i < ${#ips[@]}; i++)); do
-                ip=${ips[i]}
-                cidr=${subnets[i]}
-                if [[ "$ip" = *:* ]]; then
-                    ipv6_type=$(grep "$ip" <<<"$ipv6_type_list" | awk '{print $1}')
-                    # Public 是 slaac
-                    # 还有类型 Temporary，不过有 Temporary 肯定还有 Public，因此不用
-                    if [ "$ipv6_type" = Public ] ||
-                        [ "$ipv6_type" = Dhcp ] ||
-                        [ "$ipv6_type" = Manual ]; then
-                        ipv6_addr="$ip/$cidr"
+            if [ "$v" = 4 ]; then
+                for ((i = 0; i < ${#ips[@]}; i++)); do
+                    ip=${ips[i]}
+                    subnet=${subnets[i]}
+                    if [[ "$ip" = *.* ]]; then
+                        cidr=$(ipcalc -b "$ip/$subnet" | grep Netmask: | awk '{print $NF}')
+                        ipv4_addr="$ip/$cidr"
+                        ipv4_gateway="$gateway"
+                        ipv4_mac="$mac_addr"
                         break
                     fi
-                fi
-            done
+                done
+            fi
+
+            # IPv6
+            if [ "$v" = 6 ]; then
+                ipv6_type_list=$(netsh interface ipv6 show address $id normal)
+                for ((i = 0; i < ${#ips[@]}; i++)); do
+                    ip=${ips[i]}
+                    cidr=${subnets[i]}
+                    if [[ "$ip" = *:* ]]; then
+                        ipv6_type=$(grep "$ip" <<<"$ipv6_type_list" | awk '{print $1}')
+                        # Public 是 slaac
+                        # 还有类型 Temporary，不过有 Temporary 肯定还有 Public，因此不用
+                        if [ "$ipv6_type" = Public ] ||
+                            [ "$ipv6_type" = Dhcp ] ||
+                            [ "$ipv6_type" = Manual ]; then
+                            ipv6_addr="$ip/$cidr"
+                            ipv6_gateway="$gateway"
+                            ipv6_mac="$mac_addr"
+                            break
+                        fi
+                    fi
+                done
+            fi
 
             # 网关
             # shellcheck disable=SC2154
-            for gateway in "${gateways[@]}"; do
-                if [ -n "$ipv4_addr" ] && [[ "$gateway" = *.* ]]; then
-                    ipv4_gateway="$gateway"
-                elif [ -n "$ipv6_addr" ] && [[ "$gateway" = *:* ]]; then
-                    ipv6_gateway="$gateway"
-                fi
-            done
-
-            break
+            if false; then
+                for gateway in "${gateways[@]}"; do
+                    if [ -n "$ipv4_addr" ] && [[ "$gateway" = *.* ]]; then
+                        ipv4_gateway="$gateway"
+                    elif [ -n "$ipv6_addr" ] && [[ "$gateway" = *:* ]]; then
+                        ipv6_gateway="$gateway"
+                    fi
+                done
+            fi
         done
     else
         # linux
@@ -1654,23 +1657,22 @@ collect_netconf() {
 
         for v in 4 6; do
             if ethx=$(ip -$v route show default | awk '$4=="dev"' | head -1 | awk '{print $5}' | grep .); then
-                mac_addr=$(ip link show dev $ethx | grep link/ether | head -1 | awk '{print $2}')
-                break
-            fi
-        done
-
-        for v in 4 6; do
-            if ip -$v route show default | awk '$5=="'$ethx'"' | head -1 | grep -q .; then
-                eval ipv${v}_gateway="$(ip -$v route show default | awk '$5=="'$ethx'"' | head -1 | awk '{print $3}')"
-                eval ipv${v}_addr="$(ip -$v -o addr show scope global dev $ethx | head -1 | awk '{print $4}')"
+                if ip -$v route show default | awk '$5=="'$ethx'"' | head -1 | grep -q .; then
+                    eval ipv${v}_ethx="$ethx" # can_use_cloud_kernel 要用
+                    eval ipv${v}_mac="$(ip link show dev $ethx | grep link/ether | head -1 | awk '{print $2}')"
+                    eval ipv${v}_gateway="$(ip -$v route show default | awk '$5=="'$ethx'"' | head -1 | awk '{print $3}')"
+                    eval ipv${v}_addr="$(ip -$v -o addr show scope global dev $ethx | head -1 | awk '{print $4}')"
+                fi
             fi
         done
     fi
 
     info "Network Info"
-    echo "MAC  Address: $mac_addr"
+    echo "IPv4 MAC: $ipv4_mac"
     echo "IPv4 Address: $ipv4_addr"
     echo "IPv4 Gateway: $ipv4_gateway"
+    echo "---"
+    echo "IPv6 MAC: $ipv6_mac"
     echo "IPv6 Address: $ipv6_addr"
     echo "IPv6 Gateway: $ipv6_gateway"
     echo
@@ -2035,48 +2037,9 @@ mod_initrd_debian_kali() {
         . /usr/share/debconf/confmodule
         db_progress START 0 5 debian-installer/netcfg/title
 
-        # 找到主网卡
-        # debian 11 initrd 没有 xargs awk
-        # debian 12 initrd 没有 xargs
-        if false; then
-            iface=$(ip -o link | grep "@mac_addr" | awk '{print $2}' | cut -d: -f1)
-        else
-            iface=$(ip -o link | grep "@mac_addr" | cut -d' ' -f2 | cut -d: -f1)
-        fi
-        db_progress STEP 1
+        : get_ip_conf_cmd
 
-        # dhcpv4
-        db_progress INFO netcfg/dhcp_progress
-        udhcpc -i "$iface" -f -q -n
-        db_progress STEP 1
-
-        # slaac + dhcpv6
-        db_progress INFO netcfg/slaac_wait_title
-        # https://salsa.debian.org/installer-team/netcfg/-/blob/master/autoconfig.c#L148
-        cat <<EOF >/var/lib/netcfg/dhcp6c.conf
-interface $iface {
-    send ia-na 0;
-    request domain-name-servers;
-    request domain-name;
-    script "/lib/netcfg/print-dhcp6c-info";
-};
-
-id-assoc na 0 {
-};
-EOF
-        dhcp6c -c /var/lib/netcfg/dhcp6c.conf "$iface"
-        sleep 10
-        # kill-all-dhcp
-        kill -9 "$(cat /var/run/dhcp6c.pid)"
-        db_progress STEP 1
-
-        # 静态 + 检测网络
-        db_subst netcfg/link_detect_progress interface "$iface"
-        db_progress INFO netcfg/link_detect_progress
-        . /alpine-network.sh @netconf
-        db_progress STEP 1
-
-        # 运行trans.sh，保存配置
+        # 运行 trans.sh，保存配置
         db_progress INFO base-installer/progress/netcfg
         sh /trans.sh
         db_progress STEP 1
@@ -2085,13 +2048,10 @@ EOF
     # 直接覆盖 net-retriever，方便调试
     # curl -Lo /usr/lib/debian-installer/retriever/net-retriever $confhome/net-retriever
 
-    collect_netconf
-    is_in_china && is_in_china=true || is_in_china=false
-    netconf="'$mac_addr' '$ipv4_addr' '$ipv4_gateway' '$ipv6_addr' '$ipv6_gateway' '$is_in_china'"
-
-    get_function_content netcfg |
-        sed "s|@mac_addr|$mac_addr|" |
-        sed "s|@netconf|$netconf|" >var/lib/dpkg/info/netcfg.postinst
+    postinst=var/lib/dpkg/info/netcfg.postinst
+    get_function_content netcfg >$postinst
+    get_ip_conf_cmd | insert_into_file $postinst after ": get_ip_conf_cmd"
+    # cat $postinst
 
     # shellcheck disable=SC2317
     expand_packages() {
@@ -2239,7 +2199,8 @@ EOF
     download_and_extract_udeb fdisk-udeb $tmp/fdisk
     cp -f $tmp/fdisk/usr/sbin/fdisk usr/sbin/
 
-    if [ $ram_size -gt 256 ]; then
+    # >256M 或者当前系统是 windows
+    if [ $ram_size -gt 256 ] || is_in_windows; then
         sed -i '/^pata-modules/d' $net_retriever
         sed -i '/^sata-modules/d' $net_retriever
         sed -i '/^scsi-modules/d' $net_retriever
@@ -2326,11 +2287,11 @@ EOF
 }
 
 get_disk_drivers() {
-    get_drivers "/sys/block/$xda"
+    get_drivers "/sys/block/$1"
 }
 
 get_net_drivers() {
-    get_drivers "/sys/class/net/$ethx"
+    get_drivers "/sys/class/net/$1"
 }
 
 # 不用在 windows 判断是哪种硬盘/网络驱动，因为 256M 运行 windows 只可能是 xp，而脚本本来就不支持 xp
@@ -2366,13 +2327,44 @@ get_drivers() {
     )
 }
 
+exit_if_cant_use_cloud_kernel() {
+    find_main_disk
+    collect_netconf
+
+    # shellcheck disable=SC2154
+    if ! can_use_cloud_kernel "$xda" $ipv4_ethx $ipv6_ethx; then
+        error_and_exit "Can't use cloud kernel. And not enough RAM to run normal kernel."
+    fi
+}
+
 can_use_cloud_kernel() {
+    # initrd 下也要使用，不要用 <<<
+
     # 有些虚拟机用了 ahci，但云内核没有 ahci 驱动
-    # shellcheck disable=SC2317
-    get_disk_drivers | grep -Ewq \
-        'ata_generic|ata_piix|pata_legacy|nvme|virtio_blk|virtio_scsi|xen_blkfront|xen_scsifront|hv_storvsc|vmw_pvscsi' &&
-        ! get_disk_drivers | grep -Ewq 'pata_.*|sata_.*|ahci|mpt.*' &&
-        ! get_net_drivers | grep -Ewq 'e1000'
+    cloud_eth_modules='ena|gve|mana|virtio_net|xen_netfront|hv_netvsc|vmxnet3|mlx4_en|mlx4_core|mlx5_core|ixgbevf'
+    cloud_blk_modules='ata_generic|ata_piix|pata_legacy|nvme|virtio_blk|virtio_scsi|xen_blkfront|xen_scsifront|hv_storvsc|vmw_pvscsi'
+
+    # disk
+    drivers="$(get_disk_drivers $1)"
+    shift
+    for driver in $drivers; do
+        echo "using disk driver: $driver"
+    done
+    echo "$drivers" | grep -Ewq "$cloud_blk_modules" || return 1
+
+    # net
+    # v4 v6 eth 相同，只检查一次
+    if [ "$1" = "$2" ]; then
+        shift
+    fi
+    while [ $# -gt 0 ]; do
+        drivers="$(get_net_drivers $1)"
+        shift
+        for driver in $drivers; do
+            echo "using net driver: $driver"
+        done
+        echo "$drivers" | grep -Ewq "$cloud_eth_modules" || return 1
+    done
 }
 
 create_can_use_cloud_kernel_sh() {
@@ -2381,10 +2373,26 @@ create_can_use_cloud_kernel_sh() {
         $(get_function get_net_drivers)
         $(get_function get_disk_drivers)
         $(get_function can_use_cloud_kernel)
-        xda=\$1
-        ethx=\$2
-        can_use_cloud_kernel
+
+        can_use_cloud_kernel "\$@"
 EOF
+}
+
+get_ip_conf_cmd() {
+    collect_netconf >&2
+    is_in_china && is_in_china=true || is_in_china=false
+
+    sh=/alpine-network.sh
+    if [ -n "$ipv4_mac" ] && [ -n "$ipv6_mac" ] && [ "$ipv4_mac" = "$ipv6_mac" ]; then
+        echo "'$sh' '$ipv4_mac' '$ipv4_addr' '$ipv4_gateway' '$ipv6_addr' '$ipv6_gateway' '$is_in_china'"
+    else
+        if [ -n "$ipv4_mac" ]; then
+            echo "'$sh' '$ipv4_mac' '$ipv4_addr' '$ipv4_gateway' '' '' '$is_in_china'"
+        fi
+        if [ -n "$ipv6_mac" ]; then
+            echo "'$sh' '$ipv6_mac' '' '' '$ipv6_addr' '$ipv6_gateway' '$is_in_china'"
+        fi
+    fi
 }
 
 mod_initrd_alpine() {
@@ -2407,43 +2415,8 @@ mod_initrd_alpine() {
             fi
         fi
     fi
-    insert_into_file init after 'configure_ip\(\)' <<EOF
-        depmod
-        [ -d /sys/module/ipv6 ] || modprobe ipv6
-EOF
 
-    # hack 2 设置 ethx
-    # 3.16~3.18 ip_choose_if
-    # 3.19 ethernets
-    if grep -q ip_choose_if init; then
-        ethernets_func=ip_choose_if
-    else
-        ethernets_func=ethernets
-    fi
-
-    # shellcheck disable=SC2317
-    ip_choose_if() {
-        ip -o link | grep "@mac_addr" | awk '{print $2}' | cut -d: -f1
-        return
-    }
-
-    collect_netconf
-    get_function_content ip_choose_if | sed "s/@mac_addr/$mac_addr/" |
-        insert_into_file init after "$ethernets_func\(\)"
-
-    # hack 3
-    # udhcpc 添加 -n 参数，请求dhcp失败后退出
-    # 使用同样参数运行 udhcpc6
-    #       udhcpc -i "$device" -f -q # v3.17
-    # $MOCK udhcpc -i "$device" -f -q # v3.18
-    # $MOCK udhcpc -i "$iface" -f -q  # v3.19
-    search='udhcpc -i'
-    orig_cmd="$(grep "$search" init)"
-    mod_cmd4="$orig_cmd -n || true"
-    mod_cmd6="${mod_cmd4//udhcpc/udhcpc6}"
-    sed -i "/$search/c$mod_cmd4 \n $mod_cmd6" init
-
-    # hack 4 /usr/share/udhcpc/default.script
+    # hack 2 /usr/share/udhcpc/default.script
     # 脚本被调用的顺序
     # udhcpc:  deconfig
     # udhcpc:  bound
@@ -2468,14 +2441,20 @@ EOF
     # 允许设置 ipv4 onlink 网关
     sed -Ei 's,(0\.0\.0\.0\/0),"\1 onlink",' usr/share/udhcpc/default.script
 
-    # hack 5 网络配置
-    is_in_china && is_in_china=true || is_in_china=false
-    insert_into_file init after 'MAC_ADDRESS=' <<EOF
-        . /alpine-network.sh \
-        "$mac_addr" "$ipv4_addr" "$ipv4_gateway" "$ipv6_addr" "$ipv6_gateway" "$is_in_china"
+    # hack 3 网络配置
+    # alpine 根据 MAC_ADDRESS 判断是否有网络
+    # https://github.com/alpinelinux/mkinitfs/blob/c4c0115f9aa5aa8884c923dc795b2638711bdf5c/initramfs-init.in#L914
+    insert_into_file init after 'configure_ip\(\)' <<EOF
+        depmod
+        [ -d /sys/module/ipv6 ] || modprobe ipv6
+        $(get_ip_conf_cmd)
+        MAC_ADDRESS=1
+        return
 EOF
 
-    # hack 5 运行 trans.start
+    # grep -E -A5 'configure_ip\(\)' init
+
+    # hack 4 运行 trans.start
     # exec /bin/busybox switch_root $switch_root_opts $sysroot $chart_init "$KOPT_init" $KOPT_init_args # 3.17
     # exec              switch_root $switch_root_opts $sysroot $chart_init "$KOPT_init" $KOPT_init_args # 3.18
     # 1. alpine arm initramfs 时间问题 要添加 --no-check-certificate
@@ -2529,6 +2508,7 @@ mod_initrd() {
 
     curl -Lo $tmp_dir/trans.sh $confhome/trans.sh
     curl -Lo $tmp_dir/alpine-network.sh $confhome/alpine-network.sh
+    chmod a+x $tmp_dir/trans.sh $tmp_dir/alpine-network.sh
 
     if is_distro_like_debian $nextos_distro; then
         mod_initrd_debian_kali
@@ -2699,7 +2679,7 @@ assert_not_in_container
 
 # 不支持安全启动
 if is_secure_boot_enabled; then
-    error_and_exit "Not Supported with secure boot enabled."
+    error_and_exit "Please disable secure boot first."
 fi
 
 # 必备组件
@@ -3070,6 +3050,6 @@ else
 fi
 
 if is_in_windows; then
-    echo 'Run this command to reboot:'
+    echo 'You can run this command to reboot:'
     echo 'shutdown /r /t 0'
 fi

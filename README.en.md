@@ -32,7 +32,7 @@ Reinstall server with one-click [中文](README.md)
 | <img width="16" height="16" src="https://almalinux.org/fav/favicon.ico" /> Alma                                                                            | 8, 9                                  | 512 MB \* | 5 GB                   |
 | <img width="16" height="16" src="https://rockylinux.org/favicon.png" /> Rocky                                                                              | 8, 9                                  | 512 MB \* | 5 GB                   |
 | <img width="16" height="16" src="https://fedoraproject.org/favicon.ico" /> Fedora                                                                          | 39, 40                                | 512 MB \* | 5 GB                   |
-| <img width="16" height="16" src="https://static.opensuse.org/favicon.ico" /> openSUSE                                                                      | 15.5, Tumbleweed (Rolling)            | 512 MB \* | 5 GB                   |
+| <img width="16" height="16" src="https://static.opensuse.org/favicon.ico" /> openSUSE                                                                      | 15.5, 15.6, Tumbleweed (Rolling)      | 512 MB \* | 5 GB                   |
 | <img width="16" height="16" src="https://archlinux.org/static/favicon.png" /> Arch                                                                         | Rolling                               | 512 MB    | 5 GB                   |
 | <img width="16" height="16" src="https://www.gentoo.org/assets/img/logo/gentoo-g.png" /> Gentoo                                                            | Rolling                               | 512 MB    | 5 GB                   |
 | <img width="16" height="16" src="https://blogs.windows.com/wp-content/uploads/prod/2022/09/cropped-Windows11IconTransparent512-32x32.png" /> Windows (DD)  | Any                                   | 512 MB    | Depending on the image |
@@ -142,9 +142,9 @@ bash reinstall.sh centos   7|9  (9 is stream version)
                   rocky    8|9
                   fedora   39|40
                   debian   10|11|12
-                  opensuse 15.5|tumbleweed
                   ubuntu   20.04|22.04|24.04
                   alpine   3.17|3.18|3.19|3.20
+                  opensuse 15.5|15.6|tumbleweed
                   kali
                   arch
                   gentoo

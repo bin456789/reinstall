@@ -9,16 +9,6 @@ ipv6_addr=$4
 ipv6_gateway=$5
 is_in_china=$6
 
-# 3.16-3.18 $device
-# 3.19 $iface
-# debian $iface
-# shellcheck disable=SC2154
-if [ -n "$iface" ]; then
-    ethx="$iface"
-else
-    ethx="$device"
-fi
-
 if $is_in_china; then
     ipv4_dns1='119.29.29.29'
     ipv4_dns2='223.5.5.5'
@@ -31,16 +21,27 @@ else
     ipv6_dns2='2001:4860:4860::8888'
 fi
 
+# 找到主网卡
+# debian 11 initrd 没有 xargs awk
+# debian 12 initrd 没有 xargs
+get_ethx() {
+    if false; then
+        ip -o link | grep "$mac_addr" | awk '{print $2}' | cut -d: -f1
+    else
+        ip -o link | grep "$mac_addr" | cut -d' ' -f2 | cut -d: -f1
+    fi
+}
+
 get_ipv4_gateway() {
     # debian 11 initrd 没有 xargs awk
     # debian 12 initrd 没有 xargs
-    ip -4 route show default | head -1 | cut -d ' ' -f3
+    ip -4 route show default dev "$ethx" | head -1 | cut -d ' ' -f3
 }
 
 get_ipv6_gateway() {
     # debian 11 initrd 没有 xargs awk
     # debian 12 initrd 没有 xargs
-    ip -6 route show default | head -1 | cut -d ' ' -f3
+    ip -6 route show default dev "$ethx" | head -1 | cut -d ' ' -f3
 }
 
 get_first_ipv4_addr() {
@@ -87,24 +88,6 @@ is_have_ipv6() {
     is_have_ipv6_addr && is_have_ipv6_gateway
 }
 
-# 开启 ethx
-ip link set dev "$ethx" up
-
-# 等待slaac
-# 有ipv6地址就跳过，不管是slaac或者dhcpv6
-# 因为会在trans里判断
-# 这里等待5秒就够了，因为之前尝试获取dhcp6也用了一段时间
-for i in $(seq 5 -1 0); do
-    is_have_ipv6 && break
-    echo "waiting slaac for ${i}s"
-    sleep 1
-done
-
-# 记录是否有动态地址
-# 由于还没设置静态ip，所以有条目表示有动态地址
-is_have_ipv4_addr && dhcpv4=true || dhcpv4=false
-is_have_ipv6_addr && dhcpv6_or_slaac=true || dhcpv6_or_slaac=false
-
 add_missing_ipv4_config() {
     if [ -n "$ipv4_addr" ] && [ -n "$ipv4_gateway" ]; then
         if ! is_have_ipv4_addr; then
@@ -130,14 +113,6 @@ add_missing_ipv6_config() {
         fi
     fi
 }
-
-# 设置静态地址，或者设置udhcpc无法设置的网关
-add_missing_ipv4_config
-add_missing_ipv6_config
-
-# 检查 ipv4/ipv6 是否连接联网
-ipv4_has_internet=false
-ipv6_has_internet=false
 
 is_need_test_ipv4() {
     is_have_ipv4 && ! $ipv4_has_internet
@@ -181,6 +156,79 @@ flush_ipv6_config() {
     ip -6 addr flush scope global dev "$ethx"
     ip -6 route flush dev "$ethx"
 }
+
+# dhcp v4 /v6
+# debian / kali
+if [ -f /usr/share/debconf/confmodule ]; then
+    # shellcheck source=/dev/null
+    . /usr/share/debconf/confmodule
+
+    # 开启 ethx + dhcpv4/v6
+    ethx=$(get_ethx)
+    ip link set dev "$ethx" up
+    sleep 1
+    db_progress STEP 1
+
+    # dhcpv4
+    db_progress INFO netcfg/dhcp_progress
+    udhcpc -i "$ethx" -f -q -n || true
+    db_progress STEP 1
+
+    # slaac + dhcpv6
+    db_progress INFO netcfg/slaac_wait_title
+    # https://salsa.debian.org/installer-team/netcfg/-/blob/master/autoconfig.c#L148
+    cat <<EOF >/var/lib/netcfg/dhcp6c.conf
+interface $ethx {
+    send ia-na 0;
+    request domain-name-servers;
+    request domain-name;
+    script "/lib/netcfg/print-dhcp6c-info";
+};
+
+id-assoc na 0 {
+};
+EOF
+    dhcp6c -c /var/lib/netcfg/dhcp6c.conf "$ethx"
+    sleep 10
+    # kill-all-dhcp
+    kill -9 "$(cat /var/run/dhcp6c.pid)"
+    db_progress STEP 1
+
+    # 静态 + 检测网络提示
+    db_subst netcfg/link_detect_progress interface "$ethx"
+    db_progress INFO netcfg/link_detect_progress
+else
+    # alpine
+    ethx=$(get_ethx)
+    echo "$ethx"
+    ip link set dev "$ethx" up
+    sleep 1
+    udhcpc -i "$ethx" -f -q -n || true
+    udhcpc6 -i "$ethx" -f -q -n || true
+fi
+
+# 等待slaac
+# 有ipv6地址就跳过，不管是slaac或者dhcpv6
+# 因为会在trans里判断
+# 这里等待5秒就够了，因为之前尝试获取dhcp6也用了一段时间
+for i in $(seq 5 -1 0); do
+    is_have_ipv6 && break
+    echo "waiting slaac for ${i}s"
+    sleep 1
+done
+
+# 记录是否有动态地址
+# 由于还没设置静态ip，所以有条目表示有动态地址
+is_have_ipv4_addr && dhcpv4=true || dhcpv4=false
+is_have_ipv6_addr && dhcpv6_or_slaac=true || dhcpv6_or_slaac=false
+
+# 设置静态地址，或者设置udhcpc无法设置的网关
+add_missing_ipv4_config
+add_missing_ipv6_config
+
+# 检查 ipv4/ipv6 是否连接联网
+ipv4_has_internet=false
+ipv6_has_internet=false
 
 test_internet
 
@@ -242,14 +290,16 @@ if $ipv6_has_internet && ! grep ':' /etc/resolv.conf; then
 fi
 
 # 传参给 trans.start
-$dhcpv4 && echo 1 >/dev/dhcpv4 || echo 0 >/dev/dhcpv4
-$should_disable_ra_slaac && echo 1 >/dev/should_disable_ra_slaac || echo 0 >/dev/should_disable_ra_slaac
-$is_in_china && echo 1 >/dev/is_in_china || echo 0 >/dev/is_in_china
-echo "$ethx" >/dev/ethx
-echo "$mac_addr" >/dev/mac_addr
-echo "$ipv4_addr" >/dev/ipv4_addr
-echo "$ipv4_gateway" >/dev/ipv4_gateway
-echo "$ipv6_addr" >/dev/ipv6_addr
-echo "$ipv6_gateway" >/dev/ipv6_gateway
-$ipv4_has_internet && echo 1 >/dev/ipv4_has_internet || echo 0 >/dev/ipv4_has_internet
-$ipv6_has_internet && echo 1 >/dev/ipv6_has_internet || echo 0 >/dev/ipv6_has_internet
+netconf="/dev/netconf/$ethx"
+mkdir -p "$netconf"
+$dhcpv4 && echo 1 >"$netconf/dhcpv4" || echo 0 >"$netconf/dhcpv4"
+$should_disable_ra_slaac && echo 1 >"$netconf/should_disable_ra_slaac" || echo 0 >"$netconf/should_disable_ra_slaac"
+$is_in_china && echo 1 >"$netconf/is_in_china" || echo 0 >"$netconf/is_in_china"
+echo "$ethx" >"$netconf/ethx"
+echo "$mac_addr" >"$netconf/mac_addr"
+echo "$ipv4_addr" >"$netconf/ipv4_addr"
+echo "$ipv4_gateway" >"$netconf/ipv4_gateway"
+echo "$ipv6_addr" >"$netconf/ipv6_addr"
+echo "$ipv6_gateway" >"$netconf/ipv6_gateway"
+$ipv4_has_internet && echo 1 >"$netconf/ipv4_has_internet" || echo 0 >"$netconf/ipv4_has_internet"
+$ipv6_has_internet && echo 1 >"$netconf/ipv6_has_internet" || echo 0 >"$netconf/ipv6_has_internet"
