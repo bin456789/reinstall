@@ -2873,11 +2873,14 @@ install_windows() {
     echo "Product Type: $product_type"
     echo "Product Version: $product_ver"
 
-    # 解除 win11 硬件限制
-    # 24h2 26100 IoT 没有限制 TPM，但强制要求 2c2g
+    # win11 要求 1GHz 2核（1核超线程也行）
+    # 用注册表无法绕过
+    # https://github.com/pbatard/rufus/issues/1990
     # https://learn.microsoft.com/windows/iot/iot-enterprise/Hardware/System_Requirements
-    if [[ "$image_name" = "Windows 11"* ]]; then
-        wiminfo "$install_wim" "$image_name" --image-property WINDOWS/INSTALLATIONTYPE=Server
+    if [ "$product_ver" = "11" ]; then
+        if [ "$(grep -c '^processor' /proc/cpuinfo)" -le 1 ]; then
+            wiminfo "$install_wim" "$image_name" --image-property WINDOWS/INSTALLATIONTYPE=Server
+        fi
     fi
 
     # 变量名     使用场景

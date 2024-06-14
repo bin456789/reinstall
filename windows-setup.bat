@@ -108,6 +108,11 @@ move /y %tempFile% %file%
 
 rename X:\setup.exe.disabled setup.exe
 
+rem https://github.com/pbatard/rufus/issues/1990
+for %%a in (RAM TPM SecureBoot) do (
+    reg add HKLM\SYSTEM\Setup\LabConfig /t REG_DWORD /v Bypass%%aCheck /d 1 /f
+)
+
 rem 设置
 set EnableEMS=0
 set ForceOldSetup=1

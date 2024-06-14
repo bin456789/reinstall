@@ -31,7 +31,7 @@
             <!-- <RunSynchronous>
                 <RunSynchronousCommand wcm:action="add">
                     <Order>1</Order>
-                    <Path>cmd /c for %a in (CPU RAM SecureBoot Storage Disk TPM) do reg add HKLM\SYSTEM\Setup\LabConfig /t REG_DWORD /v Bypass%aCheck /d 1 /f</Path>
+                    <Path>cmd /c for %a in (RAM TPM SecureBoot) do reg add HKLM\SYSTEM\Setup\LabConfig /t REG_DWORD /v Bypass%aCheck /d 1 /f</Path>
                 </RunSynchronousCommand>
             </RunSynchronous> -->
         </component>
