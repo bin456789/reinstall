@@ -127,11 +127,11 @@ test_internet() {
 
     # debian 没有 nslookup，因此用 ping
     for i in $(seq 5); do
-        if is_need_test_ipv4 && ping -c1 -W5 $ipv4_dns1 >/dev/null 2>&1; then
+        if is_need_test_ipv4 && ping -c1 -W5 -I "$ethx" "$ipv4_dns1" >/dev/null 2>&1; then
             echo "IPv4 has internet."
             ipv4_has_internet=true
         fi
-        if is_need_test_ipv6 && ping -c1 -W5 $ipv6_dns1 >/dev/null 2>&1; then
+        if is_need_test_ipv6 && ping -c1 -W5 -I "$ethx" "$ipv6_dns1" >/dev/null 2>&1; then
             echo "IPv6 has internet."
             ipv6_has_internet=true
         fi
@@ -188,10 +188,10 @@ interface $ethx {
 id-assoc na 0 {
 };
 EOF
-    dhcp6c -c /var/lib/netcfg/dhcp6c.conf "$ethx"
+    dhcp6c -c /var/lib/netcfg/dhcp6c.conf "$ethx" || true
     sleep 10
     # kill-all-dhcp
-    kill -9 "$(cat /var/run/dhcp6c.pid)"
+    kill -9 "$(cat /var/run/dhcp6c.pid)" || true
     db_progress STEP 1
 
     # 静态 + 检测网络提示

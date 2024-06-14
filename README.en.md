@@ -251,10 +251,12 @@ Use `Dism++` File menu > Open Image File, select the iso to be installed to get 
 
 - Windows (Vista ~ 11)
 - Windows Server (2008 ~ 2025)
-  - Windows Server Essentials
-  - Windows Server (Semi) Annual Channel
-  - Hyper-V Server
-  - Azure Stack HCI
+  - Windows Server Essentials *
+  - Windows Server (Semi) Annual Channel *
+  - Hyper-V Server *
+  - Azure Stack HCI *
+
+\* Must specify an ISO link.
 
 #### The script will install the following drivers as needed
 

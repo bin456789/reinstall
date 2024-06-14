@@ -118,7 +118,6 @@ certutil -urlcache -f -split https://mirror.ghproxy.com/https://raw.githubuserco
 ## 使用
 
 > [!TIP]
->
 > 所有功能均可在 Linux / Windows 下使用。
 >
 > Linux 下运行 `bash reinstall.sh`
@@ -252,10 +251,12 @@ Windows Server 2022 SERVERDATACENTER
 
 - Windows (Vista ~ 11)
 - Windows Server (2008 ~ 2025)
-  - Windows Server Essentials
-  - Windows Server (Semi) Annual Channel
-  - Hyper-V Server
-  - Azure Stack HCI
+  - Windows Server Essentials *
+  - Windows Server (Semi) Annual Channel *
+  - Hyper-V Server *
+  - Azure Stack HCI *
+
+\* 需填写 iso 链接
 
 #### 脚本会按需安装以下驱动
 

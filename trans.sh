@@ -489,24 +489,19 @@ is_windows() {
     return 1
 }
 
+# 15063 或之后才支持 rdnss
 is_windows_support_rdnss() {
-    local build_ver
     apk add pev
     for dir in /os /wim; do
         dll=$dir/Windows/System32/kernel32.dll
         if [ -f $dll ]; then
             build_ver="$(peres -v $dll | grep 'Product Version:' | cut -d. -f3)"
             echo "Windows Build Version: $build_ver"
-            break
+            apk del pev
+            [ "$build_ver" -ge 15063 ] && return 0 || return 1
         fi
     done
-    if [ -z "$build_ver" ]; then
-        error_and_exit "Not found kernel32.dll"
-    fi
-    apk del pev
-
-    # 15063 或之后才支持 rdnss
-    [ "$build_ver" -ge 15063 ]
+    error_and_exit "Not found kernel32.dll"
 }
 
 is_need_manual_set_dnsv6() {
@@ -2826,15 +2821,16 @@ install_windows() {
             fi
 
             # 匹配失败
+            file=/image-name
             error "Invalid image name: $image_name"
-            echo "Choose a correct image name by one of follow command and continue:"
+            echo "Choose a correct image name by one of follow command to continue:"
             while read -r line; do
-                echo "  echo '$line' >/image-name"
+                echo "  echo '$line' >$file"
             done < <(echo "$all_image_names")
 
             # sleep 直到有输入
-            echo >/image-name
-            until [ -f /image-name ] && image_name=$(xargs </image-name) && [ -n "$image_name" ]; do
+            true >$file
+            while ! { [ -s $file ] && image_name=$(cat $file) && [ -n "$image_name" ]; }; do
                 sleep 1
             done
         done

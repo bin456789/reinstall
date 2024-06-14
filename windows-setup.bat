@@ -125,17 +125,18 @@ rem 运行 ramdisk X:\setup.exe 的话
 rem vista 会找不到安装源
 rem server 23h2 会无法运行
 
-rem 26100 新版安装程序不会创建 BIOS MBR 引导
+rem 26040 开始有新版安装程序
+rem 新版安装程序不会创建 BIOS MBR 引导
 if %ForceOldSetup% EQU 1 (
     set setup=Y:\sources\setup.exe
 ) else (
     set setup=Y:\setup.exe
-    rem 26100 旧版安装程序不会创建 winre 分区
-    rem 26100 新版安装程序会创建 winre 分区
+    rem 旧版安装程序不会创建 winre 分区
+    rem 新版安装程序会创建 winre 分区
     rem winre 分区创建在 installer 分区前面
     rem 禁止 winre 分区后，winre 储存在 C 盘，依然有效
     for /f "tokens=3" %%a in ('reg query "HKLM\SOFTWARE\Microsoft\Windows NT\CurrentVersion" /v CurrentBuildNumber') do (
-        if %%a GEQ 26100 (
+        if %%a GEQ 26040 (
             set ResizeRecoveryPartition=/ResizeRecoveryPartition Disable
         )
     )

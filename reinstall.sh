@@ -12,7 +12,7 @@ export LC_ALL=C
 # 不要漏了最后的 $PATH，否则会找不到 windows 系统程序例如 diskpart
 export PATH=/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin:$PATH
 
-this_script=$(realpath "$0")
+this_script=$(readlink -f "$0")
 trap 'trap_err $LINENO $?' ERR
 
 trap_err() {
@@ -1313,7 +1313,7 @@ install_pkg() {
             apk add $pkg
             ;;
         apt)
-            [ -z "$apk_updated" ] && apt update && apk_updated=1
+            [ -z "$apt_updated" ] && apt update && apt_updated=1
             DEBIAN_FRONTEND=noninteractive apt install -y $pkg
             ;;
         esac
@@ -1576,6 +1576,7 @@ collect_netconf() {
                 continue
             fi
 
+            # read -r _ _ _ _ id gateway <<<"$route"
             id=$(awk '{print $5}' <<<"$route")
             gateway=$(awk '{print $6}' <<<"$route")
 
