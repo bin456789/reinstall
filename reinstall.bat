@@ -30,6 +30,12 @@ if not exist %tmp% (
     md %tmp%
 )
 
+rem 24h2 默认禁用了 wmic
+where wmic >nul 2>nul
+if errorlevel 1 (
+    DISM /Online /Add-Capability /CapabilityName:WMIC
+)
+
 rem 检查是否国内
 if not exist %tmp%\geoip (
     rem 部分地区 www.cloudflare.com 被墙
