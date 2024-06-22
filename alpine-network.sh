@@ -26,9 +26,9 @@ fi
 # debian 12 initrd 没有 xargs
 get_ethx() {
     if false; then
-        ip -o link | grep "$mac_addr" | awk '{print $2}' | cut -d: -f1
+        ip -o link | grep -i "$mac_addr" | awk '{print $2}' | cut -d: -f1
     else
-        ip -o link | grep "$mac_addr" | cut -d' ' -f2 | cut -d: -f1
+        ip -o link | grep -i "$mac_addr" | cut -d' ' -f2 | cut -d: -f1
     fi
 }
 

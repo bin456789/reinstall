@@ -1547,6 +1547,14 @@ find_main_disk() {
     fi
 }
 
+is_found_ipv4_netconf() {
+    [ -n "$ipv4_mac" ] && [ -n "$ipv4_addr" ] && [ -n "$ipv4_gateway" ]
+}
+
+is_found_ipv6_netconf() {
+    [ -n "$ipv6_mac" ] && [ -n "$ipv6_addr" ] && [ -n "$ipv6_gateway" ]
+}
+
 # TODO: 单网卡多IP
 collect_netconf() {
     if is_in_windows; then
@@ -1564,82 +1572,116 @@ collect_netconf() {
         # 否        手动        0    0.0.0.0/0                  19  192.168.1.1
         # 否        手动        0    0.0.0.0/0                  59  nekoray-tun
 
+        # wmic nic:
+        # 真实网卡
+        # AdapterType=以太网 802.3
+        # AdapterTypeId=0
+        # MACAddress=68:EC:C5:11:11:11
+        # PhysicalAdapter=TRUE
+        # PNPDeviceID=PCI\VEN_8086&amp;DEV_095A&amp;SUBSYS_94108086&amp;REV_61\4&amp;295A4BD&amp;1&amp;00E0
+
+        # VPN tun 网卡，部分移动云电脑也有
+        # AdapterType=
+        # AdapterTypeId=
+        # MACAddress=
+        # PhysicalAdapter=TRUE
+        # PNPDeviceID=SWD\WINTUN\{6A460D48-FB76-6C3F-A47D-EF97D3DC6B0E}
+
+        # VMware 网卡
+        # AdapterType=以太网 802.3
+        # AdapterTypeId=0
+        # MACAddress=00:50:56:C0:00:08
+        # PhysicalAdapter=TRUE
+        # PNPDeviceID=ROOT\VMWARE\0001
+
         for v in 4 6; do
             if [ "$v" = 4 ]; then
                 # 或者 route print
-                route=$(netsh int ipv4 show route | awk '$4 == "0.0.0.0/0"' | head -1 | del_cr)
+                routes=$(netsh int ipv4 show route | awk '$4 == "0.0.0.0/0"' | del_cr)
             else
-                route=$(netsh int ipv6 show route | awk '$4 == "::/0"' | head -1 | del_cr)
+                routes=$(netsh int ipv6 show route | awk '$4 == "::/0"' | del_cr)
             fi
 
-            if [ -z "$route" ]; then
+            if [ -z "$routes" ]; then
                 continue
             fi
 
-            # read -r _ _ _ _ id gateway <<<"$route"
-            id=$(awk '{print $5}' <<<"$route")
-            gateway=$(awk '{print $6}' <<<"$route")
+            while read -r route; do
+                if false; then
+                    read -r _ _ _ _ id gateway <<<"$route"
+                else
+                    id=$(awk '{print $5}' <<<"$route")
+                    gateway=$(awk '{print $6}' <<<"$route")
+                fi
 
-            config=$(wmic nicconfig where "InterfaceIndex='$id'" get MACAddress,IPAddress,IPSubnet,DefaultIPGateway /format:list | del_cr)
-            # 排除 IP/子网/网关/MAC 为空的
-            if grep -q '=$' <<<"$config"; then
-                continue
-            fi
+                config=$(wmic nicconfig where InterfaceIndex=$id get MACAddress,IPAddress,IPSubnet,DefaultIPGateway /format:list | del_cr)
+                # 排除 IP/子网/网关/MAC 为空的
+                if grep -q '=$' <<<"$config"; then
+                    continue
+                fi
 
-            mac_addr=$(grep "MACAddress=" <<<"$config" | cut -d= -f2 | to_lower)
-            convert_net_str_to_array "$config" IPAddress ips
-            convert_net_str_to_array "$config" IPSubnet subnets
-            convert_net_str_to_array "$config" DefaultIPGateway gateways
+                mac_addr=$(grep "MACAddress=" <<<"$config" | cut -d= -f2 | to_lower)
+                convert_net_str_to_array "$config" IPAddress ips
+                convert_net_str_to_array "$config" IPSubnet subnets
+                convert_net_str_to_array "$config" DefaultIPGateway gateways
 
-            # IPv4
-            # shellcheck disable=SC2154
-            if [ "$v" = 4 ]; then
-                for ((i = 0; i < ${#ips[@]}; i++)); do
-                    ip=${ips[i]}
-                    subnet=${subnets[i]}
-                    if [[ "$ip" = *.* ]]; then
-                        cidr=$(ipcalc -b "$ip/$subnet" | grep Netmask: | awk '{print $NF}')
-                        ipv4_addr="$ip/$cidr"
-                        ipv4_gateway="$gateway"
-                        ipv4_mac="$mac_addr"
-                        break
-                    fi
-                done
-            fi
-
-            # IPv6
-            if [ "$v" = 6 ]; then
-                ipv6_type_list=$(netsh interface ipv6 show address $id normal)
-                for ((i = 0; i < ${#ips[@]}; i++)); do
-                    ip=${ips[i]}
-                    cidr=${subnets[i]}
-                    if [[ "$ip" = *:* ]]; then
-                        ipv6_type=$(grep "$ip" <<<"$ipv6_type_list" | awk '{print $1}')
-                        # Public 是 slaac
-                        # 还有类型 Temporary，不过有 Temporary 肯定还有 Public，因此不用
-                        if [ "$ipv6_type" = Public ] ||
-                            [ "$ipv6_type" = Dhcp ] ||
-                            [ "$ipv6_type" = Manual ]; then
-                            ipv6_addr="$ip/$cidr"
-                            ipv6_gateway="$gateway"
-                            ipv6_mac="$mac_addr"
+                # IPv4
+                # shellcheck disable=SC2154
+                if [ "$v" = 4 ]; then
+                    for ((i = 0; i < ${#ips[@]}; i++)); do
+                        ip=${ips[i]}
+                        subnet=${subnets[i]}
+                        if [[ "$ip" = *.* ]]; then
+                            cidr=$(ipcalc -b "$ip/$subnet" | grep Netmask: | awk '{print $NF}')
+                            ipv4_addr="$ip/$cidr"
+                            ipv4_gateway="$gateway"
+                            ipv4_mac="$mac_addr"
+                            # 只取第一个 IP
                             break
                         fi
-                    fi
-                done
-            fi
+                    done
+                fi
 
-            # 网关
-            # shellcheck disable=SC2154
-            if false; then
-                for gateway in "${gateways[@]}"; do
-                    if [ -n "$ipv4_addr" ] && [[ "$gateway" = *.* ]]; then
-                        ipv4_gateway="$gateway"
-                    elif [ -n "$ipv6_addr" ] && [[ "$gateway" = *:* ]]; then
-                        ipv6_gateway="$gateway"
-                    fi
-                done
-            fi
+                # IPv6
+                if [ "$v" = 6 ]; then
+                    ipv6_type_list=$(netsh interface ipv6 show address $id normal)
+                    for ((i = 0; i < ${#ips[@]}; i++)); do
+                        ip=${ips[i]}
+                        cidr=${subnets[i]}
+                        if [[ "$ip" = *:* ]]; then
+                            ipv6_type=$(grep "$ip" <<<"$ipv6_type_list" | awk '{print $1}')
+                            # Public 是 slaac
+                            # 还有类型 Temporary，不过有 Temporary 肯定还有 Public，因此不用
+                            if [ "$ipv6_type" = Public ] ||
+                                [ "$ipv6_type" = Dhcp ] ||
+                                [ "$ipv6_type" = Manual ]; then
+                                ipv6_addr="$ip/$cidr"
+                                ipv6_gateway="$gateway"
+                                ipv6_mac="$mac_addr"
+                                # 只取第一个 IP
+                                break
+                            fi
+                        fi
+                    done
+                fi
+
+                # 网关
+                # shellcheck disable=SC2154
+                if false; then
+                    for gateway in "${gateways[@]}"; do
+                        if [ -n "$ipv4_addr" ] && [[ "$gateway" = *.* ]]; then
+                            ipv4_gateway="$gateway"
+                        elif [ -n "$ipv6_addr" ] && [[ "$gateway" = *:* ]]; then
+                            ipv6_gateway="$gateway"
+                        fi
+                    done
+                fi
+
+                # 如果通过本条 route 的网卡找到了 IP 则退出 routes 循环
+                if is_found_ipv${v}_netconf; then
+                    break
+                fi
+            done < <(echo "$routes")
         done
     else
         # linux
@@ -1666,6 +1708,10 @@ collect_netconf() {
                 fi
             fi
         done
+    fi
+
+    if ! is_found_ipv4_netconf && ! is_found_ipv6_netconf; then
+        error_and_exit "Can not get IP info."
     fi
 
     info "Network Info"
@@ -2384,13 +2430,13 @@ get_ip_conf_cmd() {
     is_in_china && is_in_china=true || is_in_china=false
 
     sh=/alpine-network.sh
-    if [ -n "$ipv4_mac" ] && [ -n "$ipv6_mac" ] && [ "$ipv4_mac" = "$ipv6_mac" ]; then
+    if is_found_ipv4_netconf && is_found_ipv6_netconf && [ "$ipv4_mac" = "$ipv6_mac" ]; then
         echo "'$sh' '$ipv4_mac' '$ipv4_addr' '$ipv4_gateway' '$ipv6_addr' '$ipv6_gateway' '$is_in_china'"
     else
-        if [ -n "$ipv4_mac" ]; then
+        if is_found_ipv4_netconf; then
             echo "'$sh' '$ipv4_mac' '$ipv4_addr' '$ipv4_gateway' '' '' '$is_in_china'"
         fi
-        if [ -n "$ipv6_mac" ]; then
+        if is_found_ipv6_netconf; then
             echo "'$sh' '$ipv6_mac' '' '' '$ipv6_addr' '$ipv6_gateway' '$is_in_china'"
         fi
     fi

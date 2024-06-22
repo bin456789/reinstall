@@ -4,7 +4,8 @@
 
 [![Codacy](https://img.shields.io/codacy/grade/dc679a17751448628fe6d8ac35e26eed?logo=Codacy&label=Codacy)](https://app.codacy.com/gh/bin456789/reinstall/dashboard)
 [![CodeFactor](https://img.shields.io/codefactor/grade/github/bin456789/reinstall?logo=CodeFactor&logoColor=white&label=CodeFactor)](https://www.codefactor.io/repository/github/bin456789/reinstall)
-[![Lines of Code](https://tokei.rs/b1/github/bin456789/reinstall?category=code&style=flat&label=Lines%20of%20Code)](https://github.com/XAMPPRocky/tokei_rs)
+[![Lines of Code](https://aschey.tech/tokei/github/bin456789/reinstall?category=code&label=Lines%20of%20Code)](https://github.com/aschey/vercel-tokei)
+<!-- [![Lines of Code](https://tokei.rs/b1/github/bin456789/reinstall?category=code&style=flat&label=Lines%20of%20Code)](https://github.com/XAMPPRocky/tokei_rs) -->
 
 一键重装脚本 [English](README.en.md)
 
