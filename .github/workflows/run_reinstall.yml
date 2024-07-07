@@ -22,12 +22,13 @@ jobs:
           git config --global core.autocrlf false
       - uses: actions/checkout@v4
       - run: |
-          ${{ matrix.command }} centos 7
+          ${{ matrix.command }} centos
           ${{ matrix.command }} alma-8
           ${{ matrix.command }} rocky 9
           ${{ matrix.command }} fedora
           ${{ matrix.command }} ubuntu
           ${{ matrix.command }} debian
+          ${{ matrix.command }} debian --ci
           ${{ matrix.command }} kali
           ${{ matrix.command }} alpine
           ${{ matrix.command }} opensuse
@@ -36,6 +37,7 @@ jobs:
 
           ${{ matrix.command }} netboot.xyz
           ${{ matrix.command }} dd --img=https://download.opensuse.org/tumbleweed/appliances/openSUSE-MicroOS.x86_64-SelfInstall.raw.xz
+          ${{ matrix.command }} windows --image-name='Windows 11 Pro'
 
           # 测试失败例子
           # ${{ matrix.command }} wrong-os

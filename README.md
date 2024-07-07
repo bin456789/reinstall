@@ -11,7 +11,7 @@
 
 ## 亮点
 
-- 支持安装 12 种常见 Linux 发行版
+- 支持安装 13 种常见 Linux 发行版
 - 支持用官方原版 iso 安装 Windows，并且脚本会自动查找 iso 和驱动
 - 支持任意方向重装，也就是支持 `Linux to Linux`、`Linux to Win`、`Win to Win`、`Win to Linux`
 - 专门适配低配小鸡，解决内存过少导致无法进行网络安装
@@ -22,23 +22,21 @@
 
 ## 配置要求
 
-| 目标系统                                                                                                                                                   | 版本                                  | 内存      | 硬盘         |
-| ---------------------------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------- | --------- | ------------ |
-| <img width="16" height="16" src="https://www.alpinelinux.org/alpine-logo.ico" /> Alpine                                                                    | 3.17, 3.18, 3.19, 3.20                | 256 MB    | 1 GB         |
-| <img width="16" height="16" src="https://www.debian.org/favicon.ico" /> Debian                                                                             | 10, 11, 12                            | 256 MB    | 1 ~ 1.5 GB ^ |
-| <img width="16" height="16" src="https://github.com/bin456789/reinstall/assets/7548515/f74b3d5b-085f-4df3-bcc9-8a9bd80bb16d" /> Kali                       | 滚动                                  | 256 MB    | 1 ~ 1.5 GB ^ |
-| <img width="16" height="16" src="https://netplan.readthedocs.io/en/latest/_static/favicon.png" /> Ubuntu                                                   | 20.04, 22.04, 24.04                   | 512 MB \* | 2 GB         |
-| <img width="16" height="16" src="https://www.centos.org/assets/img/favicon.png" /> CentOS                                                                  | 7, 9 (stream)                         | 512 MB \* | 5 GB         |
-| <img width="16" height="16" src="https://www.oracle.com/asset/web/favicons/favicon-32.png" /> Oracle                                                       | 7, 8, 9                               | 512 MB \* | 5 GB         |
-| <img width="16" height="16" src="https://almalinux.org/fav/favicon.ico" /> Alma                                                                            | 8, 9                                  | 512 MB \* | 5 GB         |
-| <img width="16" height="16" src="https://rockylinux.org/favicon.png" /> Rocky                                                                              | 8, 9                                  | 512 MB \* | 5 GB         |
-| <img width="16" height="16" src="https://fedoraproject.org/favicon.ico" /> Fedora                                                                          | 39, 40                                | 512 MB \* | 5 GB         |
-| <img width="16" height="16" src="https://static.opensuse.org/favicon.ico" /> openSUSE                                                                      | 15.5, 15.6, Tumbleweed (滚动)         | 512 MB \* | 5 GB         |
-| <img width="16" height="16" src="https://archlinux.org/static/favicon.png" /> Arch                                                                         | 滚动                                  | 512 MB    | 5 GB         |
-| <img width="16" height="16" src="https://www.gentoo.org/assets/img/logo/gentoo-g.png" /> Gentoo                                                            | 滚动                                  | 512 MB    | 5 GB         |
-| <img width="16" height="16" src="https://blogs.windows.com/wp-content/uploads/prod/2022/09/cropped-Windows11IconTransparent512-32x32.png" /> Windows (DD)  | 任何                                  | 512 MB    | 取决于镜像   |
-| <img width="16" height="16" src="https://blogs.windows.com/wp-content/uploads/prod/2022/09/cropped-Windows11IconTransparent512-32x32.png" /> Windows (ISO) | Vista, 7, 8.x (Server 2008 ~ 2012 R2) | 512 MB    | 25 GB        |
-| <img width="16" height="16" src="https://blogs.windows.com/wp-content/uploads/prod/2022/09/cropped-Windows11IconTransparent512-32x32.png" /> Windows (ISO) | 10, 11 (Server 2016 ~ 2025)           | 1 GB      | 25 GB        |
+| 目标系统                                                                                                                                                                                                                                                                                                                                                               | 版本                                  | 内存      | 硬盘         |
+| ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------- | --------- | ------------ |
+| <img width="16" height="16" src="https://www.alpinelinux.org/alpine-logo.ico" /> Alpine                                                                                                                                                                                                                                                                                | 3.17, 3.18, 3.19, 3.20                | 256 MB    | 1 GB         |
+| <img width="16" height="16" src="https://www.debian.org/favicon.ico" /> Debian                                                                                                                                                                                                                                                                                         | 11, 12                                | 256 MB    | 1 ~ 1.5 GB ^ |
+| <img width="16" height="16" src="https://github.com/bin456789/reinstall/assets/7548515/f74b3d5b-085f-4df3-bcc9-8a9bd80bb16d" /> Kali                                                                                                                                                                                                                                   | 滚动                                  | 256 MB    | 1 ~ 1.5 GB ^ |
+| <img width="16" height="16" src="https://netplan.readthedocs.io/en/latest/_static/favicon.png" /> Ubuntu                                                                                                                                                                                                                                                               | 20.04, 22.04, 24.04                   | 512 MB \* | 2 GB         |
+| <img width="16" height="16" src="https://www.centos.org/assets/img/favicon.png" /> CentOS                                                                                                                                                                                                                                                                              | 9                                     | 512 MB \* | 5 GB         |
+| <img width="16" height="16" src="https://www.redhat.com/favicon.ico" /> RedHat &nbsp; <img width="16" height="16" src="https://almalinux.org/fav/favicon.ico" /> Alma &nbsp; <img width="16" height="16" src="https://rockylinux.org/favicon.png" /> Rocky &nbsp; <img width="16" height="16" src="https://www.oracle.com/asset/web/favicons/favicon-32.png" /> Oracle | 8, 9                                  | 512 MB \* | 5 GB         |
+| <img width="16" height="16" src="https://fedoraproject.org/favicon.ico" /> Fedora                                                                                                                                                                                                                                                                                      | 39, 40                                | 512 MB \* | 5 GB         |
+| <img width="16" height="16" src="https://static.opensuse.org/favicon.ico" /> openSUSE                                                                                                                                                                                                                                                                                  | 15.5, 15.6, Tumbleweed (滚动)         | 512 MB \* | 5 GB         |
+| <img width="16" height="16" src="https://archlinux.org/static/favicon.png" /> Arch                                                                                                                                                                                                                                                                                     | 滚动                                  | 512 MB    | 5 GB         |
+| <img width="16" height="16" src="https://www.gentoo.org/assets/img/logo/gentoo-g.png" /> Gentoo                                                                                                                                                                                                                                                                        | 滚动                                  | 512 MB    | 5 GB         |
+| <img width="16" height="16" src="https://blogs.windows.com/wp-content/uploads/prod/2022/09/cropped-Windows11IconTransparent512-32x32.png" /> Windows (DD)                                                                                                                                                                                                              | 任何                                  | 512 MB    | 取决于镜像   |
+| <img width="16" height="16" src="https://blogs.windows.com/wp-content/uploads/prod/2022/09/cropped-Windows11IconTransparent512-32x32.png" /> Windows (ISO)                                                                                                                                                                                                             | Vista, 7, 8.x (Server 2008 ~ 2012 R2) | 512 MB    | 25 GB        |
+| <img width="16" height="16" src="https://blogs.windows.com/wp-content/uploads/prod/2022/09/cropped-Windows11IconTransparent512-32x32.png" /> Windows (ISO)                                                                                                                                                                                                             | 10, 11 (Server 2016 ~ 2025)           | 1 GB      | 25 GB        |
 
 (\*) 表示使用云镜像安装，非传统网络安装
 
@@ -136,13 +134,19 @@ certutil -urlcache -f -split https://mirror.ghproxy.com/https://raw.githubuserco
 >
 > 安装其它系统时，可通过多种方式（SSH、HTTP 80 端口、后台 VNC、串行控制台）查看安装进度。
 
+> [!IMPORTANT]
+> 安装 Red Hat 需填写以下网站得到的 `qcow2` 镜像链接
+>
+> <https://access.redhat.com/downloads/content/rhel>
+
 ```bash
-bash reinstall.sh centos   7|9  (9 为 stream 版本)
-                  oracle   7|8|9
+bash reinstall.sh centos   9
                   alma     8|9
                   rocky    8|9
+                  oracle   8|9
+                  redhat   8|9   --img 'https://xxx.qcow2'
                   fedora   39|40
-                  debian   10|11|12
+                  debian   11|12
                   ubuntu   20.04|22.04|24.04
                   alpine   3.17|3.18|3.19|3.20
                   opensuse 15.5|15.6|tumbleweed
@@ -252,10 +256,10 @@ Windows Server 2022 SERVERDATACENTER
 
 - Windows (Vista ~ 11)
 - Windows Server (2008 ~ 2025)
-  - Windows Server Essentials *
-  - Windows Server (Semi) Annual Channel *
-  - Hyper-V Server *
-  - Azure Stack HCI *
+  - Windows Server Essentials \*
+  - Windows Server (Semi) Annual Channel \*
+  - Hyper-V Server \*
+  - Azure Stack HCI \*
 
 \* 需填写 iso 链接
 

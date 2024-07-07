@@ -70,8 +70,7 @@ ${spaces}routes:
 EOF
         # 网关条目
         for gateway in $gateways; do
-
-            # debian 10 的 cloud-init 不支持 to: default
+            # debian 11 的 netplan 不支持 to: default
             case $gateway in
             *.*) to='0.0.0.0/0' ;;
             *:*) to='::/0' ;;
@@ -82,7 +81,6 @@ ${spaces}  - to: $to
 ${spaces}    via: $gateway
 ${spaces}    on-link: true
 EOF
-
         done
     } | insert_into_file $conf before 'match:'
 
@@ -189,7 +187,7 @@ fix_wicked_conf() {
     systemctl restart wicked
 }
 
-# debian 10/11/12: netplan + networkd/resolved
+# debian 11/12: netplan + networkd/resolved
 # 23.1.1 修复
 fix_netplan_conf
 

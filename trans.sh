@@ -1579,16 +1579,8 @@ create_cloud_init_network_config() {
         elif is_staticv6; then
             get_netconf_to ipv6_addr
             get_netconf_to ipv6_gateway
-            # centos7 不认识 static6，但可改成 static，作用相同
-            # https://github.com/canonical/cloud-init/commit/dacdd30080bd8183d1f1c1dc9dbcbc8448301529
-            if [ -f /os/etc/system-release-cpe ] &&
-                grep -E 'centos:7|oracle:linux:7' /os/etc/system-release-cpe; then
-                type_ipv6_static=static
-            else
-                type_ipv6_static=static6
-            fi
             yq -i ".network.config[$config_id].subnets[$subnet_id] = {
-                    \"type\": \"$type_ipv6_static\",
+                    \"type\": \"static6\",
                     \"address\": \"$ipv6_addr\",
                     \"gateway\": \"$ipv6_gateway\" }
                     " $ci_file
@@ -1865,12 +1857,12 @@ EOF
             restore_resolv_conf $os_dir
         fi
 
-        if grep -E '^(10|11)' $os_dir/etc/debian_version; then
+        if grep ^11 $os_dir/etc/debian_version; then
             cp_resolv_conf $os_dir
             chroot $os_dir apt update
 
             if true; then
-                # 将 debian 10/11 设置为 12 一样的网络管理器
+                # 将 debian 11 设置为 12 一样的网络管理器
                 # 可解决 ifupdown dhcp 不支持 24位掩码+不规则网关的问题
                 DEBIAN_FRONTEND=noninteractive chroot $os_dir apt install -y netplan.io
                 chroot $os_dir systemctl disable networking resolvconf
@@ -1885,7 +1877,7 @@ system_info:
 EOF
 
             else
-                # debian 10/11 默认不支持 rdnss，要安装 rdnssd 或者 nm
+                # debian 11 默认不支持 rdnss，要安装 rdnssd 或者 nm
                 DEBIAN_FRONTEND=noninteractive chroot $os_dir apt install -y rdnssd
                 # 不会自动建立链接，因此不能删除
                 restore_resolv_conf $os_dir
@@ -2049,11 +2041,7 @@ allow_root_password_login() {
 
 disable_selinux_kdump() {
     os_dir=$1
-    releasever=$(awk -F: '{ print $5 }' <$os_dir/etc/system-release-cpe)
-
-    if ! chroot $os_dir command -v grubby; then
-        yum install grubby
-    fi
+    releasever=$(awk -F: '{ print $5 }' $os_dir/etc/system-release-cpe)
 
     # selinux
     sed -i 's/^SELINUX=enforcing/SELINUX=disabled/g' $os_dir/etc/selinux/config
@@ -2064,11 +2052,7 @@ disable_selinux_kdump() {
 
     # kdump
     chroot $os_dir grubby --update-kernel ALL --args crashkernel=no
-    if [ "$releasever" -eq 7 ]; then
-        # el7 上面那条 grubby 命令不能设置 /etc/default/grub
-        sed -i 's/crashkernel=[^ "]*/crashkernel=no/' $os_dir/etc/default/grub
-    fi
-    rm -rf $os_dir/etc/systemd/system/multi-user.target.wants/kdump.service
+    chroot $os_dir systemctl disable kdump
 }
 
 download_qcow() {
@@ -2118,20 +2102,13 @@ get_ci_installer_part_size() {
     esac
 }
 
-yum() {
+chroot_dnf() {
     if [ "$distro" = oracle ]; then
-        if [ "$releasever" = 7 ]; then
-            chroot /os/ yum -y --disablerepo=* --enablerepo=ol${releasever}_latest "$@"
-        else
-            chroot /os/ dnf -y --disablerepo=* --enablerepo=ol${releasever}_baseos_latest --setopt=install_weak_deps=False "$@"
-        fi
+        enablerepo=ol${releasever}_baseos_latest
     else
-        if [ "$releasever" = 7 ]; then
-            chroot /os/ yum -y --disablerepo=* --enablerepo=base,updates "$@"
-        else
-            chroot /os/ dnf -y --disablerepo=* --enablerepo=baseos --setopt=install_weak_deps=False "$@"
-        fi
+        enablerepo=baseos
     fi
+    chroot /os/ dnf -y --disablerepo=* --enablerepo=$enablerepo --setopt=install_weak_deps=False "$@"
 }
 
 chroot_apt_autoremove() {
@@ -2276,25 +2253,10 @@ install_qcow_by_copy() {
         # 部分镜像例如 centos7 要手动删除 machine-id
         truncate_machine_id /os
 
-        # centos 7 yum 可能会使用 ipv6，即使没有 ipv6 网络
-        if grep -E 'centos:7|oracle:linux:7' /os/etc/system-release-cpe; then
-            if [ "$(cat /dev/ipv6_has_internet)" = "0" ]; then
-                echo 'ip_resolve=4' >>/os/etc/yum.conf
-            fi
-        fi
-
         # 删除云镜像自带的 dhcp 配置，防止歧义
         # clout-init 网络配置在 /etc/sysconfig/network-scripts/
         rm -rf /os/etc/NetworkManager/system-connections/*.nmconnection
         rm -rf /os/etc/sysconfig/network-scripts/ifcfg-*
-
-        # 为 centos 7 ci 安装 NetworkManager
-        # 1. 能够自动配置 onlink 网关
-        # 2. 解决 cloud-init 关闭了 ra，因为 nm 无视内核 ra 设置
-        if grep -E 'centos:7|oracle:linux:7' /os/etc/system-release-cpe; then
-            yum install -y NetworkManager
-            chroot /os/ systemctl enable NetworkManager
-        fi
 
         # 修复 cloud-init 添加了 IPV*_FAILURE_FATAL
         # 甲骨文 dhcp6 获取不到 IP 将视为 fatal，原有的 ipv4 地址也会被删除
@@ -2317,14 +2279,7 @@ EOF
         fi
 
         # oracle linux 移除 lvm cmdline
-        if ! chroot /os command -v grubby; then
-            yum install grubby
-        fi
         chroot /os grubby --update-kernel ALL --remove-args "resume rd.lvm.lv"
-        if [ "$releasever" -eq 7 ]; then
-            # el7 上面那条 grubby 命令不能设置 /etc/default/grub
-            sed -i 's/ rd.lvm.lv=[^ "]*//g' /os/etc/default/grub
-        fi
 
         # fstab 添加 efi 分区
         if is_efi; then
@@ -2342,7 +2297,7 @@ EOF
             # bios 和 efi 转换前先删除
 
             # bios转efi出错
-            # centos7是bios镜像，/boot/grub2/grubenv 是真身
+            # centos 和 oracle x86_64 镜像只有 bios 镜像，/boot/grub2/grubenv 是真身
             # 安装grub-efi时，grubenv 会改成指向efi分区grubenv软连接
             # 如果安装grub-efi前没有删除原来的grubenv，原来的grubenv将不变，新建的软连接将变成 grubenv.rpmnew
             # 后续grubenv的改动无法同步到efi分区，会造成grub2-setdefault失效
@@ -2352,18 +2307,16 @@ EOF
             rm -rf /os/boot/grub2/grubenv /os/boot/grub2/grub.cfg
         }
 
-        # 安装 efi 引导
-        # 只有centos 和 oracle x86_64 镜像没有efi，其他系统镜像已经从efi分区复制了文件
-        if is_efi && [ -z "$efi_part" ]; then
+        # 安装引导
+        if is_efi; then
+            # 只有centos 和 oracle x86_64 镜像没有efi，其他系统镜像已经从efi分区复制了文件
+            if [ -z "$efi_part" ]; then
+                remove_grub_conflict_files
+                chroot_dnf install efibootmgr grub2-efi shim
+            fi
+        else
+            # bios
             remove_grub_conflict_files
-            [ "$(uname -m)" = x86_64 ] && arch=x64 || arch=aa64
-            yum install efibootmgr grub2-efi-$arch grub2-efi-$arch-modules shim-$arch
-        fi
-
-        # 安装 bios 引导
-        if ! is_efi; then
-            remove_grub_conflict_files
-            yum install grub2-pc grub2-pc-modules
             chroot /os/ grub2-install /dev/$xda
         fi
 
@@ -2603,7 +2556,7 @@ fix_partition_table_by_parted() {
 
 resize_after_install_cloud_image() {
     # 提前扩容
-    # 1 修复 vultr 512m debian 10/11 generic/genericcloud 首次启动 kernel panic
+    # 1 修复 vultr 512m debian 11 generic/genericcloud 首次启动 kernel panic
     # 2 修复 gentoo websync 时空间不足
     if [ "$distro" = debian ] || [ "$distro" = gentoo ]; then
         apk add parted

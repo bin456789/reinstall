@@ -30,22 +30,22 @@ usage_and_exit() {
         reinstall____='./reinstall.sh'
     fi
     cat <<EOF
-Usage: $reinstall____ centos   7|9
-                      oracle   7|8|9
+Usage: $reinstall____ centos   9
                       alma     8|9
                       rocky    8|9
+                      oracle   8|9
                       redhat   8|9   --img='http://xxx.qcow2'
                       fedora   39|40
-                      debian   10|11|12
+                      debian   11|12
                       ubuntu   20.04|22.04|24.04
                       alpine   3.17|3.18|3.19|3.20
                       opensuse 15.5|15.6|tumbleweed
                       kali
                       arch
                       gentoo
-                      dd       --img='http://xxx'
+                      dd       --img='http://xxx.gzip' or .xz
                       windows  --image-name='windows xxx yyy' --lang=xx-yy
-                      windows  --image-name='windows xxx yyy' --iso='http://xxx'
+                      windows  --image-name='windows xxx yyy' --iso='http://xxx.iso'
                       netboot.xyz
 
 Manual: https://github.com/bin456789/reinstall
@@ -752,7 +752,6 @@ setos() {
 
     setos_debian() {
         case "$releasever" in
-        10) codename=buster ;;
         11) codename=bullseye ;;
         12) codename=bookworm ;;
         esac
@@ -767,9 +766,6 @@ setos() {
         if is_use_cloud_image; then
             # cloud image
             is_virt && ci_type=genericcloud || ci_type=generic
-            # 甲骨文 debian 10 amd64 genericcloud vnc 没有显示
-            # 甲骨文 debian 10 arm64 没有 genericcloud 镜像
-            [ "$releasever" -eq 10 ] && ci_type=generic
             eval ${step}_img=$cdimage_mirror/cloud/$codename/latest/debian-$releasever-$ci_type-$basearch_alt.qcow2
         else
             # 传统安装
@@ -783,8 +779,6 @@ setos() {
             mirror=http://$deb_hostname/debian/dists/$codename/main/installer-$basearch_alt/current/images/netboot/debian-installer/$basearch_alt
 
             is_virt && flavour=-cloud || flavour=
-            # 甲骨文 debian 10 amd64 cloud 内核 vnc 没有显示
-            [ "$releasever" -eq 10 ] && [ "$basearch_alt" = amd64 ] && flavour=
             # 甲骨文 arm64 cloud 内核 vnc 没有显示
             [ "$basearch_alt" = arm64 ] && flavour=
 
@@ -1009,12 +1003,7 @@ setos() {
                 esac
             fi
             case $distro in
-            "centos")
-                case $releasever in
-                "7") ci_image=$ci_mirror/$releasever/images/CentOS-7-$basearch-GenericCloud.qcow2 ;;
-                "9") ci_image=$ci_mirror/$releasever-stream/$basearch/images/CentOS-Stream-GenericCloud-$releasever-latest.$basearch.qcow2 ;;
-                esac
-                ;;
+            "centos") ci_image=$ci_mirror/$releasever-stream/$basearch/images/CentOS-Stream-GenericCloud-$releasever-latest.$basearch.qcow2 ;;
             "alma") ci_image=$ci_mirror/AlmaLinux-$releasever-GenericCloud-latest.$basearch.qcow2 ;;
             "rocky") ci_image=$ci_mirror/Rocky-$releasever-GenericCloud-Base.latest.$basearch.qcow2 ;;
             "fedora")
@@ -1035,12 +1024,7 @@ setos() {
         else
             # 传统安装
             case $distro in
-            "centos")
-                case $releasever in
-                "7") mirrorlist="http://mirrorlist.centos.org/?release=7&arch=$basearch&repo=os" ;;
-                "9") mirrorlist="https://mirrors.centos.org/mirrorlist?repo=centos-baseos-9-stream&arch=$basearch" ;;
-                esac
-                ;;
+            "centos") mirrorlist="https://mirrors.centos.org/mirrorlist?repo=centos-baseos-$releasever-stream&arch=$basearch" ;;
             "alma") mirrorlist="https://mirrors.almalinux.org/mirrorlist/$releasever/baseos" ;;
             "rocky") mirrorlist="https://mirrors.rockylinux.org/mirrorlist?arch=$basearch&repo=BaseOS-$releasever" ;;
             "fedora") mirrorlist="https://mirrors.fedoraproject.org/mirrorlist?arch=$basearch&repo=fedora-$releasever" ;;
@@ -1065,14 +1049,8 @@ setos() {
             eval ${step}_ks=$confhome/redhat.cfg
             eval ${step}_vmlinuz=${mirror}images/pxeboot/vmlinuz
             eval ${step}_initrd=${mirror}images/pxeboot/initrd.img
-
-            if [ "$releasever" = 7 ]; then
-                squashfs=${mirror}LiveOS/squashfs.img
-            else
-                squashfs=${mirror}images/install.img
-            fi
-            test_url $squashfs 'squashfs'
-            eval ${step}_squashfs=$squashfs
+            eval ${step}_squashfs=${mirror}images/install.img
+            test_url ${mirror}images/install.img 'squashfs'
         fi
     }
 
@@ -1150,13 +1128,13 @@ verify_os_name() {
     fi
 
     for os in \
-        'centos   7|9' \
-        'oracle   7|8|9' \
+        'centos   |9' \
+        'oracle   8|9' \
         'alma     8|9' \
         'rocky    8|9' \
         'redhat   8|9' \
         'fedora   39|40' \
-        'debian   10|11|12' \
+        'debian   11|12' \
         'ubuntu   20.04|22.04|24.04' \
         'alpine   3.17|3.18|3.19|3.20' \
         'opensuse 15.5|15.6|tumbleweed' \

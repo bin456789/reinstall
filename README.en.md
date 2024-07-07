@@ -11,7 +11,7 @@ Reinstall server with one-click [中文](README.md)
 
 ## Highlights
 
-- Support installation of 12 common Linux distributions.
+- Support installation of 13 common Linux distributions.
 - Support for installing Windows using the official original ISO. The script can automatically search for the ISO and drivers.
 - Support reinstallation in any direction, meaning `Linux to Linux`, `Linux to Win`, `Win to Win`, `Win to Linux`.
 - Specifically tailored for low-spec machines, addressing insufficient memory that prevents network installation.
@@ -22,23 +22,21 @@ Reinstall server with one-click [中文](README.md)
 
 ## System Requirements
 
-| Target System                                                                                                                                              | Version                               | Memory    | Disk                   |
-| ---------------------------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------- | --------- | ---------------------- |
-| <img width="16" height="16" src="https://www.alpinelinux.org/alpine-logo.ico" /> Alpine                                                                    | 3.17, 3.18, 3.19, 3.20                | 256 MB    | 1 GB                   |
-| <img width="16" height="16" src="https://www.debian.org/favicon.ico" /> Debian                                                                             | 10, 11, 12                            | 256 MB    | 1 ~ 1.5 GB ^           |
-| <img width="16" height="16" src="https://github.com/bin456789/reinstall/assets/7548515/f74b3d5b-085f-4df3-bcc9-8a9bd80bb16d" /> Kali                       | Rolling                               | 256 MB    | 1 ~ 1.5 GB ^           |
-| <img width="16" height="16" src="https://netplan.readthedocs.io/en/latest/_static/favicon.png" /> Ubuntu                                                   | 20.04, 22.04, 24.04                   | 512 MB \* | 2 GB                   |
-| <img width="16" height="16" src="https://www.centos.org/assets/img/favicon.png" /> CentOS                                                                  | 7, 9 (stream)                         | 512 MB \* | 5 GB                   |
-| <img width="16" height="16" src="https://www.oracle.com/asset/web/favicons/favicon-32.png" /> Oracle                                                       | 7, 8, 9                               | 512 MB \* | 5 GB                   |
-| <img width="16" height="16" src="https://almalinux.org/fav/favicon.ico" /> Alma                                                                            | 8, 9                                  | 512 MB \* | 5 GB                   |
-| <img width="16" height="16" src="https://rockylinux.org/favicon.png" /> Rocky                                                                              | 8, 9                                  | 512 MB \* | 5 GB                   |
-| <img width="16" height="16" src="https://fedoraproject.org/favicon.ico" /> Fedora                                                                          | 39, 40                                | 512 MB \* | 5 GB                   |
-| <img width="16" height="16" src="https://static.opensuse.org/favicon.ico" /> openSUSE                                                                      | 15.5, 15.6, Tumbleweed (Rolling)      | 512 MB \* | 5 GB                   |
-| <img width="16" height="16" src="https://archlinux.org/static/favicon.png" /> Arch                                                                         | Rolling                               | 512 MB    | 5 GB                   |
-| <img width="16" height="16" src="https://www.gentoo.org/assets/img/logo/gentoo-g.png" /> Gentoo                                                            | Rolling                               | 512 MB    | 5 GB                   |
-| <img width="16" height="16" src="https://blogs.windows.com/wp-content/uploads/prod/2022/09/cropped-Windows11IconTransparent512-32x32.png" /> Windows (DD)  | Any                                   | 512 MB    | Depending on the image |
-| <img width="16" height="16" src="https://blogs.windows.com/wp-content/uploads/prod/2022/09/cropped-Windows11IconTransparent512-32x32.png" /> Windows (ISO) | Vista, 7, 8.x (Server 2008 ~ 2012 R2) | 512 MB    | 25 GB                  |
-| <img width="16" height="16" src="https://blogs.windows.com/wp-content/uploads/prod/2022/09/cropped-Windows11IconTransparent512-32x32.png" /> Windows (ISO) | 10, 11 (Server 2016 ~ 2025)           | 1 GB      | 25 GB                  |
+| Target System                                                                                                                                                                                                                                                                                                                                                          | Version                               | Memory    | Disk                   |
+| ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------- | --------- | ---------------------- |
+| <img width="16" height="16" src="https://www.alpinelinux.org/alpine-logo.ico" /> Alpine                                                                                                                                                                                                                                                                                | 3.17, 3.18, 3.19, 3.20                | 256 MB    | 1 GB                   |
+| <img width="16" height="16" src="https://www.debian.org/favicon.ico" /> Debian                                                                                                                                                                                                                                                                                         | 10, 11, 12                            | 256 MB    | 1 ~ 1.5 GB ^           |
+| <img width="16" height="16" src="https://github.com/bin456789/reinstall/assets/7548515/f74b3d5b-085f-4df3-bcc9-8a9bd80bb16d" /> Kali                                                                                                                                                                                                                                   | Rolling                               | 256 MB    | 1 ~ 1.5 GB ^           |
+| <img width="16" height="16" src="https://netplan.readthedocs.io/en/latest/_static/favicon.png" /> Ubuntu                                                                                                                                                                                                                                                               | 20.04, 22.04, 24.04                   | 512 MB \* | 2 GB                   |
+| <img width="16" height="16" src="https://www.centos.org/assets/img/favicon.png" /> CentOS                                                                                                                                                                                                                                                                              | 9                                     | 512 MB \* | 5 GB                   |
+| <img width="16" height="16" src="https://www.redhat.com/favicon.ico" /> RedHat &nbsp; <img width="16" height="16" src="https://almalinux.org/fav/favicon.ico" /> Alma &nbsp; <img width="16" height="16" src="https://rockylinux.org/favicon.png" /> Rocky &nbsp; <img width="16" height="16" src="https://www.oracle.com/asset/web/favicons/favicon-32.png" /> Oracle | 8, 9                                  | 512 MB \* | 5 GB                   |
+| <img width="16" height="16" src="https://fedoraproject.org/favicon.ico" /> Fedora                                                                                                                                                                                                                                                                                      | 39, 40                                | 512 MB \* | 5 GB                   |
+| <img width="16" height="16" src="https://static.opensuse.org/favicon.ico" /> openSUSE                                                                                                                                                                                                                                                                                  | 15.5, 15.6, Tumbleweed (Rolling)      | 512 MB \* | 5 GB                   |
+| <img width="16" height="16" src="https://archlinux.org/static/favicon.png" /> Arch                                                                                                                                                                                                                                                                                     | Rolling                               | 512 MB    | 5 GB                   |
+| <img width="16" height="16" src="https://www.gentoo.org/assets/img/logo/gentoo-g.png" /> Gentoo                                                                                                                                                                                                                                                                        | Rolling                               | 512 MB    | 5 GB                   |
+| <img width="16" height="16" src="https://blogs.windows.com/wp-content/uploads/prod/2022/09/cropped-Windows11IconTransparent512-32x32.png" /> Windows (DD)                                                                                                                                                                                                              | Any                                   | 512 MB    | Depending on the image |
+| <img width="16" height="16" src="https://blogs.windows.com/wp-content/uploads/prod/2022/09/cropped-Windows11IconTransparent512-32x32.png" /> Windows (ISO)                                                                                                                                                                                                             | Vista, 7, 8.x (Server 2008 ~ 2012 R2) | 512 MB    | 25 GB                  |
+| <img width="16" height="16" src="https://blogs.windows.com/wp-content/uploads/prod/2022/09/cropped-Windows11IconTransparent512-32x32.png" /> Windows (ISO)                                                                                                                                                                                                             | 10, 11 (Server 2016 ~ 2025)           | 1 GB      | 25 GB                  |
 
 (\*) Indicates installation using cloud images, not traditional network installation.
 
@@ -136,13 +134,19 @@ certutil -urlcache -f -split https://mirror.ghproxy.com/https://raw.githubuserco
 >
 > When installing other systems, can monitor the progress through various methods (SSH, HTTP 80 port, VNC in the background, serial console).
 
+> [!IMPORTANT]
+> To install Red Hat, you need to provide the `qcow2` image link obtained from the following website.
+>
+> See <https://access.redhat.com/downloads/content/rhel>
+
 ```bash
-bash reinstall.sh centos   7|9  (9 is stream version)
-                  oracle   7|8|9
+bash reinstall.sh centos   9
                   alma     8|9
                   rocky    8|9
+                  oracle   8|9
+                  redhat   8|9   --img 'https://xxx.qcow2'
                   fedora   39|40
-                  debian   10|11|12
+                  debian   11|12
                   ubuntu   20.04|22.04|24.04
                   alpine   3.17|3.18|3.19|3.20
                   opensuse 15.5|15.6|tumbleweed
@@ -252,10 +256,10 @@ Use `Dism++` File menu > Open Image File, select the iso to be installed to get 
 
 - Windows (Vista ~ 11)
 - Windows Server (2008 ~ 2025)
-  - Windows Server Essentials *
-  - Windows Server (Semi) Annual Channel *
-  - Hyper-V Server *
-  - Azure Stack HCI *
+  - Windows Server Essentials \*
+  - Windows Server (Semi) Annual Channel \*
+  - Hyper-V Server \*
+  - Azure Stack HCI \*
 
 \* Must specify an ISO link.
 
