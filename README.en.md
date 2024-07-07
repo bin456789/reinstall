@@ -154,7 +154,7 @@ bash reinstall.sh centos   7|9  (9 is stream version)
 ### Feature 2: DD
 
 - Supports gzip, xz formats.
-- For machines with static IP, DD Windows, and the script will automatically configure the IP.
+- A machine with a static IP running DD Windows will automatically configure the IP, which may take a few minutes to complete after the first boot.
 
 > [!TIP]
 > Can monitor the progress through various methods (SSH, HTTP 80 port, VNC in the background, serial console).

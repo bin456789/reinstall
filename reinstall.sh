@@ -454,11 +454,6 @@ parse_windows_image_name() {
     fi
 
     version=$1
-    # 填写 windows longhorn serverdatacenter 时，寻找 windows server 2008 serverdatacenter iso
-    if [ "$version" = longhorn ]; then
-        server=server
-        version=2008
-    fi
     shift
 
     if [ "$1" = r2 ]; then
@@ -467,8 +462,8 @@ parse_windows_image_name() {
     fi
 
     edition=
-    for i in "$@"; do
-        case "$i" in
+    while [ $# -gt 0 ]; do
+        case "$1" in
         # windows 10 enterprise n ltsc 2021
         k | n | kn) ;;
         *)
@@ -972,15 +967,16 @@ setos() {
 
     setos_windows() {
         if [ -z "$iso" ]; then
+            # 查找时将 windows longhorn serverdatacenter 改成 windows server 2008 serverdatacenter
+            image_name=${image_name/windows longhorn server/windows server 2008 server}
             echo "iso url is not set. Try to find it."
             find_windows_iso
         fi
 
-        # 防呆设计
-        # 将 windows server 2008 改成 windows longhorn
-        if ! echo "$image_name" | grep -q r2; then
-            image_name=${image_name/server 2008/longhorn}
-        fi
+        # 将上面的 windows server 2008 serverdatacenter 改回 windows longhorn serverdatacenter
+        # 也能纠正用户输入了 windows server 2008 serverdatacenter
+        # 注意 windows server 2008 r2 serverdatacenter 不用改
+        image_name=${image_name/windows server 2008 server/windows longhorn server}
 
         test_url $iso 'iso|dos/mbr'
         eval "${step}_iso='$iso'"

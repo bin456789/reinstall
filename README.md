@@ -154,7 +154,7 @@ bash reinstall.sh centos   7|9  (9 为 stream 版本)
 ### 功能 2: DD
 
 - 支持 gzip、xz 格式
-- 静态 IP 的机器 DD Windows，会自动配置好 IP
+- 静态 IP 的机器 DD Windows，会自动配置好 IP，可能首次开机后几分钟才完成配置
 
 > [!TIP]
 > 可通过多种方式（SSH、HTTP 80 端口、后台 VNC、串行控制台）查看安装进度。
