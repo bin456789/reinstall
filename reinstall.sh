@@ -34,6 +34,7 @@ Usage: $reinstall____ centos   7|9
                       oracle   7|8|9
                       alma     8|9
                       rocky    8|9
+                      redhat   8|9   --img='http://xxx.qcow2'
                       fedora   39|40
                       debian   10|11|12
                       ubuntu   20.04|22.04|24.04
@@ -989,7 +990,7 @@ setos() {
         eval "${step}_img='$img'"
     }
 
-    setos_redhat() {
+    setos_centos_alma_rocky_fedora() {
         if is_use_cloud_image; then
             # ci
             if is_in_china; then
@@ -1095,14 +1096,22 @@ setos() {
         fi
     }
 
+    setos_redhat() {
+        if is_use_cloud_image; then
+            # ci
+            eval "${step}_img='$img'"
+        else
+            :
+        fi
+    }
+
     eval ${step}_distro=$distro
     eval ${step}_releasever=$releasever
 
-    if is_distro_like_redhat && ! [ "$distro" = oracle ]; then
-        setos_redhat
-    else
-        setos_$distro
-    fi
+    case "$distro" in
+    centos | alma | rocky | fedora) setos_centos_alma_rocky_fedora ;;
+    *) setos_$distro ;;
+    esac
 
     # debian/kali <=256M 必须使用云内核，否则不够内存
     if is_distro_like_debian && ! is_in_windows && [ "$ram_size" -le 256 ]; then
@@ -1122,7 +1131,7 @@ is_distro_like_redhat() {
     else
         _distro=$distro
     fi
-    [ "$_distro" = centos ] || [ "$_distro" = alma ] || [ "$_distro" = rocky ] || [ "$_distro" = fedora ] || [ "$_distro" = oracle ]
+    [ "$_distro" = redhat ] || [ "$_distro" = centos ] || [ "$_distro" = alma ] || [ "$_distro" = rocky ] || [ "$_distro" = fedora ] || [ "$_distro" = oracle ]
 }
 
 is_distro_like_debian() {
@@ -1145,6 +1154,7 @@ verify_os_name() {
         'oracle   7|8|9' \
         'alma     8|9' \
         'rocky    8|9' \
+        'redhat   8|9' \
         'fedora   39|40' \
         'debian   10|11|12' \
         'ubuntu   20.04|22.04|24.04' \
@@ -1177,11 +1187,8 @@ verify_os_name() {
 verify_os_args() {
     case "$distro" in
     dd) [ -n "$img" ] || error_and_exit "dd need --img" ;;
-    windows)
-        if [ -z "$image_name" ]; then
-            error_and_exit "Install Windows need --image-name."
-        fi
-        ;;
+    redhat) [ -n "$img" ] || error_and_exit "redhat need --img" ;;
+    windows) [ -n "$image_name" ] || error_and_exit "Install Windows need --image-name." ;;
     esac
 }
 
@@ -1277,7 +1284,7 @@ install_pkg() {
             epel_release="$($pkg_mgr list | grep 'epel-release' | awk '{print $1}' | cut -d. -f1 | head -1)"
 
             # 如果已安装
-            if rpm -qa | grep -q $epel_release; then
+            if rpm -q $epel_release; then
                 # 检查是否为最新
                 if $pkg_mgr check-update $epel_release; then
                     $pkg_mgr reinstall -y $epel_release
@@ -1357,7 +1364,7 @@ check_ram() {
         netboot.xyz) echo 0 ;;
         alpine | debian | kali | dd) echo 256 ;;
         arch | gentoo | windows) echo 512 ;;
-        centos | alma | rocky | fedora | oracle | ubuntu) echo 1024 ;;
+        redhat | centos | alma | rocky | fedora | oracle | ubuntu) echo 1024 ;;
         opensuse) echo -1 ;; # 没有安装模式
         esac
     )
@@ -1372,7 +1379,7 @@ check_ram() {
 
     has_cloud_image=$(
         case "$distro" in
-        centos | alma | rocky | oracle | fedora | debian | ubuntu | opensuse) echo true ;;
+        redhat | centos | alma | rocky | oracle | fedora | debian | ubuntu | opensuse) echo true ;;
         netboot.xyz | alpine | dd | arch | gentoo | kali | windows) echo false ;;
         esac
     )
@@ -2741,7 +2748,7 @@ dd | windows | netboot.xyz | kali | alpine | arch | gentoo)
         cloud_image=0
     fi
     ;;
-centos | alma | rocky | oracle | ubuntu | fedora | opensuse)
+redhat | centos | alma | rocky | oracle | ubuntu | fedora | opensuse)
     cloud_image=1
     ;;
 esac

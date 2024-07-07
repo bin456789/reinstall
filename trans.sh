@@ -1354,7 +1354,8 @@ create_part() {
     elif is_use_cloud_image; then
         installer_part_size="$(get_ci_installer_part_size)"
         # 这几个系统不使用dd，而是复制文件
-        if [ "$distro" = centos ] || [ "$distro" = alma ] || [ "$distro" = rocky ] || [ "$distro" = oracle ] ||
+        if [ "$distro" = centos ] || [ "$distro" = alma ] || [ "$distro" = rocky ] ||
+            [ "$distro" = oracle ] || [ "$distro" = redhat ] ||
             [ "$distro" = ubuntu ]; then
             fs="$(get_os_fs)"
             if is_efi; then
@@ -2029,7 +2030,7 @@ create_swap() {
     fi
 }
 
-# gentoo 常规安装用
+# arch gentoo 常规安装用
 allow_root_password_login() {
     os_dir=$1
 
@@ -2106,13 +2107,13 @@ disconnect_qcow() {
 get_os_fs() {
     case "$distro" in
     ubuntu) echo ext4 ;;
-    centos | alma | rocky | oracle) echo xfs ;;
+    centos | alma | rocky | oracle | redhat) echo xfs ;;
     esac
 }
 
 get_ci_installer_part_size() {
     case "$distro" in
-    centos | alma | rocky | oracle) echo 2GiB ;;
+    centos | alma | rocky | oracle | redhat) echo 2GiB ;;
     *) echo 1GiB ;;
     esac
 }
@@ -2262,6 +2263,10 @@ install_qcow_by_copy() {
     swapon /dev/$xda*3
 
     modify_el_ol() {
+        # redhat 使用用户提供的 qcow2 镜像，无法提前知道版本号
+        # 因此需要从镜像读取版本号
+        releasever=$(awk -F: '{ print $5 }' /os/etc/system-release-cpe)
+
         # resolv.conf
         cp_resolv_conf /os
 
@@ -3482,7 +3487,7 @@ if is_use_cloud_image; then
         create_part
         download_qcow
         case "$distro" in
-        centos | alma | rocky | oracle)
+        centos | alma | rocky | oracle | redhat)
             # 这几个系统云镜像系统盘是8~9g xfs，而我们的目标是能在5g硬盘上运行，因此改成复制系统文件
             install_qcow_by_copy
             ;;
@@ -3528,7 +3533,7 @@ else
         create_part
         mount_part_for_install_mode
         case "$distro" in
-        centos | alma | rocky | fedora | ubuntu) install_redhat_ubuntu ;;
+        centos | alma | rocky | fedora | ubuntu | redhat) install_redhat_ubuntu ;;
         windows) install_windows ;;
         esac
         ;;
