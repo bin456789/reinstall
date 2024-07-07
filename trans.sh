@@ -2313,7 +2313,6 @@ EOF
             yum install grubby
         fi
         chroot /os grubby --update-kernel ALL --remove-args "resume rd.lvm.lv"
-        chroot /os grubby --update-kernel ALL --args UUID=$os_part_uuid
         if [ "$releasever" -eq 7 ]; then
             # el7 上面那条 grubby 命令不能设置 /etc/default/grub
             sed -i 's/ rd.lvm.lv=[^ "]*//g' /os/etc/default/grub
