@@ -2150,13 +2150,6 @@ install_qcow_by_copy() {
         esac
     }
 
-    efi_label=$(
-        case "$distro" in
-        ubuntu) echo UEFI ;;
-        *) echo ;;
-        esac
-    )
-
     efi_mount_opts=$(
         case "$distro" in
         ubuntu) echo "umask=0077" ;;
@@ -2167,9 +2160,9 @@ install_qcow_by_copy() {
     connect_qcow
 
     # 镜像分区格式
-    # centos/rocky/alma:    xfs
-    # oracle x86_64:        lvm + xfs
-    # oracle aarch64 cloud: xfs
+    # centos/rocky/alma/rhel: xfs
+    # oracle x86_64:          lvm + xfs
+    # oracle aarch64 cloud:   xfs
     if lsblk -f /dev/nbd0p* | grep LVM2_member; then
         apk add lvm2
         lvscan
@@ -2183,9 +2176,19 @@ install_qcow_by_copy() {
         efi_part=$(lsblk /dev/nbd0p* --sort SIZE -no NAME,FSTYPE | grep fat | tail -1 | cut -d' ' -f1)
     fi
 
+    # 分区寻找方式
+    # 系统/分区          rootfs        efi
+    # rocky             LABEL=rocky   LABEL=EFI
+    # ubuntu            PARTUUID      LABEL=UEFI
+    # 其他el/ol         UUID           UUID
+
+    # read -r os_part_uuid os_part_label < <(lsblk /dev/$os_part -no UUID,LABEL)
     os_part_uuid=$(lsblk /dev/$os_part -no UUID)
+    os_part_label=$(lsblk /dev/$os_part -no LABEL)
+
     if [ -n "$efi_part" ]; then
         efi_part_uuid=$(lsblk /dev/$efi_part -no UUID)
+        efi_part_label=$(lsblk /dev/$efi_part -no LABEL)
     fi
 
     mkdir -p /nbd /nbd-boot /nbd-efi /os
@@ -2194,9 +2197,9 @@ install_qcow_by_copy() {
     # centos8 如果用alpine格式化xfs，grub2-mkconfig和grub2里面都无法识别xfs分区
     mount_nouuid /dev/$os_part /nbd/
     mount_pseudo_fs /nbd/
-    case "$distro" in
-    ubuntu) chroot /nbd mkfs.ext4 -E nodiscard -F -L cloudimg-rootfs -U $os_part_uuid /dev/$xda*2 ;;
-    *) chroot /nbd mkfs.xfs -K -f -m uuid=$os_part_uuid /dev/$xda*2 ;;
+    case "$(get_os_fs)" in
+    ext4) chroot /nbd mkfs.ext4 -E nodiscard -F -L "$os_part_label" -U "$os_part_uuid" /dev/$xda*2 ;;
+    xfs) chroot /nbd mkfs.xfs -K -f -L "$os_part_label" -m uuid=$os_part_uuid /dev/$xda*2 ;;
     esac
     umount -R /nbd/
 
@@ -2245,7 +2248,7 @@ install_qcow_by_copy() {
     if is_efi && [ -n "$efi_part_uuid" ]; then
         umount /os/boot/efi/
         apk add mtools
-        mlabel -N "$(echo $efi_part_uuid | sed 's/-//')" -i /dev/$xda*1 ::$efi_label
+        mlabel -N "$(echo $efi_part_uuid | sed 's/-//')" -i /dev/$xda*1 ::$efi_part_label
         update_part /dev/$xda
         mount -o $efi_mount_opts /dev/$xda*1 /os/boot/efi/
     fi
