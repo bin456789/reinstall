@@ -82,6 +82,18 @@ is_have_cmd() {
     command -v "$1" >/dev/null
 }
 
+is_have_cmd_on_disk() {
+    os_dir=$1
+    cmd=$2
+
+    for bin_dir in /bin /sbin /usr/bin /usr/sbin; do
+        if [ -f "$os_dir$bin_dir/$cmd" ]; then
+            return
+        fi
+    done
+    return 1
+}
+
 download() {
     url=$1
     path=$2
@@ -320,7 +332,7 @@ EOF
 }
 
 umount_all() {
-    dirs="/os /iso /wim /installer /nbd /nbd-boot /nbd-efi /root"
+    dirs="/mnt /os /iso /wim /installer /nbd /nbd-boot /nbd-efi /root"
     regex=$(echo "$dirs" | sed 's, ,|,g')
     if mounts=$(mount | grep -Ew "$regex" | awk '{print $3}' | tac); then
         for mount in $mounts; do
@@ -1356,6 +1368,7 @@ create_part() {
         # 这几个系统不使用dd，而是复制文件
         if [ "$distro" = centos ] || [ "$distro" = alma ] || [ "$distro" = rocky ] ||
             [ "$distro" = oracle ] || [ "$distro" = redhat ] ||
+            [ "$distro" = anolis ] || [ "$distro" = opencloudos ] || [ "$distro" = openeuler ] ||
             [ "$distro" = ubuntu ]; then
             fs="$(get_os_fs)"
             if is_efi; then
@@ -1579,8 +1592,20 @@ create_cloud_init_network_config() {
         elif is_staticv6; then
             get_netconf_to ipv6_addr
             get_netconf_to ipv6_gateway
+            # el7 不认识 static6，但可改成 static，作用相同
+            # >=20.1 修复
+            # https://github.com/canonical/cloud-init/commit/dacdd30080bd8183d1f1c1dc9dbcbc8448301529
+            # anolis 7:        cloud-init 19.1
+            # openeuler 20.03: cloud-init 19.4
+            # shellcheck disable=SC2154
+            if { [ "$distro" = anolis ] && [ "$releasever" = 7 ]; } ||
+                { [ "$distro" = openeuler ] && [ "$releasever" = 20.03 ]; }; then
+                type_ipv6_static=static
+            else
+                type_ipv6_static=static6
+            fi
             yq -i ".network.config[$config_id].subnets[$subnet_id] = {
-                    \"type\": \"static6\",
+                    \"type\": \"$type_ipv6_static\",
                     \"address\": \"$ipv6_addr\",
                     \"gateway\": \"$ipv6_gateway\" }
                     " $ci_file
@@ -2041,18 +2066,38 @@ allow_root_password_login() {
 
 disable_selinux_kdump() {
     os_dir=$1
-    releasever=$(awk -F: '{ print $5 }' $os_dir/etc/system-release-cpe)
 
     # selinux
-    sed -i 's/^SELINUX=enforcing/SELINUX=disabled/g' $os_dir/etc/selinux/config
+    if [ -f $os_dir/etc/selinux/config ]; then
+        sed -i 's/^SELINUX=enforcing/SELINUX=disabled/g' $os_dir/etc/selinux/config
+    fi
+
     # https://access.redhat.com/solutions/3176
-    if [ "$releasever" -ge 9 ]; then
+    # shellcheck disable=SC2154
+    # openeuler 版本是 24.03
+    if [ "$distro" = openeuler ] || [ "$releasever" -ge 9 ]; then
         chroot $os_dir grubby --update-kernel ALL --args selinux=0
     fi
 
     # kdump
+    # grubby 只处理 GRUB_CMDLINE_LINUX，不会处理 GRUB_CMDLINE_LINUX_DEFAULT
+    # rocky 的 GRUB_CMDLINE_LINUX_DEFAULT 有 crashkernel=auto
+
+    # 新安装的内核依然有 crashkernel，好像是 bug
+    # https://forums.rockylinux.org/t/how-do-i-remove-crashkernel-from-cmdline/13346
+    # 验证过程
+    # yum remove --oldinstallonly   # 删除旧内核
+    # rm -rf /boot/loader/entries/* # 删除启动条目
+    # yum reinstall kernel-core     # 重新安装新内核
+    # cat /boot/loader/entries/*    # 依然有 crashkernel=1G-4G:192M,4G-64G:256M,64G-:512M
+
+    sed -i 's/crashkernel=[^ ]*/crashkernel=no/' $os_dir/etc/default/grub
     chroot $os_dir grubby --update-kernel ALL --args crashkernel=no
-    chroot $os_dir systemctl disable kdump
+    # el7 上面那条 grubby 命令不能设置 /etc/default/grub
+    sed -i 's/crashkernel=[^ "]*/crashkernel=no/' $os_dir/etc/default/grub
+    if chroot $os_dir systemctl is-enabled kdump; then
+        chroot $os_dir systemctl disable kdump
+    fi
 }
 
 download_qcow() {
@@ -2060,8 +2105,15 @@ download_qcow() {
 
     mkdir -p /installer
     mount /dev/disk/by-label/installer /installer
+
     qcow_file=/installer/cloud_image.qcow2
-    download $img $qcow_file
+    if [ "$distro" = openeuler ]; then
+        prog=xz
+        apk add wget $prog
+        command wget $img -O- --tries=5 --progress=bar:force | $prog -dc >$qcow_file
+    else
+        download "$img" "$qcow_file"
+    fi
 }
 
 connect_qcow() {
@@ -2091,24 +2143,58 @@ disconnect_qcow() {
 get_os_fs() {
     case "$distro" in
     ubuntu) echo ext4 ;;
+    anolis | openeuler) echo ext4 ;;
     centos | alma | rocky | oracle | redhat) echo xfs ;;
+    opencloudos) echo xfs ;;
     esac
 }
 
 get_ci_installer_part_size() {
-    case "$distro" in
-    centos | alma | rocky | oracle | redhat) echo 2GiB ;;
-    *) echo 1GiB ;;
-    esac
+    # 8
+    # https://repo.almalinux.org/almalinux/8/cloud/x86_64/images/AlmaLinux-8-GenericCloud-latest.x86_64.qcow2 600m
+    # https://download.rockylinux.org/pub/rocky/8/images/x86_64/Rocky-8-GenericCloud-Base.latest.x86_64.qcow2 1.8g
+    # https://yum.oracle.com/templates/OracleLinux/OL8/u9/x86_64/OL8U9_x86_64-kvm-b219.qcow2 1g
+    # https://rhel-8.10-x86_64-kvm.qcow2 1g
+
+    # 9
+    # https://cloud.centos.org/centos/9-stream/x86_64/images/CentOS-Stream-GenericCloud-9-latest.x86_64.qcow2 1.2g
+    # https://repo.almalinux.org/almalinux/9/cloud/x86_64/images/AlmaLinux-9-GenericCloud-latest.x86_64.qcow2 600m
+    # https://download.rockylinux.org/pub/rocky/9/images/x86_64/Rocky-9-GenericCloud-Base.latest.x86_64.qcow2 600m
+    # https://yum.oracle.com/templates/OracleLinux/OL9/u3/x86_64/OL9U3_x86_64-kvm-b220.qcow2 600m
+    # rhel-9.4-x86_64-kvm.qcow2 900m
+
+    # https://dl-cdn.alpinelinux.org/alpine/v3.19/releases/cloud/nocloud_alpine-3.19.1-x86_64-uefi-cloudinit-r0.qcow2 200m
+    # https://kali.download/cloud-images/current/kali-linux-2024.1-cloud-genericcloud-amd64.tar.xz 200m
+    # https://download.opensuse.org/tumbleweed/appliances/openSUSE-Tumbleweed-Minimal-VM.x86_64-Cloud.qcow2 300m
+    # https://download.opensuse.org/distribution/leap/15.5/appliances/openSUSE-Leap-15.5-Minimal-VM.aarch64-Cloud.qcow2 300m
+    # https://mirror.fcix.net/fedora/linux/releases/40/Cloud/x86_64/images/Fedora-Cloud-Base-Generic.x86_64-40-1.14.qcow2 400m
+    # https://geo.mirror.pkgbuild.com/images/latest/Arch-Linux-x86_64-cloudimg.qcow2 500m
+    # https://cloud.debian.org/images/cloud/bookworm/latest/debian-12-generic-amd64.qcow2 500m
+    # https://cloud-images.ubuntu.com/releases/24.04/release/ubuntu-24.04-server-cloudimg-amd64.img 500m
+    # https://gentoo.osuosl.org/experimental/amd64/openstack/gentoo-openstack-amd64-systemd-latest.qcow2 800m
+
+    # openeuler 20.03 3g
+    if [ "$distro" = openeuler ]; then
+        echo 3GiB
+    else
+        if get_http_file_size_to size_bytes $img >&2 && [ -n "$size_bytes" ]; then
+            # 额外 +100M 文件系统保留大小 和 qcow2 写入空间
+            size_bytes_mb=$((size_bytes / 1024 / 1024 + 100))
+            # 最少 1g ，因为可能要用作临时 swap
+            echo "$((size_bytes_mb / 1024 + 1))GiB"
+        else
+            # 如果没获取到文件大小
+            echo 2GiB
+        fi
+    fi
 }
 
 chroot_dnf() {
-    if [ "$distro" = oracle ]; then
-        enablerepo=ol${releasever}_baseos_latest
+    if is_have_cmd_on_disk /os/ dnf; then
+        chroot /os/ dnf -y "$@"
     else
-        enablerepo=baseos
+        chroot /os/ yum -y "$@"
     fi
-    chroot /os/ dnf -y --disablerepo=* --enablerepo=$enablerepo --setopt=install_weak_deps=False "$@"
 }
 
 chroot_apt_autoremove() {
@@ -2122,7 +2208,7 @@ chroot_apt_autoremove() {
 
 install_qcow_by_copy() {
     mount_nouuid() {
-        case "$fs" in
+        case "$(get_os_fs)" in
         ext4) mount "$@" ;;
         xfs) mount -o nouuid "$@" ;;
         esac
@@ -2141,21 +2227,43 @@ install_qcow_by_copy() {
     # centos/rocky/alma/rhel: xfs
     # oracle x86_64:          lvm + xfs
     # oracle aarch64 cloud:   xfs
+
+    is_lvm_image=false
     if lsblk -f /dev/nbd0p* | grep LVM2_member; then
+        is_lvm_image=true
         apk add lvm2
         lvscan
-        lvchange -ay vg_main
-        os_part=mapper/vg_main-lv_root
-        boot_part=nbd0p1
-    else
-        # TODO: 改成循环mount找出os+fstab查找剩余分区？
-        os_part=$(lsblk /dev/nbd0p* --sort SIZE -no NAME,FSTYPE | grep -E 'ext4|xfs' | tail -1 | cut -d' ' -f1)
-        boot_part=$(lsblk /dev/nbd0p* --sort SIZE -no NAME,FSTYPE | grep -E 'ext4|xfs' | sed '$d' | tail -1 | cut -d' ' -f1)
-        efi_part=$(lsblk /dev/nbd0p* --sort SIZE -no NAME,FSTYPE | grep fat | tail -1 | cut -d' ' -f1)
+        vg=$(pvs | grep /dev/nbd0p | awk '{print $2}')
+        lvchange -ay "$vg"
     fi
 
+    # TODO: 系统分区应该是最后一个分区
+    # 选择最大分区
+    os_part=$(lsblk /dev/nbd0p* --sort SIZE -no NAME,FSTYPE | grep -E 'ext4|xfs' | tail -1 | awk '{print $1}')
+    efi_part=$(lsblk /dev/nbd0p* --sort SIZE -no NAME,PARTTYPE | grep -i "$EFI_UUID" | awk '{print $1}')
+    # 排除前两个，再选择最大分区
+    # alma 9 boot 分区的类型不是规定的 uuid
+    # openeuler boot 分区是 fat 格式
+    boot_part=$(lsblk /dev/nbd0p* --sort SIZE -no NAME,FSTYPE | grep -E 'ext4|xfs|fat' | awk '{print $1}' |
+        grep -vx "$os_part" | {
+        if [ -n "$efi_part" ]; then
+            grep -vx "$efi_part"
+        else
+            cat
+        fi
+    } | tail -1 | awk '{print $1}')
+
+    if $is_lvm_image; then
+        os_part="mapper/$os_part"
+    fi
+
+    lsblk -f /dev/nbd0 -o +PARTTYPE
+    echo "Part OS:   $os_part"
+    echo "Part EFI:  $efi_part"
+    echo "Part Boot: $boot_part"
+
     # 分区寻找方式
-    # 系统/分区          rootfs        efi
+    # 系统/分区          cmdline:root  fstab:efi
     # rocky             LABEL=rocky   LABEL=EFI
     # ubuntu            PARTUUID      LABEL=UEFI
     # 其他el/ol         UUID           UUID
@@ -2240,10 +2348,6 @@ install_qcow_by_copy() {
     swapon /dev/$xda*3
 
     modify_el_ol() {
-        # redhat 使用用户提供的 qcow2 镜像，无法提前知道版本号
-        # 因此需要从镜像读取版本号
-        releasever=$(awk -F: '{ print $5 }' /os/etc/system-release-cpe)
-
         # resolv.conf
         cp_resolv_conf /os
 
@@ -2252,6 +2356,15 @@ install_qcow_by_copy() {
 
         # 部分镜像例如 centos7 要手动删除 machine-id
         truncate_machine_id /os
+
+        # el7 yum 可能会使用 ipv6，即使没有 ipv6 网络
+        if [ "$releasever" = 7 ]; then
+            if [ "$(cat /dev/netconf/eth*/ipv6_has_internet | sort -u)" = 0 ]; then
+                echo 'ip_resolve=4' >>/os/etc/yum.conf
+            fi
+        fi
+
+        # anolis 7 镜像自带 nm
 
         # 删除云镜像自带的 dhcp 配置，防止歧义
         # clout-init 网络配置在 /etc/sysconfig/network-scripts/
@@ -2272,14 +2385,21 @@ EOF
         sed -i '/[[:space:]]\/boot[[:space:]]/d' /os/etc/fstab
         sed -i '/[[:space:]]swap[[:space:]]/d' /os/etc/fstab
 
-        # oracle linux 系统盘从 lvm 改成 uuid 挂载
-        sed -i "s,/dev/mapper/vg_main-lv_root,UUID=$os_part_uuid," /os/etc/fstab
+        # os_part 变量:
+        # mapper/vg_main-lv_root
+        # mapper/opencloudos-root
+
+        # oracle/opencloudos 系统盘从 lvm 改成 uuid 挂载
+        sed -i "s,/dev/$os_part,UUID=$os_part_uuid," /os/etc/fstab
         if ls /os/boot/loader/entries/*.conf 2>/dev/null; then
-            sed -i "s,/dev/mapper/vg_main-lv_root,UUID=$os_part_uuid," /os/boot/loader/entries/*.conf
+            # options root=/dev/mapper/opencloudos-root ro console=ttyS0,115200n8 no_timer_check net.ifnames=0 crashkernel=1800M-64G:256M,64G-128G:512M,128G-486G:768M,486G-972G:1024M,972G-:2048M rd.lvm.lv=opencloudos/root rhgb quiet
+            sed -i "s,/dev/$os_part,UUID=$os_part_uuid," /os/boot/loader/entries/*.conf
         fi
 
-        # oracle linux 移除 lvm cmdline
+        # oracle/opencloudos 移除 lvm cmdline
         chroot /os grubby --update-kernel ALL --remove-args "resume rd.lvm.lv"
+        # el7 上面那条 grubby 命令不能设置 /etc/default/grub
+        sed -i 's/rd.lvm.lv=[^ "]*//g' /os/etc/default/grub
 
         # fstab 添加 efi 分区
         if is_efi; then
@@ -2312,7 +2432,9 @@ EOF
             # 只有centos 和 oracle x86_64 镜像没有efi，其他系统镜像已经从efi分区复制了文件
             if [ -z "$efi_part" ]; then
                 remove_grub_conflict_files
-                chroot_dnf install efibootmgr grub2-efi shim
+                # openeuler 自带 grub2-efi-ia32，此时安装 grub2-efi 提示已经安装了 grub2-efi-ia32，不会继续安装 grub2-efi-x64
+                [ "$(uname -m)" = x86_64 ] && arch=x64 || arch=aa64
+                chroot_dnf install efibootmgr grub2-efi-$arch shim-$arch
             fi
         else
             # bios
@@ -2323,7 +2445,9 @@ EOF
         # blscfg 启动项
         # rocky/alma镜像是独立的boot分区，但我们不是
         # 因此要添加boot目录
-        if [ -d /os/boot/loader/entries/ ] && ! grep -q 'initrd /boot/' /os/boot/loader/entries/*.conf; then
+        if ls /os/boot/loader/entries/*.conf 2>/dev/null &&
+            ! grep -q 'initrd /boot/' /os/boot/loader/entries/*.conf; then
+
             sed -i -E 's,((linux|initrd) /),\1boot/,g' /os/boot/loader/entries/*.conf
         fi
 
@@ -2333,9 +2457,16 @@ EOF
             distro_efi=$(cd /os/boot/efi/EFI/ && ls -d -- * | grep -Eiv BOOT)
         fi
 
+        is_grub_efi_load_config_from_os() {
+            { [ "$distro" = openeuler ] && ! [ "$releasever" = 20.03 ]; } ||
+                [ "$releasever" -ge 9 ]
+        }
+
         # efi 分区 grub.cfg
+        # >=34.24
         # https://github.com/rhinstaller/anaconda/blob/346b932a26a19b339e9073c049b08bdef7f166c3/pyanaconda/modules/storage/bootloader/efi.py#L198
-        if is_efi && [ "$releasever" -ge 9 ]; then
+        # https://github.com/rhinstaller/anaconda/commit/15c3b2044367d375db6739e8b8f419ef3e17cae7
+        if is_efi && is_grub_efi_load_config_from_os; then
             cat <<EOF >/os/boot/efi/EFI/$distro_efi/grub.cfg
 search --no-floppy --fs-uuid --set=dev $os_part_uuid
 set prefix=(\$dev)/boot/grub2
@@ -2345,9 +2476,10 @@ EOF
         fi
 
         # 主 grub.cfg
-        if is_efi && [ "$releasever" -le 8 ]; then
+        if is_efi && ! is_grub_efi_load_config_from_os; then
             chroot /os/ grub2-mkconfig -o /boot/efi/EFI/$distro_efi/grub.cfg
         else
+            # --update-bls-cmdline
             chroot /os/ grub2-mkconfig -o /boot/grub2/grub.cfg
         fi
 
@@ -2449,8 +2581,19 @@ EOF
         restore_resolv_conf $os_dir
     }
 
+    # anolis/openeuler/opencloudos 可能要安装 cloud-init
+    # opencloudos 无法使用 chroot $os_dir command -v xxx
+    # chroot: failed to run command ‘command’: No such file or directory
+    if is_have_cmd_on_disk $os_dir rpm &&
+        ! is_have_cmd_on_disk $os_dir cloud-init; then
+
+        cp_resolv_conf $os_dir
+        chroot_dnf install cloud-init
+        restore_resolv_conf $os_dir
+    fi
+
     # cloud-init
-    download_cloud_init_config /os
+    download_cloud_init_config $os_dir
 
     case "$distro" in
     ubuntu) modify_ubuntu ;;
@@ -3440,7 +3583,7 @@ if is_use_cloud_image; then
         create_part
         download_qcow
         case "$distro" in
-        centos | alma | rocky | oracle | redhat)
+        centos | alma | rocky | oracle | redhat | anolis | opencloudos | openeuler)
             # 这几个系统云镜像系统盘是8~9g xfs，而我们的目标是能在5g硬盘上运行，因此改成复制系统文件
             install_qcow_by_copy
             ;;

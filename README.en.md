@@ -29,8 +29,11 @@ Reinstall server with one-click [中文](README.md)
 | <img width="16" height="16" src="https://github.com/bin456789/reinstall/assets/7548515/f74b3d5b-085f-4df3-bcc9-8a9bd80bb16d" /> Kali                                                                                                                                                                                                                                   | Rolling                               | 256 MB    | 1 ~ 1.5 GB ^           |
 | <img width="16" height="16" src="https://netplan.readthedocs.io/en/latest/_static/favicon.png" /> Ubuntu                                                                                                                                                                                                                                                               | 20.04, 22.04, 24.04                   | 512 MB \* | 2 GB                   |
 | <img width="16" height="16" src="https://www.centos.org/assets/img/favicon.png" /> CentOS                                                                                                                                                                                                                                                                              | 9                                     | 512 MB \* | 5 GB                   |
+| <img width="16" height="16" src="https://img.alicdn.com/imgextra/i1/O1CN01oJnJZg1yK4RzI4Rx2_!!6000000006559-2-tps-118-118.png" /> Anolis OS                                                                                                                                                                                                                            | 7, 8                                  | 512 MB \* | 5 GB                   |
 | <img width="16" height="16" src="https://www.redhat.com/favicon.ico" /> RedHat &nbsp; <img width="16" height="16" src="https://almalinux.org/fav/favicon.ico" /> Alma &nbsp; <img width="16" height="16" src="https://rockylinux.org/favicon.png" /> Rocky &nbsp; <img width="16" height="16" src="https://www.oracle.com/asset/web/favicons/favicon-32.png" /> Oracle | 8, 9                                  | 512 MB \* | 5 GB                   |
+| <img width="16" height="16" src="https://opencloudos.org/qq.ico" /> OpenCloudOS                                                                                                                                                                                                                                                                                        | 8, 9                                  | 512 MB \* | 5 GB                   |
 | <img width="16" height="16" src="https://fedoraproject.org/favicon.ico" /> Fedora                                                                                                                                                                                                                                                                                      | 39, 40                                | 512 MB \* | 5 GB                   |
+| <img width="16" height="16" src="https://www.openeuler.org/favicon.ico" /> openEuler                                                                                                                                                                                                                                                                                   | 20.03, 22.03, 24.03                   | 512 MB \* | 5 GB                   |
 | <img width="16" height="16" src="https://static.opensuse.org/favicon.ico" /> openSUSE                                                                                                                                                                                                                                                                                  | 15.5, 15.6, Tumbleweed (Rolling)      | 512 MB \* | 5 GB                   |
 | <img width="16" height="16" src="https://archlinux.org/static/favicon.png" /> Arch                                                                                                                                                                                                                                                                                     | Rolling                               | 512 MB    | 5 GB                   |
 | <img width="16" height="16" src="https://www.gentoo.org/assets/img/logo/gentoo-g.png" /> Gentoo                                                                                                                                                                                                                                                                        | Rolling                               | 512 MB    | 5 GB                   |
@@ -140,16 +143,19 @@ certutil -urlcache -f -split https://mirror.ghproxy.com/https://raw.githubuserco
 > See <https://access.redhat.com/downloads/content/rhel>
 
 ```bash
-bash reinstall.sh centos   9
-                  alma     8|9
-                  rocky    8|9
-                  oracle   8|9
-                  redhat   8|9   --img 'https://xxx.qcow2'
-                  fedora   39|40
-                  debian   11|12
-                  ubuntu   20.04|22.04|24.04
-                  alpine   3.17|3.18|3.19|3.20
-                  opensuse 15.5|15.6|tumbleweed
+bash reinstall.sh centos      9
+                  anolis      7|8
+                  alma        8|9
+                  rocky       8|9
+                  oracle      8|9
+                  redhat      8|9   --img='http://xxx.qcow2'
+                  opencloudos 8|9
+                  fedora      39|40
+                  debian      11|12
+                  openeuler   20.03|22.03|24.03
+                  ubuntu      20.04|22.04|24.04
+                  alpine      3.17|3.18|3.19|3.20
+                  opensuse    15.5|15.6|tumbleweed
                   kali
                   arch
                   gentoo

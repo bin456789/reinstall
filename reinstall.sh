@@ -30,22 +30,25 @@ usage_and_exit() {
         reinstall____='./reinstall.sh'
     fi
     cat <<EOF
-Usage: $reinstall____ centos   9
-                      alma     8|9
-                      rocky    8|9
-                      oracle   8|9
-                      redhat   8|9   --img='http://xxx.qcow2'
-                      fedora   39|40
-                      debian   11|12
-                      ubuntu   20.04|22.04|24.04
-                      alpine   3.17|3.18|3.19|3.20
-                      opensuse 15.5|15.6|tumbleweed
+Usage: $reinstall____ centos      9
+                      anolis      7|8
+                      alma        8|9
+                      rocky       8|9
+                      oracle      8|9
+                      redhat      8|9   --img='http://xxx.qcow2'
+                      opencloudos 8|9
+                      fedora      39|40
+                      debian      11|12
+                      openeuler   20.03|22.03|24.03
+                      ubuntu      20.04|22.04|24.04
+                      alpine      3.17|3.18|3.19|3.20
+                      opensuse    15.5|15.6|tumbleweed
                       kali
                       arch
                       gentoo
-                      dd       --img='http://xxx.gzip' or .xz
-                      windows  --image-name='windows xxx yyy' --lang=xx-yy
-                      windows  --image-name='windows xxx yyy' --iso='http://xxx.iso'
+                      dd          --img='http://xxx.gzip' or .xz
+                      windows     --image-name='windows xxx yyy' --lang=xx-yy
+                      windows     --image-name='windows xxx yyy' --iso='http://xxx.iso'
                       netboot.xyz
 
 Manual: https://github.com/bin456789/reinstall
@@ -1083,6 +1086,47 @@ setos() {
         fi
     }
 
+    setos_opencloudos() {
+        # https://mirrors.opencloudos.tech 不支持 ipv6
+        mirror=https://mirrors.cloud.tencent.com/opencloudos
+        if is_use_cloud_image; then
+            # ci
+            dir=$releasever/images/$basearch
+            file=$(curl -L $mirror/$dir/ | grep -oP 'OpenCloudOS.*?\.qcow2' | head -1)
+            eval ${step}_img=$mirror/$dir/$file
+        else
+            :
+        fi
+    }
+
+    # anolis 23 不是 lts，而且 cloud-init 好像有问题
+    setos_anolis() {
+        mirror=https://mirrors.openanolis.cn/anolis
+        if is_use_cloud_image; then
+            # ci
+            dir=$releasever/isos/GA/$basearch
+            file=$(curl -L $mirror/$dir/ | grep -oP 'AnolisOS.*?\.qcow2' | head -1)
+            eval ${step}_img=$mirror/$dir/$file
+        else
+            :
+        fi
+    }
+
+    setos_openeuler() {
+        if is_in_china; then
+            mirror=https://repo.openeuler.openatom.cn
+        else
+            mirror=https://repo.openeuler.org
+        fi
+        if is_use_cloud_image; then
+            # ci
+            name=$(curl -L "$mirror/" | grep -oE "openEuler-$releasever-LTS(-SP[0-9])?" | sort -u | tail -1)
+            eval ${step}_img=$mirror/$name/virtual_machine_img/$basearch/$name-$basearch.qcow2.xz
+        else
+            :
+        fi
+    }
+
     eval ${step}_distro=$distro
     eval ${step}_releasever=$releasever
 
@@ -1100,6 +1144,12 @@ setos() {
     if is_use_cloud_image && [ "$step" = finalos ]; then
         # shellcheck disable=SC2154
         test_url $finalos_img 'xz|gzip|qemu' finalos_img_type
+
+        # openeuler 云镜像格式是 .qcow2.xz
+        if [ "$distro" = openeuler ]; then
+            # shellcheck disable=SC2034
+            finalos_img_type=qemu
+        fi
     fi
 }
 
@@ -1128,16 +1178,19 @@ verify_os_name() {
     fi
 
     for os in \
-        'centos   |9' \
-        'oracle   8|9' \
-        'alma     8|9' \
-        'rocky    8|9' \
-        'redhat   8|9' \
-        'fedora   39|40' \
-        'debian   11|12' \
-        'ubuntu   20.04|22.04|24.04' \
-        'alpine   3.17|3.18|3.19|3.20' \
-        'opensuse 15.5|15.6|tumbleweed' \
+        'centos      |9' \
+        'anolis      7|8' \
+        'oracle      8|9' \
+        'alma        8|9' \
+        'rocky       8|9' \
+        'redhat      8|9' \
+        'opencloudos 8|9' \
+        'fedora      39|40' \
+        'debian      11|12' \
+        'openeuler   20.03|22.03|24.03' \
+        'ubuntu      20.04|22.04|24.04' \
+        'alpine      3.17|3.18|3.19|3.20' \
+        'opensuse    15.5|15.6|tumbleweed' \
         'kali' \
         'arch' \
         'gentoo' \
@@ -1342,7 +1395,7 @@ check_ram() {
         netboot.xyz) echo 0 ;;
         alpine | debian | kali | dd) echo 256 ;;
         arch | gentoo | windows) echo 512 ;;
-        redhat | centos | alma | rocky | fedora | oracle | ubuntu) echo 1024 ;;
+        redhat | centos | alma | rocky | fedora | oracle | ubuntu | anolis | opencloudos | openeuler) echo 1024 ;;
         opensuse) echo -1 ;; # 没有安装模式
         esac
     )
@@ -1357,7 +1410,7 @@ check_ram() {
 
     has_cloud_image=$(
         case "$distro" in
-        redhat | centos | alma | rocky | oracle | fedora | debian | ubuntu | opensuse) echo true ;;
+        redhat | centos | alma | rocky | oracle | fedora | debian | ubuntu | opensuse | anolis | openeuler) echo true ;;
         netboot.xyz | alpine | dd | arch | gentoo | kali | windows) echo false ;;
         esac
     )
@@ -2726,7 +2779,7 @@ dd | windows | netboot.xyz | kali | alpine | arch | gentoo)
         cloud_image=0
     fi
     ;;
-redhat | centos | alma | rocky | oracle | ubuntu | fedora | opensuse)
+redhat | centos | alma | rocky | oracle | ubuntu | fedora | opensuse | anolis | opencloudos | openeuler)
     cloud_image=1
     ;;
 esac
