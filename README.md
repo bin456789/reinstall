@@ -11,7 +11,7 @@
 
 ## 亮点
 
-- 支持安装 13 种常见 Linux 发行版
+- 支持安装 16 种常见 Linux 发行版
 - 支持用官方原版 iso 安装 Windows，并且脚本会自动查找 iso 和驱动
 - 支持任意方向重装，也就是支持 `Linux to Linux`、`Linux to Win`、`Win to Win`、`Win to Linux`
 - 专门适配低配小鸡，解决内存过少导致无法进行网络安装

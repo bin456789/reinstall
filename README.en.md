@@ -11,7 +11,7 @@ Reinstall server with one-click [中文](README.md)
 
 ## Highlights
 
-- Support installation of 13 common Linux distributions.
+- Support installation of 16 common Linux distributions.
 - Support for installing Windows using the official original ISO. The script can automatically search for the ISO and drivers.
 - Support reinstallation in any direction, meaning `Linux to Linux`, `Linux to Win`, `Win to Win`, `Win to Linux`.
 - Specifically tailored for low-spec machines, addressing insufficient memory that prevents network installation.

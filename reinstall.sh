@@ -93,12 +93,12 @@ curl() {
             return
         else
             ret=$?
-            if [ $ret -eq 22 ]; then
-                # 403 404 错误
+            # 403 404 错误，或者达到重试次数
+            if [ $ret -eq 22 ] || [ $i -eq 5 ]; then
                 return $ret
             fi
+            sleep 1
         fi
-        sleep 1
     done
 }
 
@@ -1298,34 +1298,30 @@ install_pkg() {
         esac
     }
 
-    is_need_epel_repo() {
-        case "$pkg" in
-        dpkg) [ "$pkg_mgr" = yum ] || [ "$pkg_mgr" = dnf ] ;;
-        jq) [ "$pkg_mgr" = yum ] ;; # el7/ol7
-        *) false ;;
-        esac
-    }
+    # 系统                                 package名称              repo名称
+    # centos/alma/rocky/fedora/anolis      epel-release             epel
+    # oracle linux                         oracle-epel-release      ol9_developer_EPEL
+    # opencloudos                          epol-release             EPOL
+    check_is_need_epel() {
+        is_need_epel() {
+            case "$pkg" in
+            dpkg) true ;;
+            jq) is_have_cmd yum && ! is_have_cmd dnf ;; # el7/ol7 的 jq 在 epel 仓库
+            *) false ;;
+            esac
+        }
 
-    add_epel_repo() {
-        # epel 名称可能是 epel 或 ol9_developer_EPEL
-        # 如果没启用
-        if ! $pkg_mgr repolist | awk '{print $1}' | grep -qi 'epel$'; then
-            #  删除 epel repo，因为可能安装了但未启用
-            rm -rf /etc/yum.repos.d/*epel*.repo
-            epel_release="$($pkg_mgr list | grep 'epel-release' | awk '{print $1}' | cut -d. -f1 | head -1)"
+        try_find_epel_name() {
+            epel=$($pkg_mgr repolist --all | awk '{print $1}' | grep -Ei '(epel|epol)$')
+        }
 
-            # 如果已安装
-            if rpm -q $epel_release; then
-                # 检查是否为最新
-                if $pkg_mgr check-update $epel_release; then
-                    $pkg_mgr reinstall -y $epel_release
-                else
-                    $pkg_mgr update -y $epel_release
-                fi
-            else
-                # 如果未安装
+        if is_need_epel; then
+            if ! try_find_epel_name; then
+                epel_release="$($pkg_mgr list | grep -E '(epel|epol)-release' | awk '{print $1}' | cut -d. -f1 | head -1)"
                 $pkg_mgr install -y $epel_release
+                try_find_epel_name
             fi
+            enable_epel="--enablerepo=$epel"
         fi
     }
 
@@ -1337,8 +1333,14 @@ install_pkg() {
         echo "Installing package '$text'..."
 
         case $pkg_mgr in
-        dnf) dnf install -y --setopt=install_weak_deps=False $pkg ;;
-        yum) yum install -y $pkg ;;
+        dnf)
+            check_is_need_epel
+            dnf install $enable_epel -y --setopt=install_weak_deps=False $pkg
+            ;;
+        yum)
+            check_is_need_epel
+            yum install $enable_epel -y $pkg
+            ;;
         emerge) emerge --oneshot $pkg ;;
         pacman) pacman -Syu --noconfirm --needed $pkg ;;
         zypper) zypper install -y $pkg ;;
@@ -1381,9 +1383,6 @@ install_pkg() {
                 error_and_exit "Can't find compatible package manager. Please manually install $cmd."
             fi
             cmd_to_pkg
-            if is_need_epel_repo; then
-                add_epel_repo
-            fi
             install_pkg_real
         fi
     done
@@ -2002,7 +2001,7 @@ build_finalos_cmdline() {
 }
 
 build_extra_cmdline() {
-    for key in confhome hold cloud_image main_disk; do
+    for key in confhome hold force cloud_image main_disk; do
         value=${!key}
         if [ -n "$value" ]; then
             extra_cmdline+=" extra.$key='$value'"
@@ -2695,7 +2694,7 @@ else
 fi
 
 # 整理参数
-if ! opts=$(getopt -n $0 -o "" --long ci,debug,hold:,sleep:,iso:,image-name:,img:,lang:,commit: -- "$@"); then
+if ! opts=$(getopt -n $0 -o "" --long ci,debug,hold:,sleep:,iso:,image-name:,img:,lang:,commit:,force: -- "$@"); then
     usage_and_exit
 fi
 
@@ -2719,6 +2718,13 @@ while true; do
         hold=$2
         if ! { [ "$hold" = 1 ] || [ "$hold" = 2 ]; }; then
             error_and_exit "Invalid --hold value: $hold."
+        fi
+        shift 2
+        ;;
+    --force)
+        force=$2
+        if ! { [ "$force" = bios ] || [ "$force" = efi ]; }; then
+            error_and_exit "Invalid --force value: $force."
         fi
         shift 2
         ;;
@@ -3088,10 +3094,11 @@ if is_use_grub; then
 
     get_function_content load_grubenv_if_not_loaded >$target_cfg
 
+    # 原系统为 openeuler 云镜像，需要添加 --unrestricted，否则要输入密码
     del_empty_lines <<EOF | tee -a $target_cfg
 set timeout_style=menu
 set timeout=5
-menuentry "$(get_entry_name)" {
+menuentry "$(get_entry_name)" --unrestricted {
     $(! is_in_windows && echo 'insmod lvm')
     $(is_os_in_btrfs && echo 'set btrfs_relative_path=n')
     insmod all_video

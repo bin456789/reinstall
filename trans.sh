@@ -8,6 +8,7 @@ set -eE
 
 # debian 安装版、ubuntu 安装版、redhat 安装版不使用该密码
 PASSWORD=123@@@
+EFI_UUID=C12A7328-F81F-11D2-BA4B-00A0C93EC93B
 
 TRUE=0
 FALSE=1
@@ -38,7 +39,7 @@ trap_err() {
 error() {
     color='\e[31m'
     plain='\e[0m'
-    echo -e "${color}Error: $*${plain}"
+    echo -e "${color}Error: $*${plain}" >&2
 }
 
 error_and_exit() {
@@ -73,8 +74,16 @@ apk() {
 wget() {
     echo "$@" | grep -o 'http[^ ]*' >&2
     for i in $(seq 5); do
-        command wget "$@" && return
-        sleep 1
+        if command wget "$@"; then
+            return
+        else
+            ret=$?
+            # 错误，或者达到重试次数
+            if [ $i -eq 5 ]; then
+                return $ret
+            fi
+            sleep 1
+        fi
     done
 }
 
@@ -182,7 +191,11 @@ update_part() {
 }
 
 is_efi() {
-    [ -d /sys/firmware/efi/ ]
+    if [ -n "$force" ]; then
+        [ "$force" = efi ]
+    else
+        [ -d /sys/firmware/efi/ ]
+    fi
 }
 
 is_use_cloud_image() {
@@ -595,7 +608,6 @@ grep_efi_index() {
 add_fallback_efi_to_nvram() {
     apk add lsblk efibootmgr
 
-    EFI_UUID=C12A7328-F81F-11D2-BA4B-00A0C93EC93B
     efi_row=$(lsblk /dev/$xda -ro NAME,PARTTYPE,PARTUUID | grep -i "$EFI_UUID")
     efi_part_uuid=$(echo "$efi_row" | awk '{print $3}')
     efi_part_name=$(echo "$efi_row" | awk '{print $1}')
@@ -3396,7 +3408,8 @@ install_windows() {
     else
         # 或者用 ms-sys
         apk add grub-bios
-        grub-install --boot-directory=/os/boot /dev/$xda
+        # efi 下，强制安装 mbr 引导，需要添加 --target i386-pc
+        grub-install --target i386-pc --boot-directory=/os/boot /dev/$xda
         cat <<EOF >/os/boot/grub/grub.cfg
             set timeout=5
             menuentry "reinstall" {
