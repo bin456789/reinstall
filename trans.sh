@@ -684,12 +684,16 @@ get_eths() {
     )
 }
 
+is_distro_like_debian() {
+    [ "$distro" = debian ] || [ "$distro" = kali ]
+}
+
 create_ifupdown_config() {
     conf_file=$1
 
     rm -f $conf_file
 
-    if [ "$distro" = debian ] || [ "$distro" = kali ]; then
+    if is_distro_like_debian; then
         cat <<EOF >>$conf_file
 source /etc/network/interfaces.d/*
 
@@ -704,15 +708,32 @@ EOF
 
     # ethx
     for ethx in $(get_eths); do
-        if [ -f /etc/network/devhotplug ] && grep -wo "$ethx" /etc/network/devhotplug; then
-            mode=allow-hotplug
-        else
-            mode=auto
-        fi
-        cat <<EOF >>$conf_file
+        mode=auto
+        enpx=
+        if is_distro_like_debian; then
+            if [ -f /etc/network/devhotplug ] && grep -wo "$ethx" /etc/network/devhotplug; then
+                mode=allow-hotplug
+            fi
 
-$mode $ethx
-EOF
+            if is_have_cmd udevadm; then
+                enpx=$(udevadm test-builtin net_id /sys/class/net/$ethx 2>&1 | grep ID_NET_NAME_PATH= | cut -d= -f2)
+            fi
+        fi
+
+        # dmit debian 普通内核和云内核网卡名不一致，因此需要 rename
+        # 安装系统时 ens18
+        # 普通内核   ens18
+        # 云内核     enp6s18
+        # https://bugs.debian.org/cgi-bin/bugreport.cgi?bug=928923
+
+        # 头部
+        {
+            echo
+            if [ -n "$enpx" ] && [ "$enpx" != "$ethx" ]; then
+                echo rename $enpx=$ethx >>$conf_file
+            fi
+            echo $mode $ethx
+        } >>$conf_file
 
         # ipv4
         if is_dhcpv4; then
