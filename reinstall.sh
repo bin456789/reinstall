@@ -2288,7 +2288,7 @@ EOF
         # <=256M 极限优化
         find_main_disk
         extra_drivers=
-        for driver in $(get_disk_drivers); do
+        for driver in $(get_disk_drivers $xda); do
             echo "using driver: $driver"
             case $driver in
             nvme | virtio_blk | virtio_scsi | xen_blkfront | xen_scsifront | hv_storvsc | vmw_pvscsi) extra_drivers+=" $driver" ;;
