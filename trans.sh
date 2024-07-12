@@ -2239,6 +2239,17 @@ chroot_apt_autoremove() {
     mv $conf.orig $conf
 }
 
+del_default_user() {
+    os_dir=$1
+
+    while read -r user; do
+        if grep ^$user':\$' "$os_dir/etc/shadow"; then
+            echo "Deleting user $user"
+            chroot "$os_dir" userdel -rf "$user"
+        fi
+    done < <(grep -v nologin$ "$os_dir/etc/passwd" | cut -d: -f1 | grep -v root)
+}
+
 install_qcow_by_copy() {
     mount_nouuid() {
         case "$(get_os_fs)" in
@@ -2383,6 +2394,9 @@ install_qcow_by_copy() {
     modify_el_ol() {
         # resolv.conf
         cp_resolv_conf /os
+
+        # 删除镜像的默认账户，防止使用默认账户密码登录 ssh
+        del_default_user /os
 
         # selinux kdump
         disable_selinux_kdump /os
