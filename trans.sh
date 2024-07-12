@@ -608,29 +608,41 @@ grep_efi_index() {
 add_fallback_efi_to_nvram() {
     apk add lsblk efibootmgr
 
-    efi_row=$(lsblk /dev/$xda -ro NAME,PARTTYPE,PARTUUID | grep -i "$EFI_UUID")
-    efi_part_uuid=$(echo "$efi_row" | awk '{print $3}')
-    efi_part_name=$(echo "$efi_row" | awk '{print $1}')
-    efi_part_num=$(get_part_num_by_part "$efi_part_name")
-    efi_file=$(get_fallback_efi_file_name)
+    if efi_row=$(lsblk /dev/$xda -ro NAME,PARTTYPE,PARTUUID | grep -i "$EFI_UUID"); then
+        efi_part_uuid=$(echo "$efi_row" | awk '{print $3}')
+        efi_part_name=$(echo "$efi_row" | awk '{print $1}')
+        efi_part_num=$(get_part_num_by_part "$efi_part_name")
+        efi_file=$(get_fallback_efi_file_name)
 
-    # 创建条目，先判断是否已经存在
-    if ! efibootmgr | grep -i "HD($efi_part_num,GPT,$efi_part_uuid,.*)/File(\\\EFI\\\boot\\\\$efi_file)"; then
-        fallback_id=$(efibootmgr --create-only \
-            --disk "/dev/$xda" \
-            --part "$efi_part_num" \
-            --label "fallback" \
-            --loader "\\EFI\\boot\\$efi_file" |
-            tail -1 | grep_efi_index)
+        # 创建条目，先判断是否已经存在
+        if ! efibootmgr | grep -i "HD($efi_part_num,GPT,$efi_part_uuid,.*)/File(\\\EFI\\\boot\\\\$efi_file)"; then
+            fallback_id=$(efibootmgr --create-only \
+                --disk "/dev/$xda" \
+                --part "$efi_part_num" \
+                --label "fallback" \
+                --loader "\\EFI\\boot\\$efi_file" |
+                tail -1 | grep_efi_index)
 
-        # 添加到最后
-        orig_order=$(efibootmgr | grep -F BootOrder: | awk '{print $2}')
-        if [ -n "$orig_order" ]; then
-            new_order="$orig_order,$fallback_id"
-        else
-            new_order="$fallback_id"
+            # 添加到最后
+            orig_order=$(efibootmgr | grep -F BootOrder: | awk '{print $2}')
+            if [ -n "$orig_order" ]; then
+                new_order="$orig_order,$fallback_id"
+            else
+                new_order="$fallback_id"
+            fi
+            efibootmgr --bootorder "$new_order"
         fi
-        efibootmgr --bootorder "$new_order"
+    else
+        echo "
+Warning: This machine is currently using EFI boot, but the main hard drive does not have an EFI partition.
+If this machine supports Legacy BIOS boot (CSM), you can safely restart into the new system by running the reboot command.
+If this machine does not support Legacy BIOS boot (CSM), you will not be able to enter the new system after rebooting.
+
+警告：本机目前使用 EFI 引导，但主硬盘没有 EFI 分区。
+如果本机支持 Legacy BIOS 引导 (CSM)，你可以运行 reboot 命令安全地重启到新系统。
+如果本机不支持 Legacy BIOS 引导 (CSM)，重启后将无法进入新系统。
+"
+        exit
     fi
 }
 
