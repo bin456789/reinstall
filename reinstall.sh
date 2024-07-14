@@ -1033,7 +1033,16 @@ setos() {
                 esac
             fi
             case $distro in
-            "centos") ci_image=$ci_mirror/$releasever-stream/$basearch/images/CentOS-Stream-GenericCloud-$releasever-latest.$basearch.qcow2 ;;
+            "centos")
+                case $releasever in
+                "7")
+                    # aarch64 需要特殊处理
+                    [ "$basearch" = aarch64 ] && ver=-2211 || ver=
+                    ci_image=$ci_mirror/$releasever/images/CentOS-$releasever-$basearch-GenericCloud$ver.qcow2
+                    ;;
+                "9") ci_image=$ci_mirror/$releasever-stream/$basearch/images/CentOS-Stream-GenericCloud-$releasever-latest.$basearch.qcow2 ;;
+                esac
+                ;;
             "alma") ci_image=$ci_mirror/AlmaLinux-$releasever-GenericCloud-latest.$basearch.qcow2 ;;
             "rocky") ci_image=$ci_mirror/Rocky-$releasever-GenericCloud-Base.latest.$basearch.qcow2 ;;
             "fedora")
@@ -1204,8 +1213,9 @@ verify_os_name() {
         usage_and_exit
     fi
 
+    # 不要删除 centos 7
     for os in \
-        'centos      |9' \
+        'centos      7|9' \
         'anolis      7|8' \
         'oracle      8|9' \
         'alma        8|9' \

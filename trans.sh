@@ -1643,7 +1643,8 @@ create_cloud_init_network_config() {
             # anolis 7:        cloud-init 19.1
             # openeuler 20.03: cloud-init 19.4
             # shellcheck disable=SC2154
-            if { [ "$distro" = anolis ] && [ "$releasever" = 7 ]; } ||
+            if { [ "$distro" = centos ] && [ "$releasever" = 7 ]; } ||
+                { [ "$distro" = anolis ] && [ "$releasever" = 7 ]; } ||
                 { [ "$distro" = openeuler ] && [ "$releasever" = 20.03 ]; }; then
                 type_ipv6_static=static
             else
@@ -2421,6 +2422,19 @@ install_qcow_by_copy() {
             if [ "$(cat /dev/netconf/eth*/ipv6_has_internet | sort -u)" = 0 ]; then
                 echo 'ip_resolve=4' >>/os/etc/yum.conf
             fi
+        fi
+
+        # centos 7 eol 特殊处理
+        if [ "$releasever" = 7 ] && [ -f /os/etc/yum.repos.d/CentOS-Base.repo ]; then
+            # 保持默认的 http 因为自带的 ssl 证书可能过期
+            if is_in_china; then
+                mirror=mirrors.ustc.edu.cn/centos-vault
+            else
+                mirror=vault.centos.org
+            fi
+            sed -Ei -e 's,(mirrorlist=),#\1,' \
+                -e "s,#(baseurl=http://)mirror.centos.org,\1$mirror," /os/etc/yum.repos.d/CentOS-Base.repo
+            chroot_dnf install NetworkManager
         fi
 
         # anolis 7 镜像自带 nm
