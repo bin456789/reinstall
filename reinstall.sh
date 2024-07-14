@@ -63,7 +63,7 @@ info() {
 }
 
 warn() {
-    echo_color_text '\e[33m' "Warn: $*"
+    echo_color_text '\e[33m' "Warning: $*"
 }
 
 error() {
@@ -230,7 +230,7 @@ test_url_real() {
         error_and_exit "$@"
     }
 
-    tmp_file=$tmp/reinstall-img-test
+    tmp_file=$tmp/img-test
 
     # 有的服务器不支持 range，curl会下载整个文件
     # 用 dd 限制下载 1M
@@ -1010,8 +1010,40 @@ setos() {
 
     # shellcheck disable=SC2154
     setos_dd() {
-        test_url $img 'xz|gzip' ${step}_img_type
+        test_url $img 'xz|gzip' img_type
+
+        if is_efi; then
+            install_pkg hexdump $img_type
+
+            # od 在 coreutils 里面，好像要配合 tr 才能删除空格
+            # hexdump 在 util-linux / bsdmainutils 里面
+            # xxd 要单独安装，el 在 vim-common 里面
+            # xxd -l $((34 * 4096)) -ps -c 512
+
+            # 仅打印前34个扇区 * 4096字节（按最大的算）
+            # 每行512字节
+            "$img_type" -dc <"$tmp/img-test" | hexdump -n $((34 * 4096)) -e '512/1 "%02x" "\n"' -v >$tmp/img-test-raw
+            if grep -q '^28732ac11ff8d211ba4b00a0c93ec93b' $tmp/img-test-raw; then
+                echo 'DD: Image is EFI.'
+            else
+                echo 'DD: Image is not EFI.'
+                warn '
+The current machine uses EFI boot, but the DD image is not an EFI image.
+Continue with DD? [Y/N]
+
+当前机器使用 EFI 引导，但 DD 镜像不是 EFI 镜像。
+继续 DD? [Y/N]
+'
+                read -r -n 1
+                if [[ "$REPLY" = [Yy] ]]; then
+                    eval ${step}_confirmed_no_efi=1
+                else
+                    exit
+                fi
+            fi
+        fi
         eval "${step}_img='$img'"
+        eval "${step}_img_type='$img_type'"
     }
 
     setos_centos_alma_rocky_fedora() {
@@ -1313,6 +1345,12 @@ install_pkg() {
             case "$pkg_mgr" in
             apt) pkg="fdisk" ;;
             apk) pkg="util-linux-misc" ;;
+            *) pkg="util-linux" ;;
+            esac
+            ;;
+        hexdump)
+            case "$pkg_mgr" in
+            apt) pkg="bsdmainutils" ;;
             *) pkg="util-linux" ;;
             esac
             ;;

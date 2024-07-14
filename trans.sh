@@ -633,7 +633,13 @@ add_fallback_efi_to_nvram() {
             efibootmgr --bootorder "$new_order"
         fi
     else
-        echo "
+        # shellcheck disable=SC2154
+        if [ "$confirmed_no_efi" = 1 ]; then
+            echo 'Confirmed no EFI in previous step.'
+        else
+            # reinstall.sh 里确认过一遍，但是逻辑扇区大于 512 时，可能漏报？
+            # 这里的应该会根据逻辑扇区来判断？
+            echo "
 Warning: This machine is currently using EFI boot, but the main hard drive does not have an EFI partition.
 If this machine supports Legacy BIOS boot (CSM), you can safely restart into the new system by running the reboot command.
 If this machine does not support Legacy BIOS boot (CSM), you will not be able to enter the new system after rebooting.
@@ -642,7 +648,8 @@ If this machine does not support Legacy BIOS boot (CSM), you will not be able to
 如果本机支持 Legacy BIOS 引导 (CSM)，你可以运行 reboot 命令安全地重启到新系统。
 如果本机不支持 Legacy BIOS 引导 (CSM)，重启后将无法进入新系统。
 "
-        exit
+            exit
+        fi
     fi
 }
 
