@@ -25,7 +25,7 @@ Reinstall server with one-click [中文](README.md)
 | Target System                                                                                                                                                                                                                                                                                                                                                          | Version                               | Memory    | Disk                   |
 | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------- | --------- | ---------------------- |
 | <img width="16" height="16" src="https://www.alpinelinux.org/alpine-logo.ico" /> Alpine                                                                                                                                                                                                                                                                                | 3.17, 3.18, 3.19, 3.20                | 256 MB    | 1 GB                   |
-| <img width="16" height="16" src="https://www.debian.org/favicon.ico" /> Debian                                                                                                                                                                                                                                                                                         | 10, 11, 12                            | 256 MB    | 1 ~ 1.5 GB ^           |
+| <img width="16" height="16" src="https://www.debian.org/favicon.ico" /> Debian                                                                                                                                                                                                                                                                                         | 9, 10, 11, 12                         | 256 MB    | 1 ~ 1.5 GB ^           |
 | <img width="16" height="16" src="https://github.com/bin456789/reinstall/assets/7548515/f74b3d5b-085f-4df3-bcc9-8a9bd80bb16d" /> Kali                                                                                                                                                                                                                                   | Rolling                               | 256 MB    | 1 ~ 1.5 GB ^           |
 | <img width="16" height="16" src="https://netplan.readthedocs.io/en/latest/_static/favicon.png" /> Ubuntu                                                                                                                                                                                                                                                               | 20.04, 22.04, 24.04                   | 512 MB \* | 2 GB                   |
 | <img width="16" height="16" src="https://www.centos.org/assets/img/favicon.png" /> CentOS                                                                                                                                                                                                                                                                              | 9                                     | 512 MB \* | 5 GB                   |
@@ -131,6 +131,7 @@ certutil -urlcache -f -split https://mirror.ghproxy.com/https://raw.githubuserco
 - If no version number is entered, the latest version will be installed.
 - Does not include a boot partition (except for Fedora), nor a swap partition, maximizing disk space utilization.
 - When installing on a virtual machine, it will automatically select a official limmed-down kernel.
+- During the initial login, you may receive a password error prompt; just wait a moment and it should be resolved.
 
 > [!TIP]
 > When installing Debian / Kali, x86 architectures can monitor the installation progress through VNC in the background, while ARM architectures can use the serial console.
@@ -151,7 +152,7 @@ bash reinstall.sh centos      9
                   redhat      8|9   --img='http://xxx.qcow2'
                   opencloudos 8|9
                   fedora      39|40
-                  debian      11|12
+                  debian      9|10|11|12
                   openeuler   20.03|22.03|24.03
                   ubuntu      20.04|22.04|24.04
                   alpine      3.17|3.18|3.19|3.20
@@ -290,6 +291,12 @@ Use `Dism++` File menu > Open Image File, select the iso to be installed to get 
 > In the Chinese version of Windows 10 LTSC 2021 ISO `zh-cn_windows_10_enterprise_ltsc_2021_x64_dvd_033b7312.iso`, the `wsappx` process may indefinitely consume CPU resources.
 >
 > The solution is to update the system patches or manually install the `VCLibs` library <https://www.google.com/search?q=ltsc+wsappx>.
+
+## How to Modify the Script
+
+1. Fork this repository.
+2. Modify the `confhome` at the beginning of `reinstall.sh` and `reinstall.bat`.
+3. Make changes to the other code.
 
 ## Thanks
 

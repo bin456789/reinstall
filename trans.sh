@@ -1927,7 +1927,7 @@ EOF
             restore_resolv_conf $os_dir
         fi
 
-        if grep ^11 $os_dir/etc/debian_version; then
+        if [ "$releasever" -le 11 ]; then
             cp_resolv_conf $os_dir
             chroot $os_dir apt update
 

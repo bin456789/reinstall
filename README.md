@@ -25,7 +25,7 @@
 | 目标系统                                                                                                                                                                                                                                                                                                                                                               | 版本                                  | 内存      | 硬盘         |
 | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------- | --------- | ------------ |
 | <img width="16" height="16" src="https://www.alpinelinux.org/alpine-logo.ico" /> Alpine                                                                                                                                                                                                                                                                                | 3.17, 3.18, 3.19, 3.20                | 256 MB    | 1 GB         |
-| <img width="16" height="16" src="https://www.debian.org/favicon.ico" /> Debian                                                                                                                                                                                                                                                                                         | 11, 12                                | 256 MB    | 1 ~ 1.5 GB ^ |
+| <img width="16" height="16" src="https://www.debian.org/favicon.ico" /> Debian                                                                                                                                                                                                                                                                                         | 9, 10, 11, 12                         | 256 MB    | 1 ~ 1.5 GB ^ |
 | <img width="16" height="16" src="https://github.com/bin456789/reinstall/assets/7548515/f74b3d5b-085f-4df3-bcc9-8a9bd80bb16d" /> Kali                                                                                                                                                                                                                                   | 滚动                                  | 256 MB    | 1 ~ 1.5 GB ^ |
 | <img width="16" height="16" src="https://netplan.readthedocs.io/en/latest/_static/favicon.png" /> Ubuntu                                                                                                                                                                                                                                                               | 20.04, 22.04, 24.04                   | 512 MB \* | 2 GB         |
 | <img width="16" height="16" src="https://www.centos.org/assets/img/favicon.png" /> CentOS                                                                                                                                                                                                                                                                              | 9                                     | 512 MB \* | 5 GB         |
@@ -131,6 +131,7 @@ certutil -urlcache -f -split https://mirror.ghproxy.com/https://raw.githubuserco
 - 不输入版本号，则安装最新版
 - 不含 boot 分区（Fedora 例外），不含 swap 分区，最大化利用磁盘空间
 - 在虚拟机上，会自动安装官方精简内核
+- 首次登录可能会提示密码错误，稍等一下就正常了
 
 > [!TIP]
 > 安装 Debian / Kali 时，x86 可通过后台 VNC 查看安装进度，ARM 可通过串行控制台查看安装进度。
@@ -151,7 +152,7 @@ bash reinstall.sh centos      9
                   redhat      8|9   --img='http://xxx.qcow2'
                   opencloudos 8|9
                   fedora      39|40
-                  debian      11|12
+                  debian      9|10|11|12
                   openeuler   20.03|22.03|24.03
                   ubuntu      20.04|22.04|24.04
                   alpine      3.17|3.18|3.19|3.20
@@ -164,7 +165,7 @@ bash reinstall.sh centos      9
 ### 功能 2: DD
 
 - 支持 gzip、xz 格式
-- 静态 IP 的机器 DD Windows，会自动配置好 IP，可能首次开机后几分钟才完成配置
+- 静态 IP 的机器 DD Windows，会自动配置好 IP，可能首次开机几分钟后才完成配置
 
 > [!TIP]
 > 可通过多种方式（SSH、HTTP 80 端口、后台 VNC、串行控制台）查看安装进度。
@@ -290,6 +291,12 @@ Windows Server 2022 SERVERDATACENTER
 > Windows 10 LTSC 2021 中文版镜像 `zh-cn_windows_10_enterprise_ltsc_2021_x64_dvd_033b7312.iso` 的 `wsappx` 进程会长期占用 CPU
 >
 > 解决方法是更新系统补丁，或者手动安装 `VCLibs` 库 <https://www.google.com/search?q=ltsc+wsappx>
+
+## 如何修改脚本
+
+1. Fork 本仓库
+2. 修改 `reinstall.sh` 和 `reinstall.bat` 开头的 `confhome`
+3. 修改其它代码
 
 ## 感谢
 

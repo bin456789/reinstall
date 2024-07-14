@@ -38,7 +38,7 @@ Usage: $reinstall____ centos      9
                       redhat      8|9   --img='http://xxx.qcow2'
                       opencloudos 8|9
                       fedora      39|40
-                      debian      11|12
+                      debian      9|10|11|12
                       openeuler   20.03|22.03|24.03
                       ubuntu      20.04|22.04|24.04
                       alpine      3.17|3.18|3.19|3.20
@@ -754,7 +754,13 @@ setos() {
     }
 
     setos_debian() {
+        is_debian_eol() {
+            [ "$releasever" -le 10 ]
+        }
+
         case "$releasever" in
+        9) codename=stretch ;;
+        10) codename=buster ;;
         11) codename=bullseye ;;
         12) codename=bookworm ;;
         esac
@@ -772,24 +778,44 @@ setos() {
             eval ${step}_img=$cdimage_mirror/cloud/$codename/latest/debian-$releasever-$ci_type-$basearch_alt.qcow2
         else
             # 传统安装
-            if is_in_china; then
-                # ftp.cn.debian.org 不在国内还严重丢包
-                # https://www.itdog.cn/ping/ftp.cn.debian.org
-                deb_hostname=mirrors.ustc.edu.cn
+            if is_debian_eol; then
+                # https://github.com/tuna/issues/issues/1999
+                # nju 也没同步
+                if false && is_in_china; then
+                    hostname=mirrors.tuna.tsinghua.edu.cn
+                    hostname=mirror.nju.edu.cn
+                    directory=debian-elts
+                    initrd_mirror=mirrors.nju.edu.cn/debian-archive
+                else
+                    # 按道理不应该用官方源，但找不到其他源
+                    hostname=deb.freexian.com
+                    directory=extended-lts
+                    initrd_mirror=archive.debian.org
+                fi
             else
-                deb_hostname=deb.debian.org # fastly
+                if is_in_china; then
+                    # ftp.cn.debian.org 不在国内还严重丢包
+                    # https://www.itdog.cn/ping/ftp.cn.debian.org
+                    hostname=mirrors.ustc.edu.cn
+                else
+                    hostname=deb.debian.org # fastly
+                fi
+                directory=debian
+                initrd_mirror=$hostname
             fi
-            mirror=http://$deb_hostname/debian/dists/$codename/main/installer-$basearch_alt/current/images/netboot/debian-installer/$basearch_alt
+
+            initrd_dir=debian/dists/$codename/main/installer-$basearch_alt/current/images/netboot/debian-installer/$basearch_alt
 
             is_virt && flavour=-cloud || flavour=
             # 甲骨文 arm64 cloud 内核 vnc 没有显示
             [ "$basearch_alt" = arm64 ] && flavour=
 
-            eval ${step}_vmlinuz=$mirror/linux
-            eval ${step}_initrd=$mirror/initrd.gz
+            eval ${step}_vmlinuz=https://$initrd_mirror/$initrd_dir/linux
+            eval ${step}_initrd=https://$initrd_mirror/$initrd_dir/initrd.gz
             eval ${step}_ks=$confhome/debian.cfg
             eval ${step}_firmware=$cdimage_mirror/firmware/$codename/current/firmware.cpio.gz
-            eval ${step}_deb_hostname=$deb_hostname
+            eval ${step}_hostname=$hostname
+            eval ${step}_directory=$directory
             eval ${step}_codename=$codename
             eval ${step}_kernel=linux-image$flavour-$basearch_alt
         fi
@@ -801,22 +827,23 @@ setos() {
         else
             # 传统安装
             if is_in_china; then
-                deb_hostname=mirrors.ustc.edu.cn
+                hostname=mirrors.ustc.edu.cn
             else
                 # http.kali.org 没有 ipv6 地址
                 # http.kali.org (geoip 重定向) 到 kali.download (cf)
-                deb_hostname=kali.download
+                hostname=kali.download
             fi
             codename=kali-rolling
-            mirror=http://$deb_hostname/kali/dists/$codename/main/installer-$basearch_alt/current/images/netboot/debian-installer/$basearch_alt
+            mirror=http://$hostname/kali/dists/$codename/main/installer-$basearch_alt/current/images/netboot/debian-installer/$basearch_alt
 
             is_virt && flavour=-cloud || flavour=
 
             eval ${step}_vmlinuz=$mirror/linux
             eval ${step}_initrd=$mirror/initrd.gz
             eval ${step}_ks=$confhome/debian.cfg
-            eval ${step}_deb_hostname=$deb_hostname
+            eval ${step}_hostname=$hostname
             eval ${step}_codename=$codename
+            eval ${step}_directory=kali
             eval ${step}_kernel=linux-image$flavour-$basearch_alt
             # 缺少 firmware 下载
         fi
@@ -1186,7 +1213,7 @@ verify_os_name() {
         'redhat      8|9' \
         'opencloudos 8|9' \
         'fedora      39|40' \
-        'debian      11|12' \
+        'debian      9|10|11|12' \
         'openeuler   20.03|22.03|24.03' \
         'ubuntu      20.04|22.04|24.04' \
         'alpine      3.17|3.18|3.19|3.20' \
@@ -2040,9 +2067,13 @@ build_nextos_cmdline() {
     elif is_distro_like_debian $nextos_distro; then
         nextos_cmdline="lowmem/low=1 auto=true priority=critical"
         nextos_cmdline+=" url=$nextos_ks"
-        nextos_cmdline+=" mirror/http/hostname=$nextos_deb_hostname"
-        nextos_cmdline+=" mirror/http/directory=/$nextos_distro"
+        nextos_cmdline+=" mirror/http/hostname=$nextos_hostname"
+        nextos_cmdline+=" mirror/http/directory=/$nextos_directory"
         nextos_cmdline+=" base-installer/kernel/image=$nextos_kernel"
+        # eol 的 debian 不能用 security 源，否则安装过程会提示无法访问
+        if [ "$nextos_distro" = debian ] && is_debian_eol; then
+            nextos_cmdline+=" apt-setup/services-select="
+        fi
         # kali 安装好后网卡是 eth0 这种格式，但安装时不是
         if [ "$nextos_distro" = kali ]; then
             nextos_cmdline+=" net.ifnames=0"
@@ -2134,8 +2165,8 @@ mod_initrd_debian_kali() {
     # cat $postinst
 
     # shellcheck disable=SC2317
-    expand_packages() {
-        expand_packages_real "$@" | while IFS= read -r line; do
+    change_priority() {
+        while IFS= read -r line; do
             key_=$(echo "$line" | cut -d' ' -f1)
             value=$(echo "$line" | cut -d' ' -f2-)
 
@@ -2163,7 +2194,8 @@ mod_initrd_debian_kali() {
     kver=$(ls -d lib/modules/* | awk -F/ '{print $NF}')
 
     net_retriever=usr/lib/debian-installer/retriever/net-retriever
-    sed -i 's/^expand_packages()/expand_packages_real()/' $net_retriever
+    # shellcheck disable=SC2016
+    sed -i 's,>> "$1",| change_priority >> "$1",' $net_retriever
     insert_into_file $net_retriever after '#!/bin/sh' <<EOF
 disabled_list="
 depthcharge-tools-installer
@@ -2177,6 +2209,7 @@ partman-md
 partman-xfs
 rescue-check
 wpasupplicant-udeb
+lilo-installer
 nic-modules-$kver-di
 nic-pcmcia-modules-$kver-di
 nic-usb-modules-$kver-di
@@ -2196,9 +2229,7 @@ sata-modules-$kver-di
 scsi-modules-$kver-di
 "
 
-expand_packages() {
-    $(get_function_content expand_packages)
-}
+$(get_function change_priority)
 EOF
 
     # https://github.com/linuxhw/LsPCI?tab=readme-ov-file#storageata-pci
@@ -2224,12 +2255,12 @@ EOF
         udeb_list=$tmp/udeb_list
         if ! [ -f $udeb_list ]; then
             # shellcheck disable=SC2154
-            curl -L http://$nextos_deb_hostname/$distro/dists/$nextos_codename/main/debian-installer/binary-$basearch_alt/Packages.gz |
+            curl -L http://$nextos_hostname/$nextos_directory/dists/$nextos_codename/main/debian-installer/binary-$basearch_alt/Packages.gz |
                 zcat | grep 'Filename:' | awk '{print $2}' >$udeb_list
         fi
 
         # 下载 udeb
-        curl -Lo $tmp/tmp.udeb http://$nextos_deb_hostname/$distro/"$(grep /$package $udeb_list)"
+        curl -Lo $tmp/tmp.udeb http://$nextos_hostname/$nextos_directory/"$(grep /$package $udeb_list)"
 
         if false; then
             # 使用 dpkg
@@ -2273,6 +2304,10 @@ EOF
         chmod a+x cdrom/simple-cdd/kali.postinst
     fi
 
+    if [ "$distro" = debian ] && is_debian_eol; then
+        curl -Lo usr/share/keyrings/debian-archive-keyring.gpg https://deb.freexian.com/extended-lts/archive-key.gpg
+    fi
+
     # 提前下载 fdisk
     # 因为 fdisk-udeb 包含 fdisk 和 sfdisk，提前下载可减少占用
     mkdir_clear $tmp/fdisk
@@ -2291,7 +2326,11 @@ EOF
         for driver in $(get_disk_drivers $xda); do
             echo "using driver: $driver"
             case $driver in
-            nvme | virtio_blk | virtio_scsi | xen_blkfront | xen_scsifront | hv_storvsc | vmw_pvscsi) extra_drivers+=" $driver" ;;
+            nvme) extra_drivers+=" nvme nvme-core" ;;
+                # xen 的横杠特别不同
+            xen_blkfront) extra_drivers+=" xen-blkfront" ;;
+            xen_scsifront) extra_drivers+=" xen-scsifront" ;;
+            virtio_blk | virtio_scsi | hv_storvsc | vmw_pvscsi) extra_drivers+=" $driver" ;;
             pata_legacy) sed -i '/^pata-modules/d' $net_retriever ;; # 属于 pata-modules
             ata_piix) sed -i '/^sata-modules/d' $net_retriever ;;    # 属于 sata-modules
             ata_generic) ;;                                          # 属于 ata-modules，不用处理，因为我们设置强制安装了 ata-modules
@@ -2306,28 +2345,21 @@ EOF
         if [ -n "$extra_drivers" ]; then
             mkdir_clear $tmp/scsi
             download_and_extract_udeb scsi-modules-$kver-di $tmp/scsi
-            udeb_drivers_dir=$tmp/scsi/lib/modules/$kver/kernel/drivers
+            relative_drivers_dir=lib/modules/$kver/kernel/drivers
+
+            udeb_drivers_dir=$tmp/scsi/$relative_drivers_dir
+            dist_drivers_dir=$initrd_dir/$relative_drivers_dir
             (
-                cd lib/modules/*/kernel/drivers/
-                mkdir -p block scsi nvme/host
+                cd $udeb_drivers_dir
                 for driver in $extra_drivers; do
-                    echo "adding driver: $driver"
-                    case $driver in
                     # debian 模块没有压缩
                     # kali 模块有压缩
                     # 因此要有 *
-                    nvme)
-                        cp -fv $udeb_drivers_dir/nvme/host/nvme.ko* nvme/host/
-                        cp -fv $udeb_drivers_dir/nvme/host/nvme-core.ko* nvme/host/
-                        ;;
-                    virtio_blk) cp -fv $udeb_drivers_dir/block/virtio_blk.ko* block/ ;;
-                    virtio_scsi) cp -fv $udeb_drivers_dir/scsi/virtio_scsi.ko* scsi/ ;;
-                        # xen 的横杠特别不同
-                    xen_blkfront) cp -fv $udeb_drivers_dir/block/xen-blkfront.ko* block/ ;;
-                    xen_scsifront) cp -fv $udeb_drivers_dir/scsi/xen-scsifront.ko* scsi/ ;;
-                    hv_storvsc) cp -fv $udeb_drivers_dir/scsi/hv_storvsc.ko* scsi/ ;;
-                    vmw_pvscsi) cp -fv $udeb_drivers_dir/scsi/vmw_pvscsi.ko* scsi/ ;;
-                    esac
+                    if ! find $dist_drivers_dir -name "$driver.ko*" | grep -q .; then
+                        echo "adding driver: $driver"
+                        file=$(find . -name "$driver.ko*" | grep .)
+                        cp -fv --parents "$file" "$dist_drivers_dir"
+                    fi
                 done
             )
         fi
@@ -2346,7 +2378,7 @@ EOF
     # hack 3
     # 修改 trans.sh
     # 1. 直接调用 create_ifupdown_config
-    insert_into_file $tmp_dir/trans.sh after ': main' <<EOF
+    insert_into_file $initrd_dir/trans.sh after ': main' <<EOF
         distro=$nextos_distro
         create_ifupdown_config /etc/network/interfaces
         exit
@@ -2359,11 +2391,11 @@ EOF
     # 7. debian 11 initrd 无法识别 trap ERR
     # 删除或注释，可能会导致空方法而报错，因此改为替换成'\n: #'
     replace='\n: #'
-    sed -Ei "s/> >/$replace/" $tmp_dir/trans.sh
-    sed -Ei "s/< </$replace/" $tmp_dir/trans.sh
-    sed -Ei "s/(^[[:space:]]*set[[:space:]].*)E/\1/" $tmp_dir/trans.sh
-    sed -Ei "s/^[[:space:]]*apk[[:space:]]/$replace/" $tmp_dir/trans.sh
-    sed -Ei "s/^[[:space:]]*trap[[:space:]]/$replace/" $tmp_dir/trans.sh
+    sed -Ei "s/> >/$replace/" $initrd_dir/trans.sh
+    sed -Ei "s/< </$replace/" $initrd_dir/trans.sh
+    sed -Ei "s/(^[[:space:]]*set[[:space:]].*)E/\1/" $initrd_dir/trans.sh
+    sed -Ei "s/^[[:space:]]*apk[[:space:]]/$replace/" $initrd_dir/trans.sh
+    sed -Ei "s/^[[:space:]]*trap[[:space:]]/$replace/" $initrd_dir/trans.sh
 }
 
 get_disk_drivers() {
@@ -2477,9 +2509,9 @@ get_ip_conf_cmd() {
 
 mod_initrd_alpine() {
     # hack 1 v3.19 和之前的 virt 内核需添加 ipv6 模块
-    if virt_dir=$(ls -d $tmp_dir/lib/modules/*-virt 2>/dev/null); then
+    if virt_dir=$(ls -d $initrd_dir/lib/modules/*-virt 2>/dev/null); then
         ipv6_dir=$virt_dir/kernel/net/ipv6
-        if ! [ -f $ipv6_dir/ipv6.ko ] || ! grep -q ipv6 $tmp_dir/lib/modules/*/modules.builtin; then
+        if ! [ -f $ipv6_dir/ipv6.ko ] || ! grep -q ipv6 $initrd_dir/lib/modules/*/modules.builtin; then
             mkdir -p $ipv6_dir
             modloop_file=$tmp/modloop_file
             modloop_dir=$tmp/modloop_dir
@@ -2567,9 +2599,9 @@ mod_initrd() {
 
     # 解压
     # 先删除临时文件，避免之前运行中断有残留文件
-    tmp_dir=$tmp/initrd
-    mkdir_clear $tmp_dir
-    cd $tmp_dir
+    initrd_dir=$tmp/initrd
+    mkdir_clear $initrd_dir
+    cd $initrd_dir
 
     # cygwin 下处理 debian initrd 时
     # 解压/重新打包/删除 initrd 的 /dev/console /dev/null 都会报错
@@ -2586,9 +2618,9 @@ mod_initrd() {
     zcat /reinstall-initrd | cpio -idm \
         $(is_in_windows && echo --nonmatching 'dev/console' --nonmatching 'dev/null')
 
-    curl -Lo $tmp_dir/trans.sh $confhome/trans.sh
-    curl -Lo $tmp_dir/alpine-network.sh $confhome/alpine-network.sh
-    chmod a+x $tmp_dir/trans.sh $tmp_dir/alpine-network.sh
+    curl -Lo $initrd_dir/trans.sh $confhome/trans.sh
+    curl -Lo $initrd_dir/alpine-network.sh $confhome/alpine-network.sh
+    chmod a+x $initrd_dir/trans.sh $initrd_dir/alpine-network.sh
 
     if is_distro_like_debian $nextos_distro; then
         mod_initrd_debian_kali
