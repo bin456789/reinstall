@@ -232,11 +232,11 @@ ipv6_has_internet=false
 
 test_internet
 
-# 处理云电脑 dhcp 获取的地址无法上网
-if $dhcpv4 && ! $ipv4_has_internet &&
-    [ -n "$ipv4_addr" ] && [ -n "$ipv4_gateway" ] &&
-    { ! [ "$ipv4_addr" = "$(get_first_ipv4_addr)" ] || ! [ "$ipv4_gateway" = "$(get_ipv4_gateway)" ]; }; then
-    echo "DHCPv4 can't access Internet. And not match static IPv4 Address or Gateway."
+# 防止自动获取的 IP 无法上网
+# 防止自动获取的 IP 不是重装前的 IP 而造成失联
+if $dhcpv4 && [ -n "$ipv4_addr" ] && [ -n "$ipv4_gateway" ] &&
+    { ! $ipv4_has_internet || ! [ "$ipv4_addr" = "$(get_first_ipv4_addr)" ]; }; then
+    echo "IPv4 from DHCPv4 can't access Internet or not matched."
     flush_ipv4_config
     add_missing_ipv4_config
     test_internet
@@ -246,11 +246,11 @@ if $dhcpv4 && ! $ipv4_has_internet &&
 fi
 
 should_disable_ra_slaac=false
-# 处理部分商家 slaac / dhcpv6 获取的 ip 无法上网
-if $dhcpv6_or_slaac && ! $ipv6_has_internet &&
-    [ -n "$ipv6_addr" ] && [ -n "$ipv6_gateway" ] &&
-    { ! [ "$ipv6_addr" = "$(get_first_ipv6_addr)" ] || ! [ "$ipv6_gateway" = "$(get_ipv6_gateway)" ]; }; then
-    echo "SLAAC can't access Internet. And not match static IPv6 Address or Gateway."
+# 防止自动获取的 IP 无法上网
+# 防止自动获取的 IP 不是重装前的 IP 而造成失联
+if $dhcpv6_or_slaac && [ -n "$ipv6_addr" ] && [ -n "$ipv6_gateway" ] &&
+    { ! $ipv6_has_internet || ! [ "$ipv6_addr" = "$(get_first_ipv6_addr)" ]; }; then
+    echo "IPv6 from SLAAC/DHCPv6 can't access Internet or not matched."
     flush_ipv6_config true
     add_missing_ipv6_config
     test_internet
