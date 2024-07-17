@@ -2069,30 +2069,35 @@ build_finalos_cmdline() {
             value=${!key}
             key=${key#finalos_}
             if [ -n "$value" ] && [ $key != "mirrorlist" ]; then
-                finalos_cmdline+=" finalos.$key='$value'"
+                finalos_cmdline+=" finalos_$key='$value'"
             fi
         done
     fi
 }
 
 build_extra_cmdline() {
+    # 使用 extra_xxx=yyy 而不是 extra.xxx=yyy
+    # 因为 debian installer /lib/debian-installer-startup.d/S02module-params
+    # 会将 extra.xxx=yyy 写入新系统的 /etc/modprobe.d/local.conf
+    # https://answers.launchpad.net/ubuntu/+question/249456
+    # https://salsa.debian.org/installer-team/rootskel/-/blob/master/src/lib/debian-installer-startup.d/S02module-params?ref_type=heads
     for key in confhome hold force cloud_image main_disk; do
         value=${!key}
         if [ -n "$value" ]; then
-            extra_cmdline+=" extra.$key='$value'"
+            extra_cmdline+=" extra_$key='$value'"
         fi
     done
 
     # 指定最终安装系统的 mirrorlist，链接有&，在grub中是特殊字符，所以要加引号
     if [ -n "$finalos_mirrorlist" ]; then
-        extra_cmdline+=" extra.mirrorlist='$finalos_mirrorlist'"
+        extra_cmdline+=" extra_mirrorlist='$finalos_mirrorlist'"
     elif [ -n "$nextos_mirrorlist" ]; then
-        extra_cmdline+=" extra.mirrorlist='$nextos_mirrorlist'"
+        extra_cmdline+=" extra_mirrorlist='$nextos_mirrorlist'"
     fi
 
     # cloudcone 特殊处理
     if is_grub_dir_linked; then
-        finalos_cmdline+=" extra.link_grub_dir=1"
+        finalos_cmdline+=" extra_link_grub_dir=1"
     fi
 }
 

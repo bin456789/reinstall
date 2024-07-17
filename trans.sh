@@ -322,7 +322,7 @@ extract_env_from_cmdline() {
                 value=$(echo $line | cut -d= -f2-)
                 eval "$key='$value'"
             fi
-        done < <(xargs -n1 </proc/cmdline | grep "^$prefix" | sed "s/^$prefix\.//")
+        done < <(xargs -n1 </proc/cmdline | grep "^${prefix}_" | sed "s/^${prefix}_//")
     done
 }
 
@@ -3556,13 +3556,13 @@ install_redhat_ubuntu() {
 
     # 重新整理 extra，因为grub会处理掉引号，要重新添加引号
     extra_cmdline=''
-    for var in $(grep -o '\bextra\.[^ ]*' /proc/cmdline | xargs); do
-        if [[ "$var" = "extra.main_disk="* ]]; then
+    for var in $(grep -o '\bextra_[^ ]*' /proc/cmdline | xargs); do
+        if [[ "$var" = "extra_main_disk="* ]]; then
             # 重新记录主硬盘
             refind_main_disk
-            extra_cmdline="$extra_cmdline extra.main_disk=$main_disk"
+            extra_cmdline="$extra_cmdline extra_main_disk=$main_disk"
         else
-            extra_cmdline="$extra_cmdline $(echo $var | sed -E "s/(extra\.[^=]*)=(.*)/\1='\2'/")"
+            extra_cmdline="$extra_cmdline $(echo $var | sed -E "s/(extra_[^=]*)=(.*)/\1='\2'/")"
         fi
     done
 
@@ -3588,7 +3588,7 @@ install_redhat_ubuntu() {
             insmod all_video
             search --no-floppy --label --set=root installer
             loopback loop /ubuntu.iso
-            linux (loop)/casper/vmlinuz iso-scan/filename=/ubuntu.iso autoinstall noprompt noeject cloud-config-url=$ks $extra_cmdline extra.kernel=$kernel --- $console_cmdline
+            linux (loop)/casper/vmlinuz iso-scan/filename=/ubuntu.iso autoinstall noprompt noeject cloud-config-url=$ks $extra_cmdline extra_kernel=$kernel --- $console_cmdline
             initrd (loop)/casper/initrd
         }
 EOF

@@ -20,10 +20,10 @@ autoinstall:
       # https://askubuntu.com/questions/1302392/ubuntu-server-20-04-setup-stuck-at-block-probing-did-not-discover-any-disks
       mount | grep /isodevice && { losetup -d /dev/loop0; umount -l /isodevice; } || true
 
-      # 提取 extra.confhome extra.kernel
+      # 提取 extra_confhome extra_kernel
       prefix=extra
-      for var in $(grep -o "\b$prefix\.[^ ]*" /proc/cmdline | xargs); do
-          eval "$(echo $var | sed -E "s/$prefix\.([^=]*)=(.*)/\1='\2'/")"
+      for var in $(grep -o "\b${prefix}_[^ ]*" /proc/cmdline | xargs); do
+          eval "$(echo $var | sed -E "s/${prefix}_([^=]*)=(.*)/\1='\2'/")"
       done
 
       # 生成分区信息
@@ -49,10 +49,10 @@ autoinstall:
       # 还原 DNS
       # sed -i -E 's/^#(nameserver )/\1/' /etc/resolv.conf
 
-      # 提取 extra.confhome
+      # 提取 extra_confhome
       prefix=extra
-      for var in $(grep -o "\b$prefix\.[^ ]*" /proc/cmdline | xargs); do
-          eval "$(echo $var | sed -E "s/$prefix\.([^=]*)=(.*)/\1='\2'/")"
+      for var in $(grep -o "\b${prefix}_[^ ]*" /proc/cmdline | xargs); do
+          eval "$(echo $var | sed -E "s/${prefix}_([^=]*)=(.*)/\1='\2'/")"
       done
 
       # 下载合并分区脚本
