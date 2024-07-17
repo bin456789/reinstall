@@ -1022,19 +1022,17 @@ setos() {
 
             # 仅打印前34个扇区 * 4096字节（按最大的算）
             # 每行512字节
-            "$img_type" -dc <"$tmp/img-test" | hexdump -n $((34 * 4096)) -e '512/1 "%02x" "\n"' -v >$tmp/img-test-raw
-            if grep -q '^28732ac11ff8d211ba4b00a0c93ec93b' $tmp/img-test-raw; then
+            "$img_type" -dc <"$tmp/img-test" | hexdump -n $((34 * 4096)) -e '512/1 "%02x" "\n"' -v >$tmp/img-test-hex
+            if grep -q '^28732ac11ff8d211ba4b00a0c93ec93b' $tmp/img-test-hex; then
                 echo 'DD: Image is EFI.'
             else
                 echo 'DD: Image is not EFI.'
                 warn '
 The current machine uses EFI boot, but the DD image is not an EFI image.
-Continue with DD? [Y/N]
-
+Continue with DD?
 当前机器使用 EFI 引导，但 DD 镜像不是 EFI 镜像。
-继续 DD? [Y/N]
-'
-                read -r -n 1
+继续 DD?'
+                read -r -p '[y/N]: '
                 if [[ "$REPLY" = [Yy] ]]; then
                     eval ${step}_confirmed_no_efi=1
                 else
@@ -1555,10 +1553,11 @@ is_secure_boot_enabled() {
         if is_in_windows; then
             reg query 'HKLM\SYSTEM\CurrentControlSet\Control\SecureBoot\State' /v UEFISecureBootEnabled 2>/dev/null | grep 0x1
         else
-            # localhost:~# mokutil --sb-state
-            # SecureBoot disabled
-            # Platform is in Setup Mode
-            dmesg | grep -i 'Secure boot enabled'
+            if dmesg | grep -i 'Secure boot enabled'; then
+                return 0
+            fi
+            install_pkg mokutil
+            mokutil --sb-state 2>&1 | grep -i 'SecureBoot enabled'
         fi
     else
         return 1
