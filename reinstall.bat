@@ -3,7 +3,8 @@ mode con cp select=437 >nul
 setlocal EnableDelayedExpansion
 
 set confhome=https://raw.githubusercontent.com/bin456789/reinstall/main
-set github_proxy=https://mirror.ghproxy.com/https://raw.githubusercontent.com
+set confhome_cn=https://jihulab.com/bin456789/reinstall/-/raw/main
+rem set confhome_cn=https://mirror.ghproxy.com/https://raw.githubusercontent.com/bin456789/reinstall/main
 
 rem 65001 代码页会乱码
 
@@ -45,8 +46,9 @@ findstr /c:"loc=CN" %tmp%\geoip >nul
 if not errorlevel 1 (
     rem mirrors.tuna.tsinghua.edu.cn 会强制跳转 https
     set mirror=http://mirror.nju.edu.cn
-
-    if defined github_proxy (
+    if defined confhome_cn (
+        set confhome=!confhome_cn!
+    ) else if defined github_proxy (
         echo !confhome! | findstr /c:"://raw.githubusercontent.com/" >nul
         if not errorlevel 1 (
             set confhome=!confhome:http://=https://!

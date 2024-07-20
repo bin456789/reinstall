@@ -72,7 +72,7 @@ curl -O https://raw.githubusercontent.com/bin456789/reinstall/main/reinstall.sh
 For server inside China:
 
 ```bash
-curl -O https://mirror.ghproxy.com/https://raw.githubusercontent.com/bin456789/reinstall/main/reinstall.sh
+curl -O https://jihulab.com/bin456789/reinstall/-/raw/main/reinstall.sh
 ```
 
 ## Download (Current system is <img width="20" height="20" src="https://blogs.windows.com/wp-content/uploads/prod/2022/09/cropped-Windows11IconTransparent512-32x32.png" /> Windows)
@@ -114,7 +114,7 @@ certutil -urlcache -f -split https://raw.githubusercontent.com/bin456789/reinsta
 For server inside China:
 
 ```batch
-certutil -urlcache -f -split https://mirror.ghproxy.com/https://raw.githubusercontent.com/bin456789/reinstall/main/reinstall.bat
+certutil -urlcache -f -split https://jihulab.com/bin456789/reinstall/-/raw/main/reinstall.bat
 ```
 
 ## Usage

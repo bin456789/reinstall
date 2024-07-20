@@ -1,0 +1,17 @@
+name: 同步到极狐
+on:
+  workflow_dispatch:
+  push:
+jobs:
+  run:
+    name: 同步到极狐
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - uses: yesolutions/mirror-action@master
+        with:
+          REMOTE: https://jihulab.com/bin456789/reinstall.git
+          GIT_USERNAME: username
+          GIT_PASSWORD: ${{ secrets.JIHULAB_TOKEN }}

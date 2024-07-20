@@ -3,7 +3,8 @@
 
 set -eE
 confhome=https://raw.githubusercontent.com/bin456789/reinstall/main
-github_proxy=https://mirror.ghproxy.com/https://raw.githubusercontent.com
+confhome_cn=https://jihulab.com/bin456789/reinstall/-/raw/main
+# confhome_cn=https://mirror.ghproxy.com/https://raw.githubusercontent.com/bin456789/reinstall/main
 
 # https://www.gnu.org/software/gettext/manual/html_node/The-LANGUAGE-variable.html
 export LC_ALL=C
@@ -2904,25 +2905,27 @@ arm* | aarch64)
 *) error_and_exit "Unsupported arch: $basearch" ;;
 esac
 
+# 未测试
+if false && [[ "$confhome" = http*://raw.githubusercontent.com/* ]]; then
+    repo=$(echo $confhome | cut -d/ -f4,5)
+    branch=$(echo $confhome | cut -d/ -f6)
+    # 避免脚本更新时，文件不同步造成错误
+    if [ -z "$commit" ]; then
+        commit=$(curl -L https://api.github.com/repos/$repo/git/refs/heads/$branch |
+            grep '"sha"' | grep -Eo '[0-9a-f]{40}')
+    fi
+    # shellcheck disable=SC2001
+    confhome=$(echo "$confhome" | sed "s/main$/$commit/")
+fi
+
 # 设置国内代理
 # gitee 不支持ipv6
 # jsdelivr 有12小时缓存
 # https://github.com/XIU2/UserScript/blob/master/GithubEnhanced-High-Speed-Download.user.js#L31
-if [ -n "$github_proxy" ] && [[ "$confhome" = http*://raw.githubusercontent.com/* ]]; then
-    # 未测试
-    if false; then
-        repo=$(echo $confhome | cut -d/ -f4,5)
-        branch=$(echo $confhome | cut -d/ -f6)
-        # 避免脚本更新时，文件不同步造成错误
-        if [ -z "$commit" ]; then
-            commit=$(curl -L https://api.github.com/repos/$repo/git/refs/heads/$branch |
-                grep '"sha"' | grep -Eo '[0-9a-f]{40}')
-        fi
-        # shellcheck disable=SC2001
-        confhome=$(echo "$confhome" | sed "s/main$/$commit/")
-    fi
-
-    if is_in_china; then
+if is_in_china; then
+    if [ -n "$confhome_cn" ]; then
+        confhome=$confhome_cn
+    elif [ -n "$github_proxy" ] && [[ "$confhome" = http*://raw.githubusercontent.com/* ]]; then
         confhome=${confhome/http:\/\//https:\/\/}
         confhome=${confhome/https:\/\/raw.githubusercontent.com/$github_proxy}
     fi
