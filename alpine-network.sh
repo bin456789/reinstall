@@ -157,6 +157,14 @@ flush_ipv6_config() {
     ip -6 route flush dev "$ethx"
 }
 
+ethx=$(get_ethx)
+if [ -z "$ethx" ]; then
+    echo "Not found network card: $mac_addr"
+    exit
+fi
+
+echo "Configuring $ethx ($mac_addr)"
+
 # dhcp v4 /v6
 # debian / kali
 if [ -f /usr/share/debconf/confmodule ]; then
@@ -164,7 +172,6 @@ if [ -f /usr/share/debconf/confmodule ]; then
     . /usr/share/debconf/confmodule
 
     # 开启 ethx + dhcpv4/v6
-    ethx=$(get_ethx)
     ip link set dev "$ethx" up
     sleep 1
     db_progress STEP 1
@@ -199,8 +206,6 @@ EOF
     db_progress INFO netcfg/link_detect_progress
 else
     # alpine
-    ethx=$(get_ethx)
-    echo "$ethx"
     ip link set dev "$ethx" up
     sleep 1
     udhcpc -i "$ethx" -f -q -n || true
