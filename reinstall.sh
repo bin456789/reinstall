@@ -35,9 +35,9 @@ Usage: $reinstall____ centos      9
                       anolis      7|8
                       alma        8|9
                       rocky       8|9
-                      oracle      8|9
                       redhat      8|9   --img='http://xxx.qcow2'
                       opencloudos 8|9
+                      oracle      7|8|9
                       fedora      39|40
                       debian      9|10|11|12
                       openeuler   20.03|22.03|24.03
@@ -1248,11 +1248,11 @@ verify_os_name() {
     for os in \
         'centos      7|9' \
         'anolis      7|8' \
-        'oracle      8|9' \
         'alma        8|9' \
         'rocky       8|9' \
         'redhat      8|9' \
         'opencloudos 8|9' \
+        'oracle      7|8|9' \
         'fedora      39|40' \
         'debian      9|10|11|12' \
         'openeuler   20.03|22.03|24.03' \

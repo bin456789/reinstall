@@ -1651,6 +1651,7 @@ create_cloud_init_network_config() {
             # openeuler 20.03: cloud-init 19.4
             # shellcheck disable=SC2154
             if { [ "$distro" = centos ] && [ "$releasever" = 7 ]; } ||
+                { [ "$distro" = oracle ] && [ "$releasever" = 7 ]; } ||
                 { [ "$distro" = anolis ] && [ "$releasever" = 7 ]; } ||
                 { [ "$distro" = openeuler ] && [ "$releasever" = 20.03 ]; }; then
                 type_ipv6_static=static
