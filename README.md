@@ -228,7 +228,6 @@ bash reinstall.sh windows \
 - Massgrave
   - <https://massgrave.dev/genuine-installation-media.html> (推荐，iso 来自官方，每月更新，包含最新补丁)
 - 微软
-  - <https://www.microsoft.com/software-download/windows8>
   - <https://www.microsoft.com/software-download/windows10> (需用手机 User-Agent 打开)
   - <https://www.microsoft.com/software-download/windows11>
   - <https://www.microsoft.com/software-download/windowsinsiderpreviewiso> (预览版)

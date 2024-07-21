@@ -228,7 +228,6 @@ bash reinstall.sh windows \
 - Massgrave
   - <https://massgrave.dev/genuine-installation-media.html> (Recommended, iso sourced from official channels, updated monthly, includes the latest patches)
 - Microsoft
-  - <https://www.microsoft.com/software-download/windows8>
   - <https://www.microsoft.com/software-download/windows10> (Need to open it with a mobile User-Agent)
   - <https://www.microsoft.com/software-download/windows11>
   - <https://www.microsoft.com/software-download/windowsinsiderpreviewiso> (Preview)

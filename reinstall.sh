@@ -1385,17 +1385,24 @@ install_pkg() {
             esac
         }
 
-        try_find_epel_name() {
-            epel=$($pkg_mgr repolist --all | awk '{print $1}' | grep -Ei '(epel|epol)$')
+        get_epel_repo_name() {
+            # el7 不支持 yum repolist --all，要使用 yum repolist all
+            # el7 yum repolist 第一栏有 /x86_64 后缀，因此要去掉。而 el9 没有
+            $pkg_mgr repolist all | awk '{print $1}' | awk -F/ '{print $1}' | grep -Ei '(epel|epol)$'
+        }
+
+        get_epel_pkg_name() {
+            $pkg_mgr list | grep -E '(epel|epol)-release' | awk '{print $1}' | cut -d. -f1 | head -1
         }
 
         if is_need_epel; then
-            if ! try_find_epel_name; then
-                epel_release="$($pkg_mgr list | grep -E '(epel|epol)-release' | awk '{print $1}' | cut -d. -f1 | head -1)"
-                $pkg_mgr install -y $epel_release
-                try_find_epel_name
+            if ! epel=$(get_epel_repo_name); then
+                $pkg_mgr install -y "$(get_epel_pkg_name)"
+                epel=$(get_epel_repo_name)
             fi
             enable_epel="--enablerepo=$epel"
+        else
+            enable_epel=
         fi
     }
 
