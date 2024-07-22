@@ -487,7 +487,16 @@ is_dhcpv6() {
         return 1
     fi
     get_netconf_to dhcpv6
+
     # shellcheck disable=SC2154
+    # 甲骨文即使没有添加 IPv6 地址，RA DHCPv6 标志也是开的
+    # 部分系统开机需要等 DHCPv6 超时
+    # 这种情况需要禁用 DHCPv6
+    if [ "$dhcpv6" = 1 ] && ! ip -6 -o addr show scope global dev "$ethx" | grep -q .; then
+        echo 'DHCPv6 flag is on, but DHCPv6 is not working.'
+        return 1
+    fi
+
     [ "$dhcpv6" = 1 ]
 }
 
