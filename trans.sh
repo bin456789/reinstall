@@ -1852,7 +1852,7 @@ EOF
 get_axx64() {
     case "$(uname -m)" in
     x86_64) echo amd64 ;;
-    aarch_64) echo arm64 ;;
+    aarch64) echo arm64 ;;
     esac
 }
 
