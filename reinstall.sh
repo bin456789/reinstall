@@ -41,9 +41,9 @@ Usage: $reinstall____ centos      9
                       fedora      39|40
                       debian      9|10|11|12
                       openeuler   20.03|22.03|24.03
-                      ubuntu      20.04|22.04|24.04
                       alpine      3.17|3.18|3.19|3.20
                       opensuse    15.5|15.6|tumbleweed
+                      ubuntu      16.04|18.04|20.04|22.04|24.04
                       kali
                       arch
                       gentoo
@@ -852,6 +852,8 @@ setos() {
 
     setos_ubuntu() {
         case "$releasever" in
+        16.04) codename=xenial ;;
+        18.04) codename=bionic ;;
         20.04) codename=focal ;;
         22.04) codename=jammy ;;
         24.04) codename=noble ;;
@@ -870,12 +872,26 @@ setos() {
             else
                 ci_mirror=https://cloud-images.ubuntu.com
             fi
-            # 20.04/22.04 minimal 镜像没有 aarch64
-            if { { [ "$releasever" = 20.04 ] || [ "$releasever" = 22.04 ]; } && [ "$basearch_alt" = amd64 ]; } ||
-                [ "$releasever" = 24.04 ]; then
-                eval ${step}_img=$ci_mirror/minimal/releases/$codename/release/ubuntu-$releasever-minimal-cloudimg-$basearch_alt.img
+
+            # 22.04 和以下没有 minimal aarch64 镜像
+            is_have_minimal_image() {
+                [ "$basearch_alt" = amd64 ] || [ "$releasever" = 24.04 ]
+            }
+
+            get_suffix() {
+                if [ "$releasever" = 16.04 ]; then
+                    if is_efi; then
+                        echo -uefi1
+                    else
+                        echo -disk1
+                    fi
+                fi
+            }
+
+            if is_have_minimal_image; then
+                eval ${step}_img="$ci_mirror/minimal/releases/$codename/release/ubuntu-$releasever-minimal-cloudimg-$basearch_alt$(get_suffix).img"
             else
-                eval ${step}_img=$ci_mirror/releases/$releasever/release/ubuntu-$releasever-server-cloudimg-$basearch_alt.img
+                eval ${step}_img="$ci_mirror/releases/$releasever/release/ubuntu-$releasever-server-cloudimg-$basearch_alt$(get_suffix).img"
             fi
         else
             # 传统安装
@@ -1256,9 +1272,9 @@ verify_os_name() {
         'fedora      39|40' \
         'debian      9|10|11|12' \
         'openeuler   20.03|22.03|24.03' \
-        'ubuntu      20.04|22.04|24.04' \
         'alpine      3.17|3.18|3.19|3.20' \
         'opensuse    15.5|15.6|tumbleweed' \
+        'ubuntu      16.04|18.04|20.04|22.04|24.04' \
         'kali' \
         'arch' \
         'gentoo' \

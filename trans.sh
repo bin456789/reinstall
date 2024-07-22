@@ -2263,10 +2263,31 @@ chroot_dnf() {
 chroot_apt_autoremove() {
     os_dir=$1
 
-    conf=$os_dir/etc/apt/apt.conf.d/01autoremove
-    sed -i.orig 's/VersionedKernelPackages/x/; s/NeverAutoRemove/x/' $conf
+    change_confs() {
+        action=$1
+
+        # 只有 16.04 有 01autoremove-kernels
+        # 16.04 结束支持后删除
+        for conf in 01autoremove 01autoremove-kernels; do
+            file=$os_dir/etc/apt/apt.conf.d/$conf
+            case "$action" in
+            change)
+                if [ -f $file ]; then
+                    sed -i.orig 's/VersionedKernelPackages/x/; s/NeverAutoRemove/x/' $file
+                fi
+                ;;
+            restore)
+                if [ -f $file.orig ]; then
+                    mv $file.orig $file
+                fi
+                ;;
+            esac
+        done
+    }
+
+    change_confs change
     DEBIAN_FRONTEND=noninteractive chroot $os_dir apt autoremove --purge -y
-    mv $conf.orig $conf
+    change_confs restore
 }
 
 del_default_user() {
@@ -2600,6 +2621,18 @@ EOF
             done
         fi
 
+        # 16.04 arm64 镜像没有 grub 引导文件
+        if is_efi && ! [ -d $os_dir/boot/efi/EFI/ubuntu ]; then
+            DEBIAN_FRONTEND=noninteractive chroot $os_dir \
+                apt-get upgrade --reinstall -y efibootmgr shim "grub-efi-$(get_axx64)"
+
+            cat <<EOF >"$os_dir/boot/efi/EFI/ubuntu/grub.cfg"
+search.fs_uuid $os_part_uuid root
+set prefix=(\$root)'/boot/grub'
+configfile \$prefix/grub.cfg
+EOF
+        fi
+
         # 安装最佳内核
         flavor=$(get_ubuntu_kernel_flavor)
         echo "Use kernel flavor: $flavor"
@@ -2621,6 +2654,14 @@ EOF
             # 使用 autoremove
             chroot_apt_autoremove $os_dir
         fi
+
+        # 16.04 镜像用 ifupdown/networking 管理网络
+        # 要安装 resolveconf，不然 /etc/resolv.conf 为空
+        if [ "$releasever" = 16.04 ]; then
+            chroot $os_dir apt install -y resolvconf
+            ln -sf /run/resolvconf/resolv.conf $os_dir/etc/resolv.conf.orig
+        fi
+
         # 安装 bios 引导
         if ! is_efi; then
             chroot $os_dir grub-install /dev/$xda
@@ -3531,22 +3572,30 @@ get_ubuntu_kernel_flavor() {
     # http://git.annexia.org/?p=virt-what.git;a=blob;f=virt-what.in;hb=HEAD
     {
         # busybox blkid 不显示 sr0 的 UUID
-        apk add lsblk
-
-        if is_dmi_contains "amazon" || is_dmi_contains "ec2"; then
-            flavor=aws
-        elif is_dmi_contains "Google Compute Engine" || is_dmi_contains "GoogleCloud"; then
-            flavor=gcp
-        elif is_dmi_contains "OracleCloud"; then
-            flavor=oracle
-        elif is_dmi_contains "7783-7084-3265-9085-8269-3286-77"; then
-            flavor=azure
-        elif lsblk -o UUID,LABEL | grep -i 9796-932E | grep -i config-2; then
-            flavor=ibm
-        elif is_virt; then
-            flavor=virtual-hwe-$releasever
+        if [ "$releasever" = 16.04 ]; then
+            if is_virt; then
+                flavor=virtual-hwe-$releasever
+            else
+                flavor=generic-hwe-$releasever
+            fi
         else
-            flavor=generic-hwe-$releasever
+            apk add lsblk
+
+            if is_dmi_contains "amazon" || is_dmi_contains "ec2"; then
+                flavor=aws
+            elif is_dmi_contains "Google Compute Engine" || is_dmi_contains "GoogleCloud"; then
+                flavor=gcp
+            elif is_dmi_contains "OracleCloud"; then
+                flavor=oracle
+            elif is_dmi_contains "7783-7084-3265-9085-8269-3286-77"; then
+                flavor=azure
+            elif lsblk -o UUID,LABEL | grep -i 9796-932E | grep -i config-2; then
+                flavor=ibm
+            elif is_virt; then
+                flavor=virtual-hwe-$releasever
+            else
+                flavor=generic-hwe-$releasever
+            fi
         fi
     } >&2
     echo $flavor
