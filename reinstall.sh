@@ -2587,7 +2587,7 @@ mod_initrd_alpine() {
     # hack 1 v3.19 和之前的 virt 内核需添加 ipv6 模块
     if virt_dir=$(ls -d $initrd_dir/lib/modules/*-virt 2>/dev/null); then
         ipv6_dir=$virt_dir/kernel/net/ipv6
-        if ! [ -f $ipv6_dir/ipv6.ko ] || ! grep -q ipv6 $initrd_dir/lib/modules/*/modules.builtin; then
+        if ! [ -f $ipv6_dir/ipv6.ko ] && ! grep -q ipv6 $initrd_dir/lib/modules/*/modules.builtin; then
             mkdir -p $ipv6_dir
             modloop_file=$tmp/modloop_file
             modloop_dir=$tmp/modloop_dir
