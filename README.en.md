@@ -17,7 +17,7 @@ Reinstall server with one-click [中文](README.md)
 - Specifically tailored for low-spec machines, addressing insufficient memory that prevents network installation.
 - Automatically detect dynamic and static IPv4 / IPv6, eliminating the need to fill in IP / subnet mask / gateway.
 - Support ARM, BIOS, EFI boot, with original system supporting LVM, BTRFS.
-- No third-party custom packages included, all resources obtained in real-time from source sites.
+- No homemade packages included, all resources obtained in real-time from source sites.
 - Includes many comments.
 
 ## System Requirements

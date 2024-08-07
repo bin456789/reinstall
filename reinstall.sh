@@ -104,13 +104,14 @@ curl() {
 }
 
 is_in_china() {
-    if [ -z $_is_in_china ]; then
+    if [ -z "$_loc" ]; then
         # 部分地区 www.cloudflare.com 被墙
-        curl -L http://dash.cloudflare.com/cdn-cgi/trace |
-            grep -qx 'loc=CN' && _is_in_china=true ||
-            _is_in_china=false
+        _loc=$(curl -L http://dash.cloudflare.com/cdn-cgi/trace | grep '^loc=' | cut -d= -f2)
+        if [ -z "$_loc" ]; then
+            error_and_exit "Can not get location."
+        fi
     fi
-    $_is_in_china
+    [ "$_loc" = CN ]
 }
 
 is_in_windows() {
@@ -1893,6 +1894,8 @@ add_efi_entry_in_windows() {
 
 get_maybe_efi_dirs_in_linux() {
     # arch云镜像efi分区挂载在/efi，且使用 autofs，挂载后会有两个 /efi 条目
+    # openEuler 云镜像 boot 分区是 vfat 格式，但 vfat 可以当 efi 分区用
+    # TODO: 最好通过 lsblk/blkid 检查是否为 efi 分区类型
     mount | awk '$5=="vfat" || $5=="autofs" {print $3}' | grep -E '/boot|/efi' | sort -u
 }
 

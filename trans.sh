@@ -757,7 +757,7 @@ EOF
         {
             echo
             if [ -n "$enpx" ] && [ "$enpx" != "$ethx" ]; then
-                echo rename $enpx=$ethx >>$conf_file
+                echo rename $enpx=$ethx
             fi
             echo $mode $ethx
         } >>$conf_file
@@ -2234,15 +2234,15 @@ get_ci_installer_part_size() {
     # https://cloud-images.ubuntu.com/releases/24.04/release/ubuntu-24.04-server-cloudimg-amd64.img 500m
     # https://gentoo.osuosl.org/experimental/amd64/openstack/gentoo-openstack-amd64-systemd-latest.qcow2 800m
 
-    # openeuler 20.03 3g
-    if [ "$distro" = openeuler ]; then
-        echo 3GiB
+    if get_http_file_size_to size_bytes $img >&2 && [ -n "$size_bytes" ]; then
+        # 额外 +100M 文件系统保留大小 和 qcow2 写入空间
+        size_bytes_mb=$((size_bytes / 1024 / 1024 + 100))
+        # 最少 1g ，因为可能要用作临时 swap
+        echo "$((size_bytes_mb / 1024 + 1))GiB"
     else
-        if get_http_file_size_to size_bytes $img >&2 && [ -n "$size_bytes" ]; then
-            # 额外 +100M 文件系统保留大小 和 qcow2 写入空间
-            size_bytes_mb=$((size_bytes / 1024 / 1024 + 100))
-            # 最少 1g ，因为可能要用作临时 swap
-            echo "$((size_bytes_mb / 1024 + 1))GiB"
+        # openeuler 20.03 3g
+        if [ "$distro" = openeuler ] && [ "$releasever" = 20.03 ]; then
+            echo 3GiB
         else
             # 如果没获取到文件大小
             echo 2GiB
@@ -2338,13 +2338,7 @@ install_qcow_by_copy() {
     # alma 9 boot 分区的类型不是规定的 uuid
     # openeuler boot 分区是 fat 格式
     boot_part=$(lsblk /dev/nbd0p* --sort SIZE -no NAME,FSTYPE | grep -E 'ext4|xfs|fat' | awk '{print $1}' |
-        grep -vx "$os_part" | {
-        if [ -n "$efi_part" ]; then
-            grep -vx "$efi_part"
-        else
-            cat
-        fi
-    } | tail -1 | awk '{print $1}')
+        grep -vx "$os_part" | grep -vx "$efi_part" | tail -1 | awk '{print $1}')
 
     if $is_lvm_image; then
         os_part="mapper/$os_part"
@@ -3240,9 +3234,7 @@ install_windows() {
     if is_virt_contains kvm &&
         ! is_virt_contains aws; then
 
-        # 要区分 win10 / win11 驱动，虽然他们的 NT 版本号都是 10.0
-        # 但他们可能用不同的编译器编译
-        # 未来 inf 也有可能不同
+        # 要区分 win10 / win11 驱动，虽然他们的 NT 版本号都是 10.0，但驱动文件有区别
         # https://github.com/virtio-win/kvm-guest-drivers-windows/commit/9af43da9e16e2d4bf4ea4663cdc4f29275fff48f
         # vista >>> 2k8
         # 10 >>> w10
@@ -3250,7 +3242,6 @@ install_windows() {
         virtio_sys=$(
             case "$(echo "$product_ver" | to_lower)" in
             'vista') echo 2k8 ;; # 没有 vista 文件夹
-            '2025') echo 2k22 ;; # 暂时没有
             *)
                 case "$product_type" in
                 WinNT) echo "w$product_ver" ;;
