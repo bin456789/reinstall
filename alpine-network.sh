@@ -25,10 +25,13 @@ fi
 # debian 11 initrd 没有 xargs awk
 # debian 12 initrd 没有 xargs
 get_ethx() {
+    # 过滤 azure vf (带 master ethx)
+    # 2: eth0: <BROADCAST,MULTICAST,UP,LOWER_UP> mtu 1500 qdisc mq state UP qlen 1000\    link/ether 60:45:bd:21:8a:51 brd ff:ff:ff:ff:ff:ff
+    # 3: eth1: <BROADCAST,MULTICAST,UP,LOWER_UP800> mtu 1500 qdisc mq master eth0 state UP qlen 1000\    link/ether 60:45:bd:21:8a:51 brd ff:ff:ff
     if false; then
-        ip -o link | grep -i "$mac_addr" | awk '{print $2}' | cut -d: -f1
+        ip -o link | grep -i "$mac_addr" | grep -v master | awk '{print $2}' | cut -d: -f1
     else
-        ip -o link | grep -i "$mac_addr" | cut -d' ' -f2 | cut -d: -f1
+        ip -o link | grep -i "$mac_addr" | grep -v master | cut -d' ' -f2 | cut -d: -f1
     fi
 }
 
