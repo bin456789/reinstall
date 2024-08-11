@@ -157,7 +157,7 @@ bash reinstall.sh centos      9
                   openeuler   20.03|22.03|24.03
                   alpine      3.17|3.18|3.19|3.20
                   opensuse    15.5|15.6|tumbleweed
-                  ubuntu      16.04|18.04|20.04|22.04|24.04
+                  ubuntu      16.04|18.04|20.04|22.04|24.04 [--minimal]
                   kali
                   arch
                   gentoo
@@ -273,8 +273,8 @@ Use `Dism++` File menu > Open Image File, select the iso to be installed to get 
 #### The script will install the following drivers as needed
 
 - KVM ([Virtio](https://fedorapeople.org/groups/virt/virtio-win/direct-downloads/))
-- XEN ([XEN](https://xenproject.org/windows-pv-drivers/), [Citrix](https://docs.aws.amazon.com/AWSEC2/latest/WindowsGuide/Upgrading_PV_drivers.html#win2008-citrix-upgrade), [AWS](https://docs.aws.amazon.com/AWSEC2/latest/WindowsGuide/xen-drivers-overview.html))
-- AWS ([ENA Network Adapter](https://docs.aws.amazon.com/AWSEC2/latest/WindowsGuide/enhanced-networking-ena.html), [NVMe Storage Controller](https://docs.aws.amazon.com/AWSEC2/latest/WindowsGuide/aws-nvme-drivers.html))
+- XEN ([XEN](https://xenproject.org/windows-pv-drivers/), [Citrix](https://docs.aws.amazon.com/AWSEC2/latest/UserGuide/Upgrading_PV_drivers.html#win2008-citrix-upgrade), [AWS](https://docs.aws.amazon.com/AWSEC2/latest/UserGuide/xen-drivers-overview.html))
+- AWS ([ENA Network Adapter](https://docs.aws.amazon.com/AWSEC2/latest/UserGuide/ena-driver-releases-windows.html), [NVMe Storage Controller](https://docs.aws.amazon.com/AWSEC2/latest/UserGuide/nvme-driver-version-history.html))
 - GCP ([gVNIC Network Adapter](https://cloud.google.com/compute/docs/networking/using-gvnic), [GGA Graphics](https://cloud.google.com/compute/docs/instances/enable-instance-virtual-display))
 - Azure ([MANA Network Adapter](https://learn.microsoft.com/azure/virtual-network/accelerated-networking-mana-windows))
 

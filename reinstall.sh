@@ -43,7 +43,7 @@ Usage: $reinstall____ centos      9
                       openeuler   20.03|22.03|24.03
                       alpine      3.17|3.18|3.19|3.20
                       opensuse    15.5|15.6|tumbleweed
-                      ubuntu      16.04|18.04|20.04|22.04|24.04
+                      ubuntu      16.04|18.04|20.04|22.04|24.04 [--minimal]
                       kali
                       arch
                       gentoo
@@ -879,6 +879,14 @@ setos() {
                 [ "$basearch_alt" = amd64 ] || [ "$releasever" = 24.04 ]
             }
 
+            is_should_use_minimal_cloud_image() {
+                if [ "$minimal" = 1 ] && ! is_have_minimal_image; then
+                    echo "Fallback to normal cloud image."
+                    return 1
+                fi
+                [ "$minimal" = 1 ]
+            }
+
             get_suffix() {
                 if [ "$releasever" = 16.04 ]; then
                     if is_efi; then
@@ -889,7 +897,7 @@ setos() {
                 fi
             }
 
-            if is_have_minimal_image; then
+            if is_should_use_minimal_cloud_image; then
                 eval ${step}_img="$ci_mirror/minimal/releases/$codename/release/ubuntu-$releasever-minimal-cloudimg-$basearch_alt$(get_suffix).img"
             else
                 eval ${step}_img="$ci_mirror/releases/$releasever/release/ubuntu-$releasever-server-cloudimg-$basearch_alt$(get_suffix).img"
@@ -2805,7 +2813,7 @@ else
 fi
 
 # 整理参数
-if ! opts=$(getopt -n $0 -o "" --long ci,debug,hold:,sleep:,iso:,image-name:,img:,lang:,commit:,force: -- "$@"); then
+if ! opts=$(getopt -n $0 -o "" --long ci,debug,minimal,hold:,sleep:,iso:,image-name:,img:,lang:,commit:,force: -- "$@"); then
     usage_and_exit
 fi
 
@@ -2823,6 +2831,10 @@ while true; do
         ;;
     --ci)
         cloud_image=1
+        shift
+        ;;
+    --minimal)
+        minimal=1
         shift
         ;;
     --hold | --sleep)
