@@ -1918,8 +1918,25 @@ get_part_num_by_part() {
     grep -oE '[0-9]*$' <<<"$dev_part"
 }
 
+grep_efi_entry() {
+    # efibootmgr
+    # BootCurrent: 0002
+    # Timeout: 1 seconds
+    # BootOrder: 0000,0002,0003,0001
+    # Boot0000* sles-secureboot
+    # Boot0001* CD/DVD Rom
+    # Boot0002* Hard Disk
+    # Boot0003* sles-secureboot
+    # MirroredPercentageAbove4G: 0.00
+    # MirrorMemoryBelow4GB: false
+
+    # 根据文档，* 表示 active，也就是说有可能没有*(代表inactive)
+    # https://manpages.debian.org/testing/efibootmgr/efibootmgr.8.en.html
+    grep -E '^Boot[0-9a-fA-F]{4}'
+}
+
 grep_efi_index() {
-    awk -F '*' '{print $1}' | sed 's/Boot//'
+    awk '{print $1}' | sed -e 's/Boot//' -e 's/\*//'
 }
 
 add_efi_entry_in_linux() {
@@ -1955,7 +1972,7 @@ add_efi_entry_in_linux() {
                 --part "$(get_part_num_by_part $dev_part)" \
                 --label "$(get_entry_name)" \
                 --loader "\\EFI\\reinstall\\$basename" |
-                tail -1 | grep_efi_index)
+                grep_efi_entry | tail -1 | grep_efi_index)
             efibootmgr --bootnext $id
             return
         fi
@@ -3007,7 +3024,7 @@ if is_efi; then
 
         install_pkg efibootmgr
         efibootmgr | grep -q 'BootNext:' && efibootmgr --quiet --delete-bootnext
-        efibootmgr | grep 'reinstall' | grep_efi_index |
+        efibootmgr | grep_efi_entry | grep 'reinstall' | grep_efi_index |
             xargs -I {} efibootmgr --quiet --bootnum {} --delete-bootnum
     fi
 fi
