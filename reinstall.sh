@@ -995,7 +995,7 @@ setos() {
         if is_in_china; then
             mirror=https://mirror.sjtu.edu.cn/opensuse
         else
-            mirror=https://mirror.fcix.net/opensuse
+            mirror=https://provo-mirror.opensuse.org
         fi
 
         if [ "$releasever" = tumbleweed ]; then
@@ -1085,7 +1085,7 @@ Continue with DD?
                 "centos") ci_mirror="https://cloud.centos.org/centos" ;;
                 "alma") ci_mirror="https://repo.almalinux.org/almalinux/$releasever/cloud/$basearch/images" ;;
                 "rocky") ci_mirror="https://download.rockylinux.org/pub/rocky/$releasever/images/$basearch" ;;
-                "fedora") ci_mirror="https://download.fedoraproject.org/pub/fedora/linux/releases/$releasever/Cloud/$basearch/images" ;;
+                "fedora") ci_mirror="https://dl.fedoraproject.org/pub/fedora/linux/releases/$releasever/Cloud/$basearch/images" ;;
                 esac
             fi
             case $distro in
@@ -1997,13 +1997,17 @@ install_grub_linux_efi() {
     # 因为 ipv6 访问有时跳转到 ipv4 地址，造成 ipv6 only 机器无法下载
     # 日韩机器有时得到国内镜像源，但镜像源屏蔽了国外 IP 导致连不上
     # https://mirrors.bfsu.edu.cn/opensuse/ports/aarch64/tumbleweed/repo/oss/EFI/BOOT/grub.efi
+
+    # fcix 经常 404
+    # https://mirror.fcix.net/opensuse/tumbleweed/repo/oss/EFI/BOOT/bootx64.efi
+    # https://mirror.fcix.net/opensuse/tumbleweed/appliances/openSUSE-Tumbleweed-Minimal-VM.x86_64-Cloud.qcow2
     if [ "$efi_distro" = fedora ]; then
         fedora_ver=40
 
         if is_in_china; then
             mirror=https://mirrors.ustc.edu.cn/fedora
         else
-            mirror=https://mirror.fcix.net/fedora/linux
+            mirror=https://dl.fedoraproject.org/pub/fedora/linux
         fi
 
         curl -Lo $tmp/$grub_efi $mirror/releases/$fedora_ver/Everything/$basearch/os/EFI/BOOT/$grub_efi
@@ -2011,7 +2015,7 @@ install_grub_linux_efi() {
         if is_in_china; then
             mirror=https://mirror.sjtu.edu.cn/opensuse
         else
-            mirror=https://mirror.fcix.net/opensuse
+            mirror=https://provo-mirror.opensuse.org
         fi
 
         [ "$basearch" = x86_64 ] && ports='' || ports=/ports/$basearch

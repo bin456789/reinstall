@@ -423,9 +423,7 @@ get_netconf_to() {
 }
 
 is_ipv4_has_internet() {
-    get_netconf_to ipv4_has_internet
-    # shellcheck disable=SC2154
-    [ "$ipv4_has_internet" = 1 ]
+    grep -q 1 /dev/netconf/*/ipv4_has_internet
 }
 
 is_in_china() {
