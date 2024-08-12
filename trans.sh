@@ -2232,19 +2232,22 @@ get_ci_installer_part_size() {
     # https://cloud-images.ubuntu.com/releases/24.04/release/ubuntu-24.04-server-cloudimg-amd64.img 500m
     # https://gentoo.osuosl.org/experimental/amd64/openstack/gentoo-openstack-amd64-systemd-latest.qcow2 800m
 
-    if get_http_file_size_to size_bytes $img >&2 && [ -n "$size_bytes" ]; then
+    # openeuler 是 .qcow2.xz，要解压后才知道 qcow2 大小
+    if [ "$distro" = openeuler ]; then
+        # openeuler 20.03 3g
+        if [ "$releasever" = 20.03 ]; then
+            echo 3GiB
+        else
+            echo 2GiB
+        fi
+    elif get_http_file_size_to size_bytes $img >&2 && [ -n "$size_bytes" ]; then
         # 额外 +100M 文件系统保留大小 和 qcow2 写入空间
         size_bytes_mb=$((size_bytes / 1024 / 1024 + 100))
         # 最少 1g ，因为可能要用作临时 swap
         echo "$((size_bytes_mb / 1024 + 1))GiB"
     else
-        # openeuler 20.03 3g
-        if [ "$distro" = openeuler ] && [ "$releasever" = 20.03 ]; then
-            echo 3GiB
-        else
-            # 如果没获取到文件大小
-            echo 2GiB
-        fi
+        # 如果没获取到文件大小
+        echo 2GiB
     fi
 }
 
