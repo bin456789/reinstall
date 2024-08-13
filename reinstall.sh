@@ -1044,11 +1044,11 @@ setos() {
             # od 在 coreutils 里面，好像要配合 tr 才能删除空格
             # hexdump 在 util-linux / bsdmainutils 里面
             # xxd 要单独安装，el 在 vim-common 里面
-            # xxd -l $((34 * 4096)) -ps -c 512
+            # xxd -l $((34 * 4096)) -ps -c 128
 
             # 仅打印前34个扇区 * 4096字节（按最大的算）
-            # 每行512字节
-            "$img_type" -dc <"$tmp/img-test" | hexdump -n $((34 * 4096)) -e '512/1 "%02x" "\n"' -v >$tmp/img-test-hex
+            # 每行128字节
+            "$img_type" -dc <"$tmp/img-test" | hexdump -n $((34 * 4096)) -e '128/1 "%02x" "\n"' -v >$tmp/img-test-hex
             if grep -q '^28732ac11ff8d211ba4b00a0c93ec93b' $tmp/img-test-hex; then
                 echo 'DD: Image is EFI.'
             else
