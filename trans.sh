@@ -1120,7 +1120,7 @@ MAKEOPTS="-j$threads"
 EOF
 
         # 设置 http repo + binpkg repo
-        # https://mirrors.ustc.edu.cn/gentoo/releases/amd64/autobuilds/current-stage3-amd64-systemd-mergedusr/stage3-amd64-systemd-mergedusr-20240317T170433Z.tar.xz
+        # https://mirror.nju.edu.cn/gentoo/releases/amd64/autobuilds/current-stage3-amd64-systemd-mergedusr/stage3-amd64-systemd-mergedusr-20240317T170433Z.tar.xz
         mirror_short=$(echo "$img" | sed 's,/releases/.*,,')
         mirror_long=$(echo "$img" | sed 's,/autobuilds/.*,,')
         profile_ver=$(chroot $os_dir eselect profile show | grep -Eo '/[0-9.]*/' | cut -d/ -f2)
@@ -1157,7 +1157,7 @@ EOF
 
         # 设置 git repo
         if is_in_china; then
-            git_uri=https://mirrors.ustc.edu.cn/gentoo.git
+            git_uri=https://mirror.nju.edu.cn/git/gentoo-portage.git
         else
             # github 不支持 ipv6
             is_ipv4_has_internet && git_uri=https://github.com/gentoo-mirror/gentoo.git ||
@@ -2459,7 +2459,7 @@ install_qcow_by_copy() {
         if [ "$releasever" = 7 ] && [ -f /os/etc/yum.repos.d/CentOS-Base.repo ]; then
             # 保持默认的 http 因为自带的 ssl 证书可能过期
             if is_in_china; then
-                mirror=mirrors.ustc.edu.cn/centos-vault
+                mirror=mirror.nju.edu.cn/centos-vault
             else
                 mirror=vault.centos.org
             fi
@@ -2608,8 +2608,8 @@ EOF
                 if [ -f $file ]; then
                     # cn.archive.ubuntu.com 不在国内还严重丢包
                     # https://www.itdog.cn/ping/cn.archive.ubuntu.com
-                    sed -i 's/archive.ubuntu.com/mirrors.ustc.edu.cn/' $file # x64
-                    sed -i 's/ports.ubuntu.com/mirrors.ustc.edu.cn/' $file   # arm
+                    sed -i 's/archive.ubuntu.com/mirror.nju.edu.cn/' $file # x64
+                    sed -i 's/ports.ubuntu.com/mirror.nju.edu.cn/' $file   # arm
                 fi
             done
         fi
