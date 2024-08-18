@@ -1292,15 +1292,14 @@ verify_os_name() {
         'windows' \
         'dd' \
         'netboot.xyz'; do
-        ds=$(awk '{print $1}' <<<"$os")
-        vers=$(awk '{print $2}' <<<"$os" | sed 's \. \\\. g')
-        finalos=$(echo "$@" | to_lower | sed -n -E "s,^($ds)[ :-]?(|$vers)$,\1:\2,p")
+        read -r ds vers <<<"$os"
+        vers_=${vers//\./\\\.}
+        finalos=$(echo "$@" | to_lower | sed -n -E "s,^($ds)[ :-]?(|$vers_)$,\1 \2,p")
         if [ -n "$finalos" ]; then
-            distro=$(echo $finalos | cut -d: -f1)
-            releasever=$(echo $finalos | cut -d: -f2)
+            read -r distro releasever <<<"$finalos"
             # 默认版本号
-            if [ -z "$releasever" ] && grep -q '|' <<<$os; then
-                releasever=$(awk '{print $2}' <<<$os | awk -F'|' '{print $NF}')
+            if [ -z "$releasever" ] && [ -n "$vers" ]; then
+                releasever=$(awk -F '|' '{print $NF}' <<<"|$vers")
             fi
             return
         fi

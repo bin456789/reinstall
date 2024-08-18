@@ -6,35 +6,12 @@
 # 命令出错终止运行，将进入到登录界面，防止失联
 set -eE
 
-# debian 安装版、ubuntu 安装版、redhat 安装版不使用该密码
+# debian 安装版、ubuntu 安装版、el/ol 安装版不使用该密码
 PASSWORD=123@@@
-EFI_UUID=C12A7328-F81F-11D2-BA4B-00A0C93EC93B
 
 TRUE=0
 FALSE=1
-
-trap 'trap_err $LINENO $?' ERR
-
-# 复制本脚本到 /tmp/trans.sh，用于打印错误
-# 也有可能从管道运行，这时删除 /tmp/trans.sh
-case "$0" in
-*trans.*) cp -f "$0" /tmp/trans.sh ;;
-*) rm -f /tmp/trans.sh ;;
-esac
-
-# 还原改动，不然本脚本会被复制到新系统
-rm -f /etc/local.d/trans.start
-rm -f /etc/runlevels/default/local
-
-trap_err() {
-    line_no=$1
-    ret_no=$2
-
-    error "Line $line_no return $ret_no"
-    if [ -f "/tmp/trans.sh" ]; then
-        sed -n "$line_no"p /tmp/trans.sh
-    fi
-}
+EFI_UUID=C12A7328-F81F-11D2-BA4B-00A0C93EC93B
 
 error() {
     color='\e[31m'
@@ -45,6 +22,25 @@ error() {
 error_and_exit() {
     error "$@"
     exit 1
+}
+
+trap_err() {
+    line_no=$1
+    ret_no=$2
+
+    error "Line $line_no return $ret_no"
+    if [ -f "/trans.sh" ]; then
+        sed -n "$line_no"p /trans.sh
+    fi
+}
+
+is_run_from_locald() {
+    [[ "$0" = /etc/local.d/* ]]
+}
+
+should_hold_after_boot() {
+    # shellcheck disable=SC2154
+    [ "$hold" = 1 ] # && is_run_from_locald
 }
 
 add_community_repo() {
@@ -427,9 +423,7 @@ is_ipv4_has_internet() {
 }
 
 is_in_china() {
-    get_netconf_to is_in_china
-    # shellcheck disable=SC2154
-    [ "$is_in_china" = 1 ]
+    grep -q 1 /dev/netconf/*/is_in_china
 }
 
 # 有 dhcpv4 不等于有网关，例如 vultr 纯 ipv6
@@ -544,23 +538,19 @@ is_need_manual_set_dnsv6() {
         { ! is_have_rdnss || { is_have_rdnss && is_windows && ! is_windows_support_rdnss; }; }
 }
 
-get_current_dns_v4() {
+get_current_dns() {
+    mark=$(
+        case "$1" in
+        4) echo . ;;
+        6) echo : ;;
+        esac
+    )
     # debian 11 initrd 没有 xargs awk
     # debian 12 initrd 没有 xargs
     if false; then
-        grep '^nameserver' /etc/resolv.conf | awk '{print $2}' | grep '\.'
+        grep '^nameserver' /etc/resolv.conf | awk '{print $2}' | grep -F "$mark"
     else
-        grep '^nameserver' /etc/resolv.conf | cut -d' ' -f2 | grep '\.'
-    fi
-}
-
-get_current_dns_v6() {
-    # debian 11 initrd 没有 xargs awk
-    # debian 12 initrd 没有 xargs
-    if false; then
-        grep '^nameserver' /etc/resolv.conf | awk '{print $2}' | grep ':'
-    else
-        grep '^nameserver' /etc/resolv.conf | cut -d' ' -f2 | grep ':'
+        grep '^nameserver' /etc/resolv.conf | cut -d' ' -f2 | grep -F "$mark"
     fi
 }
 
@@ -679,13 +669,19 @@ insert_into_file() {
     file=$1
     location=$2
     regex_to_find=$3
+    shift 3
+
+    # 默认 grep -E
+    if [ $# -eq 0 ]; then
+        set -- -E
+    fi
 
     if [ "$location" = head ]; then
         bak=$(mktemp)
         cp $file $bak
         cat - $bak >$file
     else
-        line_num=$(grep -E -n "$regex_to_find" "$file" | cut -d: -f1)
+        line_num=$(grep "$@" -n "$regex_to_find" "$file" | cut -d: -f1)
 
         found_count=$(echo "$line_num" | wc -l)
         if [ ! "$found_count" -eq 1 ]; then
@@ -773,7 +769,7 @@ iface $ethx inet static
     gateway $ipv4_gateway
 EOF
             # dns
-            if list=$(get_current_dns_v4); then
+            if list=$(get_current_dns 4); then
                 for dns in $list; do
                     cat <<EOF >>$conf_file
     dns-nameservers $dns
@@ -801,8 +797,8 @@ EOF
 
         # dns
         # 有 ipv6 但需设置 dns 的情况
-        if is_need_manual_set_dnsv6 && list=$(get_current_dns_v6); then
-            for dns in $list; do
+        if is_need_manual_set_dnsv6; then
+            for dns in $(get_current_dns 6); do
                 cat <<EOF >>$conf_file
     dns-nameserver $dns
 EOF
@@ -848,21 +844,7 @@ install_alpine() {
     # bios机器用 setup-disk 自动分区会有 boot 分区
     # 因此手动分区安装
     create_part
-
-    # 挂载系统分区
-    if is_efi || is_xda_gt_2t; then
-        os_part_num=2
-    else
-        os_part_num=1
-    fi
-    mkdir -p /os
-    mount -t ext4 /dev/${xda}*${os_part_num} /os
-
-    # 挂载 efi
-    if is_efi; then
-        mkdir -p /os/boot/efi
-        mount -t vfat /dev/${xda}*1 /os/boot/efi
-    fi
+    mount_part_basic_layout /os /os/boot/efi
 
     # 创建 swap
     if $hack_lowram_swap; then
@@ -989,6 +971,21 @@ get_cpu_vendor() {
     esac
 }
 
+min() {
+    printf "%d\n" "$@" | sort -n | head -n 1
+}
+
+# 设置线程
+# 根据 cpu 核数，每个线程的内存，取最小值
+get_build_threads() {
+    threads_per_mb=$1
+
+    threads_by_core=$(nproc --all)
+    threads_by_ram=$(($(get_approximate_ram_size) / threads_per_mb))
+    [ $threads_by_ram -eq 0 ] && threads_by_ram=1
+    min $threads_by_ram $threads_by_core
+}
+
 install_arch_gentoo() {
     set_locale() {
         echo "C.UTF-8 UTF-8" >>$os_dir/etc/locale.gen
@@ -1106,17 +1103,8 @@ EOF
 ACCEPT_LICENSE="*"
 EOF
 
-        # 设置线程
-        # 根据 cpu 核数，2G内存一个线程，取最小值
-        threads_by_core=$(nproc --all)
-        phy_ram=$(get_approximate_ram_size)
-        threads_by_ram=$((phy_ram / 2048))
-        if [ $threads_by_ram -eq 0 ]; then
-            threads_by_ram=1
-        fi
-        threads=$(printf "%d\n" $threads_by_ram $threads_by_core | sort -n | head -1)
         cat <<EOF >>$os_dir/etc/portage/make.conf
-MAKEOPTS="-j$threads"
+MAKEOPTS="-j$(get_build_threads 2048)"
 EOF
 
         # 设置 http repo + binpkg repo
@@ -1204,20 +1192,9 @@ EOF
     os_dir=/os
 
     # 挂载分区
-    if is_efi || is_xda_gt_2t; then
-        os_part_num=2
-    else
-        os_part_num=1
-    fi
+    mount_part_basic_layout /os /os/efi
 
-    mkdir -p /os
-    mount -t ext4 /dev/${xda}*${os_part_num} /os
-
-    if is_efi; then
-        mkdir -p /os/efi
-        mount -t vfat /dev/${xda}*1 /os/efi
-    fi
-
+    # 安装系统
     install_$distro
 
     # 初始化
@@ -1621,11 +1598,9 @@ create_cloud_init_network_config() {
             # 旧版 cloud-init 有 bug
             # 有的版本会只从第一种配置中读取 dns，有的从第二种读取
             # 因此写两种配置
-            if dns4_list=$(get_current_dns_v4); then
-                for cur in $dns4_list; do
-                    yq -i ".network.config[$config_id].subnets[$subnet_id].dns_nameservers += [\"$cur\"]" $ci_file
-                done
-            fi
+            for cur in $(get_current_dns 4); do
+                yq -i ".network.config[$config_id].subnets[$subnet_id].dns_nameservers += [\"$cur\"]" $ci_file
+            done
             subnet_id=$((subnet_id + 1))
         fi
 
@@ -1674,9 +1649,9 @@ create_cloud_init_network_config() {
         fi
 
         # 有 ipv6 但需设置 dns 的情况
-        if is_need_manual_set_dnsv6 && dns6_list=$(get_current_dns_v6); then
+        if is_need_manual_set_dnsv6; then
             need_set_dns6=true
-            for cur in $dns6_list; do
+            for cur in $(get_current_dns 6); do
                 yq -i ".network.config[$config_id].subnets[$subnet_id].dns_nameservers += [\"$cur\"]" $ci_file
             done
         fi
@@ -1686,13 +1661,13 @@ create_cloud_init_network_config() {
 
     if $need_set_dns4 || $need_set_dns6; then
         yq -i ".network.config[$config_id].type=\"nameserver\"" $ci_file
-        if $need_set_dns4 && dns4_list=$(get_current_dns_v4); then
-            for cur in $dns4_list; do
+        if $need_set_dns4; then
+            for cur in $(get_current_dns 4); do
                 yq -i ".network.config[$config_id].address += [\"$cur\"]" $ci_file
             done
         fi
-        if $need_set_dns6 && dns6_list=$(get_current_dns_v6); then
-            for cur in $dns6_list; do
+        if $need_set_dns6; then
+            for cur in $(get_current_dns 6); do
                 yq -i ".network.config[$config_id].address += [\"$cur\"]" $ci_file
             done
         fi
@@ -2083,12 +2058,18 @@ modify_os_on_disk() {
     error_and_exit "Can't find os partition."
 }
 
+get_need_swap_size() {
+    need_ram=$1
+
+    phy_ram=$(get_approximate_ram_size)
+    echo $((need_ram - phy_ram))
+}
+
 create_swap_if_ram_less_than() {
     need_ram=$1
     swapfile=$2
 
-    phy_ram=$(get_approximate_ram_size)
-    swapsize=$((need_ram - phy_ram))
+    swapsize=$(get_need_swap_size $need_ram)
     if [ $swapsize -gt 0 ]; then
         create_swap $swapsize $swapfile
     fi
@@ -2842,7 +2823,28 @@ resize_after_install_cloud_image() {
     fi
 }
 
-mount_part_for_install_mode() {
+mount_part_basic_layout() {
+    os_dir=$1
+    efi_dir=$2
+
+    if is_efi || is_xda_gt_2t; then
+        os_part_num=2
+    else
+        os_part_num=1
+    fi
+
+    # 挂载系统分区
+    mkdir -p $os_dir
+    mount -t ext4 /dev/${xda}*${os_part_num} $os_dir
+
+    # 挂载 efi 分区
+    if is_efi; then
+        mkdir -p $efi_dir
+        mount -t vfat -o umask=077 /dev/${xda}*1 $efi_dir
+    fi
+}
+
+mount_part_for_iso_installer() {
     # 挂载主分区
     mkdir -p /os
     mount /dev/disk/by-label/os /os
@@ -2860,7 +2862,7 @@ mount_part_for_install_mode() {
 }
 
 get_dns_list_for_win() {
-    if dns_list=$(get_current_dns_v$1); then
+    if dns_list=$(get_current_dns $1); then
         i=0
         for dns in $dns_list; do
             i=$((i + 1))
@@ -2880,11 +2882,10 @@ create_win_set_netconf_script() {
         if is_staticv4; then
             get_netconf_to ipv4_addr
             get_netconf_to ipv4_gateway
-            ipv4_dns_list="$(get_dns_list_for_win 4)"
             cat <<EOF >>$target
 set ipv4_addr=$ipv4_addr
 set ipv4_gateway=$ipv4_gateway
-$ipv4_dns_list
+$(get_dns_list_for_win 4)
 EOF
         fi
 
@@ -2899,9 +2900,9 @@ EOF
         fi
 
         # 有 ipv6 但需设置 dns 的情况
-        if is_need_manual_set_dnsv6 && ipv6_dns_list="$(get_dns_list_for_win 6)"; then
+        if is_need_manual_set_dnsv6; then
             cat <<EOF >>$target
-$ipv6_dns_list
+$(get_dns_list_for_win 6)
 EOF
         fi
 
@@ -3665,6 +3666,28 @@ EOF
 # 并调用本文件的 create_ifupdown_config 方法
 : main
 
+# 无参数运行
+# 复制本脚本到 /trans.sh，除非路径相同
+# 用于打印错误或者再次运行
+if ! [ "$(readlink -f "$0")" = /trans.sh ]; then
+    cp -f "$0" /trans.sh
+fi
+
+# 还原改动，不然本脚本会被复制到新系统
+rm -f /etc/local.d/trans.start
+rm -f /etc/runlevels/default/local
+
+trap 'trap_err $LINENO $?' ERR
+extract_env_from_cmdline
+
+# 带参数运行，则重新下载脚本
+if [ "$1" = "update" ]; then
+    # shellcheck disable=SC2154
+    wget -O /trans.sh "$confhome/trans.sh"
+    chmod +x /trans.sh
+    exec /trans.sh
+fi
+
 # 允许 ramdisk 使用所有内存，默认是 50%
 mount / -o remount,size=100%
 
@@ -3676,9 +3699,7 @@ hwclock -s || true
 echo "root:$PASSWORD" | chpasswd
 printf '\nyes' | setup-sshd
 
-extract_env_from_cmdline
-# shellcheck disable=SC2154
-if [ "$hold" = 1 ]; then
+if should_hold_after_boot; then
     exit
 fi
 
@@ -3757,7 +3778,7 @@ else
         ;;
     *)
         create_part
-        mount_part_for_install_mode
+        mount_part_for_iso_installer
         case "$distro" in
         centos | alma | rocky | fedora | ubuntu | redhat) install_redhat_ubuntu ;;
         windows) install_windows ;;
