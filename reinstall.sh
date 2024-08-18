@@ -39,6 +39,7 @@ Usage: $reinstall____ centos      9
                       opencloudos 8|9
                       oracle      7|8|9
                       fedora      39|40
+                      nixos       24.05
                       debian      9|10|11|12
                       openeuler   20.03|22.03|24.03
                       alpine      3.17|3.18|3.19|3.20
@@ -234,6 +235,7 @@ test_url_real() {
 
     tmp_file=$tmp/img-test
 
+    # TODO: 好像无法识别 nixos 官方源的跳转
     # 有的服务器不支持 range，curl会下载整个文件
     # 用 dd 限制下载 1M
     # 并过滤 curl 23 错误（dd限制了空间）
@@ -960,6 +962,22 @@ setos() {
         fi
     }
 
+    setos_nixos() {
+        if is_in_china; then
+            mirror=https://mirror.nju.edu.cn/nix-channels
+        else
+            mirror=https://nixos.org/channels
+        fi
+
+        if is_use_cloud_image; then
+            :
+        else
+            # 传统安装
+            test_url $mirror/nixos-$releasever/store-paths.xz xz
+            eval ${step}_mirror=$mirror
+        fi
+    }
+
     setos_gentoo() {
         if is_in_china; then
             mirror=https://mirror.nju.edu.cn/gentoo
@@ -1281,6 +1299,7 @@ verify_os_name() {
         'opencloudos 8|9' \
         'oracle      7|8|9' \
         'fedora      39|40' \
+        'nixos       24.05' \
         'debian      9|10|11|12' \
         'openeuler   20.03|22.03|24.03' \
         'alpine      3.17|3.18|3.19|3.20' \
@@ -1333,7 +1352,7 @@ install_pkg() {
 
     find_pkg_mgr() {
         if [ -z "$pkg_mgr" ]; then
-            for mgr in dnf yum apt pacman zypper emerge apk; do
+            for mgr in dnf yum apt pacman zypper emerge apk opkg nix-env; do
                 is_have_cmd $mgr && pkg_mgr=$mgr && return
             done
             return 1
@@ -1459,6 +1478,15 @@ install_pkg() {
             [ -z "$apt_updated" ] && apt update && apt_updated=1
             DEBIAN_FRONTEND=noninteractive apt install -y $pkg
             ;;
+        opkg)
+            [ -z "$opkg_updated" ] && opkg update && opkg_updated=1
+            opkg install $pkg
+            ;;
+        nix-env)
+            # 不指定 channel 会很慢，而且很占内存
+            [ -z "$nix_updated" ] && nix-channel --update && nix_updated=1
+            nix-env -iA nixos.$pkg
+            ;;
         esac
     }
 
@@ -1500,7 +1528,7 @@ check_ram() {
         case "$distro" in
         netboot.xyz) echo 0 ;;
         alpine | debian | kali | dd) echo 256 ;;
-        arch | gentoo | windows) echo 512 ;;
+        arch | gentoo | nixos | windows) echo 512 ;;
         redhat | centos | alma | rocky | fedora | oracle | ubuntu | anolis | opencloudos | openeuler) echo 1024 ;;
         opensuse) echo -1 ;; # 没有安装模式
         esac
@@ -1517,7 +1545,7 @@ check_ram() {
     has_cloud_image=$(
         case "$distro" in
         redhat | centos | alma | rocky | oracle | fedora | debian | ubuntu | opensuse | anolis | openeuler) echo true ;;
-        netboot.xyz | alpine | dd | arch | gentoo | kali | windows) echo false ;;
+        netboot.xyz | alpine | dd | arch | gentoo | nixos | kali | windows) echo false ;;
         esac
     )
 
@@ -2924,7 +2952,7 @@ mkdir_clear "$tmp"
 # 强制忽略/强制添加 --ci 参数
 # debian 不强制忽略 ci 留作测试
 case "$distro" in
-dd | windows | netboot.xyz | kali | alpine | arch | gentoo)
+dd | windows | netboot.xyz | kali | alpine | arch | gentoo | nixos)
     if is_use_cloud_image; then
         echo "ignored --ci"
         cloud_image=0
@@ -3025,7 +3053,10 @@ if is_efi; then
             xargs -I {} cmd /c bcdedit /delete {}
     else
         # shellcheck disable=SC2046
-        find $(get_maybe_efi_dirs_in_linux) /boot -type f -name 'custom.cfg' -exec rm -f {} \;
+        # 如果 nixos 的 efi 挂载到 /efi，则不会生成 /boot 文件夹
+        # find 不存在的路径会报错退出
+        find $(get_maybe_efi_dirs_in_linux) $([ -d /boot ] && echo /boot) \
+            -type f -name 'custom.cfg' -exec rm -f {} \;
 
         install_pkg efibootmgr
         efibootmgr | grep -q 'BootNext:' && efibootmgr --quiet --delete-bootnext

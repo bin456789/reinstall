@@ -11,7 +11,7 @@ Reinstall server with one-click [中文](README.md)
 
 ## Highlights
 
-- Support installation of 16 common Linux distributions.
+- Support installation of 17 common Linux distributions.
 - Support for installing Windows using the official original ISO. The script can automatically search for the ISO and drivers.
 - Support reinstallation in any direction, meaning `Linux to Linux`, `Linux to Win`, `Win to Win`, `Win to Linux`.
 - Specifically tailored for low-spec machines, addressing insufficient memory that prevents network installation.
@@ -36,6 +36,7 @@ Reinstall server with one-click [中文](README.md)
 | <img width="16" height="16" src="https://fedoraproject.org/favicon.ico" /> Fedora                                                                                                                                                                          | 39, 40                                | 512 MB \* | 5 GB                   |
 | <img width="16" height="16" src="https://www.openeuler.org/favicon.ico" /> openEuler                                                                                                                                                                       | 20.03, 22.03, 24.03                   | 512 MB \* | 5 GB                   |
 | <img width="16" height="16" src="https://static.opensuse.org/favicon.ico" /> openSUSE                                                                                                                                                                      | 15.5, 15.6, Tumbleweed (Rolling)      | 512 MB \* | 5 GB                   |
+| <img width="16" height="16" src="https://nixos.org/_astro/flake-blue.Bf2X2kC4_Z1yqDoT.svg" /> NixOS                                                                                                                                                        | 24.05                                 | 512 MB    | 5 GB                   |
 | <img width="16" height="16" src="https://archlinux.org/static/favicon.png" /> Arch                                                                                                                                                                         | Rolling                               | 512 MB    | 5 GB                   |
 | <img width="16" height="16" src="https://www.gentoo.org/assets/img/logo/gentoo-g.png" /> Gentoo                                                                                                                                                            | Rolling                               | 512 MB    | 5 GB                   |
 | <img width="16" height="16" src="https://blogs.windows.com/wp-content/uploads/prod/2022/09/cropped-Windows11IconTransparent512-32x32.png" /> Windows (DD)                                                                                                  | Any                                   | 512 MB    | Depending on the image |
@@ -153,6 +154,7 @@ bash reinstall.sh centos      9
                   opencloudos 8|9
                   oracle      7|8|9
                   fedora      39|40
+                  nixos       24.05
                   debian      9|10|11|12
                   openeuler   20.03|22.03|24.03
                   alpine      3.17|3.18|3.19|3.20
@@ -295,7 +297,7 @@ Use `Dism++` File menu > Open Image File, select the iso to be installed to get 
 ## How to Modify the Script
 
 1. Fork this repository.
-2. Modify the `confhome` at the beginning of `reinstall.sh` and `reinstall.bat`.
+2. Modify the `confhome` and `confhome_cn` at the beginning of `reinstall.sh` and `reinstall.bat`.
 3. Make changes to the other code.
 
 ## Thanks

@@ -11,7 +11,7 @@
 
 ## 亮点
 
-- 支持安装 16 种常见 Linux 发行版
+- 支持安装 17 种常见 Linux 发行版
 - 支持用官方原版 iso 安装 Windows，并且脚本会自动查找 iso 和驱动
 - 支持任意方向重装，也就是支持 `Linux to Linux`、`Linux to Win`、`Win to Win`、`Win to Linux`
 - 专门适配低配小鸡，解决内存过少导致无法进行网络安装
@@ -36,6 +36,7 @@
 | <img width="16" height="16" src="https://fedoraproject.org/favicon.ico" /> Fedora                                                                                                                                                                          | 39, 40                                | 512 MB \* | 5 GB         |
 | <img width="16" height="16" src="https://www.openeuler.org/favicon.ico" /> openEuler                                                                                                                                                                       | 20.03, 22.03, 24.03                   | 512 MB \* | 5 GB         |
 | <img width="16" height="16" src="https://static.opensuse.org/favicon.ico" /> openSUSE                                                                                                                                                                      | 15.5, 15.6, Tumbleweed (滚动)         | 512 MB \* | 5 GB         |
+| <img width="16" height="16" src="https://nixos.org/_astro/flake-blue.Bf2X2kC4_Z1yqDoT.svg" /> NixOS                                                                                                                                                        | 24.05                                 | 512 MB    | 5 GB         |
 | <img width="16" height="16" src="https://archlinux.org/static/favicon.png" /> Arch                                                                                                                                                                         | 滚动                                  | 512 MB    | 5 GB         |
 | <img width="16" height="16" src="https://www.gentoo.org/assets/img/logo/gentoo-g.png" /> Gentoo                                                                                                                                                            | 滚动                                  | 512 MB    | 5 GB         |
 | <img width="16" height="16" src="https://blogs.windows.com/wp-content/uploads/prod/2022/09/cropped-Windows11IconTransparent512-32x32.png" /> Windows (DD)                                                                                                  | 任何                                  | 512 MB    | 取决于镜像   |
@@ -153,6 +154,7 @@ bash reinstall.sh centos      9
                   opencloudos 8|9
                   oracle      7|8|9
                   fedora      39|40
+                  nixos       24.05
                   debian      9|10|11|12
                   openeuler   20.03|22.03|24.03
                   alpine      3.17|3.18|3.19|3.20
@@ -295,7 +297,7 @@ Windows Server 2022 SERVERDATACENTER
 ## 如何修改脚本
 
 1. Fork 本仓库
-2. 修改 `reinstall.sh` 和 `reinstall.bat` 开头的 `confhome`
+2. 修改 `reinstall.sh` 和 `reinstall.bat` 开头的 `confhome` 和 `confhome_cn`
 3. 修改其它代码
 
 ## 感谢

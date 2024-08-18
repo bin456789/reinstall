@@ -340,7 +340,7 @@ EOF
 }
 
 umount_all() {
-    dirs="/mnt /os /iso /wim /installer /nbd /nbd-boot /nbd-efi /root"
+    dirs="/mnt /os /iso /wim /installer /nbd /nbd-boot /nbd-efi /root /nix"
     regex=$(echo "$dirs" | sed 's, ,|,g')
     if mounts=$(mount | grep -Ew "$regex" | awk '{print $3}' | tac); then
         for mount in $mounts; do
@@ -359,6 +359,7 @@ clear_previous() {
         dmsetup remove_all
     fi
     disconnect_qcow
+    rc-service --ifexists --ifstarted nix-daemon stop
     swapoff -a
     umount_all
 
@@ -820,6 +821,164 @@ EOF
     done
 }
 
+space_to_newline() {
+    sed 's/ /\n/g'
+}
+
+trim() {
+    sed -e 's/^[[:space:]]*//' -e 's/[[:space:]]*$//'
+}
+
+quote_word() {
+    sed -E 's/([^[:space:]]+)/"\1"/g'
+}
+
+quote_line() {
+    awk '{print "\""$0"\""}'
+}
+
+add_space() {
+    space_count=$1
+
+    spaces=$(printf '%*s' "$space_count" '')
+    sed "s/^/$spaces/"
+}
+
+# 不够严谨，谨慎使用
+nix_replace() {
+    local key=$1
+    local value=$2
+    local type=$3
+    local file=$4
+    local key_ value_
+
+    key_=$(echo "$key" | sed 's \. \\\. g') # . 改成 \.
+
+    if [ "$type" = array ]; then
+        local value_="[ $value ]"
+    fi
+
+    sed -i "s/$key_ =.*/$key = $value_;/" "$file"
+}
+
+create_nixos_network_config() {
+    conf_file=$1
+    true >$conf_file
+
+    # 头部
+    cat <<EOF >>$conf_file
+networking = {
+  usePredictableInterfaceNames = false;
+EOF
+
+    for ethx in $(get_eths); do
+        # ipv4
+        if is_staticv4; then
+            get_netconf_to ipv4_addr
+            get_netconf_to ipv4_gateway
+            IFS=/ read -r address prefix < <(echo "$ipv4_addr")
+            cat <<EOF >>$conf_file
+  interfaces.$ethx.ipv4.addresses = [
+    {
+      address = "$address";
+      prefixLength = $prefix;
+    }
+  ];
+  defaultGateway = {
+    address = "$ipv4_gateway";
+    interface = "$ethx";
+  };
+EOF
+        fi
+
+        # ipv6
+        if is_staticv6; then
+            get_netconf_to ipv6_addr
+            get_netconf_to ipv6_gateway
+            IFS=/ read -r address prefix < <(echo "$ipv6_addr")
+            cat <<EOF >>$conf_file
+  interfaces.$ethx.ipv6.addresses = [
+    {
+      address = "$address";
+      prefixLength = $prefix;
+    }
+  ];
+  defaultGateway = {
+     address = "$ipv6_gateway";
+     interface = "$ethx";
+  };
+EOF
+        fi
+    done
+
+    # 全局 dns
+    need_set_dns=false
+    for ethx in $(get_eths); do
+        if is_staticv4 || is_staticv6 || is_need_manual_set_dnsv6; then
+            need_set_dns=true
+            break
+        fi
+    done
+
+    if $need_set_dns; then
+        cat <<EOF >>$conf_file
+  nameservers = [
+$(get_current_dns | quote_line | add_space 4)
+  ];
+EOF
+    fi
+
+    # 尾部
+    cat <<EOF >>$conf_file
+};
+EOF
+
+    # nixos 默认网络管理器是 dhcpcd
+    # 但配置静态 ip 时用的是脚本
+    # /nix/store/qcr1xxjdxcrnwqwrgysqpxx2aibp9fdl-unit-script-network-addresses-eth0-start/bin/network-addresses-eth0-start
+    # ...
+    # if out=$(ip addr replace "181.x.x.x/24" dev "eth0" 2>&1); then
+    #   echo "done"
+    # else
+    #   echo "'ip addr replace "181.x.x.x/24" dev "eth0"' failed: $out"
+    #   exit 1
+    # fi
+    # ...
+
+    # 禁用 ra
+    for ethx in $(get_eths); do
+        if should_disable_ra_slaac; then
+            mode=1
+            if [ "$mode" = 1 ]; then
+                cat <<EOF >>$conf_file
+boot.kernel.sysctl."net.ipv6.conf.$ethx.accept_ra" = false;
+EOF
+            elif [ "$mode" = 2 ]; then
+                # nixos 配置静态 ip 时用的是脚本
+                # 好像因此不起作用
+                cat <<EOF >>$conf_file
+networking.dhcpcd.extraConfig =
+  ''
+    interface $ethx
+      ipv6ra_noautoconf
+  '';
+EOF
+            elif [ "$mode" = 3 ]; then
+                # 暂时没用到 networkd
+                cat <<EOF >>$conf_file
+systemd.network.networks.$ethx = {
+   matchConfig.Name = "$ethx";
+   networkConfig = {
+     IPv6AcceptRA = false;
+   };
+ };
+EOF
+            fi
+        fi
+    done
+
+}
+
 install_alpine() {
     hack_lowram_modloop=true
     hack_lowram_swap=true
@@ -984,6 +1143,166 @@ get_build_threads() {
     threads_by_ram=$(($(get_approximate_ram_size) / threads_per_mb))
     [ $threads_by_ram -eq 0 ] && threads_by_ram=1
     min $threads_by_ram $threads_by_core
+}
+
+install_nixos() {
+    os_dir=/os
+    keep_swap=true
+
+    # 挂载分区，创建 swapfile
+    mount_part_basic_layout /os /os/efi
+    need_ram=2048
+    swap_size=$(get_need_swap_size $need_ram)
+    create_swap_if_ram_less_than $need_ram /os/swapfile
+
+    # 步骤
+    # 1. 安装 nix (nix-xxx)
+    # 2. 用 nix 安装 nixos-install-tools (nixos-xxx)
+    # 3. 运行 nixos-generate-config 生成配置 + 编辑
+    # 4. 运行 nixos-install
+
+    # nix 安装方式                                    分支          版本
+    # apk add nix                                    3.20         2.22.0   #  nix 本体跟正常的软件一样，不在 /nix/store 里面
+    # env -iA nixpkgs.nix                            24.05        2.18.5
+    # sh <(curl -L https://nixos.org/nix/install)   unstable?     2.24.2
+
+    # 安装 nix
+    mkdir -p /os/nix /nix
+    mount --bind /os/nix /nix
+    apk add nix
+
+    # TODO: 有时安装系统时会出错，卡在
+    # copying path '/nix/store/gcbrjlfm5h21ybf1h2lfq773zafjmzjr-curl-8.7.1-man' from 'https://cache.nixos.org'...
+    # 但是 cpu 空载
+
+    # 设置 nix 镜像和线程
+    # alpine 默认设置了 4 线程
+    # https://gitlab.alpinelinux.org/alpine/aports/-/blob/master/community/nix/APKBUILD#L125
+    sed -i '/max-jobs/d' /etc/nix/nix.conf
+    echo "max-jobs = $(get_build_threads 2048)" >>/etc/nix/nix.conf
+    if is_in_china; then
+        echo "substituters = $mirror/store" >>/etc/nix/nix.conf
+    fi
+    rc-service nix-daemon restart
+
+    # 添加 channel
+    # shellcheck disable=SC2154
+    nix-channel --add $mirror/nixos-$releasever nixpkgs
+    nix-channel --update
+
+    # 安装 channal 的 nix
+    # shellcheck source=/dev/null
+    if false; then
+        nix-env -iA nixpkgs.nix
+        . ~/.nix-profile/etc/profile.d/nix.sh
+    fi
+
+    # 安装 nixos-install-tools
+    nix-env -iA nixpkgs.nixos-install-tools
+
+    # 添加 nix-env 安装的软件到 PATH
+    PATH="/root/.nix-profile/bin:$PATH"
+
+    # 生成配置
+    nixos-generate-config --root /os
+
+    # configuration.nix
+    if is_efi; then
+        nix_bootloader="boot.loader.efi.efiSysMountPoint = \"/efi\";"
+    else
+        nix_bootloader="boot.loader.grub.device = \"/dev/$xda\";"
+    fi
+
+    if is_in_china; then
+        nix_substituters="nix.settings.substituters = lib.mkForce [ \"$mirror/store\" ];"
+    fi
+
+    if [ -e /os/swapfile ] && $keep_swap; then
+        nix_swap="swapDevices = [{ device = \"/swapfile\"; size = $swap_size; }];"
+    fi
+
+    # TODO: 准确匹配网卡，添加 udev 或者直接配置 networkd 匹配 mac
+    create_nixos_network_config /tmp/nixos_network_config.nix
+
+    # sed -e '1s/^/\n/' -e '$a\\' # 也可以在前后添加空行
+    {
+        echo # 前面的空行
+        cat <<EOF | add_space 2 | del_empty_lines
+############### Add by reinstall.sh ###############
+$nix_bootloader
+$nix_swap
+$nix_substituters
+boot.kernelParams = [ $(get_ttys console= | quote_word) ];
+services.openssh.enable = true;
+services.openssh.settings.PermitRootLogin = "yes";
+$(cat /tmp/nixos_network_config.nix)
+###################################################
+EOF
+        echo # 后面的空行
+    } | insert_into_file /os/etc/nixos/configuration.nix before "networking.hostName" -F
+
+    # hardware-configuration.nix
+    # 在 vultr efi 机器上，nixos-generate-config 不会添加 virtio_pci
+    # 导致 virtio_blk 用不了，启动时 initrd 找不到系统分区
+    # 可能由于 alpine 的 virtio_pci 编译进内核而不是模块，所以不会添加到配置文件
+    olds=$(
+        grep -F 'boot.initrd.availableKernelModules' /os/etc/nixos/hardware-configuration.nix |
+            cut -d= -f2 | tr -d '"[];' | xargs
+    )
+    alls="$olds"
+    for mod in ata_piix uhci_hcd sr_mod nvme \
+        virtio_pci virtio_blk virtio_scsi \
+        xen_blkfront xen_scsifront \
+        hv_storvsc \
+        vmw_pvscsi \
+        mptspi; do
+        if [ -d /sys/module/$mod ] && ! echo "$olds" | grep -wq "$mod"; then
+            echo "Adding modules: $mod"
+            alls="$alls $mod"
+        fi
+    done
+    # 去除多余的空格
+    alls=$(echo "$alls" | xargs)
+
+    # boot.initrd.availableKernelModules = [ "ata_piix" "uhci_hcd" "virtio_pci" "sr_mod" "virtio_blk" ];
+    nix_replace \
+        boot.initrd.availableKernelModules \
+        "$(echo "$alls" | quote_word)" \
+        array \
+        /os/etc/nixos/hardware-configuration.nix
+
+    # 安装系统
+    nixos-install --root /os --no-root-passwd -j "$(get_build_threads 2048)"
+
+    # 设置密码
+    echo "root:$PASSWORD" | nixos-enter --root /os -- \
+        /run/current-system/sw/bin/chpasswd
+
+    # 设置 channel
+    if is_in_china; then
+        nixos-enter --root /os -- \
+            /run/current-system/sw/bin/nix-channel \
+            --add https://mirrors.cernet.edu.cn/nix-channels/nixos-$releasever nixos
+    fi
+
+    # 清理
+    nix-env -e '*'
+    # /nix/var/nix/profiles/system/sw/bin/nix-collect-garbage -d
+    /nix/var/nix/profiles/system/sw/bin/nixos-enter --root /os -- /run/current-system/sw/bin/nix-collect-garbage -d
+
+    # 删除 nix
+    umount /nix
+    apk del nix
+
+    # swapfile
+    if [ -e /os/swapfile ]; then
+        if $keep_swap; then
+            :
+        else
+            swapoff -a
+            rm -rf /os/swapfile
+        fi
+    fi
 }
 
 install_arch_gentoo() {
@@ -1442,7 +1761,7 @@ create_part() {
             mkfs.ext4 -E nodiscard -F -L os /dev/$xda*1        #1 os
             mkfs.ext4 -E nodiscard -F -L installer /dev/$xda*2 #2 installer
         fi
-    elif [ "$distro" = alpine ] || [ "$distro" = arch ] || [ "$distro" = gentoo ]; then
+    elif [ "$distro" = alpine ] || [ "$distro" = arch ] || [ "$distro" = gentoo ] || [ "$distro" = nixos ]; then
         if is_efi; then
             # efi
             parted /dev/$xda -s -- \
@@ -3775,6 +4094,10 @@ else
     arch | gentoo)
         create_part
         install_arch_gentoo
+        ;;
+    nixos)
+        create_part
+        install_nixos
         ;;
     *)
         create_part
