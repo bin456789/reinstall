@@ -1,4 +1,5 @@
-#!/bin/bash
+#!/usr/bin/env bash
+# nixos 默认的配置不会生成 /bin/bash
 # shellcheck disable=SC2086
 
 set -eE

@@ -891,9 +891,9 @@ EOF
       prefixLength = $prefix;
     }
   ];
-  defaultGateway = {
-     address = "$ipv6_gateway";
-     interface = "$ethx";
+  defaultGateway6 = {
+    address = "$ipv6_gateway";
+    interface = "$ethx";
   };
 EOF
         fi
@@ -1133,9 +1133,26 @@ get_build_threads() {
     min $threads_by_ram $threads_by_core
 }
 
+add_newline() {
+    # shellcheck disable=SC1003
+    case "$1" in
+    head | start) sed -e '1s/^/\n/' ;;
+    tail | end) sed -e '$a\\' ;;
+    both) sed -e '1s/^/\n/' -e '$a\\' ;;
+    esac
+}
+
 install_nixos() {
     os_dir=/os
     keep_swap=true
+
+    show_nixos_config() {
+        echo
+        cat -n /os/etc/nixos/configuration.nix
+        echo
+        cat -n /os/etc/nixos/hardware-configuration.nix
+        echo
+    }
 
     # 挂载分区，创建 swapfile
     mount_part_basic_layout /os /os/efi
@@ -1191,10 +1208,12 @@ install_nixos() {
     # 添加 nix-env 安装的软件到 PATH
     PATH="/root/.nix-profile/bin:$PATH"
 
-    # 生成配置
+    # 生成配置并显示
     nixos-generate-config --root /os
+    echo "Original NixOS Configuration:"
+    show_nixos_config
 
-    # configuration.nix
+    # 修改 configuration.nix
     if is_efi; then
         nix_bootloader="boot.loader.efi.efiSysMountPoint = \"/efi\";"
     else
@@ -1212,10 +1231,7 @@ install_nixos() {
     # TODO: 准确匹配网卡，添加 udev 或者直接配置 networkd 匹配 mac
     create_nixos_network_config /tmp/nixos_network_config.nix
 
-    # sed -e '1s/^/\n/' -e '$a\\' # 也可以在前后添加空行
-    {
-        echo # 前面的空行
-        cat <<EOF | add_space 2 | del_empty_lines
+    cat <<EOF |
 ############### Add by reinstall.sh ###############
 $nix_bootloader
 $nix_swap
@@ -1226,19 +1242,21 @@ services.openssh.settings.PermitRootLogin = "yes";
 $(cat /tmp/nixos_network_config.nix)
 ###################################################
 EOF
-        echo # 后面的空行
-    } | insert_into_file /os/etc/nixos/configuration.nix before "networking.hostName" -F
+        add_space 2 | del_empty_lines | add_newline both |
+        insert_into_file /os/etc/nixos/configuration.nix before "networking.hostName" -F
 
-    # hardware-configuration.nix
+    # 修改 hardware-configuration.nix
     # 在 vultr efi 机器上，nixos-generate-config 不会添加 virtio_pci
     # 导致 virtio_blk 用不了，启动时 initrd 找不到系统分区
-    # 可能由于 alpine 的 virtio_pci 编译进内核而不是模块，所以不会添加到配置文件
+    # 可能由于 alpine 的 virtio_pci 编译进内核而不是模块
+    # 因此 nixos-generate-config 不会添加 virtio_pci 到配置文件
     olds=$(
         grep -F 'boot.initrd.availableKernelModules' /os/etc/nixos/hardware-configuration.nix |
             cut -d= -f2 | tr -d '"[];' | xargs
     )
     alls="$olds"
-    for mod in ata_piix uhci_hcd sr_mod nvme \
+    # https://github.com/search?q=repo%3ANixOS%2Fnixpkgs+availableKernelModules&type=code
+    for mod in ahci ata_piix uhci_hcd sr_mod nvme \
         virtio_pci virtio_blk virtio_scsi \
         xen_blkfront xen_scsifront \
         hv_storvsc \
@@ -1259,6 +1277,10 @@ EOF
         array \
         /os/etc/nixos/hardware-configuration.nix
 
+    # 显示修改后的配置
+    echo "Modified NixOS Configuration:"
+    show_nixos_config
+
     # 安装系统
     nixos-install --root /os --no-root-passwd -j "$(get_build_threads 2048)"
 
@@ -1276,7 +1298,8 @@ EOF
     # 清理
     nix-env -e '*'
     # /nix/var/nix/profiles/system/sw/bin/nix-collect-garbage -d
-    /nix/var/nix/profiles/system/sw/bin/nixos-enter --root /os -- /run/current-system/sw/bin/nix-collect-garbage -d
+    /nix/var/nix/profiles/system/sw/bin/nixos-enter --root /os -- \
+        /run/current-system/sw/bin/nix-collect-garbage -d
 
     # 删除 nix
     umount /nix
@@ -1291,6 +1314,9 @@ EOF
             rm -rf /os/swapfile
         fi
     fi
+
+    # 重新显示配置，方便查看
+    show_nixos_config
 }
 
 install_arch_gentoo() {
