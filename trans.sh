@@ -3,7 +3,7 @@
 # shellcheck disable=SC2086,SC3047,SC3036,SC3010,SC3001
 # alpine 默认使用 busybox ash
 
-# 命令出错终止运行，将进入到登录界面，防止失联
+# 出错后停止运行，将进入到登录界面，防止失联
 set -eE
 
 # debian 安装版、ubuntu 安装版、el/ol 安装版不使用该密码
@@ -35,12 +35,7 @@ trap_err() {
 }
 
 is_run_from_locald() {
-    [[ "$0" = /etc/local.d/* ]]
-}
-
-should_hold_after_boot() {
-    # shellcheck disable=SC2154
-    [ "$hold" = 1 ] # && is_run_from_locald
+    [[ "$0" = "/etc/local.d/*" ]]
 }
 
 add_community_repo() {
@@ -299,13 +294,6 @@ find_xda() {
 get_all_disks() {
     # shellcheck disable=SC2010
     ls /sys/block/ | grep -Ev '^(loop|sr|nbd)'
-}
-
-setup_tty_and_log() {
-    # 显示输出到前台
-    # script -f /dev/tty0
-    dev_ttys=$(get_ttys /dev/)
-    exec > >(tee -a $dev_ttys /reinstall.log) 2>&1
 }
 
 extract_env_from_cmdline() {
@@ -3980,26 +3968,129 @@ EOF
     cat "$grub_cfg"
 }
 
+trans() {
+    mod_motd
+    cat /proc/cmdline
+    clear_previous
+    add_community_repo
+
+    # 需要在重新分区之前，找到主硬盘
+    # 重新运行脚本时，可指定 xda
+    # xda=sda ash trans.start
+    if [ -z "$xda" ]; then
+        find_xda
+    fi
+
+    if [ "$distro" != "alpine" ]; then
+        setup_nginx_if_enough_ram
+        setup_udev_util_linux
+    fi
+
+    # dd qemu 切换成云镜像模式，暂时没用到
+    if [ "$distro" = "dd" ] && [ "$img_type" = "qemu" ]; then
+        # 移到 reinstall.sh ?
+        distro=any
+        cloud_image=1
+    fi
+
+    if is_use_cloud_image; then
+        case "$img_type" in
+        qemu)
+            create_part
+            download_qcow
+            case "$distro" in
+            centos | alma | rocky | oracle | redhat | anolis | opencloudos | openeuler)
+                # 这几个系统云镜像系统盘是8~9g xfs，而我们的目标是能在5g硬盘上运行，因此改成复制系统文件
+                install_qcow_by_copy
+                ;;
+            ubuntu)
+                # 24.04 云镜像有 boot 分区（在系统分区之前），因此不直接 dd 云镜像
+                install_qcow_by_copy
+                ;;
+            *)
+                # debian fedora opensuse arch gentoo any
+                dd_qcow
+                resize_after_install_cloud_image
+                modify_os_on_disk linux
+                ;;
+            esac
+            ;;
+        gzip | xz)
+            # 暂时没用到 gzip xz 格式的云镜像
+            dd_gzip_xz
+            resize_after_install_cloud_image
+            modify_os_on_disk linux
+            ;;
+        esac
+    elif [ "$distro" = "dd" ]; then
+        case "$img_type" in
+        gzip | xz)
+            dd_gzip_xz
+            modify_os_on_disk windows
+            ;;
+        qemu) # dd qemu 不可能到这里，因为上面已处理
+            ;;
+        esac
+    else
+        # 安装模式
+        case "$distro" in
+        alpine)
+            install_alpine
+            ;;
+        arch | gentoo)
+            create_part
+            install_arch_gentoo
+            ;;
+        nixos)
+            create_part
+            install_nixos
+            ;;
+        *)
+            create_part
+            mount_part_for_iso_installer
+            case "$distro" in
+            centos | alma | rocky | fedora | ubuntu | redhat) install_redhat_ubuntu ;;
+            windows) install_windows ;;
+            esac
+            ;;
+        esac
+    fi
+
+    # 需要用到 lsblk efibootmgr ，只要 1M 左右容量
+    # 因此 alpine 不单独处理
+    if is_efi; then
+        del_invalid_efi_entry
+        add_fallback_efi_to_nvram
+    fi
+
+    echo 'done'
+    # 让 web 输出全部内容
+    sleep 5
+}
+
 # 脚本入口
 # debian initrd 会寻找 main
 # 并调用本文件的 create_ifupdown_config 方法
 : main
 
-# 无参数运行
-# 复制本脚本到 /trans.sh，除非路径相同
+# 复制脚本
 # 用于打印错误或者再次运行
+# 路径相同则不用复制
+# 重点：要在删除脚本之前复制
 if ! [ "$(readlink -f "$0")" = /trans.sh ]; then
     cp -f "$0" /trans.sh
 fi
+trap 'trap_err $LINENO $?' ERR
 
-# 还原改动，不然本脚本会被复制到新系统
+# 删除本脚本，不然会被复制到新系统
 rm -f /etc/local.d/trans.start
 rm -f /etc/runlevels/default/local
 
-trap 'trap_err $LINENO $?' ERR
+# 提取变量
 extract_env_from_cmdline
 
-# 带参数运行，则重新下载脚本
+# 带参数运行部分
+# 重新下载并 exec 运行新脚本
 if [ "$1" = "update" ]; then
     # shellcheck disable=SC2154
     wget -O /trans.sh "$confhome/trans.sh"
@@ -4007,6 +4098,7 @@ if [ "$1" = "update" ]; then
     exec /trans.sh
 fi
 
+# 无参数运行部分
 # 允许 ramdisk 使用所有内存，默认是 50%
 mount / -o remount,size=100%
 
@@ -4018,112 +4110,35 @@ hwclock -s || true
 echo "root:$PASSWORD" | chpasswd
 printf '\nyes' | setup-sshd
 
-if should_hold_after_boot; then
-    exit
+# shellcheck disable=SC2154
+if [ "$hold" = 1 ]; then
+    if is_run_from_locald; then
+        exit
+    fi
 fi
 
-mod_motd
-setup_tty_and_log
-cat /proc/cmdline
-clear_previous
-add_community_repo
+# 正式运行重装
+# shellcheck disable=SC2046,SC2194
+case 1 in
+1)
+    # ChatGPT 说这种性能最高
+    exec > >(exec tee -a $(get_ttys /dev/) /reinstall.log) 2>&1
+    trans
+    ;;
+2)
+    exec > >(tee -a $(get_ttys /dev/) /reinstall.log) 2>&1
+    trans
+    ;;
+3)
+    trans 2>&1 | tee -a $(get_ttys /dev/) /reinstall.log
+    ;;
+esac
 
-# 需要在重新分区之前，找到主硬盘
-# 重新运行脚本时，可指定 xda
-# xda=sda ash trans.start
-if [ -z "$xda" ]; then
-    find_xda
-fi
-
-if [ "$distro" != "alpine" ]; then
-    setup_nginx_if_enough_ram
-    setup_udev_util_linux
-fi
-
-# dd qemu 切换成云镜像模式，暂时没用到
-if [ "$distro" = "dd" ] && [ "$img_type" = "qemu" ]; then
-    # 移到 reinstall.sh ?
-    distro=any
-    cloud_image=1
-fi
-
-if is_use_cloud_image; then
-    case "$img_type" in
-    qemu)
-        create_part
-        download_qcow
-        case "$distro" in
-        centos | alma | rocky | oracle | redhat | anolis | opencloudos | openeuler)
-            # 这几个系统云镜像系统盘是8~9g xfs，而我们的目标是能在5g硬盘上运行，因此改成复制系统文件
-            install_qcow_by_copy
-            ;;
-        ubuntu)
-            # 24.04 云镜像有 boot 分区（在系统分区之前），因此不直接 dd 云镜像
-            install_qcow_by_copy
-            ;;
-        *)
-            # debian fedora opensuse arch gentoo any
-            dd_qcow
-            resize_after_install_cloud_image
-            modify_os_on_disk linux
-            ;;
-        esac
-        ;;
-    gzip | xz)
-        # 暂时没用到 gzip xz 格式的云镜像
-        dd_gzip_xz
-        resize_after_install_cloud_image
-        modify_os_on_disk linux
-        ;;
-    esac
-elif [ "$distro" = "dd" ]; then
-    case "$img_type" in
-    gzip | xz)
-        dd_gzip_xz
-        modify_os_on_disk windows
-        ;;
-    qemu) # dd qemu 不可能到这里，因为上面已处理
-        ;;
-    esac
-else
-    # 安装模式
-    case "$distro" in
-    alpine)
-        install_alpine
-        ;;
-    arch | gentoo)
-        create_part
-        install_arch_gentoo
-        ;;
-    nixos)
-        create_part
-        install_nixos
-        ;;
-    *)
-        create_part
-        mount_part_for_iso_installer
-        case "$distro" in
-        centos | alma | rocky | fedora | ubuntu | redhat) install_redhat_ubuntu ;;
-        windows) install_windows ;;
-        esac
-        ;;
-    esac
-fi
-
-# 需要用到 lsblk efibootmgr ，只要 1M 左右容量
-# 因此 alpine 不单独处理
-if is_efi; then
-    del_invalid_efi_entry
-    add_fallback_efi_to_nvram
-fi
-
-sync
-echo 'done'
 if [ "$hold" = 2 ]; then
     exit
 fi
 
-cd /
-# 让 web 输出全部内容
-sleep 5
+# swapoff -a
+# umount ?
+sync
 reboot

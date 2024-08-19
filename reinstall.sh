@@ -1061,6 +1061,10 @@ setos() {
         if is_efi; then
             install_pkg hexdump $img_type
 
+            # openwrt 镜像 efi part type 不是 esp
+            # 因此改成检测 fat?
+            # https://downloads.openwrt.org/releases/23.05.3/targets/x86/64/openwrt-23.05.3-x86-64-generic-ext4-combined-efi.img.gz
+
             # od 在 coreutils 里面，好像要配合 tr 才能删除空格
             # hexdump 在 util-linux / bsdmainutils 里面
             # xxd 要单独安装，el 在 vim-common 里面
@@ -2186,7 +2190,14 @@ build_extra_cmdline() {
 }
 
 echo_tmp_ttys() {
-    curl -L $confhome/ttys.sh | sh -s "console="
+    if false; then
+        curl -L $confhome/ttys.sh | sh -s "console="
+    else
+        case "$basearch" in
+        x86_64) echo "console=ttyS0,115200n8 console=tty0" ;;
+        aarch64) echo "console=ttyS0,115200n8 console=ttyAMA0,115200n8 console=tty0" ;;
+        esac
+    fi
 }
 
 get_entry_name() {
@@ -2229,11 +2240,10 @@ build_nextos_cmdline() {
         else
             # debian arm 在没有ttyAMA0的机器上（aws t4g），最少要设置一个tty才能启动
             # 只设置tty0也行，但安装过程ttyS0没有显示
-            nextos_cmdline+=" console=ttyAMA0,115200 console=ttyS0,115200 console=tty0"
+            nextos_cmdline+=" $(echo_tmp_ttys)"
         fi
     else
-        # nextos_cmdline+=" $(echo_tmp_ttys)"
-        nextos_cmdline+=" console=ttyAMA0,115200 console=ttyS0,115200 console=tty0"
+        nextos_cmdline+=" $(echo_tmp_ttys)"
     fi
     # nextos_cmdline+=" mem=256M"
     # nextos_cmdline+=" lowmem=+1"
@@ -2279,9 +2289,9 @@ mod_initrd_debian_kali() {
 
     # hack 2
     # 修改 /var/lib/dpkg/info/netcfg.postinst 运行我们的脚本
-    # shellcheck disable=SC1091,SC2317
     netcfg() {
         #!/bin/sh
+        # shellcheck source=/dev/null
         . /usr/share/debconf/confmodule
         db_progress START 0 5 debian-installer/netcfg/title
 
