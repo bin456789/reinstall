@@ -292,7 +292,7 @@ if $ipv4_has_internet && ! { [ -e /etc/resolv.conf ] && grep -F '.' /etc/resolv.
     echo "nameserver $ipv4_dns1" >>/etc/resolv.conf
     echo "nameserver $ipv4_dns2" >>/etc/resolv.conf
 fi
-if $ipv4_has_internet && ! { [ -e /etc/resolv.conf ] && grep -F ':' /etc/resolv.conf; }; then
+if $ipv6_has_internet && ! { [ -e /etc/resolv.conf ] && grep -F ':' /etc/resolv.conf; }; then
     echo "nameserver $ipv6_dns1" >>/etc/resolv.conf
     echo "nameserver $ipv6_dns2" >>/etc/resolv.conf
 fi
