@@ -309,6 +309,14 @@ extract_env_from_cmdline() {
     done
 }
 
+ensure_modloop_started() {
+    if ! rc-service modloop status; then
+        if ! retry 5 rc-service modloop start; then
+            error_and_exit "modloop failed to start."
+        fi
+    fi
+}
+
 mod_motd() {
     # 安装后 alpine 后要恢复默认
     # 自动安装失败后，可能手动安装 alpine，因此无需判断 $distro
@@ -3996,6 +4004,12 @@ EOF
 
 trans() {
     mod_motd
+
+    # 先检查 modloop 是否正常
+    # 防止格式化硬盘后，缺少 ext4 模块导致 mount 失败
+    # https://github.com/bin456789/reinstall/issues/136
+    ensure_modloop_started
+
     cat /proc/cmdline
     clear_previous
     add_community_repo
