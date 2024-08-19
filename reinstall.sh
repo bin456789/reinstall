@@ -1355,12 +1355,37 @@ install_pkg() {
     is_in_windows && return
 
     find_pkg_mgr() {
-        if [ -z "$pkg_mgr" ]; then
-            for mgr in dnf yum apt pacman zypper emerge apk opkg nix-env; do
-                is_have_cmd $mgr && pkg_mgr=$mgr && return
+        [ -n "$pkg_mgr" ] && return
+
+        # 查找方法1: 通过 ID_LIKE / ID
+        # 因为可能装了多种包管理器
+        if [ -f /etc/os-release ]; then
+            # shellcheck source=/dev/null
+            . /etc/os-release
+            set -- $ID_LIKE $ID
+            # https://github.com/chef/os_release
+            while [ $# -gt 0 ]; do
+                case "$1" in
+                fedora | centos | rhel) is_have_cmd dnf && pkg_mgr=dnf || pkg_mgr=yum ;;
+                debian | ubuntu) pkg_mgr=apt ;;
+                opensuse | suse) pkg_mgr=zypper ;;
+                alpine) pkg_mgr=apk ;;
+                arch) pkg_mgr=pacman ;;
+                gentoo) pkg_mgr=emerge ;;
+                openwrt) pkg_mgr=opkg ;;
+                nixos) pkg_mgr=nix-env ;;
+                esac
+                [ -n "$pkg_mgr" ] && return
+                shift
             done
-            return 1
         fi
+
+        # 查找方法 2
+        for mgr in dnf yum apt pacman zypper emerge apk opkg nix-env; do
+            is_have_cmd $mgr && pkg_mgr=$mgr && return
+        done
+
+        return 1
     }
 
     cmd_to_pkg() {
