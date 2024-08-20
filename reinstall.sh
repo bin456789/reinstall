@@ -14,6 +14,9 @@ export LC_ALL=C
 # 不要漏了最后的 $PATH，否则会找不到 windows 系统程序例如 diskpart
 export PATH=/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin:$PATH
 
+# 记录日志
+exec > >(exec tee /reinstall.log) 2>&1
+
 this_script=$(readlink -f "$0")
 trap 'trap_err $LINENO $?' ERR
 
@@ -36,7 +39,7 @@ Usage: $reinstall____ centos      9
                       anolis      7|8
                       alma        8|9
                       rocky       8|9
-                      redhat      8|9   --img='http://xxx.qcow2'
+                      redhat      8|9   --img='http://xxx.com/xxx.qcow2'
                       opencloudos 8|9
                       oracle      7|8|9
                       fedora      39|40
@@ -49,9 +52,10 @@ Usage: $reinstall____ centos      9
                       kali
                       arch
                       gentoo
-                      dd          --img='http://xxx.gzip' or .xz
-                      windows     --image-name='windows xxx yyy' --lang=xx-yy
-                      windows     --image-name='windows xxx yyy' --iso='http://xxx.iso'
+                      dd          --img='http://xxx.com/xxx.xz'
+                      dd          --img='http://xxx.com/xxx.gzip'
+                      windows     --image-name='windows xxx yyy'  --lang=xx-yy
+                      windows     --image-name='windows xxx yyy'  --iso='http://xxx.com/xxx.iso'
                       netboot.xyz
 
 Manual: https://github.com/bin456789/reinstall
@@ -1363,10 +1367,9 @@ install_pkg() {
         if [ -f /etc/os-release ]; then
             # shellcheck source=/dev/null
             . /etc/os-release
-            set -- $ID_LIKE $ID
-            # https://github.com/chef/os_release
-            while [ $# -gt 0 ]; do
-                case "$1" in
+            for id in $ID_LIKE $ID; do
+                # https://github.com/chef/os_release
+                case "$id" in
                 fedora | centos | rhel) is_have_cmd dnf && pkg_mgr=dnf || pkg_mgr=yum ;;
                 debian | ubuntu) pkg_mgr=apt ;;
                 opensuse | suse) pkg_mgr=zypper ;;
@@ -1377,7 +1380,6 @@ install_pkg() {
                 nixos) pkg_mgr=nix-env ;;
                 esac
                 [ -n "$pkg_mgr" ] && return
-                shift
             done
         fi
 

@@ -2,22 +2,22 @@
 
 # reinstall
 
-[![Codacy](https://img.shields.io/codacy/grade/dc679a17751448628fe6d8ac35e26eed?logo=Codacy&label=Codacy)](https://app.codacy.com/gh/bin456789/reinstall/dashboard)
-[![CodeFactor](https://img.shields.io/codefactor/grade/github/bin456789/reinstall?logo=CodeFactor&logoColor=white&label=CodeFactor)](https://www.codefactor.io/repository/github/bin456789/reinstall)
-[![Lines of Code](https://aschey.tech/tokei/github/bin456789/reinstall?category=code&label=Lines%20of%20Code)](https://github.com/aschey/vercel-tokei)
-<!-- [![Lines of Code](https://tokei.rs/b1/github/bin456789/reinstall?category=code&style=flat&label=Lines%20of%20Code)](https://github.com/XAMPPRocky/tokei_rs) -->
+[![Codacy](https://img.shields.io/codacy/grade/dc679a17751448628fe6d8ac35e26eed?logo=Codacy&label=Codacy&style=flat-square)](https://app.codacy.com/gh/bin456789/reinstall/dashboard)
+[![CodeFactor](https://img.shields.io/codefactor/grade/github/bin456789/reinstall?logo=CodeFactor&logoColor=white&label=CodeFactor&style=flat-square)](https://www.codefactor.io/repository/github/bin456789/reinstall)
+[![Lines of Code](https://aschey.tech/tokei/github/bin456789/reinstall?category=code&label=Lines%20of%20Code&style=flat-square)](https://github.com/aschey/vercel-tokei)
 
-Reinstall server with one-click [中文](README.md)
+One-Click Script to Reinstall System [中文](README.md)
 
 ## Highlights
 
-- Support installation of 17 common Linux distributions.
-- Support for installing Windows using the official original ISO. The script can automatically search for the ISO and drivers.
-- Support reinstallation in any direction, meaning `Linux to Linux`, `Linux to Win`, `Win to Win`, `Win to Linux`.
-- Specifically tailored for low-spec machines, addressing insufficient memory that prevents network installation.
-- Automatically detect dynamic and static IPv4 / IPv6, eliminating the need to fill in IP / subnet mask / gateway.
-- Support ARM, BIOS, EFI boot, with original system supporting LVM, BTRFS.
-- No homemade packages included, all resources obtained in real-time from source sites.
+- Supports installation of 17 common Linux distributions
+- Supports installation of official Windows ISO, automatically finds ISO links, and integrates virtual machine drivers
+- Supports installation in any direction, i.e., `Linux to Linux`, `Linux to Windows`, `Windows to Windows`, `Windows to Linux`
+- No need to input IP parameters; automatically recognizes dynamic and static IPs, supports `/32`, `/128`, `gateway outside subnet`, `pure IPv6`, `dual NIC` and other special network configurations
+- Specially optimized for low-spec servers, requires less memory than the official netboot
+- Uses partition table ID to identify hard drives throughout the process, ensuring no wrong disk is written
+- Supports BIOS and EFI boot, and ARM architecture
+- No homemades image included, all resources are obtained in real-time from source sites
 - Includes many comments.
 
 ## System Requirements
@@ -51,17 +51,6 @@ Reinstall server with one-click [中文](README.md)
 > ❌ This script does not support OpenVZ or LXC virtual machines.
 >
 > Please use <https://github.com/LloydAsp/OsMutation> instead.
-
-## System Accounts
-
-| System                                                                                                                                                     | Username       | Password       |
-| ---------------------------------------------------------------------------------------------------------------------------------------------------------- | -------------- | -------------- |
-| <img width="16" height="16" src="https://www.kernel.org/theme/images/logos/favicon.png" /> Linux                                                           | root           | 123@@@         |
-| <img width="16" height="16" src="https://blogs.windows.com/wp-content/uploads/prod/2022/09/cropped-Windows11IconTransparent512-32x32.png" /> Windows (ISO) | administrator  | 123@@@         |
-| <img width="16" height="16" src="https://blogs.windows.com/wp-content/uploads/prod/2022/09/cropped-Windows11IconTransparent512-32x32.png" /> Windows (DD)  | Image username | Image password |
-
-> [!TIP]
-> If remote login to Windows fails, try using the username `.\administrator`.
 
 ## Download (Current system is <img width="20" height="20" src="https://www.kernel.org/theme/images/logos/favicon.png" /> Linux)
 
@@ -121,36 +110,25 @@ certutil -urlcache -f -split https://jihulab.com/bin456789/reinstall/-/raw/main/
 
 ## Usage
 
-> [!TIP]
-> All features can be used on both Linux and Windows.
->
-> on Linux, execute `bash reinstall.sh`
->
-> on Windows, execute `reinstall.bat`
+**All features** can be used on both Linux and Windows.
+
+- on Linux, execute `bash reinstall.sh`
+- on Windows, execute `reinstall.bat`
 
 ### Feature 1: Install <img width="16" height="16" src="https://www.kernel.org/theme/images/logos/favicon.png" /> Linux
 
 - If no version number is entered, the latest version will be installed.
 - Does not include a boot partition (except for Fedora), nor a swap partition, maximizing disk space utilization.
-- When installing on a virtual machine, it will automatically select a official limmed-down kernel.
-- During the initial login, you may receive a password error prompt; just wait a moment and it should be resolved.
-
-> [!TIP]
-> When installing Debian / Kali, x86 architectures can monitor the installation progress through VNC in the background, while ARM architectures can use the serial console.
->
-> When installing other systems, can monitor the progress through various methods (SSH, HTTP 80 port, VNC in the background, serial console).
-
-> [!IMPORTANT]
-> To install Red Hat, you need to provide the `qcow2` image link obtained from the following website.
->
-> See <https://access.redhat.com/downloads/content/rhel>
+- On virtual machines, the appropriate official slimmed-down kernel will be automatically installed.
+- To install Red Hat, you need to provide the `qcow2` image link obtained from <https://access.redhat.com/downloads/content/rhel>.
+- Username `root`, password `123@@@`. It may take a few minutes for the password to take effect on the first boot.
 
 ```bash
 bash reinstall.sh centos      9
                   anolis      7|8
                   alma        8|9
                   rocky       8|9
-                  redhat      8|9   --img='http://xxx.qcow2'
+                  redhat      8|9   --img='http://xxx.com/xxx.qcow2'
                   opencloudos 8|9
                   oracle      7|8|9
                   fedora      39|40
@@ -165,21 +143,29 @@ bash reinstall.sh centos      9
                   gentoo
 ```
 
+> [!TIP]
+> When installing Debian / Kali, x86 architectures can monitor the installation progress through VNC in the background, while ARM architectures can use the serial console.
+>
+> When installing other systems, can monitor the progress through various methods (SSH, HTTP 80 port, VNC in the background, serial console).
+> Even if errors occur during the installation process, you can still install Alpine via SSH.
+
 ### Feature 2: DD
 
-- Supports gzip, xz formats.
-- A machine with a static IP running DD Windows will automatically configure the IP, which may take a few minutes to complete after the first boot.
-
-> [!TIP]
-> Can monitor the progress through various methods (SSH, HTTP 80 port, VNC in the background, serial console).
+- Supports `gzip` and `xz` formatted images
+- When using DD with a Windows image, the script will automatically expand the system partition. For static IP machines, the IP will be configured automatically, and it may take a few minutes to take effect on first boot
 
 ```bash
 bash reinstall.sh dd --img https://example.com/xxx.xz
 ```
 
+> [!TIP]
+> Can monitor the progress through various methods (SSH, HTTP 80 port, VNC in the background, serial console).
+> Even if errors occur during the installation process, you can still install Alpine via SSH.
+
 ### Feature 3: Reboot to <img width="16" height="16" src="https://www.alpinelinux.org/alpine-logo.ico" /> Alpine Rescue System (Live OS)
 
-- Can be connected via SSH to perform manual DD, modify partitions, manually install Arch / Gentoo, etc.
+- You can use SSH to manually perform DD operations, modify partitions, and manually install Alpine, Arch, Gentoo, and other systems.
+- Username `root`, password `123@@@`
 - If the disk content is not modified, rebooting again will return to the original system.
 
 ```bash
@@ -199,15 +185,13 @@ bash reinstall.sh netboot.xyz
 
 ### Feature 5: Install <img width="16" height="16" src="https://blogs.windows.com/wp-content/uploads/prod/2022/09/cropped-Windows11IconTransparent512-32x32.png" /> Windows ISO
 
-- Can automatically searching for most iso links. Need to set the language using `--lang`, default is `en-us`.
-- Machines with static IP addresses will have their IPs automatically configured after installation.
-- Can bypass Windows 11 installation restrictions.
+- Username `administrator`, password `123@@@`
+- If remote login fails, try using the username `.\administrator`.
+- The machine with a static IP will automatically configure the IP. It may take a few minutes to take effect on the first boot.
 
-> [!TIP]
-> The script uses <https://massgrave.dev/genuine-installation-media.html> as the ISO source. All ISOs provided are official originals.
+#### Method 1: Allow the script to automatically find the ISO
 
-> [!IMPORTANT]
-> Note that parameters should be enclosed in quotation marks.
+- The script will search for ISO files from <https://massgrave.dev/genuine-installation-media.html>. The ISOs provided on this site are all official versions.
 
 ```bash
 bash reinstall.sh windows \
@@ -215,7 +199,9 @@ bash reinstall.sh windows \
      --lang zh-cn
 ```
 
-- You can also specify an ISO link.
+#### Method 2: Specify the ISO link manually
+
+- If you don’t know the `--image-name`, you can enter any value. After rebooting, connect via SSH and re-enter the correct value based on the error messages.
 
 ```bash
 bash reinstall.sh windows \
@@ -223,24 +209,25 @@ bash reinstall.sh windows \
      --iso 'https://drive.massgrave.dev/en-us_windows_10_enterprise_ltsc_2021_x64_dvd_d289cf96.iso'
 ```
 
+> [!IMPORTANT]
+> Note that parameters should be enclosed in quotation marks.
+
 <details>
 
 <summary>The following website provides iso links.</summary>
 
-- Massgrave
-  - <https://massgrave.dev/genuine-installation-media.html> (Recommended, iso sourced from official channels, updated monthly, includes the latest patches)
-- Microsoft
-  - <https://www.microsoft.com/software-download/windows10> (Need to open it with a mobile User-Agent)
-  - <https://www.microsoft.com/software-download/windows11>
-  - <https://www.microsoft.com/software-download/windowsinsiderpreviewiso> (Preview)
-  - <https://www.microsoft.com/evalcenter/download-windows-10-enterprise>
-  - <https://www.microsoft.com/evalcenter/download-windows-11-enterprise>
-  - <https://www.microsoft.com/evalcenter/download-windows-11-iot-enterprise-ltsc>
-  - <https://www.microsoft.com/evalcenter/download-windows-server-2012-r2>
-  - <https://www.microsoft.com/evalcenter/download-windows-server-2016>
-  - <https://www.microsoft.com/evalcenter/download-windows-server-2019>
-  - <https://www.microsoft.com/evalcenter/download-windows-server-2022>
-  - <https://www.microsoft.com/evalcenter/download-windows-server-2025>
+- <https://massgrave.dev/genuine-installation-media.html> (Recommended, iso sourced from official channels, updated monthly, includes the latest patches)
+- <https://www.microsoft.com/software-download/windows10> (Need to open it with a mobile User-Agent)
+- <https://www.microsoft.com/software-download/windows11>
+- <https://www.microsoft.com/software-download/windowsinsiderpreviewiso> (Preview)
+- <https://www.microsoft.com/evalcenter/download-windows-10-enterprise>
+- <https://www.microsoft.com/evalcenter/download-windows-11-enterprise>
+- <https://www.microsoft.com/evalcenter/download-windows-11-iot-enterprise-ltsc>
+- <https://www.microsoft.com/evalcenter/download-windows-server-2012-r2>
+- <https://www.microsoft.com/evalcenter/download-windows-server-2016>
+- <https://www.microsoft.com/evalcenter/download-windows-server-2019>
+- <https://www.microsoft.com/evalcenter/download-windows-server-2022>
+- <https://www.microsoft.com/evalcenter/download-windows-server-2025>
 
 </details>
 

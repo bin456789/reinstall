@@ -2,21 +2,21 @@
 
 # reinstall
 
-[![Codacy](https://img.shields.io/codacy/grade/dc679a17751448628fe6d8ac35e26eed?logo=Codacy&label=Codacy)](https://app.codacy.com/gh/bin456789/reinstall/dashboard)
-[![CodeFactor](https://img.shields.io/codefactor/grade/github/bin456789/reinstall?logo=CodeFactor&logoColor=white&label=CodeFactor)](https://www.codefactor.io/repository/github/bin456789/reinstall)
-[![Lines of Code](https://aschey.tech/tokei/github/bin456789/reinstall?category=code&label=Lines%20of%20Code)](https://github.com/aschey/vercel-tokei)
-<!-- [![Lines of Code](https://tokei.rs/b1/github/bin456789/reinstall?category=code&style=flat&label=Lines%20of%20Code)](https://github.com/XAMPPRocky/tokei_rs) -->
+[![Codacy](https://img.shields.io/codacy/grade/dc679a17751448628fe6d8ac35e26eed?logo=Codacy&label=Codacy&style=flat-square)](https://app.codacy.com/gh/bin456789/reinstall/dashboard)
+[![CodeFactor](https://img.shields.io/codefactor/grade/github/bin456789/reinstall?logo=CodeFactor&logoColor=white&label=CodeFactor&style=flat-square)](https://www.codefactor.io/repository/github/bin456789/reinstall)
+[![Lines of Code](https://aschey.tech/tokei/github/bin456789/reinstall?category=code&label=Lines%20of%20Code&style=flat-square)](https://github.com/aschey/vercel-tokei)
 
 一键重装脚本 [English](README.en.md)
 
 ## 亮点
 
 - 支持安装 17 种常见 Linux 发行版
-- 支持用官方原版 iso 安装 Windows，并且脚本会自动查找 iso 和驱动
-- 支持任意方向重装，也就是支持 `Linux to Linux`、`Linux to Win`、`Win to Win`、`Win to Linux`
-- 专门适配低配小鸡，解决内存过少导致无法进行网络安装
-- 自动判断动静态 IPv4 / IPv6，无需填写 IP / 掩码 / 网关
-- 支持 ARM，支持 BIOS、EFI 引导，原系统支持 LVM、BTRFS
+- 支持安装官方原版 Windows iso，自动查找 iso 链接、集成虚拟机驱动
+- 支持任意方向重装，即 `Linux to Linux`、`Linux to Windows`、`Windows to Windows`、`Windows to Linux`
+- 无需填写 IP 参数，自动识别动静态，支持 `/32`、`/128`、`网关不在子网范围内`、`纯 IPv6`、`双网卡` 等特殊网络
+- 专门适配低配小鸡，比官方 netboot 需要更少的内存
+- 全程用分区表 ID 识别硬盘，确保不会写错硬盘
+- 支持 BIOS、EFI 引导，支持 ARM
 - 不含自制包，所有资源均实时从源站点获得
 - 有很多注释
 
@@ -51,17 +51,6 @@
 > ❌ 本脚本不支持 OpenVZ、LXC 虚拟机
 >
 > 请改用 <https://github.com/LloydAsp/OsMutation>
-
-## 系统账号
-
-| 系统                                                                                                                                                       | 用户名        | 密码     |
-| ---------------------------------------------------------------------------------------------------------------------------------------------------------- | ------------- | -------- |
-| <img width="16" height="16" src="https://www.kernel.org/theme/images/logos/favicon.png" /> Linux                                                           | root          | 123@@@   |
-| <img width="16" height="16" src="https://blogs.windows.com/wp-content/uploads/prod/2022/09/cropped-Windows11IconTransparent512-32x32.png" /> Windows (ISO) | administrator | 123@@@   |
-| <img width="16" height="16" src="https://blogs.windows.com/wp-content/uploads/prod/2022/09/cropped-Windows11IconTransparent512-32x32.png" /> Windows (DD)  | 镜像用户名    | 镜像密码 |
-
-> [!TIP]
-> 如果远程登录 Windows 失败，尝试使用用户名 `.\administrator`
 
 ## 下载（当前系统是 <img width="20" height="20" src="https://www.kernel.org/theme/images/logos/favicon.png" /> Linux）
 
@@ -121,36 +110,25 @@ certutil -urlcache -f -split https://jihulab.com/bin456789/reinstall/-/raw/main/
 
 ## 使用
 
-> [!TIP]
-> 所有功能均可在 Linux / Windows 下使用。
->
-> Linux 下运行 `bash reinstall.sh`
->
-> Windows 下运行 `reinstall.bat`
+**所有功能** 都可在 Linux / Windows 下运行
+
+- Linux 下运行 `bash reinstall.sh`
+- Windows 下运行 `reinstall.bat`
 
 ### 功能 1: 安装 <img width="16" height="16" src="https://www.kernel.org/theme/images/logos/favicon.png" /> Linux
 
 - 不输入版本号，则安装最新版
 - 不含 boot 分区（Fedora 例外），不含 swap 分区，最大化利用磁盘空间
-- 在虚拟机上，会自动安装官方精简内核
-- 首次登录可能会提示密码错误，稍等一下就正常了
-
-> [!TIP]
-> 安装 Debian / Kali 时，x86 可通过后台 VNC 查看安装进度，ARM 可通过串行控制台查看安装进度。
->
-> 安装其它系统时，可通过多种方式（SSH、HTTP 80 端口、后台 VNC、串行控制台）查看安装进度。
-
-> [!IMPORTANT]
-> 安装 Red Hat 需填写以下网站得到的 `qcow2` 镜像链接
->
-> <https://access.redhat.com/downloads/content/rhel>
+- 在虚拟机上，会自动安装合适的官方精简内核
+- 安装 Red Hat 需填写 <https://access.redhat.com/downloads/content/rhel> 得到的 `qcow2` 镜像链接
+- 用户名 `root` 密码 `123@@@`，可能首次开机几分钟后密码才生效
 
 ```bash
 bash reinstall.sh centos      9
                   anolis      7|8
                   alma        8|9
                   rocky       8|9
-                  redhat      8|9   --img='http://xxx.qcow2'
+                  redhat      8|9   --img='http://xxx.com/xxx.qcow2'
                   opencloudos 8|9
                   oracle      7|8|9
                   fedora      39|40
@@ -165,21 +143,29 @@ bash reinstall.sh centos      9
                   gentoo
 ```
 
+> [!TIP]
+> 安装 Debian / Kali 时，x86 可通过后台 VNC 查看安装进度，ARM 可通过串行控制台查看安装进度。
+>
+> 安装其它系统时，可通过多种方式（SSH、HTTP 80 端口、后台 VNC、串行控制台）查看安装进度。
+> 即使安装过程出错，也能通过 SSH 安装到 Alpine。
+
 ### 功能 2: DD
 
-- 支持 gzip、xz 格式
-- 静态 IP 的机器 DD Windows，会自动配置好 IP，可能首次开机几分钟后才完成配置
-
-> [!TIP]
-> 可通过多种方式（SSH、HTTP 80 端口、后台 VNC、串行控制台）查看安装进度。
+- 支持 `gzip`、`xz` 格式的镜像
+- DD Windows 镜像时，会自动扩展系统盘。静态的机器会自动配置好 IP，可能首次开机几分钟后才生效
 
 ```bash
 bash reinstall.sh dd --img https://example.com/xxx.xz
 ```
 
+> [!TIP]
+> 可通过多种方式（SSH、HTTP 80 端口、后台 VNC、串行控制台）查看安装进度。
+> 即使安装过程出错，也能通过 SSH 安装到 Alpine。
+
 ### 功能 3: 重启到 <img width="16" height="16" src="https://www.alpinelinux.org/alpine-logo.ico" /> Alpine 救援系统 (Live OS)
 
-- 可用 ssh 连接，进行手动 DD、修改分区、手动安装 Arch / Gentoo 等操作
+- 可用 ssh 连接，进行手动 DD、修改分区、手动安装 Alpine / Arch / Gentoo 等操作
+- 用户名 `root` 密码 `123@@@`
 - 如果没有修改硬盘内容，再次重启将回到原系统
 
 ```bash
@@ -199,15 +185,13 @@ bash reinstall.sh netboot.xyz
 
 ### 功能 5: 安装 <img width="16" height="16" src="https://blogs.windows.com/wp-content/uploads/prod/2022/09/cropped-Windows11IconTransparent512-32x32.png" /> Windows ISO
 
-- 支持自动查找大部分 iso 链接，需指定语言 `--lang`，默认 `en-us`
-- 静态 IP 的机器，安装后会自动配置好 IP
-- 能够绕过 Windows 11 安装限制
+- 用户名 `administrator` 密码 `123@@@`
+- 如果远程登录失败，尝试使用用户名 `.\administrator`
+- 静态机器会自动配置好 IP，可能首次开机几分钟后才生效
 
-> [!TIP]
-> 脚本以 <https://massgrave.dev/genuine-installation-media.html> 作为 iso 镜像查找源。所有 iso 都是官方原版。
+#### 方法 1: 让脚本自动查找 ISO
 
-> [!IMPORTANT]
-> 注意参数两边有引号。
+- 脚本会从 <https://massgrave.dev/genuine-installation-media.html> 查找 iso，该网站提供的 iso 都是官方原版
 
 ```bash
 bash reinstall.sh windows \
@@ -215,7 +199,9 @@ bash reinstall.sh windows \
      --lang zh-cn
 ```
 
-- 也可以指定 iso 链接
+#### 方法 2: 自行指定 ISO 连接
+
+- 如果不知道 `--image-name`，可以随便填，重启后连接 SSH ，根据错误提示重新输入
 
 ```bash
 bash reinstall.sh windows \
@@ -223,24 +209,25 @@ bash reinstall.sh windows \
      --iso 'https://drive.massgrave.dev/en-us_windows_10_enterprise_ltsc_2021_x64_dvd_d289cf96.iso'
 ```
 
+> [!IMPORTANT]
+> 注意参数两边有引号。
+
 <details>
 
 <summary>以下网站可找到 iso 链接</summary>
 
-- Massgrave
-  - <https://massgrave.dev/genuine-installation-media.html> (推荐，iso 来自官方，每月更新，包含最新补丁)
-- 微软
-  - <https://www.microsoft.com/software-download/windows10> (需用手机 User-Agent 打开)
-  - <https://www.microsoft.com/software-download/windows11>
-  - <https://www.microsoft.com/software-download/windowsinsiderpreviewiso> (预览版)
-  - <https://www.microsoft.com/evalcenter/download-windows-10-enterprise>
-  - <https://www.microsoft.com/evalcenter/download-windows-11-enterprise>
-  - <https://www.microsoft.com/evalcenter/download-windows-11-iot-enterprise-ltsc>
-  - <https://www.microsoft.com/evalcenter/download-windows-server-2012-r2>
-  - <https://www.microsoft.com/evalcenter/download-windows-server-2016>
-  - <https://www.microsoft.com/evalcenter/download-windows-server-2019>
-  - <https://www.microsoft.com/evalcenter/download-windows-server-2022>
-  - <https://www.microsoft.com/evalcenter/download-windows-server-2025>
+- <https://massgrave.dev/genuine-installation-media.html> (推荐，iso 来自官方，每月更新，包含最新补丁)
+- <https://www.microsoft.com/software-download/windows10> (需用手机 User-Agent 打开)
+- <https://www.microsoft.com/software-download/windows11>
+- <https://www.microsoft.com/software-download/windowsinsiderpreviewiso> (预览版)
+- <https://www.microsoft.com/evalcenter/download-windows-10-enterprise>
+- <https://www.microsoft.com/evalcenter/download-windows-11-enterprise>
+- <https://www.microsoft.com/evalcenter/download-windows-11-iot-enterprise-ltsc>
+- <https://www.microsoft.com/evalcenter/download-windows-server-2012-r2>
+- <https://www.microsoft.com/evalcenter/download-windows-server-2016>
+- <https://www.microsoft.com/evalcenter/download-windows-server-2019>
+- <https://www.microsoft.com/evalcenter/download-windows-server-2022>
+- <https://www.microsoft.com/evalcenter/download-windows-server-2025>
 
 </details>
 
