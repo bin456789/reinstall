@@ -3224,7 +3224,21 @@ if is_use_grub; then
         else
             error_and_exit "grub not found"
         fi
-        $grub-mkconfig -o $grub_cfg
+
+        # nixos 手动执行 grub-mkconfig -o /boot/grub/grub.cfg 会丢失系统启动条目
+        # 正确的方法是修改 configuration.nix 的 boot.loader.grub.extraEntries
+        # 但是修改 configuration.nix 不是很好，因此改成修改 grub.cfg
+        if [ -x /nix/var/nix/profiles/system/bin/switch-to-configuration ]; then
+            # 生成 grub.cfg
+            /nix/var/nix/profiles/system/bin/switch-to-configuration boot
+            # 手动启用 41_custom
+            nixos_grub_home="$(dirname "$(readlink -f "$(get_cmd_path grub-mkconfig)")")/.."
+            $nixos_grub_home/etc/grub.d/41_custom >>$grub_cfg
+        elif is_have_cmd update-grub; then
+            update-grub
+        else
+            $grub-mkconfig -o $grub_cfg
+        fi
     fi
 
     # 选择用 custom.cfg (linux-bios) 还是 grub.cfg (win/linux-efi)
