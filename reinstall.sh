@@ -978,7 +978,9 @@ setos() {
             :
         else
             # 传统安装
-            test_url $mirror/nixos-$releasever/store-paths.xz xz
+            # 该服务器文件缓存 miss 时会响应 206 + Location 头
+            # 但 curl 这种情况不会重定向，所以添加 ascii 类型让它不要报错
+            test_url $mirror/nixos-$releasever/store-paths.xz xz/ascii
             eval ${step}_mirror=$mirror
         fi
     }
