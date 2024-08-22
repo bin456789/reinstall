@@ -151,7 +151,7 @@ bash reinstall.sh centos      9
 
 ### 功能 2: DD
 
-- 支持 `gzip`、`xz` 格式的镜像
+- 支持 `raw` `vhd` `gzip`、`xz` 格式的镜像
 - DD Windows 镜像时，会自动扩展系统盘。静态的机器会自动配置好 IP，可能首次开机几分钟后才生效
 
 ```bash

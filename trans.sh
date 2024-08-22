@@ -1650,18 +1650,27 @@ get_http_file_size_to() {
     fi
 }
 
-# shellcheck disable=SC2154
-dd_gzip_xz() {
+dd_gzip_xz_raw() {
+    # 用官方 wget，一来带进度条，二来自带重试
+    # alpine busybox 自带 gzip xz，但官方版也许性能更好
+    # raw 包括 vhd
+    # shellcheck disable=SC2154
     case "$img_type" in
-    gzip) prog=gzip ;;
-    xz) prog=xz ;;
+    xz | gzip) apk add wget $img_type ;;
+    raw) apk add wget ;;
     *) error_and_exit 'Not supported' ;;
     esac
 
-    # alpine busybox 自带 gzip xz，但官方版也许性能更好
-    # 用官方 wget，一来带进度条，二来自带重试
-    apk add wget $prog
-    if ! command wget $img -O- --tries=5 --progress=bar:force | $prog -dc >/dev/$xda 2>/tmp/dd_stderr; then
+    pipe_extract() {
+        if [ "$img_type" = raw ]; then
+            cat
+        else
+            $img_type -dc
+        fi
+    }
+
+    if ! command wget $img -O- --tries=5 --progress=bar:force |
+        pipe_extract >/dev/$xda 2>/tmp/dd_stderr; then
         # vhd 文件结尾有 512 字节额外信息，可以忽略
         if grep -iq 'No space' /tmp/dd_stderr; then
             apk add parted
@@ -4084,17 +4093,17 @@ trans() {
                 ;;
             esac
             ;;
-        gzip | xz)
+        gzip | xz | raw)
             # 暂时没用到 gzip xz 格式的云镜像
-            dd_gzip_xz
+            dd_gzip_xz_raw
             resize_after_install_cloud_image
             modify_os_on_disk linux
             ;;
         esac
     elif [ "$distro" = "dd" ]; then
         case "$img_type" in
-        gzip | xz)
-            dd_gzip_xz
+        gzip | xz | raw)
+            dd_gzip_xz_raw
             modify_os_on_disk windows
             ;;
         qemu) # dd qemu 不可能到这里，因为上面已处理
