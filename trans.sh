@@ -1143,6 +1143,11 @@ add_newline() {
 install_nixos() {
     os_dir=/os
     keep_swap=true
+    nix_from=website
+    ram_per_thread=2048
+
+    threads=$(get_build_threads $ram_per_thread)
+    swap_size=$(get_need_swap_size $ram_per_thread)
 
     show_nixos_config() {
         echo
@@ -1154,9 +1159,7 @@ install_nixos() {
 
     # 挂载分区，创建 swapfile
     mount_part_basic_layout /os /os/efi
-    need_ram=2048
-    swap_size=$(get_need_swap_size $need_ram)
-    create_swap_if_ram_less_than $need_ram /os/swapfile
+    create_swap $swap_size /os/swapfile
 
     # 步骤
     # 1. 安装 nix (nix-xxx)
@@ -1165,28 +1168,61 @@ install_nixos() {
     # 4. 运行 nixos-install
 
     # nix 安装方式                                    分支          版本
-    # apk add nix                                    3.20         2.22.0   #  nix 本体跟正常的软件一样，不在 /nix/store 里面
+    # apk add nix                                    3.20         2.22.0  # nix 本体跟 alpine 正常的软件一样，不在 /nix/store 里面
     # env -iA nixpkgs.nix                            24.05        2.18.5
     # sh <(curl -L https://nixos.org/nix/install)   unstable?     2.24.2
+
+    # apk add 安装的 nix 有时会卡在
+    # copying path '/nix/store/gcbrjlfm5h21ybf1h2lfq773zafjmzjr-curl-8.7.1-man' from 'https://cache.nixos.org'...
+    # 但是 cpu 空载
 
     # 安装 nix
     mkdir -p /os/nix /nix
     mount --bind /os/nix /nix
-    apk add nix
 
-    # TODO: 有时安装系统时会出错，卡在
-    # copying path '/nix/store/gcbrjlfm5h21ybf1h2lfq773zafjmzjr-curl-8.7.1-man' from 'https://cache.nixos.org'...
-    # 但是 cpu 空载
+    # nix 安装脚本和 /root/.nix-profile/etc/profile.d/nix.sh 都会用到这两个变量
+    # 但从 alpine local.d 运行没有这两个变量
+    export USER=root
+    export HOME=/root
 
-    # 设置 nix 镜像和线程
-    # alpine 默认设置了 4 线程
-    # https://gitlab.alpinelinux.org/alpine/aports/-/blob/master/community/nix/APKBUILD#L125
-    sed -i '/max-jobs/d' /etc/nix/nix.conf
-    echo "max-jobs = $(get_build_threads 2048)" >>/etc/nix/nix.conf
-    if is_in_china; then
-        echo "substituters = $mirror/store" >>/etc/nix/nix.conf
-    fi
-    rc-service nix-daemon restart
+    case "$nix_from" in
+    alpine)
+        apk add nix
+        # 设置 nix 镜像和线程
+        # alpine 默认设置了 4 线程
+        # https://gitlab.alpinelinux.org/alpine/aports/-/blob/master/community/nix/APKBUILD#L125
+        sed -i '/max-jobs/d' /etc/nix/nix.conf
+        echo "max-jobs = $threads" >>/etc/nix/nix.conf
+        if is_in_china; then
+            echo "substituters = $mirror/store" >>/etc/nix/nix.conf
+        fi
+        rc-service nix-daemon restart
+        # 添加 nix-env 安装的软件到 PATH
+        PATH="/root/.nix-profile/bin:$PATH"
+        ;;
+    website)
+        # https://gitlab.alpinelinux.org/alpine/aports/-/blob/master/community/nix/nix.pre-install
+        # https://nix.dev/manual/nix/latest/installation/multi-user
+        if ! grep -q nixbld /etc/passwd; then
+            addgroup -S nixbld
+            for n in $(seq 1 10); do
+                adduser -S -D -H -h /var/empty -s /sbin/nologin -G nixbld \
+                    -g "Nix build user $n" nixbld$n
+            done
+        fi
+
+        if is_in_china; then
+            sh=https://mirror.nju.edu.cn/nix/latest/install
+        else
+            sh=https://nixos.org/nix/install
+        fi
+        apk add xz
+        wget -O- "$sh" | sh -s -- --no-channel-add
+        apk del xz
+        # shellcheck source=/dev/null
+        . /root/.nix-profile/etc/profile.d/nix.sh
+        ;;
+    esac
 
     # 添加 channel
     # shellcheck disable=SC2154
@@ -1196,15 +1232,12 @@ install_nixos() {
     # 安装 channal 的 nix
     # shellcheck source=/dev/null
     if false; then
-        nix-env -iA nixpkgs.nix
+        nix-env -iA nixpkgs.nix -j $threads
         . ~/.nix-profile/etc/profile.d/nix.sh
     fi
 
     # 安装 nixos-install-tools
-    nix-env -iA nixpkgs.nixos-install-tools
-
-    # 添加 nix-env 安装的软件到 PATH
-    PATH="/root/.nix-profile/bin:$PATH"
+    nix-env -iA nixpkgs.nixos-install-tools -j $threads
 
     # 生成配置并显示
     nixos-generate-config --root /os
@@ -1280,7 +1313,7 @@ EOF
     show_nixos_config
 
     # 安装系统
-    nixos-install --root /os --no-root-passwd -j "$(get_build_threads 2048)"
+    nixos-install --root /os --no-root-passwd -j $threads
 
     # 设置密码
     echo "root:$PASSWORD" | nixos-enter --root /os -- \
