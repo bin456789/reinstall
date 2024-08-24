@@ -247,8 +247,8 @@ test_url_real() {
     echo $url
     for i in $(seq 5 -1 0); do
         if command curl --insecure --connect-timeout 10 -Lfr 0-1048575 "$url" \
-            1> >(dd bs=1M count=1 of=$tmp_file iflag=fullblock 2>/dev/null) \
-            2> >(grep -v 'curl: (23)' >&2); then
+            1> >(exec dd bs=1M count=1 of=$tmp_file iflag=fullblock 2>/dev/null) \
+            2> >(exec grep -v 'curl: (23)' >&2); then
             break
         else
             ret=$?

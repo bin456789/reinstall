@@ -10,10 +10,10 @@ ipv6_gateway=$5
 is_in_china=$6
 
 if $is_in_china; then
-    ipv4_dns1='119.29.29.29'
-    ipv4_dns2='223.5.5.5'
-    ipv6_dns1='2402:4e00::'
-    ipv6_dns2='2400:3200::1'
+    ipv4_dns1='223.5.5.5'
+    ipv4_dns2='119.29.29.29'
+    ipv6_dns1='2400:3200::1'
+    ipv6_dns2='2402:4e00::'
 else
     ipv4_dns1='1.1.1.1'
     ipv4_dns2='8.8.8.8'

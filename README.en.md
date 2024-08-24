@@ -151,7 +151,7 @@ bash reinstall.sh centos      9
 
 ### Feature 2: DD
 
-- Supports `raw` `vhd` `gzip` and `xz` formatted images
+- Supports `raw`, `vhd`, `gzip` and `xz` formatted images
 - When using DD with a Windows image, the script will automatically expand the system partition. For static IP machines, the IP will be configured automatically, and it may take a few minutes to take effect on first boot
 
 ```bash
