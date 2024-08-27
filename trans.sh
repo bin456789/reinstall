@@ -170,12 +170,19 @@ update_part() {
     fi
 
     # mdev
-    if rc-service --exists mdev && rc-service -q mdev status; then
-        # mdev 不会删除 /dev/disk/ 的旧分区，因此手动删除
-        rm -rf /dev/disk/*
-        mdev -sf 2>/dev/null
-        rc-service mdev restart
-    fi
+    # mdev 不会删除 /dev/disk/ 的旧分区，因此手动删除
+    # 如果 rm -rf 的时候刚好 mdev 在创建链接，rm -rf 会报错 Directory not empty
+    # 因此要先停止 mdev 服务
+    # 还要删除 /dev/$xda*?
+    rc-service mdev stop
+    rm -rf /dev/disk/*
+
+    # 没挂载 modloop 时会提示
+    # modprobe: can't change directory to '/lib/modules': No such file or directory
+    # 因此强制不显示上面的提示
+    mdev -sf 2>/dev/null
+    rc-service mdev start 2>/dev/null
+    sleep 1
 }
 
 is_efi() {
