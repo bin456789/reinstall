@@ -50,7 +50,7 @@ rem wmic pagefile
 
 rem 获取主硬盘 id
 rem vista pe 没有 wmic，因此用 diskpart
-(echo select vol %VolIndex% & echo list disk) | diskpart | find "* " > X:\disk.txt
+(echo select vol %VolIndex% & echo list disk) | diskpart | find "* Disk " > X:\disk.txt
 for /f "tokens=3" %%a in (X:\disk.txt) do (
     set "DiskIndex=%%a"
 )
