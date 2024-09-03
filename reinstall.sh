@@ -131,6 +131,10 @@ is_use_cloud_image() {
     [ -n "$cloud_image" ] && [ "$cloud_image" = 1 ]
 }
 
+is_force_use_installer() {
+    [ -n "$installer" ] && [ "$installer" = 1 ]
+}
+
 is_use_dd() {
     [ "$distro" = dd ]
 }
@@ -2924,7 +2928,7 @@ else
 fi
 
 # 整理参数
-if ! opts=$(getopt -n $0 -o "" --long ci,debug,minimal,hold:,sleep:,iso:,image-name:,img:,lang:,commit:,force: -- "$@"); then
+if ! opts=$(getopt -n $0 -o "" --long ci,installer,debug,minimal,hold:,sleep:,iso:,image-name:,img:,lang:,commit:,force: -- "$@"); then
     usage_and_exit
 fi
 
@@ -2942,6 +2946,12 @@ while true; do
         ;;
     --ci)
         cloud_image=1
+        unset installer
+        shift
+        ;;
+    --installer)
+        installer=1
+        unset cloud_image
         shift
         ;;
     --minimal)
@@ -3016,11 +3026,18 @@ case "$distro" in
 dd | windows | netboot.xyz | kali | alpine | arch | gentoo | nixos)
     if is_use_cloud_image; then
         echo "ignored --ci"
-        cloud_image=0
+        unset cloud_image
     fi
     ;;
-redhat | centos | alma | rocky | oracle | ubuntu | fedora | opensuse | anolis | opencloudos | openeuler)
+oracle | opensuse | anolis | opencloudos | openeuler)
     cloud_image=1
+    ;;
+redhat | centos | alma | rocky | fedora | ubuntu)
+    if is_force_use_installer; then
+        unset cloud_image
+    else
+        cloud_image=1
+    fi
     ;;
 esac
 

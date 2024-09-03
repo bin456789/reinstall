@@ -1866,8 +1866,8 @@ create_part() {
             parted /dev/$xda -s -- \
                 mklabel gpt \
                 mkpart '" "' fat32 1MiB 1025MiB \
-                mkpart '" "' ext4 1025MiB -2GiB \
-                mkpart '" "' ext4 -2GiB 100% \
+                mkpart '" "' ext4 1025MiB -3GiB \
+                mkpart '" "' ext4 -3GiB 100% \
                 set 1 boot on
             update_part
 
