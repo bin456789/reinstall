@@ -1860,14 +1860,15 @@ create_part() {
         # 对于红帽系是临时分区表，安装时除了 installer 分区，其他分区会重建为默认的大小
         # 对于ubuntu是最终分区表，因为 ubuntu 的安装器不能调整个别分区，只能重建整个分区表
         # installer 2g分区用fat格式刚好塞得下ubuntu-22.04.3 iso，而ext4塞不下或者需要改参数
+        [ "$distro" = ubuntu ] && installer_part_size=3GiB || installer_part_size=2GiB
         apk add dosfstools
         if is_efi; then
             # efi
             parted /dev/$xda -s -- \
                 mklabel gpt \
                 mkpart '" "' fat32 1MiB 1025MiB \
-                mkpart '" "' ext4 1025MiB -3GiB \
-                mkpart '" "' ext4 -3GiB 100% \
+                mkpart '" "' ext4 1025MiB -$installer_part_size \
+                mkpart '" "' ext4 -$installer_part_size 100% \
                 set 1 boot on
             update_part
 
@@ -1879,8 +1880,8 @@ create_part() {
             parted /dev/$xda -s -- \
                 mklabel gpt \
                 mkpart '" "' ext4 1MiB 2MiB \
-                mkpart '" "' ext4 2MiB -2GiB \
-                mkpart '" "' ext4 -2GiB 100% \
+                mkpart '" "' ext4 2MiB -$installer_part_size \
+                mkpart '" "' ext4 -$installer_part_size 100% \
                 set 1 bios_grub on
             update_part
 
@@ -1891,8 +1892,8 @@ create_part() {
             # bios
             parted /dev/$xda -s -- \
                 mklabel msdos \
-                mkpart primary ext4 1MiB -2GiB \
-                mkpart primary ext4 -2GiB 100% \
+                mkpart primary ext4 1MiB -$installer_part_size \
+                mkpart primary ext4 -$installer_part_size 100% \
                 set 1 boot on
             update_part
 
