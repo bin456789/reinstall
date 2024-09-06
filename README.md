@@ -177,7 +177,7 @@ bash reinstall.sh ubuntu --installer
 
 - 支持 `raw` `vhd` 或者经过 `xz` `gzip` 压缩的镜像
 - DD Windows 镜像时，会扩展系统盘，静态 IP 的机器会配置好 IP，可能首次开机几分钟后才生效
-- DD Linux 镜像时，**不会**扩展系统盘，静态 IP 的机器**不会**配置好 IP
+- DD Linux 镜像时，脚本不会修改镜像的任何内容
 
 ```bash
 bash reinstall.sh dd --img https://example.com/xxx.xz

@@ -23,6 +23,12 @@ error() {
     echo -e "${color}Error: $*${plain}" >&2
 }
 
+info() {
+    color='\e[32m'
+    plain='\e[0m'
+    echo -e "${color}***** $(echo "$*" | to_upper) *****${plain}" >&2
+}
+
 error_and_exit() {
     error "$@"
     exit 1
@@ -419,6 +425,7 @@ get_ra_to() {
         apk del ndisc6
 
         # 显示网络配置
+        info "Network info:"
         echo
         echo "$_ra" | cat -n
         echo
@@ -611,6 +618,7 @@ get_fallback_efi_file_name() {
 }
 
 del_invalid_efi_entry() {
+    info "del invalid EFI entry"
     apk add lsblk efibootmgr
 
     efibootmgr --quiet --remove-dups
@@ -634,6 +642,8 @@ grep_efi_index() {
 # 添加 bootx64.efi 到最后的话，会进入 EFI Shell
 # 因此添加到最前面
 add_default_efi_to_nvram() {
+    info "add default EFI to nvram"
+
     apk add lsblk efibootmgr
 
     if efi_row=$(lsblk /dev/$xda -ro NAME,PARTTYPE,PARTUUID | grep -i "$EFI_UUID"); then
@@ -1002,6 +1012,8 @@ EOF
 }
 
 install_alpine() {
+    info "install alpine"
+
     hack_lowram_modloop=true
     hack_lowram_swap=true
 
@@ -1177,6 +1189,8 @@ add_newline() {
 }
 
 install_nixos() {
+    info "Install NixOS"
+
     os_dir=/os
     keep_swap=true
     nix_from=website
@@ -1388,6 +1402,8 @@ EOF
 }
 
 install_arch_gentoo() {
+    info "install $distro"
+
     set_locale() {
         echo "C.UTF-8 UTF-8" >>$os_dir/etc/locale.gen
         chroot $os_dir locale-gen
@@ -1695,6 +1711,8 @@ pipe_extract() {
 }
 
 dd_gzip_xz_raw() {
+    info "dd gzip xz raw"
+
     # 用官方 wget，一来带进度条，二来自带重试功能
     apk add wget
 
@@ -1740,6 +1758,7 @@ is_xda_gt_2t() {
 
 create_part() {
     # 除了 dd 都会用到
+    info "Create Part"
 
     # 分区工具
     apk add parted e2fsprogs
@@ -1970,6 +1989,7 @@ get_yq_name() {
 
 create_cloud_init_network_config() {
     ci_file=$1
+    info "Create Cloud Init network config: $ci_file"
 
     apk add "$(get_yq_name)"
 
@@ -2132,6 +2152,7 @@ EOF
 
 modify_windows() {
     os_dir=$1
+    info "Modify Windows"
 
     # https://learn.microsoft.com/windows-hardware/manufacture/desktop/windows-setup-states
     # https://learn.microsoft.com/troubleshoot/azure/virtual-machines/reset-local-password-without-agent
@@ -2264,6 +2285,7 @@ restore_resolv_conf() {
 
 modify_linux() {
     os_dir=$1
+    info "Modify Linux"
 
     find_and_mount() {
         mount_point=$1
@@ -2423,6 +2445,7 @@ EOF
 
 modify_os_on_disk() {
     only_process=$1
+    info "Modify disk if is $only_process"
 
     update_part
 
@@ -2554,6 +2577,7 @@ disable_selinux_kdump() {
 
 download_qcow() {
     apk add qemu-img
+    info "Download qcow2 image"
 
     mkdir -p /installer
     mount /dev/disk/by-label/installer /installer
@@ -2696,6 +2720,8 @@ del_default_user() {
 }
 
 install_qcow_by_copy() {
+    info "Install qcow2 by copy"
+
     mount_nouuid() {
         case "$(get_os_fs)" in
         ext4) mount "$@" ;;
@@ -2740,6 +2766,7 @@ install_qcow_by_copy() {
         os_part="mapper/$os_part"
     fi
 
+    info "qcow2 Partitions:"
     lsblk -f /dev/nbd0 -o +PARTTYPE
     echo "Part OS:   $os_part"
     echo "Part EFI:  $efi_part"
@@ -2831,6 +2858,8 @@ install_qcow_by_copy() {
     swapon /dev/$xda*3
 
     modify_el_ol() {
+        info "Modify el ol"
+
         # resolv.conf
         cp_resolv_conf /os
 
@@ -2988,6 +3017,7 @@ EOF
 
     modify_ubuntu() {
         os_dir=/os
+        info "Modify Ubuntu"
 
         cp_resolv_conf $os_dir
 
@@ -3128,6 +3158,8 @@ EOF
 }
 
 dd_qcow() {
+    info "DD qcow2"
+
     if true; then
         connect_qcow
 
@@ -3221,6 +3253,8 @@ resize_after_install_cloud_image() {
     # 1 修复 vultr 512m debian 11 generic/genericcloud 首次启动 kernel panic
     # 2 修复 gentoo websync 时空间不足
     if [ "$distro" = debian ] || [ "$distro" = gentoo ]; then
+        info "Resize after install cloud image"
+
         apk add parted
         if fix_partition_table_by_parted 2>&1 | grep -q 'Fixing'; then
             system_part_num=$(parted /dev/$xda -m print | tail -1 | cut -d: -f1)
@@ -3259,6 +3293,8 @@ mount_part_basic_layout() {
 }
 
 mount_part_for_iso_installer() {
+    info "Mount part for iso installer"
+
     # 挂载主分区
     mkdir -p /os
     mount /dev/disk/by-label/os /os
@@ -3287,6 +3323,7 @@ get_dns_list_for_win() {
 
 create_win_set_netconf_script() {
     target=$1
+    info "Create win netconf script"
 
     if is_staticv4 || is_staticv6 || is_need_manual_set_dnsv6; then
         get_netconf_to mac_addr
@@ -3425,6 +3462,8 @@ get_cloud_vendor() {
 }
 
 install_windows() {
+    info "Process windows iso"
+
     apk add wimlib
 
     download $iso /os/windows.iso
@@ -3519,6 +3558,8 @@ install_windows() {
         esac
     )
 
+    info "Windows image info"
+    echo "Image Name: $image_name"
     echo "NT Version: $nt_ver"
     echo "Build Version: $build_ver"
     echo "Product Type: $product_type"
@@ -3562,6 +3603,8 @@ install_windows() {
     esac
 
     add_drivers() {
+        info "Add drivers"
+
         drv=/os/drivers
         mkdir -p "$drv"         # 驱动下载临时文件夹
         mkdir -p "/wim/drivers" # boot.wim 驱动文件夹
@@ -3615,6 +3658,8 @@ install_windows() {
     # https://docs.aws.amazon.com/AWSEC2/latest/WindowsGuide/aws-nvme-drivers.html
     # https://docs.aws.amazon.com/AWSEC2/latest/WindowsGuide/enhanced-networking-ena.html
     add_driver_aws() {
+        info "Add drivers: AWS"
+
         # 未打补丁的 win7 无法使用 sha256 签名的驱动
         nvme_ver=$(
             case "$nt_ver" in
@@ -3645,6 +3690,8 @@ install_windows() {
 
     # citrix xen
     add_driver_citrix_xen() {
+        info "Add drivers: Citrix Xen"
+
         apk add 7zip
         download https://s3.amazonaws.com/ec2-downloads-windows/Drivers/Citrix-Win_PV.zip $drv/Citrix-Win_PV.zip
         unzip -o -d $drv $drv/Citrix-Win_PV.zip
@@ -3660,6 +3707,8 @@ install_windows() {
     # aws xen
     # https://docs.aws.amazon.com/AWSEC2/latest/WindowsGuide/xen-drivers-overview.html
     add_driver_aws_xen() {
+        info "Add drivers: AWS Xen"
+
         apk add msitools
 
         aws_pv_ver=$(
@@ -3687,6 +3736,8 @@ install_windows() {
     # 在 aws t2 上测试，安装 xenbus 会蓝屏，装了其他7个驱动后，能进系统但没网络
     # 但 aws 应该用aws官方xen驱动，所以测试仅供参考
     add_driver_generic_xen() {
+        info "Add drivers: Generic Xen"
+
         parts='xenbus xencons xenhid xeniface xennet xenvbd xenvif xenvkbd'
         mkdir -p $drv/xen/
         for part in $parts; do
@@ -3698,6 +3749,8 @@ install_windows() {
     # kvm
     # https://fedorapeople.org/groups/virt/virtio-win/direct-downloads/stable-virtio/
     add_driver_generic_kvm() {
+        info "Add drivers: Generic KVM"
+
         # 要区分 win10 / win11 驱动，虽然他们的 NT 版本号都是 10.0，但驱动文件有区别
         # https://github.com/virtio-win/kvm-guest-drivers-windows/commit/9af43da9e16e2d4bf4ea4663cdc4f29275fff48f
         # vista >>> 2k8
@@ -3795,6 +3848,8 @@ install_windows() {
     }
 
     add_driver_huawei_kvm() {
+        info "Add drivers: Huawei KVM"
+
         huawei_sys=$(
             case "$(echo "$product_ver" | to_lower)" in
             vista) echo Vista2008 ;;
@@ -3819,6 +3874,8 @@ install_windows() {
     }
 
     add_driver_aliyun_kvm() {
+        info "Add drivers: Aliyun KVM"
+
         aliyun_sys=$(
             case "$(echo "$product_ver" | to_lower)" in
             7) echo 7 ;;
@@ -3842,6 +3899,8 @@ install_windows() {
     # gcp
     # x86 x86_64 arm64 都有
     add_driver_gcp() {
+        info "Add drivers: GCP"
+
         gce_repo=https://packages.cloud.google.com/yuck
         download $gce_repo/repos/google-compute-engine-stable/index /tmp/gce.json
         for name in gvnic gga; do
@@ -3874,6 +3933,8 @@ install_windows() {
     # azure
     # https://learn.microsoft.com/azure/virtual-network/accelerated-networking-mana-windows
     add_driver_azure() {
+        info "Add drivers: Azure"
+
         download https://aka.ms/manawindowsdrivers $drv/azure.zip
         unzip $drv/azure.zip -d $drv/azure/
         cp_drivers $drv/azure
@@ -3921,6 +3982,7 @@ install_windows() {
     fi
 
     # 挂载 boot.wim
+    info "mount boot.wim"
     mkdir -p /wim
     wimmountrw /os/boot.wim 2 /wim/
 
@@ -3952,7 +4014,8 @@ install_windows() {
     xmlstarlet ed -d '//comment()' /tmp/autounattend.xml >/wim/autounattend.xml
     apk del xmlstarlet
     unix2dos /wim/autounattend.xml
-    cat /wim/autounattend.xml
+    info "autounattend.xml"
+    cat -n /wim/autounattend.xml
 
     # 避免无参数运行 setup.exe 时自动安装
     mv /wim/autounattend.xml /wim/windows.xml
@@ -3969,6 +4032,7 @@ install_windows() {
     download $confhome/windows-setup.bat $system32_dir/startnet.cmd
 
     # 提交修改 boot.wim
+    info "Unmount boot.wim"
     wimunmount --commit /wim/
 
     # 优化 boot.wim 大小
@@ -3995,6 +4059,7 @@ install_windows() {
     # 所以复制 resize.bat 到 install.wim
     # TODO: 由于esd文件无法修改，要将resize.bat放到boot.wim
     if [[ "$install_wim" = '*.wim' ]]; then
+        info "mount install.wim"
         wimmountrw $install_wim "$image_name" /wim/
         if false; then
             # 使用 autounattend.xml
@@ -4006,6 +4071,8 @@ install_windows() {
         else
             modify_windows /wim
         fi
+
+        info "Unmount install.wim"
         wimunmount --commit /wim/
     fi
 
@@ -4031,6 +4098,7 @@ EOF
 # 添加 netboot.efi 备用
 download_netboot_xyz_efi() {
     dir=$1
+    info "download netboot.xyz.efi"
 
     file=$dir/netboot.xyz.efi
     if [ "$(uname -m)" = aarch64 ]; then
@@ -4084,6 +4152,8 @@ get_ubuntu_kernel_flavor() {
 }
 
 install_redhat_ubuntu() {
+    info "Download iso installer"
+
     # 安装 grub2
     if is_efi; then
         # 注意低版本的grub无法启动f38 arm的内核
@@ -4174,6 +4244,8 @@ EOF
 }
 
 trans() {
+    info "start trans"
+
     mod_motd
 
     # 先检查 modloop 是否正常
@@ -4277,7 +4349,7 @@ trans() {
         add_default_efi_to_nvram
     fi
 
-    echo 'done'
+    info 'done'
     # 让 web 输出全部内容
     sleep 5
 }
@@ -4306,6 +4378,7 @@ extract_env_from_cmdline
 # 带参数运行部分
 # 重新下载并 exec 运行新脚本
 if [ "$1" = "update" ]; then
+    info 'update script'
     # shellcheck disable=SC2154
     wget -O /trans.sh "$confhome/trans.sh"
     chmod +x /trans.sh
@@ -4327,6 +4400,7 @@ printf '\nyes' | setup-sshd
 # shellcheck disable=SC2154
 if [ "$hold" = 1 ]; then
     if is_run_from_locald; then
+        info "hold"
         exit
     fi
 fi
@@ -4349,6 +4423,7 @@ case 1 in
 esac
 
 if [ "$hold" = 2 ]; then
+    info "hold 2"
     exit
 fi
 

@@ -177,7 +177,7 @@ bash reinstall.sh ubuntu --installer
 
 - Supports `raw`, `vhd` images or those compressed with `xz` or `gzip`.
 - When deploy a Windows image, the system disk will be expanded, and machines with static IPs will have their IPs configured. However, it may take a few minutes after the first boot for the configuration to take effect.
-- When deploy a Linux image, the system disk **will not** be expanded, and machines with static IPs **will not** have their IPs configured.
+- When deploy a Linux image, the script will not modify any contents of the image.
 
 ```bash
 bash reinstall.sh dd --img https://example.com/xxx.xz
