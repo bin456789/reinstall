@@ -6,6 +6,10 @@
 # 出错后停止运行，将进入到登录界面，防止失联
 set -eE
 
+# 用于判断 reinstall.sh 和 trans.sh 是否兼容
+# shellcheck disable=SC2034
+SCRIPT_VERSION=4BACD833-A585-23BA-6CBB-9AA4E08E0001
+
 # debian 安装版、ubuntu 安装版、el/ol 安装版不使用该密码
 PASSWORD=123@@@
 

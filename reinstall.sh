@@ -7,6 +7,9 @@ confhome=https://raw.githubusercontent.com/bin456789/reinstall/main
 confhome_cn=https://jihulab.com/bin456789/reinstall/-/raw/main
 # confhome_cn=https://mirror.ghproxy.com/https://raw.githubusercontent.com/bin456789/reinstall/main
 
+# 用于判断 reinstall.sh 和 trans.sh 是否兼容
+SCRIPT_VERSION=4BACD833-A585-23BA-6CBB-9AA4E08E0001
+
 # https://www.gnu.org/software/gettext/manual/html_node/The-LANGUAGE-variable.html
 export LC_ALL=C
 
@@ -16,8 +19,7 @@ export PATH=/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin:$PATH
 
 # 记录日志
 exec > >(exec tee /reinstall.log) 2>&1
-
-this_script=$(readlink -f "$0")
+THIS_SCRIPT=$(readlink -f "$0")
 trap 'trap_err $LINENO $?' ERR
 
 trap_err() {
@@ -25,7 +27,7 @@ trap_err() {
     ret_no=$2
 
     error "Line $line_no return $ret_no"
-    sed -n "$line_no"p "$this_script"
+    sed -n "$line_no"p "$THIS_SCRIPT"
 }
 
 usage_and_exit() {
@@ -2821,6 +2823,11 @@ mod_initrd() {
         $(is_in_windows && echo --nonmatching 'dev/console' --nonmatching 'dev/null')
 
     curl -Lo $initrd_dir/trans.sh $confhome/trans.sh
+    if ! grep -i "$SCRIPT_VERSION" $initrd_dir/trans.sh; then
+        error_and_exit "
+This script is outdated, please download reinstall.sh again.
+脚本有更新，请重新下载 reinstall.sh"
+    fi
     curl -Lo $initrd_dir/alpine-network.sh $confhome/alpine-network.sh
     chmod a+x $initrd_dir/trans.sh $initrd_dir/alpine-network.sh
 
