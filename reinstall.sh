@@ -975,6 +975,7 @@ setos() {
 
             # ks
             eval ${step}_ks=$confhome/ubuntu.yaml
+            eval ${step}_minimal=$minimal
         fi
     }
 

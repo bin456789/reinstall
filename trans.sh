@@ -1638,9 +1638,13 @@ EOF
     rm -rf $os_dir/swapfile
 }
 
-get_http_file_size_to() {
-    var_name=$1
-    url=$2
+get_http_file_size() {
+    url=$1
+
+    # 网址重定向可能得到多个 Content-Length, 选最后一个
+    wget --spider -S "$url" 2>&1 | grep 'Content-Length:' |
+        tail -1 | awk '{print $2}' | grep .
+}
 
 pipe_extract() {
     # alpine busybox 自带 gzip，但官方版也许性能更好
@@ -1717,10 +1721,8 @@ create_part() {
     # xda*1 星号用于 nvme0n1p1 的字母 p
     # shellcheck disable=SC2154
     if [ "$distro" = windows ]; then
-        get_http_file_size_to size_bytes $iso
-
-        # 默认值，最大的iso 23h2 需要7g
-        if [ -z "$size_bytes" ]; then
+        if ! size_bytes=$(get_http_file_size "$iso"); then
+            # 默认值，最大的iso 23h2 假设 7g
             size_bytes=$((7 * 1024 * 1024 * 1024))
         fi
 
@@ -1762,7 +1764,7 @@ create_part() {
             mkfs.ntfs -f -F -L installer /dev/$xda*2    #2 installer
         fi
     elif is_use_cloud_image; then
-        installer_part_size="$(get_ci_installer_part_size)"
+        installer_part_size="$(get_cloud_image_part_size)"
         # 这几个系统不使用dd，而是复制文件
         if [ "$distro" = centos ] || [ "$distro" = alma ] || [ "$distro" = rocky ] ||
             [ "$distro" = oracle ] || [ "$distro" = redhat ] ||
@@ -1844,8 +1846,24 @@ create_part() {
         # 对于红帽系是临时分区表，安装时除了 installer 分区，其他分区会重建为默认的大小
         # 对于ubuntu是最终分区表，因为 ubuntu 的安装器不能调整个别分区，只能重建整个分区表
         # installer 2g分区用fat格式刚好塞得下ubuntu-22.04.3 iso，而ext4塞不下或者需要改参数
-        [ "$distro" = ubuntu ] && installer_part_size=3GiB || installer_part_size=2GiB
+        if [ "$distro" = ubuntu ]; then
+            if ! size_bytes=$(get_http_file_size "$iso"); then
+                # 默认值，假设 iso 3g
+                size_bytes=$((3 * 1024 * 1024 * 1024))
+            fi
+            # 假设需要预留 10% 空间
+            size_bytes_mb=$((size_bytes * 110 / 100 / 1024 / 1024))
+            installer_part_size=${size_bytes_mb}MiB
+        else
+            # redhat
+            installer_part_size=2GiB
+        fi
+
+        # centos 7 无法加载alpine格式化的ext4
+        # 要关闭这个属性
+        ext4_options="-O ^metadata_csum"
         apk add dosfstools
+
         if is_efi; then
             # efi
             parted /dev/$xda -s -- \
@@ -1856,9 +1874,9 @@ create_part() {
                 set 1 boot on
             update_part
 
-            mkfs.fat -n efi /dev/$xda*1                 #1 efi
-            mkfs.ext4 -E nodiscard -F -L os /dev/$xda*2 #2 os
-            mkfs.fat -n installer /dev/$xda*3           #3 installer
+            mkfs.fat -n efi /dev/$xda*1                                      #1 efi
+            mkfs.ext4 -E nodiscard -F -L os /dev/$xda*2                      #2 os
+            mkfs.ext4 -E nodiscard -F -L installer $ext4_options /dev/$xda*3 #2 installer
         elif is_xda_gt_2t; then
             # bios > 2t
             parted /dev/$xda -s -- \
@@ -1869,9 +1887,9 @@ create_part() {
                 set 1 bios_grub on
             update_part
 
-            echo                                        #1 bios_boot
-            mkfs.ext4 -E nodiscard -F -L os /dev/$xda*2 #2 os
-            mkfs.fat -n installer /dev/$xda*3           #3 installer
+            echo                                                             #1 bios_boot
+            mkfs.ext4 -E nodiscard -F -L os /dev/$xda*2                      #2 os
+            mkfs.ext4 -E nodiscard -F -L installer $ext4_options /dev/$xda*3 #3 installer
         else
             # bios
             parted /dev/$xda -s -- \
@@ -1881,18 +1899,10 @@ create_part() {
                 set 1 boot on
             update_part
 
-            mkfs.ext4 -E nodiscard -F -L os /dev/$xda*1 #1 os
-            mkfs.fat -n installer /dev/$xda*2           #2 installer
+            mkfs.ext4 -E nodiscard -F -L os /dev/$xda*1                      #1 os
+            mkfs.ext4 -E nodiscard -F -L installer $ext4_options /dev/$xda*2 #2 installer
         fi
         update_part
-
-        # centos 7 无法加载alpine格式化的ext4
-        # 要关闭这个属性
-        # 目前改用fat格式，不用设置这个
-        if false && [ "$distro" = centos ]; then
-            apk add e2fsprogs-extra
-            tune2fs -O ^metadata_csum_seed /dev/disk/by-label/installer
-        fi
     fi
 
     update_part
@@ -2560,7 +2570,7 @@ get_os_fs() {
     esac
 }
 
-get_ci_installer_part_size() {
+get_cloud_image_part_size() {
     # 8
     # https://repo.almalinux.org/almalinux/8/cloud/x86_64/images/AlmaLinux-8-GenericCloud-latest.x86_64.qcow2 600m
     # https://download.rockylinux.org/pub/rocky/8/images/x86_64/Rocky-8-GenericCloud-Base.latest.x86_64.qcow2 1.8g
@@ -2592,7 +2602,7 @@ get_ci_installer_part_size() {
         else
             echo 2GiB
         fi
-    elif get_http_file_size_to size_bytes $img >&2 && [ -n "$size_bytes" ]; then
+    elif size_bytes=$(get_http_file_size "$img"); then
         # 额外 +100M 文件系统保留大小 和 qcow2 写入空间
         size_bytes_mb=$((size_bytes / 1024 / 1024 + 100))
         # 最少 1g ，因为可能要用作临时 swap
@@ -3929,38 +3939,31 @@ get_ubuntu_kernel_flavor() {
     # 24.04 kvm = virtual
     # linux-image-virtual = linux-image-6.x-generic
     # linux-image-generic = linux-image-6.x-generic + amd64-microcode + intel-microcode + linux-firmware + linux-modules-extra-generic
+
+    # TODO: ISO virtual-hwe-24.04 不安装 linux-image-extra-virtual-hwe-24.04 不然会花屏
+
     # https://github.com/systemd/systemd/blob/main/src/basic/virt.c
     # https://github.com/canonical/cloud-init/blob/main/tools/ds-identify
     # http://git.annexia.org/?p=virt-what.git;a=blob;f=virt-what.in;hb=HEAD
-    {
-        # busybox blkid 不显示 sr0 的 UUID
-        if [ "$releasever" = 16.04 ]; then
-            if is_virt; then
-                flavor=virtual-hwe-$releasever
-            else
-                flavor=generic-hwe-$releasever
-            fi
+    if [ "$releasever" = 16.04 ]; then
+        if is_virt; then
+            echo virtual-hwe-$releasever
         else
-            apk add lsblk
-
-            if is_dmi_contains "amazon" || is_dmi_contains "ec2"; then
-                flavor=aws
-            elif is_dmi_contains "Google Compute Engine" || is_dmi_contains "GoogleCloud"; then
-                flavor=gcp
-            elif is_dmi_contains "OracleCloud"; then
-                flavor=oracle
-            elif is_dmi_contains "7783-7084-3265-9085-8269-3286-77"; then
-                flavor=azure
-            elif lsblk -o UUID,LABEL | grep -i 9796-932E | grep -i config-2; then
-                flavor=ibm
-            elif is_virt; then
-                flavor=virtual-hwe-$releasever
-            else
-                flavor=generic-hwe-$releasever
-            fi
+            echo generic-hwe-$releasever
         fi
-    } >&2
-    echo $flavor
+    else
+        vendor="$(get_cloud_vendor)"
+        case "$vendor" in
+        aws | gcp | oracle | azure | ibm) echo $vendor ;;
+        *)
+            if is_virt; then
+                echo virtual-hwe-$releasever
+            else
+                echo generic-hwe-$releasever
+            fi
+            ;;
+        esac
+    fi
 }
 
 install_redhat_ubuntu() {
@@ -3996,8 +3999,29 @@ install_redhat_ubuntu() {
     # shellcheck disable=SC2154
     if [ "$distro" = "ubuntu" ]; then
         download $iso /os/installer/ubuntu.iso
+        mkdir -p /iso
+        mount -o ro /os/installer/ubuntu.iso /iso
 
+        # 内核风味
         kernel=$(get_ubuntu_kernel_flavor)
+
+        # 要安装的版本
+        # https://canonical-subiquity.readthedocs-hosted.com/en/latest/reference/autoinstall-reference.html#id
+        # 20.04 不能选择 minimal ，也没有 install-sources.yaml
+        source_id=
+        if [ -f /iso/casper/install-sources.yaml ]; then
+            ids=$(grep id: /iso/casper/install-sources.yaml | awk '{print $2}')
+            if [ "$(echo "$ids" | wc -l)" = 1 ]; then
+                source_id=$ids
+            else
+                [ "$minimal" = 1 ] && v= || v=-v
+                source_id=$(echo "$ids" | grep $v '\-minimal')
+
+                if [ "$(echo "$source_id" | wc -l)" -gt 1 ]; then
+                    error_and_exit "find multi source id."
+                fi
+            fi
+        fi
 
         # 正常写法应该是 ds="nocloud-net;s=https://xxx/" 但是甲骨文云的ds更优先，自己的ds根本无访问记录
         # $seed 是 https://xxx/
@@ -4009,7 +4033,7 @@ install_redhat_ubuntu() {
             insmod all_video
             search --no-floppy --label --set=root installer
             loopback loop /ubuntu.iso
-            linux (loop)/casper/vmlinuz iso-scan/filename=/ubuntu.iso autoinstall noprompt noeject cloud-config-url=$ks $extra_cmdline extra_kernel=$kernel --- $console_cmdline
+            linux (loop)/casper/vmlinuz iso-scan/filename=/ubuntu.iso autoinstall noprompt noeject cloud-config-url=$ks $extra_cmdline extra_kernel=$kernel extra_source_id=$source_id --- $console_cmdline
             initrd (loop)/casper/initrd
         }
 EOF

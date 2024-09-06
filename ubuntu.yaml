@@ -5,8 +5,7 @@ autoinstall:
   apt:
     fallback: offline-install
   source:
-    id: ubuntu-server-minimal
-    search_drivers: false
+    id: "@SOURCE_ID@"
   kernel:
     package: linux-generic
   timezone: Asia/Shanghai
@@ -31,10 +30,26 @@ autoinstall:
       export xda
       curl -L "$confhome/ubuntu-storage-early.sh" | sh -s
 
+      # 要安装的版本
+      # 有的镜像只有一个版本，没有 install-sources.yaml
+      # 因此提取不到 $source_id，此时 $source_id 参数为空
+      if [ -n "$source_id" ]; then
+          sed -i "s/@SOURCE_ID@/$source_id/" /autoinstall.yaml
+      else
+          sed -i "/@SOURCE_ID@/d" /autoinstall.yaml
+      fi
+
       # 内核风味
       # https://bugs.launchpad.net/subiquity/+bug/1989353
       sed -i "s/generic/$kernel/" /run/kernel-meta-package
       sed -i "/package:/s/generic/$kernel/" /autoinstall.yaml
+
+      # 跳过最后的更新
+      cp /usr/sbin/chroot /usr/sbin/chroot.bin
+      cat >/usr/sbin/chroot <<EOF
+      #!/bin/sh
+      [ "\$2" = "unattended-upgrades" ] || /usr/sbin/chroot.bin "\$@"
+      EOF
 
       # 禁用 DNS  强制离线安装内核和跳过最后的更新
       # 但安装器会配置时区和写入最近的mirror到/etc/apt/sources.list 所以要提前解析
