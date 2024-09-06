@@ -2566,7 +2566,6 @@ disable_selinux_kdump() {
     # yum reinstall kernel-core     # 重新安装新内核
     # cat /boot/loader/entries/*    # 依然有 crashkernel=1G-4G:192M,4G-64G:256M,64G-:512M
 
-    sed -i 's/crashkernel=[^ ]*/crashkernel=no/' $os_dir/etc/default/grub
     chroot $os_dir grubby --update-kernel ALL --args crashkernel=no
     # el7 上面那条 grubby 命令不能设置 /etc/default/grub
     sed -i 's/crashkernel=[^ "]*/crashkernel=no/' $os_dir/etc/default/grub
