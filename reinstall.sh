@@ -844,6 +844,19 @@ setos() {
                     directory=extended-lts
                     initrd_mirror=archive.debian.org
                 fi
+                if is_in_china; then
+                    warn "
+Due to the lack of Debian Freexian ELTS instaler mirrors in China, the installation time may be longer.
+Continue?
+
+由于没有 Debian Freexian ELTS 国内安装源，安装时间可能会比较长。
+继续安装?
+"
+                    read -r -p '[y/N]: '
+                    if ! [[ "$REPLY" = [Yy] ]]; then
+                        exit
+                    fi
+                fi
             else
                 if is_in_china; then
                     # ftp.cn.debian.org 不在国内还严重丢包
@@ -1089,7 +1102,7 @@ setos() {
         if [ -z "$iso" ]; then
             # 查找时将 windows longhorn serverdatacenter 改成 windows server 2008 serverdatacenter
             image_name=${image_name/windows longhorn server/windows server 2008 server}
-            echo "iso url is not set. Try to find it."
+            echo "iso url is not set. Attempting to find it automatically."
             find_windows_iso
         fi
 
@@ -1424,7 +1437,7 @@ install_pkg() {
                 # https://github.com/chef/os_release
                 case "$id" in
                 fedora | centos | rhel) is_have_cmd dnf && pkg_mgr=dnf || pkg_mgr=yum ;;
-                debian | ubuntu) pkg_mgr=apt ;;
+                debian | ubuntu) pkg_mgr=apt-get ;;
                 opensuse | suse) pkg_mgr=zypper ;;
                 alpine) pkg_mgr=apk ;;
                 arch) pkg_mgr=pacman ;;
@@ -1437,7 +1450,7 @@ install_pkg() {
         fi
 
         # 查找方法 2
-        for mgr in dnf yum apt pacman zypper emerge apk opkg nix-env; do
+        for mgr in dnf yum apt-get pacman zypper emerge apk opkg nix-env; do
             is_have_cmd $mgr && pkg_mgr=$mgr && return
         done
 
@@ -1454,7 +1467,7 @@ install_pkg() {
             ;;
         xz)
             case "$pkg_mgr" in
-            apt) pkg="xz-utils" ;;
+            apt-get) pkg="xz-utils" ;;
             *) pkg="xz" ;;
             esac
             ;;
@@ -1472,14 +1485,14 @@ install_pkg() {
             ;;
         fdisk)
             case "$pkg_mgr" in
-            apt) pkg="fdisk" ;;
+            apt-get) pkg="fdisk" ;;
             apk) pkg="util-linux-misc" ;;
             *) pkg="util-linux" ;;
             esac
             ;;
         hexdump)
             case "$pkg_mgr" in
-            apt) pkg="bsdmainutils" ;;
+            apt-get) pkg="bsdmainutils" ;;
             *) pkg="util-linux" ;;
             esac
             ;;
@@ -1492,7 +1505,7 @@ install_pkg() {
             ;;
         nslookup | dig)
             case "$pkg_mgr" in
-            apt) pkg="dnsutils" ;;
+            apt-get) pkg="dnsutils" ;;
             pacman) pkg="bind" ;;
             apk | emerge) pkg="bind-tools" ;;
             yum | dnf | zypper) pkg="bind-utils" ;;
@@ -1559,9 +1572,9 @@ install_pkg() {
             add_community_repo_for_alpine
             apk add $pkg
             ;;
-        apt)
-            [ -z "$apt_updated" ] && apt update && apt_updated=1
-            DEBIAN_FRONTEND=noninteractive apt install -y $pkg
+        apt-get)
+            [ -z "$apt_updated" ] && apt-get update && apt_updated=1
+            DEBIAN_FRONTEND=noninteractive apt-get install -y $pkg
             ;;
         opkg)
             [ -z "$opkg_updated" ] && opkg update && opkg_updated=1
@@ -1605,7 +1618,7 @@ install_pkg() {
             cmd_to_pkg
             install_pkg_real
         fi
-    done
+    done >&2
 }
 
 check_ram() {

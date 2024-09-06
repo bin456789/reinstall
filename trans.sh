@@ -59,13 +59,21 @@ add_community_repo() {
 # 有时网络问题下载失败，导致脚本中断
 # 因此需要重试
 apk() {
-    retry 5 command apk "$@"
+    retry 5 command apk "$@" >&2
 }
 
-# busybox 的 wget 没有重试功能
+# 在没有设置 set +o pipefail 的情况下，限制下载大小：
+# retry 5 command wget | head -c 1048576 会触发 retry，下载 5 次
+# command wget "$@" --tries=5 | head -c 1048576 不会触发 wget 自带的 retry，只下载 1 次
 wget() {
     echo "$@" | grep -o 'http[^ ]*' >&2
-    retry 5 command wget "$@"
+    if command wget 2>&1 | grep -q BusyBox; then
+        # busybox wget 没有重试功能
+        retry 5 command wget "$@"
+    else
+        # 原版 wget 自带重试功能
+        command wget --tries=5 --progress=bar:force "$@"
+    fi
 }
 
 is_have_cmd() {
@@ -396,6 +404,9 @@ is_dmi_contains() {
     cache_dmi_and_virt
     echo "$_dmi" | grep -Eiwq "$1"
 }
+
+show_netconf() {
+    grep -r . /dev/netconf/
 }
 
 get_ra_to() {
@@ -412,6 +423,8 @@ get_ra_to() {
         echo "$_ra" | cat -n
         echo
         ip addr | cat -n
+        echo
+        show_netconf | cat -n
         echo
     fi
     eval "$1='$_ra'"
@@ -1189,6 +1202,7 @@ install_nixos() {
     # 2. 用 nix 安装 nixos-install-tools (nixos-xxx)
     # 3. 运行 nixos-generate-config 生成配置 + 编辑
     # 4. 运行 nixos-install
+    # https://nixos.org/manual/nixos/stable/index.html#sec-installing-from-other-distro
 
     # nix 安装方式                                    分支          版本
     # apk add nix                                    3.20         2.22.0  # nix 本体跟 alpine 正常的软件一样，不在 /nix/store 里面
@@ -2296,8 +2310,8 @@ EOF
             ! sh /can_use_cloud_kernel.sh "$xda" $eths; then
 
             cp_resolv_conf $os_dir
-            chroot $os_dir apt update
-            DEBIAN_FRONTEND=noninteractive chroot $os_dir apt install -y linux-image-$axx64
+            chroot $os_dir apt-get update
+            DEBIAN_FRONTEND=noninteractive chroot $os_dir apt-get install -y linux-image-$axx64
 
             # 标记云内核包
             # apt-mark showmanual 结果为空，返回值也是 0
@@ -2312,12 +2326,12 @@ EOF
 
         if [ "$releasever" -le 11 ]; then
             cp_resolv_conf $os_dir
-            chroot $os_dir apt update
+            chroot $os_dir apt-get update
 
             if true; then
                 # 将 debian 11 设置为 12 一样的网络管理器
                 # 可解决 ifupdown dhcp 不支持 24位掩码+不规则网关的问题
-                DEBIAN_FRONTEND=noninteractive chroot $os_dir apt install -y netplan.io
+                DEBIAN_FRONTEND=noninteractive chroot $os_dir apt-get install -y netplan.io
                 chroot $os_dir systemctl disable networking resolvconf
                 chroot $os_dir systemctl enable systemd-networkd systemd-resolved
                 rm_resolv_conf $os_dir
@@ -2331,7 +2345,7 @@ EOF
 
             else
                 # debian 11 默认不支持 rdnss，要安装 rdnssd 或者 nm
-                DEBIAN_FRONTEND=noninteractive chroot $os_dir apt install -y rdnssd
+                DEBIAN_FRONTEND=noninteractive chroot $os_dir apt-get install -y rdnssd
                 # 不会自动建立链接，因此不能删除
                 restore_resolv_conf $os_dir
             fi
@@ -2666,7 +2680,7 @@ chroot_apt_autoremove() {
     }
 
     change_confs change
-    DEBIAN_FRONTEND=noninteractive chroot $os_dir apt autoremove --purge -y
+    DEBIAN_FRONTEND=noninteractive chroot $os_dir apt-get autoremove --purge -y
     change_confs restore
 }
 
@@ -3010,8 +3024,8 @@ EOF
         # 安装最佳内核
         flavor=$(get_ubuntu_kernel_flavor)
         echo "Use kernel flavor: $flavor"
-        chroot $os_dir apt update
-        DEBIAN_FRONTEND=noninteractive chroot $os_dir apt install -y "linux-image-$flavor"
+        chroot $os_dir apt-get update
+        DEBIAN_FRONTEND=noninteractive chroot $os_dir apt-get install -y "linux-image-$flavor"
 
         # 自带内核：
         # 常规版本             generic
@@ -3032,7 +3046,7 @@ EOF
         # 16.04 镜像用 ifupdown/networking 管理网络
         # 要安装 resolveconf，不然 /etc/resolv.conf 为空
         if [ "$releasever" = 16.04 ]; then
-            chroot $os_dir apt install -y resolvconf
+            chroot $os_dir apt-get install -y resolvconf
             ln -sf /run/resolvconf/resolv.conf $os_dir/etc/resolv.conf.orig
         fi
 

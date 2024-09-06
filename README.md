@@ -149,10 +149,35 @@ bash reinstall.sh centos      9
 > 安装其它系统时，可通过多种方式（SSH、HTTP 80 端口、后台 VNC、串行控制台）查看安装进度。
 > 即使安装过程出错，也能通过 SSH 安装到 Alpine。
 
+<details>
+
+<summary>实验性功能</summary>
+
+用云镜像安装 Debian，适合于 CPU 较慢的机器
+
+```bash
+bash reinstall.sh debian --ci
+```
+
+用 ISO 安装 CentOS, Alma, Rocky, Fedora ，仅支持内存大于 2G 且为动态 IP 的机器
+
+```bash
+bash reinstall.sh centos --installer
+```
+
+用 ISO 安装 Ubuntu ，仅支持内存大于 1G 且为动态 IP 的机器
+
+```bash
+bash reinstall.sh ubuntu --installer
+```
+
+</details>
+
 ### 功能 2: DD
 
-- 支持 `raw`、`vhd`、`gzip`、`xz` 格式的镜像
-- DD Windows 镜像时，会自动扩展系统盘。静态的机器会自动配置好 IP，可能首次开机几分钟后才生效
+- 支持 `raw` `vhd` 或者经过 `xz` `gzip` 压缩的镜像
+- DD Windows 镜像时，会扩展系统盘，静态 IP 的机器会配置好 IP，可能首次开机几分钟后才生效
+- DD Linux 镜像时，**不会**扩展系统盘，静态 IP 的机器**不会**配置好 IP
 
 ```bash
 bash reinstall.sh dd --img https://example.com/xxx.xz

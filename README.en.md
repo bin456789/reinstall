@@ -149,10 +149,35 @@ bash reinstall.sh centos      9
 > When installing other systems, can monitor the progress through various methods (SSH, HTTP 80 port, VNC in the background, serial console).
 > Even if errors occur during the installation process, you can still install Alpine via SSH.
 
+<details>
+
+<summary>Experimental Features</summary>
+
+Install Debian using a cloud image, suitable for machines with slower CPUs
+
+```bash
+bash reinstall.sh debian --ci
+```
+
+Install CentOS, Alma, Rocky, Fedora using ISO, only supports machines with more than 2G of memory and dynamic IP
+
+```bash
+bash reinstall.sh centos --installer
+```
+
+Install Ubuntu using ISO, only supports machines with more than 1G of memory and dynamic IP
+
+```bash
+bash reinstall.sh ubuntu --installer
+```
+
+</details>
+
 ### Feature 2: DD
 
-- Supports `raw`, `vhd`, `gzip` and `xz` formatted images
-- When using DD with a Windows image, the script will automatically expand the system partition. For static IP machines, the IP will be configured automatically, and it may take a few minutes to take effect on first boot
+- Supports `raw`, `vhd` images or those compressed with `xz` or `gzip`.
+- When deploy a Windows image, the system disk will be expanded, and machines with static IPs will have their IPs configured. However, it may take a few minutes after the first boot for the configuration to take effect.
+- When deploy a Linux image, the system disk **will not** be expanded, and machines with static IPs **will not** have their IPs configured.
 
 ```bash
 bash reinstall.sh dd --img https://example.com/xxx.xz

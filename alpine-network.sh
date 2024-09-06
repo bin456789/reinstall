@@ -129,7 +129,7 @@ test_internet() {
     echo 'Testing Internet Connection...'
 
     # debian 没有 nslookup，因此用 ping
-    for i in $(seq 5); do
+    for i in $(seq 10); do
         if is_need_test_ipv4 && ping -c1 -W5 -I "$ethx" "$ipv4_dns1" >/dev/null 2>&1; then
             echo "IPv4 has internet."
             ipv4_has_internet=true
