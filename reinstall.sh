@@ -234,7 +234,7 @@ test_url_grace() {
 test_url_real() {
     grace=$1
     url=$2
-    expect_type=$3
+    expect_type_combo=$3
     var_to_eval=$4
     info test url
 
@@ -247,13 +247,14 @@ test_url_real() {
 
     # TODO: 好像无法识别 nixos 官方源的跳转
     # 有的服务器不支持 range，curl会下载整个文件
-    # 用 dd 限制下载 1M
-    # 并过滤 curl 23 错误（dd限制了空间）
+    # 所以用 head 限制 1M
+    # 过滤 curl 23 错误（head 限制了大小）
     # 也可用 ulimit -f 但好像 cygwin 不支持
+    # ${PIPESTATUS[n]} 表示第n个管道的返回值
     echo $url
     for i in $(seq 5 -1 0); do
         if command curl --insecure --connect-timeout 10 -Lfr 0-1048575 "$url" \
-            1> >(exec dd bs=1M count=1 of=$tmp_file iflag=fullblock 2>/dev/null) \
+            1> >(exec head -c 1048576 >$tmp_file) \
             2> >(exec grep -v 'curl: (23)' >&2); then
             break
         else
@@ -268,19 +269,54 @@ test_url_real() {
         fi
     done
 
-    if [ -n "$expect_type" ]; then
-        # gzip的mime有很多种写法
-        # centos7中显示为 x-gzip，在其他系统中显示为 gzip，可能还有其他
-        # 所以不用mime判断
-        # https://www.digipres.org/formats/sources/tika/formats/#application/gzip
+    if [ -n "$expect_type_combo" ]; then
+        fix_file_type() {
+            # gzip的mime有很多种写法
+            # centos7中显示为 x-gzip，在其他系统中显示为 gzip，可能还有其他
+            # 所以不用mime判断
+            # https://www.digipres.org/formats/sources/tika/formats/#application/gzip
 
-        # 有些 file 版本输出的是 # ISO 9660 CD-ROM filesystem data ，要去掉开头的井号
+            # 有些 file 版本输出的是 # ISO 9660 CD-ROM filesystem data ，要去掉开头的井号
+
+            # 下面两种都是 raw
+            # DOS/MBR boot sector
+            # x86 boot sector; partition 1: ...
+            sed 's/^# //' | cut -d' ' -f1 | to_lower |
+                sed -e 's,dos/mbr,raw,' -e 's,x86,raw,'
+        }
+
+        file_enhanced() {
+            file_type=$(file -b $tmp_file | fix_file_type)
+            if [ "$file_type" = "xz" ] || [ "$file_type" = "gzip" ]; then
+                # 要安装 xz 或者 gzip，不然会报错
+                # ERROR:[xz: Wait failed, No child process]
+                install_pkg "$file_type"
+
+                # 加 if 是为了避免以下情况（外面是xz，但是识别不到里面的东西，即使装了xz）,
+                # 即使 file 报错返回值也是 0
+                # [root@localhost ~]# file -bZ /reinstall-tmp/img-test
+                # ERROR:[xz: Unexpected end of input]
+                if file_type_in="$(file -bZ $tmp_file | fix_file_type)" &&
+                    ! grep -iq "^Error" <<<"$file_type_in"; then
+                    file_type="$file_type_in.$file_type"
+                fi
+            fi
+            echo "$file_type"
+        }
+
         install_pkg file
-        real_type=$(file -b $tmp_file | sed 's/^# //' | cut -d' ' -f1 | to_lower)
-        [ -n "$var_to_eval" ] && eval $var_to_eval=$real_type
+        real_type_combo=$(file_enhanced $tmp_file)
+        echo "$real_type_combo"
 
-        if ! grep -wo "$real_type" <<<"$expect_type"; then
-            failed "$url expected: $expect_type. actual: $real_type."
+        if ! grep -Foq "|$real_type_combo|" <<<"|$expect_type_combo|"; then
+            failed "$url expected: $expect_type_combo. actual: $real_type_combo."
+        fi
+
+        IFS=. read -r real_type real_type_warp <<<"$real_type_combo"
+
+        if [ -n "$var_to_eval" ]; then
+            eval "$var_to_eval=$real_type"
+            eval "$var_to_eval""_warp=$real_type_warp"
         fi
     fi
 }
@@ -934,7 +970,7 @@ setos() {
             filename=$(curl -L $mirror | grep -oP "ubuntu-$releasever.*?-live-server-$basearch_alt.iso" | head -1)
             iso=$mirror/$filename
             # 在 ubuntu 20.04 上，file 命令检测 ubuntu 22.04 iso 结果是 DOS/MBR boot sector
-            test_url $iso 'iso|dos/mbr'
+            test_url $iso 'iso|raw'
             eval ${step}_iso=$iso
 
             # ks
@@ -985,7 +1021,7 @@ setos() {
             # 传统安装
             # 该服务器文件缓存 miss 时会响应 206 + Location 头
             # 但 curl 这种情况不会重定向，所以添加 ascii 类型让它不要报错
-            test_url $mirror/nixos-$releasever/store-paths.xz xz/ascii
+            test_url $mirror/nixos-$releasever/store-paths.xz 'xz|ascii'
             eval ${step}_mirror=$mirror
         fi
     }
@@ -1061,38 +1097,30 @@ setos() {
         # 注意 windows server 2008 r2 serverdatacenter 不用改
         image_name=${image_name/windows server 2008 server/windows longhorn server}
 
-        test_url $iso 'iso|dos/mbr'
+        test_url $iso 'iso|raw'
         eval "${step}_iso='$iso'"
         eval "${step}_image_name='$image_name'"
     }
 
     # shellcheck disable=SC2154
     setos_dd() {
-        # 下面两种都是 raw
-        # DOS/MBR boot sector
-        # x86 boot sector; partition 1: ...
-        test_url $img 'xz|gzip|dos/mbr|x86' img_type
-
-        # 修正 raw 的 img_type
-        if [ "$img_type" = dos/mbr ] || [ "$img_type" = x86 ]; then
-            img_type=raw
-        fi
+        # raw 包含 vhd
+        test_url $img 'raw|raw.gzip|raw.xz' img_type
 
         if is_efi; then
             install_pkg hexdump
 
-            if ! [ "$img_type" = raw ]; then
-                install_pkg $img_type
-            fi
-
             extract() {
-                if [ "$img_type" = raw ]; then
-                    cat "$1"
-                else
+                case "$img_type_warp" in
+                '') cat "$1" ;;
+                xz | gzip)
+                    install_pkg $img_type_warp
                     # xz/gzip -d 文件必须有正确的扩展名，否则报扩展名错误
                     # 因此用 stdin
-                    $img_type -dc <"$1"
-                fi
+                    "$img_type_warp" -dc <"$1"
+                    ;;
+                *) error_and_exit "warp type $img_type_warp not support." ;;
+                esac
             }
 
             # openwrt 镜像 efi part type 不是 esp
@@ -1126,6 +1154,7 @@ Continue with DD?
         fi
         eval "${step}_img='$img'"
         eval "${step}_img_type='$img_type'"
+        eval "${step}_img_type_warp='$img_type_warp'"
     }
 
     setos_centos_alma_rocky_fedora() {
@@ -1293,13 +1322,7 @@ Continue with DD?
     # 集中测试云镜像格式
     if is_use_cloud_image && [ "$step" = finalos ]; then
         # shellcheck disable=SC2154
-        test_url $finalos_img 'xz|gzip|qemu' finalos_img_type
-
-        # openeuler 云镜像格式是 .qcow2.xz
-        if [ "$distro" = openeuler ]; then
-            # shellcheck disable=SC2034
-            finalos_img_type=qemu
-        fi
+        test_url $finalos_img 'qemu|qemu.gzip|qemu.xz' finalos_img_type
     fi
 }
 

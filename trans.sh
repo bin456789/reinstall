@@ -1649,39 +1649,26 @@ get_http_file_size_to() {
     var_name=$1
     url=$2
 
-    size=''
-    if wget --spider -S $url -o /tmp/headers.log; then
-        # 网址重定向可能得到多个 Content-Length, 选最后一个
-        if size=$(grep 'Content-Length:' /tmp/headers.log |
-            tail -1 | awk '{print $2}' | grep .); then
-            eval "$var_name='$size'"
-        fi
+pipe_extract() {
+    # alpine busybox 自带 gzip，但官方版也许性能更好
+    case "$img_type_warp" in
+    xz | gzip) apk add $img_type_warp ;;
+    '') ;;
+    *) error_and_exit "Not supported img_type_warp: $img_type_warp" ;;
+    esac
+
+    if [ -n "$img_type_warp" ]; then
+        "$img_type_warp" -dc
     else
-        error_and_exit "Can't access $url"
+        cat
     fi
 }
 
 dd_gzip_xz_raw() {
-    # 用官方 wget，一来带进度条，二来自带重试
-    # alpine busybox 自带 gzip xz，但官方版也许性能更好
-    # raw 包括 vhd
-    # shellcheck disable=SC2154
-    case "$img_type" in
-    xz | gzip) apk add wget $img_type ;;
-    raw) apk add wget ;;
-    *) error_and_exit 'Not supported' ;;
-    esac
+    # 用官方 wget，一来带进度条，二来自带重试功能
+    apk add wget
 
-    pipe_extract() {
-        if [ "$img_type" = raw ]; then
-            cat
-        else
-            $img_type -dc
-        fi
-    }
-
-    if ! command wget $img -O- --tries=5 --progress=bar:force |
-        pipe_extract >/dev/$xda 2>/tmp/dd_stderr; then
+    if ! wget $img -O- | pipe_extract >/dev/$xda 2>/tmp/dd_stderr; then
         # vhd 文件结尾有 512 字节额外信息，可以忽略
         if grep -iq 'No space' /tmp/dd_stderr; then
             apk add parted
@@ -2536,11 +2523,13 @@ download_qcow() {
     mount /dev/disk/by-label/installer /installer
 
     qcow_file=/installer/cloud_image.qcow2
-    if [ "$distro" = openeuler ]; then
-        prog=xz
-        apk add wget $prog
-        command wget $img -O- --tries=5 --progress=bar:force | $prog -dc >$qcow_file
+    if [ -n "$img_type_warp" ]; then
+        # 边下载边解压，单线程下载
+        # 用官方 wget ，带进度条
+        apk add wget
+        wget $img -O- | pipe_extract >$qcow_file
     else
+        # 多线程下载
         download "$img" "$qcow_file"
     fi
 }
@@ -4077,6 +4066,7 @@ trans() {
     fi
 
     # dd qemu 切换成云镜像模式，暂时没用到
+    # shellcheck disable=SC2154
     if [ "$distro" = "dd" ] && [ "$img_type" = "qemu" ]; then
         # 移到 reinstall.sh ?
         distro=any
@@ -4105,8 +4095,8 @@ trans() {
                 ;;
             esac
             ;;
-        gzip | xz | raw)
-            # 暂时没用到 gzip xz 格式的云镜像
+        raw)
+            # 暂时没用到 raw 格式的云镜像
             dd_gzip_xz_raw
             resize_after_install_cloud_image
             modify_os_on_disk linux
@@ -4114,7 +4104,7 @@ trans() {
         esac
     elif [ "$distro" = "dd" ]; then
         case "$img_type" in
-        gzip | xz | raw)
+        raw)
             dd_gzip_xz_raw
             modify_os_on_disk windows
             ;;
