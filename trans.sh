@@ -598,8 +598,10 @@ grep_efi_index() {
 }
 
 # 某些机器可能不会回落到 bootx64.efi
-# 因此手动添加一个回落项
-add_fallback_efi_to_nvram() {
+# 阿里云 ECS 启动项有 EFI Shell
+# 添加 bootx64.efi 到最后的话，会进入 EFI Shell
+# 因此添加到最前面
+add_default_efi_to_nvram() {
     apk add lsblk efibootmgr
 
     if efi_row=$(lsblk /dev/$xda -ro NAME,PARTTYPE,PARTUUID | grep -i "$EFI_UUID"); then
@@ -609,22 +611,13 @@ add_fallback_efi_to_nvram() {
         efi_file=$(get_fallback_efi_file_name)
 
         # 创建条目，先判断是否已经存在
-        if ! efibootmgr | grep -i "HD($efi_part_num,GPT,$efi_part_uuid,.*)/File(\\\EFI\\\boot\\\\$efi_file)"; then
-            fallback_id=$(efibootmgr --create-only \
+        # 好像没必要先判断
+        if true || ! efibootmgr | grep -i "HD($efi_part_num,GPT,$efi_part_uuid,.*)/File(\\\EFI\\\boot\\\\$efi_file)"; then
+            efibootmgr --create \
                 --disk "/dev/$xda" \
                 --part "$efi_part_num" \
-                --label "fallback" \
-                --loader "\\EFI\\boot\\$efi_file" |
-                tail -1 | grep_efi_index)
-
-            # 添加到最后
-            orig_order=$(efibootmgr | grep -F BootOrder: | awk '{print $2}')
-            if [ -n "$orig_order" ]; then
-                new_order="$orig_order,$fallback_id"
-            else
-                new_order="$fallback_id"
-            fi
-            efibootmgr --bootorder "$new_order"
+                --label "$efi_file" \
+                --loader "\\EFI\\boot\\$efi_file"
         fi
     else
         # shellcheck disable=SC2154
@@ -4140,7 +4133,7 @@ trans() {
     # 因此 alpine 不单独处理
     if is_efi; then
         del_invalid_efi_entry
-        add_fallback_efi_to_nvram
+        add_default_efi_to_nvram
     fi
 
     echo 'done'
