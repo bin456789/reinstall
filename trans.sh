@@ -365,18 +365,37 @@ clear_previous() {
     # mount /1/file2 /2
 }
 
-get_virt_to() {
-    if [ -z "$_virt" ]; then
+cache_dmi_and_virt() {
+    if [ -z "$_dmi" ] || [ -z "$_virt" ]; then
+        # virt-what 自动安装 dmidecode
         apk add virt-what
-        _virt="$(virt-what)"
+        _virt=$(virt-what)
+        _dmi=$(dmidecode | grep -E '(Manufacturer|Asset Tag|Vendor): ' | awk -F': ' '{print $2}')
         apk del virt-what
     fi
-    eval "$1='$_virt'"
 }
 
 is_virt() {
-    get_virt_to virt
-    [ -n "$virt" ]
+    cache_dmi_and_virt
+    [ -n "$_virt" ]
+}
+
+is_virt_contains() {
+    cache_dmi_and_virt
+    echo "$_virt" | grep -Eiwq "$1"
+}
+
+is_dmi_contains() {
+    # Manufacturer: Alibaba Cloud
+    # Manufacturer: Tencent Cloud
+    # Manufacturer: Huawei Cloud
+    # Asset Tag: OracleCloud.com
+    # Vendor: Amazon EC2
+    # Manufacturer: Amazon EC2
+    # Asset Tag: Amazon EC2
+    cache_dmi_and_virt
+    echo "$_dmi" | grep -Eiwq "$1"
+}
 }
 
 get_ra_to() {
@@ -3306,23 +3325,6 @@ EOF
 # lscpu 也可查看虚拟化环境，但 alpine on lightsail 运行结果为 Microsoft
 # 猜测 lscpu 只参考了 cpuid 没参考 dmi
 # virt-what 可能会输出多行结果，因此用 grep
-is_virt_contains() {
-    if [ -z "$_virt" ]; then
-        apk add virt-what
-        _virt=$(virt-what)
-        apk del virt-what
-    fi
-    echo "$_virt" | grep -Eiw "$1"
-}
-
-is_dmi_contains() {
-    if [ -z "$_dmi" ]; then
-        apk add dmidecode
-        _dmi=$(dmidecode)
-        apk del dmidecode
-    fi
-    echo "$_dmi" | grep -Eiw "$1"
-}
 
 get_aws_repo() {
     if is_in_china >&2; then
@@ -3375,6 +3377,36 @@ get_server_name_by_build_ver() {
         echo 2008
     else
         error_and_exit "Unknown Build Version: $build_ver"
+    fi
+}
+
+is_nt_ver_ge() {
+    local orig sorted
+    orig=$(printf '%s\n' "$1" "$nt_ver")
+    sorted=$(echo "$orig" | sort -V)
+    [ "$orig" = "$sorted" ]
+}
+
+get_cloud_vendor() {
+    # busybox blkid 不显示 sr0 的 UUID
+    apk add lsblk
+
+    # http://git.annexia.org/?p=virt-what.git;a=blob;f=virt-what.in;hb=HEAD
+    # virt-what 可识别厂商 aws google_cloud alibaba_cloud alibaba_cloud-ebm
+    if is_dmi_contains "Amazon EC2" || is_virt_contains aws; then
+        echo aws
+    elif is_dmi_contains "Google Compute Engine" || is_dmi_contains "GoogleCloud" || is_virt_contains google_cloud; then
+        echo gcp
+    elif is_dmi_contains "OracleCloud"; then
+        echo oracle
+    elif is_dmi_contains "7783-7084-3265-9085-8269-3286-77"; then
+        echo azure
+    elif lsblk -o UUID,LABEL | grep -i 9796-932E | grep -iq config-2; then
+        echo ibm
+    elif is_dmi_contains 'Huawei Cloud'; then
+        echo huawei
+    elif is_dmi_contains 'Alibaba Cloud'; then
+        echo aliyun
     fi
 }
 
@@ -3493,6 +3525,7 @@ install_windows() {
     # arch_wim   wiminfo                    x86  x86_64  ARM64
     # arch       virtio iso / unattend.xml  x86  amd64   arm64
     # arch_xdd   virtio msi / xen驱动       x86  x64
+    # arch_dd    华为云驱动                   32   64
 
     # 将 wim 的 arch 转为驱动和应答文件的 arch
     arch_wim=$(get_selected_image_prop Architecture | to_lower)
@@ -3500,30 +3533,74 @@ install_windows() {
     x86)
         arch=x86
         arch_xdd=x86
+        arch_dd=32
         ;;
     x86_64)
         arch=amd64
         arch_xdd=x64
+        arch_dd=64
         ;;
     arm64)
         arch=arm64
         arch_xdd= # xen 没有 arm64 驱动，# virtio 也没有 arm64 msi
+        arch_dd=  # 华为云没有 arm64 驱动
         ;;
     esac
 
-    # 驱动
-    drv=/os/drivers
-    mkdir -p $drv
+    add_drivers() {
+        drv=/os/drivers
+        mkdir -p "$drv"         # 驱动下载临时文件夹
+        mkdir -p "/wim/drivers" # boot.wim 驱动文件夹
+
+        vendor="$(get_cloud_vendor)"
+
+        # 虚拟化驱动/通用驱动
+        if is_virt_contains kvm; then
+            # kvm
+            if [ "$vendor" = aliyun ] && is_nt_ver_ge 6.1 && [ "$arch_wim" = x86_64 ]; then
+                add_driver_aliyun_kvm
+                # 未测试是否需要专用驱动
+            elif false && [ "$vendor" = huawei ] && is_nt_ver_ge 6.0 && { [ "$arch_wim" = x86 ] || [ "$arch_wim" = x86_64 ]; }; then
+                add_driver_huawei_kvm
+            else
+                # 兜底
+                add_driver_generic_kvm
+            fi
+        elif is_virt_contains xen; then
+            # xen
+            # generic_xen 兜底，但未签名，暂停使用
+            if is_nt_ver_ge 6.1 && [ "$arch_wim" = x86_64 ]; then
+                add_driver_aws_xen
+            elif is_nt_ver_ge 6.0 && { [ "$arch_wim" = x86 ] || [ "$arch_wim" = x86_64 ]; }; then
+                add_driver_citrix_xen
+            fi
+        fi
+
+        # 厂商驱动
+        case "$vendor" in
+        aws)
+            if is_nt_ver_ge 6.1 && { [ "$arch_wim" = x86_64 ] || [ "$arch_wim" = arm64 ]; }; then
+                add_driver_aws
+            fi
+            ;;
+        azure)
+            # inf 不限版本，未测试
+            if [ "$arch_wim" = x86 ] || [ "$arch_wim" = x86_64 ]; then
+                add_driver_azure
+            fi
+            ;;
+        gcp)
+            # inf 不限版本，6.0 能装但用不了
+            # x86 x86_64 arm64 都有
+            add_driver_gcp
+            ;;
+        esac
+    }
 
     # aws nitro
-    # 不支持 vista
     # https://docs.aws.amazon.com/AWSEC2/latest/WindowsGuide/aws-nvme-drivers.html
     # https://docs.aws.amazon.com/AWSEC2/latest/WindowsGuide/enhanced-networking-ena.html
-    if is_virt_contains aws &&
-        is_virt_contains kvm &&
-        { [ "$arch_wim" = x86_64 ] || [ "$arch_wim" = arm64 ]; } &&
-        ! [ "$nt_ver" = 6.0 ]; then
-
+    add_driver_aws() {
         # 未打补丁的 win7 无法使用 sha256 签名的驱动
         nvme_ver=$(
             case "$nt_ver" in
@@ -3548,14 +3625,12 @@ install_windows() {
 
         unzip -o -d $drv/aws/ $drv/AWSNVMe.zip
         unzip -o -d $drv/aws/ $drv/AwsEnaNetworkDriver.zip
-    fi
+
+        cp_drivers $drv/aws
+    }
 
     # citrix xen
-    # 仅支持 vista
-    if is_virt_contains xen &&
-        { [ "$arch_wim" = x86 ] || [ "$arch_wim" = x86_64 ]; } &&
-        [ "$nt_ver" = 6.0 ]; then
-
+    add_driver_citrix_xen() {
         apk add 7zip
         download https://s3.amazonaws.com/ec2-downloads-windows/Drivers/Citrix-Win_PV.zip $drv/Citrix-Win_PV.zip
         unzip -o -d $drv $drv/Citrix-Win_PV.zip
@@ -3566,15 +3641,11 @@ install_windows() {
         # 排除 $PLUGINSDIR $TEMP
         exclude='$*'
         7z x $drv/Citrix_xensetup.exe -o$drv/aws/ -ao$override -x!$exclude
-    fi
+    }
 
     # aws xen
-    # 不支持 vista
     # https://docs.aws.amazon.com/AWSEC2/latest/WindowsGuide/xen-drivers-overview.html
-    if is_virt_contains xen &&
-        [ "$arch_wim" = x86_64 ] &&
-        ! [ "$nt_ver" = 6.0 ]; then
-
+    add_driver_aws_xen() {
         apk add msitools
 
         aws_pv_ver=$(
@@ -3591,7 +3662,9 @@ install_windows() {
         msiextract $drv/AWSPVDriverSetup.msi -C $drv
         mkdir -p $drv/aws/
         cp -rf $drv/.Drivers/* $drv/aws/
-    fi
+
+        cp_drivers $drv/xen -ipath "*/$arch_xdd/*"
+    }
 
     # xen
     # 没签名，暂时用aws的驱动代替
@@ -3599,24 +3672,18 @@ install_windows() {
     # https://xenbits.xenproject.org/pvdrivers/win/
     # 在 aws t2 上测试，安装 xenbus 会蓝屏，装了其他7个驱动后，能进系统但没网络
     # 但 aws 应该用aws官方xen驱动，所以测试仅供参考
-    if false &&
-        is_virt_contains xen &&
-        { [ "$arch_wim" = x86 ] || [ "$arch_wim" = x86_64 ]; }; then
-
+    add_driver_generic_xen() {
         parts='xenbus xencons xenhid xeniface xennet xenvbd xenvif xenvkbd'
         mkdir -p $drv/xen/
         for part in $parts; do
             download https://xenbits.xenproject.org/pvdrivers/win/$part.tar $drv/$part.tar
             tar -xf $drv/$part.tar -C $drv/xen/
         done
-    fi
+    }
 
-    # kvm (排除 aws)
-    # x86 x86_64 arm64 都有
+    # kvm
     # https://fedorapeople.org/groups/virt/virtio-win/direct-downloads/stable-virtio/
-    if is_virt_contains kvm &&
-        ! is_virt_contains aws; then
-
+    add_driver_generic_kvm() {
         # 要区分 win10 / win11 驱动，虽然他们的 NT 版本号都是 10.0，但驱动文件有区别
         # https://github.com/virtio-win/kvm-guest-drivers-windows/commit/9af43da9e16e2d4bf4ea4663cdc4f29275fff48f
         # vista >>> 2k8
@@ -3655,6 +3722,13 @@ install_windows() {
             download $baseurl/$dir/virtio-win.iso $drv/virtio.iso
             mkdir -p $drv/virtio
             mount -o ro $drv/virtio.iso $drv/virtio
+
+            if [ "$nt_ver" = 6.0 ] || [ "$nt_ver" = 6.1 ]; then
+                # vista/7 气球驱动有问题
+                cp_drivers $drv/virtio -ipath "*/$virtio_sys/$arch/*" -not -ipath "*/balloon/*"
+            else
+                cp_drivers $drv/virtio -ipath "*/$virtio_sys/$arch/*"
+            fi
         else
             # coreutils 的 cp mv rm 才有 -v 参数
             apk add 7zip file coreutils
@@ -3662,9 +3736,9 @@ install_windows() {
             match="FILE_*_${virtio_sys}_${arch}*"
             7z x $drv/virtio.msi -o$drv/virtio -i!$match -y -bb1
 
+            # 为没有后缀名的文件添加后缀名
             (
                 cd $drv/virtio
-                # 为没有后缀名的文件添加后缀名
                 echo "Recognizing file extension..."
                 for file in *"${virtio_sys}_${arch}"; do
                     recognized=false
@@ -3700,13 +3774,60 @@ install_windows() {
                     mv -v "$file" "$new_file"
                 done
             )
+            # 虽然 vista/7 气球驱动有问题，但 msi 里面没有 vista/7 驱动
+            # 因此不用额外处理
+            cp_drivers $drv/virtio
         fi
-    fi
+    }
+
+    add_driver_huawei_kvm() {
+        huawei_sys=$(
+            case "$(echo "$product_ver" | to_lower)" in
+            vista) echo Vista2008 ;;
+            7) echo 7 ;;
+            8) [ "$arch_wim" = x86 ] && echo 7 || echo 2012 ;;      # 没有 win8 32/64
+            8.1) [ "$arch_wim" = x86 ] && echo 7 || echo 2012_R2 ;; # 没有 win8.1 32/64
+            10 | 11) echo 10 ;;
+            2008) echo Vista2008 ;;
+            '2008 r2') echo 2008_R2 ;;
+            2012) [ "$arch_wim" = x86 ] && echo 2008_R2 || echo 2012 ;; # 没有 2012 32
+            '2012 r2') echo 2012_R2 ;;
+            2016 | 2019 | 202*) echo 2016 ;;
+            esac
+        )
+
+        download https://ecs-instance-driver.obs.cn-north-1.myhuaweicloud.com/vmtools-windows.zip $drv/vmtools-windows.zip
+        unzip -o -d $drv $drv/vmtools-windows.zip
+        mkdir -p $drv/huawei
+        mount -o ro $drv/vmtools-windows.iso $drv/huawei
+
+        cp_drivers $drv/huawei -ipath "*/upgrade/windows ${huawei_sys}_${arch_dd}/drivers/*"
+    }
+
+    add_driver_aliyun_kvm() {
+        aliyun_sys=$(
+            case "$(echo "$product_ver" | to_lower)" in
+            7) echo 7 ;;
+            8 | 8.1) echo 8 ;;
+            10 | 11) echo 10 ;;
+            '2008 r2') echo 7 ;;
+            2012 | '2012 r2') echo 8 ;;
+            2016 | 2019 | 202*) echo 10 ;;
+            esac
+        )
+
+        # 这是旧版
+        # 未打补丁的 win7 无法使用新版驱动 (sha256 签名)
+        download https://windows-driver-cn-beijing.oss-cn-beijing.aliyuncs.com/virtio/210408.1454.1459_bin.zip $drv/aliyun.zip
+        unzip -o -d $drv/aliyun/ $drv/aliyun.zip
+
+        # 注意文件夹是 win7 Win8 win10 大小写不一致
+        cp_drivers $drv/aliyun -ipath "*/win${aliyun_sys}/${arch}/*"
+    }
 
     # gcp
     # x86 x86_64 arm64 都有
-    if { is_dmi_contains "Google Compute Engine" || is_dmi_contains "GoogleCloud"; }; then
-
+    add_driver_gcp() {
         gce_repo=https://packages.cloud.google.com/yuck
         download $gce_repo/repos/google-compute-engine-stable/index /tmp/gce.json
         for name in gvnic gga; do
@@ -3730,16 +3851,19 @@ install_windows() {
                 done
             fi
         done
-    fi
+
+        [ "$arch_wim" = x86 ] && gvnic_suffix=-32 || gvnic_suffix=
+        cp_drivers $drv/gce/gvnic -ipath "*/win$nt_ver$gvnic_suffix/*"
+        cp_drivers $drv/gce/gga -ipath "*/win$nt_ver/*"
+    }
 
     # azure
     # https://learn.microsoft.com/azure/virtual-network/accelerated-networking-mana-windows
-    if is_dmi_contains "7783-7084-3265-9085-8269-3286-77" &&
-        { [ "$arch_wim" = x86 ] || [ "$arch_wim" = x86_64 ]; }; then
-
+    add_driver_azure() {
         download https://aka.ms/manawindowsdrivers $drv/azure.zip
         unzip $drv/azure.zip -d $drv/azure/
-    fi
+        cp_drivers $drv/azure
+    }
 
     # 修改应答文件
     download $confhome/windows.xml /tmp/autounattend.xml
@@ -3799,31 +3923,7 @@ install_windows() {
     }
 
     # 添加驱动
-    mkdir -p /wim/drivers
-    [ -d $drv/virtio ] && {
-        if [ "$virtio_source" = iso ]; then
-            # iso
-            if [ "$nt_ver" = 6.0 ]; then
-                # win7 气球驱动有问题
-                cp_drivers $drv/virtio -ipath "*/$virtio_sys/$arch/*" -not -ipath "*/balloon/*"
-            else
-                cp_drivers $drv/virtio -ipath "*/$virtio_sys/$arch/*"
-            fi
-        else
-            # msi
-            # 虽然 win7 气球驱动有问题，但 msi 里面没有 win7 驱动
-            # 因此不用额外处理
-            cp_drivers $drv/virtio
-        fi
-    }
-    [ -d $drv/aws ] && cp_drivers $drv/aws
-    [ -d $drv/xen ] && cp_drivers $drv/xen -ipath "*/$arch_xdd/*"
-    [ -d $drv/azure ] && cp_drivers $drv/azure
-    [ -d $drv/gce ] && {
-        [ "$arch_wim" = x86 ] && gvnic_suffix=-32 || gvnic_suffix=
-        cp_drivers $drv/gce/gvnic -ipath "*/win$nt_ver$gvnic_suffix/*"
-        cp_drivers $drv/gce/gga -ipath "*/win$nt_ver/*"
-    }
+    add_drivers
 
     # win7 要添加 bootx64.efi 到 efi 目录
     [ $arch = amd64 ] && boot_efi=bootx64.efi || boot_efi=bootaa64.efi
