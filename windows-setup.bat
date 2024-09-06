@@ -1,6 +1,14 @@
 @echo off
 mode con cp select=437 >nul
 
+rem 还原 setup.exe
+rename X:\setup.exe.disabled setup.exe
+
+rem 等待 10 秒才自动安装
+echo Press Ctrl+C within 10 seconds to cancel the automatic installation.
+call :sleep 10000
+cls
+
 rem win7 find 命令在 65001 代码页下有问题，仅限 win 7
 rem findstr 就正常，但安装程序又没有 findstr
 rem echo a | find "a"
@@ -89,8 +97,8 @@ rem 盘符
 rem X boot.wim (ram)
 rem Y installer
 
-rem 设置 autounattend.xml 的主硬盘 id
-set "file=X:\autounattend.xml"
+rem 设置应答文件的主硬盘 id
+set "file=X:\windows.xml"
 set "tempFile=X:\tmp.xml"
 
 set "search=%%disk_id%%"
@@ -106,7 +114,6 @@ set "replace=%DiskIndex%"
 )) > %tempFile%
 move /y %tempFile% %file%
 
-rename X:\setup.exe.disabled setup.exe
 
 rem https://github.com/pbatard/rufus/issues/1990
 for %%a in (RAM TPM SecureBoot) do (
@@ -116,9 +123,14 @@ for %%a in (RAM TPM SecureBoot) do (
 rem 设置
 set EnableEMS=0
 set ForceOldSetup=1
+set EnableUnattended=1
 
 if %EnableEMS% EQU 1 (
     set EMS=/EMSPort:COM1 /EMSBaudRate:115200
+)
+
+if %EnableUnattended% EQU 1 (
+    set Unattended=/unattend:X:\windows.xml
 )
 
 rem 运行 ramdisk X:\setup.exe 的话
@@ -142,12 +154,13 @@ if %ForceOldSetup% EQU 1 (
     )
 )
 
-%setup% %ResizeRecoveryPartition% %EMS%
+%setup% %ResizeRecoveryPartition% %EMS% %Unattended%
 exit /b
 
 :sleep
-rem 没有 timeout 命令
 rem 没有加载网卡驱动，无法用 ping 来等待
+rem 没有 timeout 命令
+rem timeout /t 10 /nobreak
 echo wscript.sleep(%~1) > X:\sleep.vbs
 cscript //nologo X:\sleep.vbs
 del X:\sleep.vbs

@@ -3940,6 +3940,9 @@ install_windows() {
     unix2dos /wim/autounattend.xml
     cat /wim/autounattend.xml
 
+    # 避免无参数运行 setup.exe 时自动安装
+    mv /wim/autounattend.xml /wim/windows.xml
+
     # 复制安装脚本
     # https://slightlyovercomplicated.com/2016/11/07/windows-pe-startup-sequence-explained/
     mv /wim/setup.exe /wim/setup.exe.disabled
