@@ -5,9 +5,12 @@ rem 还原 setup.exe
 rename X:\setup.exe.disabled setup.exe
 
 rem 等待 10 秒才自动安装
-echo Press Ctrl+C within 10 seconds to cancel the automatic installation.
-call :sleep 10000
 cls
+for /l %%i in (10,-1,1) do (
+    echo Press Ctrl+C within %%i seconds to cancel the automatic installation.
+    call :sleep 1000
+    cls
+)
 
 rem win7 find 命令在 65001 代码页下有问题，仅限 win 7
 rem findstr 就正常，但安装程序又没有 findstr
