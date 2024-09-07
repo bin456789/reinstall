@@ -3880,19 +3880,30 @@ install_windows() {
         info "Add drivers: Aliyun KVM"
 
         aliyun_sys=$(
-            case "$(echo "$product_ver" | to_lower)" in
-            7) echo 7 ;;
-            8 | 8.1) echo 8 ;;
-            10 | 11) echo 10 ;;
-            '2008 r2') echo 7 ;;
-            2012 | '2012 r2') echo 8 ;;
-            2016 | 2019 | 202*) echo 10 ;;
+            case "$nt_ver" in
+            6.1) echo 7 ;;
+            6.2 | 6.3) echo 8 ;;
+            *) echo 10 ;;
             esac
         )
 
-        # 这是旧版
-        # 未打补丁的 win7 无法使用新版驱动 (sha256 签名)
-        download https://windows-driver-cn-beijing.oss-cn-beijing.aliyuncs.com/virtio/210408.1454.1459_bin.zip $drv/aliyun.zip
+        filename=$(
+            case "$nt_ver" in
+            6.1) echo 210408.1454.1459_bin.zip ;; # sha1
+            *) echo 220915.0953.0953_bin.zip ;;   # sha256
+            # *) echo new_virtio.zip ;;
+            esac
+        )
+
+        region=$(
+            if is_in_china; then
+                echo cn-beijing
+            else
+                echo us-west-1
+            fi
+        )
+
+        download https://windows-driver-$region.oss-$region.aliyuncs.com/virtio/$filename $drv/aliyun.zip
         unzip -o -d $drv/aliyun/ $drv/aliyun.zip
 
         # 注意文件夹是 win7 Win8 win10 大小写不一致
