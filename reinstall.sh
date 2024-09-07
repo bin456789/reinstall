@@ -234,7 +234,7 @@ test_url_grace() {
 test_url_real() {
     grace=$1
     url=$2
-    expect_type_combo=$3
+    expect_types=$3
     var_to_eval=$4
     info test url
 
@@ -269,56 +269,74 @@ test_url_real() {
         fi
     done
 
-    if [ -n "$expect_type_combo" ]; then
-        fix_file_type() {
-            # gzip的mime有很多种写法
-            # centos7中显示为 x-gzip，在其他系统中显示为 gzip，可能还有其他
-            # 所以不用mime判断
-            # https://www.digipres.org/formats/sources/tika/formats/#application/gzip
-
-            # 有些 file 版本输出的是 # ISO 9660 CD-ROM filesystem data ，要去掉开头的井号
-
-            # 下面两种都是 raw
-            # DOS/MBR boot sector
-            # x86 boot sector; partition 1: ...
-            sed 's/^# //' | cut -d' ' -f1 | to_lower |
-                sed -e 's,dos/mbr,raw,' -e 's,x86,raw,'
-        }
-
-        file_enhanced() {
-            file_type=$(file -b $tmp_file | fix_file_type)
-            if [ "$file_type" = "xz" ] || [ "$file_type" = "gzip" ]; then
-                # 要安装 xz 或者 gzip，不然会报错
-                # ERROR:[xz: Wait failed, No child process]
-                install_pkg "$file_type"
-
-                # 加 if 是为了避免以下情况（外面是xz，但是识别不到里面的东西，即使装了xz）,
-                # 即使 file 报错返回值也是 0
-                # [root@localhost ~]# file -bZ /reinstall-tmp/img-test
-                # ERROR:[xz: Unexpected end of input]
-                if file_type_in="$(file -bZ $tmp_file | fix_file_type)" &&
-                    ! grep -iq "^Error" <<<"$file_type_in"; then
-                    file_type="$file_type_in.$file_type"
-                fi
-            fi
-            echo "$file_type"
-        }
-
+    # 如果要检查文件类型
+    if [ -n "$expect_types" ]; then
         install_pkg file
-        real_type_combo=$(file_enhanced $tmp_file)
-        echo "$real_type_combo"
+        real_type=$(file_enhanced $tmp_file)
+        echo "$real_type"
 
-        if ! grep -Foq "|$real_type_combo|" <<<"|$expect_type_combo|"; then
-            failed "$url expected: $expect_type_combo. actual: $real_type_combo."
+        # 期待值没有.表示要只需判断外侧
+        if ! grep -Fq . <<<"$expect_types"; then
+            real_type=$(echo "$real_type" | cut -d. -f2-)
         fi
 
-        IFS=. read -r real_type real_type_warp <<<"$real_type_combo"
-
-        if [ -n "$var_to_eval" ]; then
-            eval "$var_to_eval=$real_type"
-            eval "$var_to_eval""_warp=$real_type_warp"
+        # 检查
+        if ! grep -Foq "|$real_type|" <<<"|$expect_types|"; then
+            failed "$url
+expected: $expect_types
+actually: $real_type"
         fi
     fi
+
+    # 如果要设置变量
+    if [ -n "$var_to_eval" ]; then
+        IFS=. read -r "${var_to_eval?}" "${var_to_eval}_warp" <<<"$real_type"
+    fi
+}
+
+fix_file_type() {
+    # gzip的mime有很多种写法
+    # centos7中显示为 x-gzip，在其他系统中显示为 gzip，可能还有其他
+    # 所以不用mime判断
+    # https://www.digipres.org/formats/sources/tika/formats/#application/gzip
+
+    # --extension 不靠谱
+    # file -b /reinstall-tmp/img-test --mime-type
+    # application/x-qemu-disk
+    # file -b /reinstall-tmp/img-test --extension
+    # ???
+
+    # 有些 file 版本输出的是 # ISO 9660 CD-ROM filesystem data ，要去掉开头的井号
+
+    # 下面两种都是 raw
+    # DOS/MBR boot sector
+    # x86 boot sector; partition 1: ...
+
+    sed 's/^# //' | awk '{print $1}' | to_lower |
+        sed -e 's,dos/mbr,raw,' -e 's,x86,raw,'
+}
+
+file_enhanced() {
+    local file=$1
+    local outside inside
+
+    outside=$(file -b $file | fix_file_type)
+
+    if [ "$outside" = "xz" ] || [ "$outside" = "gzip" ]; then
+        # 要安装 xz 或者 gzip，不然会报错
+        # ERROR:[xz: Wait failed, No child process]
+        install_pkg "$outside"
+
+        # 加 if 是为了避免以下情况（外面是xz，但是识别不到里面的东西，即使装了xz）,
+        # 即使 file 报错返回值也是 0
+        # [root@localhost ~]# file -bZ /reinstall-tmp/img-test
+        # ERROR:[xz: Unexpected end of input]
+        if inside="$(file -bZ $file | fix_file_type)" && ! grep -iq "^Error" <<<"$inside"; then
+            echo "$inside.$outside"
+            return
+        fi
+    fi
+    echo "$outside"
 }
 
 add_community_repo_for_alpine() {

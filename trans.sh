@@ -3700,7 +3700,9 @@ install_windows() {
         esac
         # 排除 $PLUGINSDIR $TEMP
         exclude='$*'
-        7z x $drv/Citrix_xensetup.exe -o$drv/aws/ -ao$override -x!$exclude
+        7z x $drv/Citrix_xensetup.exe -o$drv/xen/ -ao$override -x!$exclude
+
+        cp_drivers $drv/xen
     }
 
     # aws xen
@@ -3743,6 +3745,8 @@ install_windows() {
             download https://xenbits.xenproject.org/pvdrivers/win/$part.tar $drv/$part.tar
             tar -xf $drv/$part.tar -C $drv/xen/
         done
+
+        cp_drivers $drv/xen
     }
 
     # kvm
