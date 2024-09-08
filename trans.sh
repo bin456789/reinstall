@@ -3879,35 +3879,59 @@ install_windows() {
     add_driver_aliyun_kvm() {
         info "Add drivers: Aliyun KVM"
 
-        aliyun_sys=$(
-            case "$nt_ver" in
-            6.1) echo 7 ;;
-            6.2 | 6.3) echo 8 ;;
-            *) echo 10 ;;
-            esac
-        )
+        # win7 旧驱动是 sha1 签名
+        if [ "$nt_ver" = 6.1 ]; then
+            # 旧驱动
+            aliyun_sys=$(
+                case "$nt_ver" in
+                6.1) echo 7 ;;
+                6.2 | 6.3) echo 8 ;;
+                *) echo 10 ;;
+                esac
+            )
 
-        filename=$(
-            case "$nt_ver" in
-            6.1) echo 210408.1454.1459_bin.zip ;; # sha1
-            *) echo 220915.0953.0953_bin.zip ;;   # sha256
-            # *) echo new_virtio.zip ;;
-            esac
-        )
+            filename=$(
+                case "$nt_ver" in
+                6.1) echo 210408.1454.1459_bin.zip ;; # sha1
+                *) echo 220915.0953.0953_bin.zip ;;   # sha256
+                # *) echo new_virtio.zip ;;
+                esac
+            )
 
-        region=$(
-            if is_in_china; then
-                echo cn-beijing
-            else
-                echo us-west-1
-            fi
-        )
+            region=$(
+                if is_in_china; then
+                    echo cn-beijing
+                else
+                    echo us-west-1
+                fi
+            )
 
-        download https://windows-driver-$region.oss-$region.aliyuncs.com/virtio/$filename $drv/aliyun.zip
-        unzip -o -d $drv/aliyun/ $drv/aliyun.zip
+            download https://windows-driver-$region.oss-$region.aliyuncs.com/virtio/$filename $drv/aliyun.zip
+            unzip -o -d $drv/aliyun/ $drv/aliyun.zip
 
-        # 注意文件夹是 win7 Win8 win10 大小写不一致
-        cp_drivers $drv/aliyun -ipath "*/win${aliyun_sys}/${arch}/*"
+            # 注意文件夹是 win7 Win8 win10 大小写不一致
+            cp_drivers $drv/aliyun -ipath "*/win${aliyun_sys}/${arch}/*"
+        else
+            # 新驱动
+            aliyun_sys=$(
+                case "$nt_ver" in
+                6.1) echo 2008R2 ;;       # sha256
+                6.2 | 6.3) echo 2012R2 ;; # 实际上是 2012 的驱动
+                *) echo 2016 ;;
+                esac
+            )
+
+            region=cn-hangzhou
+
+            download https://windows-driver-$region.oss-$region.aliyuncs.com/virtio/AliyunVirtio_WIN$aliyun_sys.zip $drv/AliyunVirtio.zip
+            unzip -o -d $drv $drv/AliyunVirtio.zip
+
+            apk add innoextract
+            innoextract -d $drv/aliyun/ $drv/AliyunVirtio_*_WIN${aliyun_sys}_$arch_xdd.exe
+            apk del innoextract
+
+            cp_drivers $drv/aliyun -ipath "*/C$/Program Files/AliyunVirtio/*/drivers/*"
+        fi
     }
 
     # gcp
