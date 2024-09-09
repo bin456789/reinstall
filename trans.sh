@@ -1861,6 +1861,10 @@ create_part() {
             mkfs.ext4 -E nodiscard -F -L installer /dev/$xda*2 #2 installer
         fi
     elif [ "$distro" = alpine ] || [ "$distro" = arch ] || [ "$distro" = gentoo ] || [ "$distro" = nixos ]; then
+        # alpine 本身关闭了 64bit ext4
+        # https://gitlab.alpinelinux.org/alpine/alpine-conf/-/blob/3.18.1/setup-disk.in?ref_type=tags#L908
+        # 而且 alpine 的 extlinux 不兼容 64bit ext4
+        [ "$distro" = alpine ] && ext4_opts="-O ^64bit" || ext4_opts=
         if is_efi; then
             # efi
             parted /dev/$xda -s -- \
@@ -1870,8 +1874,8 @@ create_part() {
                 set 1 boot on
             update_part
 
-            mkfs.fat /dev/$xda*1                  #1 efi
-            mkfs.ext4 -E nodiscard -F /dev/$xda*2 #2 os
+            mkfs.fat /dev/$xda*1                             #1 efi
+            mkfs.ext4 -E nodiscard -F $ext4_opts /dev/$xda*2 #2 os
         elif is_xda_gt_2t; then
             # bios > 2t
             parted /dev/$xda -s -- \
@@ -1881,8 +1885,8 @@ create_part() {
                 set 1 bios_grub on
             update_part
 
-            echo                                  #1 bios_boot
-            mkfs.ext4 -E nodiscard -F /dev/$xda*2 #2 os
+            echo                                             #1 bios_boot
+            mkfs.ext4 -E nodiscard -F $ext4_opts /dev/$xda*2 #2 os
         else
             # bios
             parted /dev/$xda -s -- \
@@ -1891,7 +1895,7 @@ create_part() {
                 set 1 boot on
             update_part
 
-            mkfs.ext4 -E nodiscard -F /dev/$xda*1 #1 os
+            mkfs.ext4 -E nodiscard -F $ext4_opts /dev/$xda*1 #1 os
         fi
     else
         # 安装红帽系或ubuntu
@@ -1913,7 +1917,7 @@ create_part() {
 
         # centos 7 无法加载alpine格式化的ext4
         # 要关闭这个属性
-        ext4_options="-O ^metadata_csum"
+        ext4_opts="-O ^metadata_csum"
         apk add dosfstools
 
         if is_efi; then
@@ -1926,9 +1930,9 @@ create_part() {
                 set 1 boot on
             update_part
 
-            mkfs.fat -n efi /dev/$xda*1                                      #1 efi
-            mkfs.ext4 -E nodiscard -F -L os /dev/$xda*2                      #2 os
-            mkfs.ext4 -E nodiscard -F -L installer $ext4_options /dev/$xda*3 #2 installer
+            mkfs.fat -n efi /dev/$xda*1                                   #1 efi
+            mkfs.ext4 -E nodiscard -F -L os /dev/$xda*2                   #2 os
+            mkfs.ext4 -E nodiscard -F -L installer $ext4_opts /dev/$xda*3 #2 installer
         elif is_xda_gt_2t; then
             # bios > 2t
             parted /dev/$xda -s -- \
@@ -1939,9 +1943,9 @@ create_part() {
                 set 1 bios_grub on
             update_part
 
-            echo                                                             #1 bios_boot
-            mkfs.ext4 -E nodiscard -F -L os /dev/$xda*2                      #2 os
-            mkfs.ext4 -E nodiscard -F -L installer $ext4_options /dev/$xda*3 #3 installer
+            echo                                                          #1 bios_boot
+            mkfs.ext4 -E nodiscard -F -L os /dev/$xda*2                   #2 os
+            mkfs.ext4 -E nodiscard -F -L installer $ext4_opts /dev/$xda*3 #3 installer
         else
             # bios
             parted /dev/$xda -s -- \
@@ -1951,8 +1955,8 @@ create_part() {
                 set 1 boot on
             update_part
 
-            mkfs.ext4 -E nodiscard -F -L os /dev/$xda*1                      #1 os
-            mkfs.ext4 -E nodiscard -F -L installer $ext4_options /dev/$xda*2 #2 installer
+            mkfs.ext4 -E nodiscard -F -L os /dev/$xda*1                   #1 os
+            mkfs.ext4 -E nodiscard -F -L installer $ext4_opts /dev/$xda*2 #2 installer
         fi
         update_part
     fi

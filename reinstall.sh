@@ -141,8 +141,12 @@ is_use_dd() {
     [ "$distro" = dd ]
 }
 
+is_boot_in_separate_partition() {
+    mount | grep -q ' on /boot type '
+}
+
 is_os_in_btrfs() {
-    mount | grep -qw 'on / type btrfs'
+    mount | grep -q ' on / type btrfs '
 }
 
 is_os_in_subvol() {
@@ -1742,13 +1746,27 @@ is_secure_boot_enabled() {
     fi
 }
 
-is_use_grub() {
+is_need_grub_extlinux() {
     ! { is_netboot_xyz && is_efi; }
 }
 
-# 只有 linux bios 是用本机的 grub
+# 只有 linux bios 是用本机的 grub/extlinux
+is_use_local_grub_extlinux() {
+    is_need_grub_extlinux && ! is_in_windows && ! is_efi
+}
+
 is_use_local_grub() {
-    is_use_grub && ! is_in_windows && ! is_efi
+    is_use_local_grub_extlinux && is_mbr_using_grub
+}
+
+is_use_local_extlinux() {
+    is_use_local_grub_extlinux && ! is_mbr_using_grub
+}
+
+is_mbr_using_grub() {
+    find_main_disk
+    # 各发行版不一定自带 strings hexdump xxd od 命令
+    head -c 440 /dev/$xda | grep --text -iq 'GRUB'
 }
 
 to_upper() {
@@ -2259,6 +2277,29 @@ install_grub_win() {
         bcdedit /set $id path \\g2ldr
         bcdedit /displayorder $id /addlast
         bcdedit /bootsequence $id /addfirst
+    fi
+}
+
+find_grub_extlinux_cfg() {
+    dir=$1
+    filename=$2
+    keyword=$3
+
+    # 当 ln -s /boot/grub /boot/grub2 时
+    # find /boot/ 会自动忽略 /boot/grub2 里面的文件
+    cfgs=$(
+        # 只要 $dir 存在
+        # 无论是否找到结果，返回值都是 0
+        find $dir \
+            -type f -name $filename \
+            -exec grep -E -l "$keyword" {} \;
+    )
+
+    count="$(wc -l <<<"$cfgs")"
+    if [ "$count" -eq 1 ]; then
+        echo "$cfgs"
+    else
+        error_and_exit "Find $count $filename."
     fi
 }
 
@@ -3239,7 +3280,7 @@ if [ "$nextos_distro" = alpine ] || is_distro_like_debian "$nextos_distro"; then
 fi
 
 # 将内核/netboot.xyz.lkrn 放到正确的位置
-if false && is_use_grub; then
+if false && is_need_grub_extlinux; then
     if is_in_windows; then
         cp -f /reinstall-vmlinuz /cygdrive/$c/
         is_have_initrd && cp -f /reinstall-initrd /cygdrive/$c/
@@ -3251,8 +3292,8 @@ if false && is_use_grub; then
     fi
 fi
 
-# grub
-if is_use_grub; then
+# grub / extlinux
+if is_need_grub_extlinux; then
     # win 使用外部 grub
     if is_in_windows; then
         install_grub_win
@@ -3265,9 +3306,7 @@ if is_use_grub; then
         fi
     fi
 
-    info 'create grub config'
-
-    # 寻找 grub.cfg
+    # 寻找 grub.cfg / extlinux.conf
     if is_in_windows; then
         if is_efi; then
             grub_cfg=/cygdrive/$c/grub.cfg
@@ -3282,28 +3321,25 @@ if is_use_grub; then
             efi_reinstall_dir=$(find $(get_maybe_efi_dirs_in_linux) -type d -name "reinstall" | head -1)
             grub_cfg=$efi_reinstall_dir/grub.cfg
         else
-            if is_have_cmd update-grub; then
-                # alpine debian ubuntu
-                grub_cfg=$(grep -o '[^ ]*grub.cfg' "$(get_cmd_path update-grub)" | head -1)
-            else
-                # 找出主配置文件（含有menuentry|blscfg）
-                # 现在 efi 用下载的 grub，因此不需要查找 efi 目录
-                grub_cfg=$(
-                    find /boot/grub* \
-                        -type f -name grub.cfg \
-                        -exec grep -E -l 'menuentry|blscfg' {} \;
-                )
-
-                if [ "$(wc -l <<<"$grub_cfg")" -gt 1 ]; then
-                    error_and_exit 'find multi grub.cfg files.'
+            if is_mbr_using_grub; then
+                if is_have_cmd update-grub; then
+                    # alpine debian ubuntu
+                    grub_cfg=$(grep -o '[^ ]*grub.cfg' "$(get_cmd_path update-grub)" | head -1)
+                else
+                    # 找出主配置文件（含有menuentry|blscfg）
+                    # 现在 efi 用下载的 grub，因此不需要查找 efi 目录
+                    grub_cfg=$(find_grub_extlinux_cfg '/boot/grub*' grub.cfg 'menuentry|blscfg')
                 fi
+            else
+                # extlinux
+                extlinux_cfg=$(find_grub_extlinux_cfg /boot extlinux.conf LINUX)
             fi
         fi
     fi
 
     # 判断用 linux 还是 linuxefi（主要是红帽系）
     # 现在 efi 用下载的 grub，因此不需要判断 linux 或 linuxefi
-    if false && is_use_local_grub; then
+    if false && is_use_local_grub_extlinux; then
         # 在x86 efi机器上，不同版本的 grub 可能用 linux 或 linuxefi 加载内核
         # 通过检测原有的条目有没有 linuxefi 字样就知道当前 grub 用哪一种
         # 也可以检测 /etc/grub.d/10_linux
@@ -3343,7 +3379,14 @@ if is_use_grub; then
         fi
     fi
 
-    # 选择用 custom.cfg (linux-bios) 还是 grub.cfg (win/linux-efi)
+    # 重新生成 extlinux.conf
+    if is_use_local_extlinux; then
+        if is_have_cmd update-extlinux; then
+            update-extlinux
+        fi
+    fi
+
+    # 选择用 custom.cfg (linux-bios) 还是 grub.cfg (linux-efi / win)
     if is_use_local_grub; then
         target_cfg=$(dirname $grub_cfg)/custom.cfg
     else
@@ -3355,16 +3398,22 @@ if is_use_grub; then
         # dir=/cygwin/
         dir=$(cygpath -m / | cut -d: -f2-)/
     else
-        # 获取当前系统根目录在 btrfs 中的绝对路径
-        if is_os_in_btrfs; then
-            # btrfs subvolume show /
-            # 输出可能是 / 或 root 或 @/.snapshots/1/snapshot
-            dir=$(btrfs subvolume show / | head -1)
-            if ! [ "$dir" = / ]; then
-                dir="/$dir/"
-            fi
+        # extlinux + 单独的 boot 分区
+        # 把内核文件放在 extlinux.conf 所在的目录
+        if is_use_local_extlinux && is_boot_in_separate_partition; then
+            dir=
         else
-            dir=/
+            # 获取当前系统根目录在 btrfs 中的绝对路径
+            if is_os_in_btrfs; then
+                # btrfs subvolume show /
+                # 输出可能是 / 或 root 或 @/.snapshots/1/snapshot
+                dir=$(btrfs subvolume show / | head -1)
+                if ! [ "$dir" = / ]; then
+                    dir="/$dir/"
+                fi
+            else
+                dir=/
+            fi
         fi
     fi
 
@@ -3372,62 +3421,105 @@ if is_use_grub; then
     initrd=${dir}reinstall-initrd
     firmware=${dir}reinstall-firmware
 
-    # 生成 linux initrd 命令
-    if is_netboot_xyz; then
-        linux_cmd="linux16 $vmlinuz"
+    # 设置 linux initrd 命令
+    if is_use_local_extlinux; then
+        linux_cmd=LINUX
+        initrd_cmd=INITRD
     else
-        find_main_disk
-        build_cmdline
-        linux_cmd="linux$efi $vmlinuz $cmdline"
-        initrd_cmd="initrd$efi $initrd"
-        if is_use_firmware; then
-            initrd_cmd+=" $firmware"
+        if is_netboot_xyz; then
+            linux_cmd=linux16
+            initrd_cmd=initrd16
+        else
+            linux_cmd="linux$efi"
+            initrd_cmd="initrd$efi"
         fi
     fi
 
-    # cloudcone 从光驱的 grub 启动，再加载硬盘的 grub.cfg
-    # menuentry "Grub 2" --id grub2 {
-    #         set root=(hd0,msdos1)
-    #         configfile /boot/grub2/grub.cfg
-    # }
+    # 设置 cmdlind initrds
+    if ! is_netboot_xyz; then
+        find_main_disk
+        build_cmdline
 
-    # 加载后 $prefix 依然是光驱的 (hd96)/boot/grub
-    # 导致找不到 $prefix 目录的 grubenv，因此读取不到 next_entry
-    # 以下方法为 cloudcone 重新加载 grubenv
-
-    # 需查找 2*2 个文件夹
-    # 分区：系统 / boot
-    # 文件夹：grub / grub2
-    # shellcheck disable=SC2121,SC2154
-    # cloudcone debian 能用但 ubuntu 模板用不了
-    # ubuntu 模板甚至没显示 reinstall menuentry
-    load_grubenv_if_not_loaded() {
-        if ! [ -s $prefix/grubenv ]; then
-            for dir in /boot/grub /boot/grub2 /grub /grub2; do
-                set grubenv="($root)$dir/grubenv"
-                if [ -s $grubenv ]; then
-                    load_env --file $grubenv
-                    if [ "${next_entry}" ]; then
-                        set default="${next_entry}"
-                        set next_entry=
-                        save_env --file $grubenv next_entry
-                    else
-                        set default="0"
-                    fi
-                    return
-                fi
-            done
+        initrds="$initrd"
+        if is_use_firmware; then
+            initrds+=" $firmware"
         fi
-    }
+    fi
 
-    # 生成 grub 配置
-    # 实测 centos 7 lvm 要手动加载 lvm 模块
-    echo $target_cfg
+    if is_use_local_extlinux; then
+        info extlinux
+        echo $extlinux_cfg
+        extlinux_dir="$(dirname $extlinux_cfg)"
 
-    get_function_content load_grubenv_if_not_loaded >$target_cfg
+        # 不起作用
+        # 好像跟 extlinux --once 有冲突
+        sed -i "/^MENU HIDDEN/d" $extlinux_cfg
+        sed -i "/^TIMEOUT /d" $extlinux_cfg
 
-    # 原系统为 openeuler 云镜像，需要添加 --unrestricted，否则要输入密码
-    del_empty_lines <<EOF | tee -a $target_cfg
+        del_empty_lines <<EOF | tee -a $extlinux_cfg
+TIMEOUT 5
+LABEL reinstall
+  MENU LABEL $(get_entry_name)
+  $linux_cmd $vmlinuz
+  $([ -n "$initrds" ] && echo "$initrd_cmd $initrds")
+  $([ -n "$cmdline" ] && echo "APPEND $cmdline")
+EOF
+        # 设置重启引导项
+        extlinux --once=reinstall $extlinux_dir
+
+        # 复制文件到 extlinux 工作目录
+        if is_boot_in_separate_partition; then
+            info "copying files to $extlinux_dir"
+            is_have_initrd && cp -f /reinstall-initrd $extlinux_dir
+            is_use_firmware && cp -f /reinstall-firmware $extlinux_dir
+            # 放最后，防止前两条返回非 0 而报错
+            cp -f /reinstall-vmlinuz $extlinux_dir
+        fi
+    else
+        # cloudcone 从光驱的 grub 启动，再加载硬盘的 grub.cfg
+        # menuentry "Grub 2" --id grub2 {
+        #         set root=(hd0,msdos1)
+        #         configfile /boot/grub2/grub.cfg
+        # }
+
+        # 加载后 $prefix 依然是光驱的 (hd96)/boot/grub
+        # 导致找不到 $prefix 目录的 grubenv，因此读取不到 next_entry
+        # 以下方法为 cloudcone 重新加载 grubenv
+
+        # 需查找 2*2 个文件夹
+        # 分区：系统 / boot
+        # 文件夹：grub / grub2
+        # shellcheck disable=SC2121,SC2154
+        # cloudcone debian 能用但 ubuntu 模板用不了
+        # ubuntu 模板甚至没显示 reinstall menuentry
+        load_grubenv_if_not_loaded() {
+            if ! [ -s $prefix/grubenv ]; then
+                for dir in /boot/grub /boot/grub2 /grub /grub2; do
+                    set grubenv="($root)$dir/grubenv"
+                    if [ -s $grubenv ]; then
+                        load_env --file $grubenv
+                        if [ "${next_entry}" ]; then
+                            set default="${next_entry}"
+                            set next_entry=
+                            save_env --file $grubenv next_entry
+                        else
+                            set default="0"
+                        fi
+                        return
+                    fi
+                done
+            fi
+        }
+
+        # 生成 grub 配置
+        # 实测 centos 7 lvm 要手动加载 lvm 模块
+        info grub
+        echo $target_cfg
+
+        get_function_content load_grubenv_if_not_loaded >$target_cfg
+
+        # 原系统为 openeuler 云镜像，需要添加 --unrestricted，否则要输入密码
+        del_empty_lines <<EOF | tee -a $target_cfg
 set timeout_style=menu
 set timeout=5
 menuentry "$(get_entry_name)" --unrestricted {
@@ -3435,14 +3527,15 @@ menuentry "$(get_entry_name)" --unrestricted {
     $(is_os_in_btrfs && echo 'set btrfs_relative_path=n')
     insmod all_video
     search --no-floppy --file --set=root $vmlinuz
-    $linux_cmd
-    $initrd_cmd
+    $linux_cmd $vmlinuz $cmdline
+    $([ -n "$initrds" ] && echo "$initrd_cmd $initrds")
 }
 EOF
 
-    # 设置重启引导项
-    if is_use_local_grub; then
-        $grub-reboot "$(get_entry_name)"
+        # 设置重启引导项
+        if is_use_local_grub; then
+            $grub-reboot "$(get_entry_name)"
+        fi
     fi
 fi
 
