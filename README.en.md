@@ -13,7 +13,7 @@ One-Click Script to Reinstall System [中文](README.md)
 - Supports installation of 17 common Linux distributions
 - Supports installation of official Windows ISO, automatically finds ISO links, and integrates virtual machine drivers
 - Supports installation in any direction, i.e., `Linux to Linux`, `Linux to Windows`, `Windows to Windows`, `Windows to Linux`
-- No need to input IP parameters; automatically recognizes dynamic and static IPs, supports `/32`, `/128`, `gateway outside subnet`, `pure IPv6`, `dual NIC` and other special network configurations
+- No need to input IP parameters; automatically recognizes dynamic and static IPs, supports `/32`, `/128`, `gateway outside subnet`, `IPv6 only`, `dual NIC` and other special network configurations
 - Specially optimized for low-spec servers, requires less memory than the official netboot
 - Uses partition table ID to identify hard drives throughout the process, ensuring no wrong disk is written
 - Supports BIOS and EFI boot, and ARM architecture
@@ -242,7 +242,7 @@ bash reinstall.sh windows \
 <summary>The following website provides iso links.</summary>
 
 - <https://massgrave.dev/genuine-installation-media.html> (Recommended, iso sourced from official channels, updated monthly, includes the latest patches)
-- <https://www.microsoft.com/software-download/windows10> (Need to open it with a mobile User-Agent)
+- <https://www.microsoft.com/software-download/windows10> (Need to open it with a non-Windows User-Agent)
 - <https://www.microsoft.com/software-download/windows11>
 - <https://www.microsoft.com/software-download/windowsinsiderpreviewiso> (Preview)
 - <https://www.microsoft.com/evalcenter/download-windows-10-enterprise>

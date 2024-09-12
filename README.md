@@ -242,7 +242,7 @@ bash reinstall.sh windows \
 <summary>以下网站可找到 iso 链接</summary>
 
 - <https://massgrave.dev/genuine-installation-media.html> (推荐，iso 来自官方，每月更新，包含最新补丁)
-- <https://www.microsoft.com/software-download/windows10> (需用手机 User-Agent 打开)
+- <https://www.microsoft.com/software-download/windows10> (需用非 Windows User-Agent 打开)
 - <https://www.microsoft.com/software-download/windows11>
 - <https://www.microsoft.com/software-download/windowsinsiderpreviewiso> (预览版)
 - <https://www.microsoft.com/evalcenter/download-windows-10-enterprise>
