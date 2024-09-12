@@ -1624,9 +1624,7 @@ EOF
     allow_root_password_login $os_dir
 
     # 修改密码
-    [ "$distro" = gentoo ] && sed -i 's/enforce=everyone/enforce=none/' $os_dir/etc/security/passwdqc.conf
-    echo "root:$PASSWORD" | chroot $os_dir chpasswd
-    [ "$distro" = gentoo ] && sed -i 's/enforce=none/enforce=everyone/' $os_dir/etc/security/passwdqc.conf
+    change_root_password $os_dir
 
     # 网络配置
     apk add cloud-init
@@ -1993,7 +1991,7 @@ get_yq_name() {
 
 create_cloud_init_network_config() {
     ci_file=$1
-    info "Create Cloud Init network config: $ci_file"
+    info "Create Cloud Init network config"
 
     apk add "$(get_yq_name)"
 
@@ -2543,6 +2541,47 @@ allow_root_password_login() {
     fi
 }
 
+change_root_password() {
+    os_dir=$1
+
+    info 'change root password'
+
+    pam_d=$os_dir/etc/pam.d
+
+    [ -f $pam_d/chpasswd ] && has_pamd_chpasswd=true || has_pamd_chpasswd=false
+
+    if $has_pamd_chpasswd; then
+        cp $pam_d/chpasswd $pam_d/chpasswd.orig
+
+        # cat /etc/pam.d/chpasswd
+        # @include common-password
+
+        # cat /etc/pam.d/chpasswd
+        # #%PAM-1.0
+        # auth       include      system-auth
+        # account    include      system-auth
+        # password   substack     system-auth
+        # -password   optional    pam_gnome_keyring.so use_authtok
+        # password   substack     postlogin
+
+        # 通过 /etc/pam.d/chpasswd 找到 /etc/pam.d/system-auth 或者 /etc/pam.d/system-auth
+        # 再找到有 password 和 pam_unix.so 的行，并删除 use_authtok，写入 /etc/pam.d/chpasswd
+        files=$(cat $pam_d/chpasswd | grep -E '^(password|@include)' | awk '{print $NF}' | sort -u)
+        for file in $files; do
+            if [ -f "$pam_d/$file" ] && line=$(grep ^password "$pam_d/$file" | grep -F pam_unix.so); then
+                echo "$line" | sed 's/use_authtok//' >$pam_d/chpasswd
+                break
+            fi
+        done
+    fi
+
+    echo "root:$PASSWORD" | chroot $os_dir chpasswd
+
+    if $has_pamd_chpasswd; then
+        mv $pam_d/chpasswd.orig $pam_d/chpasswd
+    fi
+}
+
 disable_selinux_kdump() {
     os_dir=$1
 
@@ -2769,7 +2808,7 @@ install_qcow_by_copy() {
         os_part="mapper/$os_part"
     fi
 
-    info "qcow2 Partitions:"
+    info "qcow2 Partitions"
     lsblk -f /dev/nbd0 -o +PARTTYPE
     echo "Part OS:   $os_part"
     echo "Part EFI:  $efi_part"
