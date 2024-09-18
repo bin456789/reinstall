@@ -299,7 +299,13 @@ Windows Server 2022 SERVERDATACENTER
 > 未开启 CSM 的 EFI 机器，无法安装 Windows 7 (Server 2008 R2)
 
 > [!WARNING]
-> 支持 ARM 机器安装 Windows 11，仅限于 Hyper-V (Azure) ，不支持 KVM (甲骨文云)
+> 只有部分 ARM 机器支持安装 Windows 11
+> <br />✔️ Azure (Hyper-V)
+> <br />✔️ 阿里云 g8y c8y r8y (KVM)
+> <br />❌ 阿里云 g6r c6r (KVM)
+> <br />❌ 甲骨文云 (KVM)
+> <br />❌ 谷歌云 (KVM)
+> <br />❌ AWS (KVM)
 
 > [!WARNING]
 > Windows 10 LTSC 2021 中文版镜像 `zh-cn_windows_10_enterprise_ltsc_2021_x64_dvd_033b7312.iso` 的 `wsappx` 进程会长期占用 CPU

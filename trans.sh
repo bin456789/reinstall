@@ -242,13 +242,14 @@ get_approximate_ram_size() {
     echo "$ram_size"
 }
 
-setup_nginx_if_enough_ram() {
+setup_web_if_enough_ram() {
     total_ram=$(get_approximate_ram_size)
     # 512内存才安装
     if [ $total_ram -gt 400 ]; then
         # lighttpd 虽然运行占用内存少，但安装占用空间大
         # setup_lighttpd
         setup_nginx
+        # setup_websocketd
     fi
 }
 
@@ -383,7 +384,17 @@ cache_dmi_and_virt() {
     if [ -z "$_dmi" ] || [ -z "$_virt" ]; then
         # virt-what 自动安装 dmidecode
         apk add virt-what
+
+        # 区分 kvm 和 virtio，原因:
+        # 1. 阿里云 c8y virt-what 不显示 kvm
+        # 2. 不是所有 kvm 都需要 virtio 驱动，例如 aws nitro
+
+        # virt-what 不会检测 virtio
         _virt=$(virt-what)
+        if [ -d /sys/bus/virtio ]; then
+            _virt=$({ echo "$_virt" && echo virtio; } | sort -u)
+        fi
+
         _dmi=$(dmidecode | grep -E '(Manufacturer|Asset Tag|Vendor): ' | awk -F': ' '{print $2}')
         apk del virt-what
     fi
@@ -1313,7 +1324,7 @@ install_nixos() {
     # TODO: 准确匹配网卡，添加 udev 或者直接配置 networkd 匹配 mac
     create_nixos_network_config /tmp/nixos_network_config.nix
 
-    cat <<EOF |
+    add_space 2 <<EOF | del_empty_lines | add_newline both |
 ############### Add by reinstall.sh ###############
 $nix_bootloader
 $nix_swap
@@ -1324,7 +1335,6 @@ services.openssh.settings.PermitRootLogin = "yes";
 $(cat /tmp/nixos_network_config.nix)
 ###################################################
 EOF
-        add_space 2 | del_empty_lines | add_newline both |
         insert_into_file /os/etc/nixos/configuration.nix before "networking.hostName" -F
 
     # 修改 hardware-configuration.nix
@@ -2566,7 +2576,7 @@ change_root_password() {
 
         # 通过 /etc/pam.d/chpasswd 找到 /etc/pam.d/system-auth 或者 /etc/pam.d/system-auth
         # 再找到有 password 和 pam_unix.so 的行，并删除 use_authtok，写入 /etc/pam.d/chpasswd
-        files=$(cat $pam_d/chpasswd | grep -E '^(password|@include)' | awk '{print $NF}' | sort -u)
+        files=$(grep -E '^(password|@include)' $pam_d/chpasswd | awk '{print $NF}' | sort -u)
         for file in $files; do
             if [ -f "$pam_d/$file" ] && line=$(grep ^password "$pam_d/$file" | grep -F pam_unix.so); then
                 echo "$line" | sed 's/use_authtok//' >$pam_d/chpasswd
@@ -3653,20 +3663,21 @@ install_windows() {
 
         vendor="$(get_cloud_vendor)"
 
-        # 虚拟化驱动/通用驱动
-        if is_virt_contains kvm; then
-            # kvm
+        # virtio
+        if is_virt_contains virtio; then
             if [ "$vendor" = aliyun ] && is_nt_ver_ge 6.1 && [ "$arch_wim" = x86_64 ]; then
-                add_driver_aliyun_kvm
+                add_driver_aliyun_virtio
                 # 未测试是否需要专用驱动
             elif false && [ "$vendor" = huawei ] && is_nt_ver_ge 6.0 && { [ "$arch_wim" = x86 ] || [ "$arch_wim" = x86_64 ]; }; then
-                add_driver_huawei_kvm
+                add_driver_huawei_virtio
             else
                 # 兜底
-                add_driver_generic_kvm
+                add_driver_generic_virtio
             fi
-        elif is_virt_contains xen; then
-            # xen
+        fi
+
+        # xen
+        if is_virt_contains xen; then
             # generic_xen 兜底，但未签名，暂停使用
             if is_nt_ver_ge 6.1 && [ "$arch_wim" = x86_64 ]; then
                 add_driver_aws_xen
@@ -3792,10 +3803,10 @@ install_windows() {
         cp_drivers $drv/xen
     }
 
-    # kvm
+    # virtio
     # https://fedorapeople.org/groups/virt/virtio-win/direct-downloads/stable-virtio/
-    add_driver_generic_kvm() {
-        info "Add drivers: Generic KVM"
+    add_driver_generic_virtio() {
+        info "Add drivers: Generic virtio"
 
         # 要区分 win10 / win11 驱动，虽然他们的 NT 版本号都是 10.0，但驱动文件有区别
         # https://github.com/virtio-win/kvm-guest-drivers-windows/commit/9af43da9e16e2d4bf4ea4663cdc4f29275fff48f
@@ -3893,8 +3904,8 @@ install_windows() {
         fi
     }
 
-    add_driver_huawei_kvm() {
-        info "Add drivers: Huawei KVM"
+    add_driver_huawei_virtio() {
+        info "Add drivers: Huawei virtio"
 
         huawei_sys=$(
             case "$(echo "$product_ver" | to_lower)" in
@@ -3919,8 +3930,8 @@ install_windows() {
         cp_drivers $drv/huawei -ipath "*/upgrade/windows ${huawei_sys}_${arch_dd}/drivers/*"
     }
 
-    add_driver_aliyun_kvm() {
-        info "Add drivers: Aliyun KVM"
+    add_driver_aliyun_virtio() {
+        info "Add drivers: Aliyun virtio"
 
         # win7 旧驱动是 sha1 签名
         if [ "$nt_ver" = 6.1 ]; then
@@ -4346,7 +4357,7 @@ trans() {
     fi
 
     if [ "$distro" != "alpine" ]; then
-        setup_nginx_if_enough_ram
+        setup_web_if_enough_ram
         # util-linux 包含 lsblk
         # util-linux 可自动探测 mount 格式
         apk add util-linux

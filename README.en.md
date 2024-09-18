@@ -299,7 +299,13 @@ Use `Dism++` File menu > Open Image File, select the iso to be installed to get 
 > For EFI machines without CSM enabled, Windows 7 (Server 2008 R2) cannot be installed.
 
 > [!WARNING]
-> Supports installation of Windows 11 on ARM machines, limited to Hyper-V (Azure) only, not supported on KVM (Oracle Cloud).
+> Only some ARM machines support installing Windows 11:
+> <br />✔️ Azure (Hyper-V)
+> <br />✔️ Alibaba Cloud g8y c8y r8y (KVM)
+> <br />❌ Alibaba Cloud g6r c6r (KVM)
+> <br />❌ Oracle Cloud (KVM)
+> <br />❌ Google Cloud (KVM)
+> <br />❌ AWS (KVM)
 
 > [!WARNING]
 > In the Chinese version of Windows 10 LTSC 2021 ISO `zh-cn_windows_10_enterprise_ltsc_2021_x64_dvd_033b7312.iso`, the `wsappx` process may indefinitely consume CPU resources.
