@@ -5,8 +5,12 @@
 [![Codacy](https://img.shields.io/codacy/grade/dc679a17751448628fe6d8ac35e26eed?logo=Codacy&label=Codacy&style=flat-square)](https://app.codacy.com/gh/bin456789/reinstall/dashboard)
 [![CodeFactor](https://img.shields.io/codefactor/grade/github/bin456789/reinstall?logo=CodeFactor&logoColor=white&label=CodeFactor&style=flat-square)](https://www.codefactor.io/repository/github/bin456789/reinstall)
 [![Lines of Code](https://aschey.tech/tokei/github/bin456789/reinstall?category=code&label=Lines%20of%20Code&style=flat-square)](https://github.com/aschey/vercel-tokei)
+[![Telegram Group](https://img.shields.io/badge/Telegram-2CA5E0?style=flat-square&logo=telegram&logoColor=white)](https://t.me/reinstall_os)
+[![Github Sponsors](https://img.shields.io/badge/sponsor-30363D?style=flat-square&logo=GitHub-Sponsors&logoColor=#EA4AAA)](https://github.com/sponsors/bin456789)
 
 One-Click Script to Reinstall System [中文](README.md)
+
+![Sponsors](https://raw.githubusercontent.com/bin456789/sponsors/refs/heads/master/sponsors.svg)
 
 ## Highlights
 
@@ -57,13 +61,13 @@ One-Click Script to Reinstall System [中文](README.md)
 For server outside China:
 
 ```bash
-curl -O https://raw.githubusercontent.com/bin456789/reinstall/main/reinstall.sh
+curl -O https://raw.githubusercontent.com/bin456789/reinstall/main/reinstall.sh || wget -O reinstall.sh $_
 ```
 
 For server inside China:
 
 ```bash
-curl -O https://jihulab.com/bin456789/reinstall/-/raw/main/reinstall.sh
+curl -O https://jihulab.com/bin456789/reinstall/-/raw/main/reinstall.sh || wget -O reinstall.sh $_
 ```
 
 ## Download (Current system is <img width="20" height="20" src="https://blogs.windows.com/wp-content/uploads/prod/2022/09/cropped-Windows11IconTransparent512-32x32.png" /> Windows)
@@ -147,7 +151,7 @@ bash reinstall.sh centos      9
 > When installing Debian / Kali, x86 architectures can monitor the installation progress through VNC in the background, while ARM architectures can use the serial console.
 >
 > When installing other systems, can monitor the progress through various methods (SSH, HTTP 80 port, VNC in the background, serial console).
-> Even if errors occur during the installation process, you can still install Alpine via SSH.
+> Even if errors occur during the installation process, you can still install Alpine via SSH by running `xda=drive_name /trans.sh alpine`
 
 <details>
 
@@ -185,7 +189,7 @@ bash reinstall.sh dd --img https://example.com/xxx.xz
 
 > [!TIP]
 > Can monitor the progress through various methods (SSH, HTTP 80 port, VNC in the background, serial console).
-> Even if errors occur during the installation process, you can still install Alpine via SSH.
+> Even if errors occur during the installation process, you can still install Alpine via SSH by running `xda=drive_name /trans.sh alpine`
 
 ### Feature 3: Reboot to <img width="16" height="16" src="https://www.alpinelinux.org/alpine-logo.ico" /> Alpine Rescue System (Live OS)
 
@@ -217,12 +221,60 @@ bash reinstall.sh netboot.xyz
 #### Method 1: Allow the script to automatically find the ISO
 
 - The script will search for ISO files from <https://massgrave.dev/genuine-installation-media.html>. The ISOs provided on this site are all official versions.
+- Only supports automatic detection of standard Windows and Windows Server versions.
 
 ```bash
 bash reinstall.sh windows \
      --image-name 'Windows 10 Enterprise LTSC 2021' \
      --lang zh-cn
 ```
+
+<details>
+<summary>Supported languages</summary>
+
+```text
+ar-sa
+bg-bg
+cs-cz
+da-dk
+de-de
+el-gr
+en-gb
+en-us
+es-es
+es-mx
+et-ee
+fi-fi
+fr-ca
+fr-fr
+he-il
+hr-hr
+hu-hu
+it-it
+ja-jp
+ko-kr
+lt-lt
+lv-lv
+nb-no
+nl-nl
+pl-pl
+pt-pt
+pt-br
+ro-ro
+ru-ru
+sk-sk
+sl-si
+sr-latn-rs
+sv-se
+th-th
+tr-tr
+uk-ua
+zh-cn
+zh-hk
+zh-tw
+```
+
+</details>
 
 #### Method 2: Specify the ISO link manually
 
@@ -269,7 +321,7 @@ Windows 11 Pro
 Windows Server 2022 SERVERDATACENTER
 ```
 
-Use `Dism++` File menu > Open Image File, select the iso to be installed to get the image name.
+Open [DISM++](https://github.com/Chuyu-Team/Dism-Multi-language/releases) File menu > Open Image File, select the iso to be installed to get the image name.
 
 ![image-name](https://github.com/bin456789/reinstall/assets/7548515/5aae0a9b-61e2-4f66-bb98-d470a6beaac2)
 
@@ -282,7 +334,7 @@ Use `Dism++` File menu > Open Image File, select the iso to be installed to get 
   - Hyper-V Server \*
   - Azure Stack HCI \*
 
-\* Must specify an ISO link.
+With * indicating that an ISO link is required.
 
 #### The script will install the following drivers as needed
 
@@ -297,20 +349,41 @@ Use `Dism++` File menu > Open Image File, select the iso to be installed to get 
 
 > [!WARNING]
 > For EFI machines without CSM enabled, Windows 7 (Server 2008 R2) cannot be installed.
-
-> [!WARNING]
-> Only some ARM machines support installing Windows 11:
-> <br />✔️ Azure (Hyper-V)
-> <br />✔️ Alibaba Cloud g8y c8y r8y (KVM)
-> <br />❌ Alibaba Cloud g6r c6r (KVM)
-> <br />❌ Oracle Cloud (KVM)
-> <br />❌ Google Cloud (KVM)
-> <br />❌ AWS (KVM)
+>
+> Hyper-V (Azure) requires selecting the appropriate VM generation: <https://learn.microsoft.com/windows-server/virtualization/hyper-v/plan/should-i-create-a-generation-1-or-2-virtual-machine-in-hyper-v>
 
 > [!WARNING]
 > In the Chinese version of Windows 10 LTSC 2021 ISO `zh-cn_windows_10_enterprise_ltsc_2021_x64_dvd_033b7312.iso`, the `wsappx` process may indefinitely consume CPU resources.
 >
 > The solution is to update the system patches or manually install the `VCLibs` library <https://www.google.com/search?q=ltsc+wsappx>.
+
+#### ARM Considerations
+
+Most ARM machines support ISO installation of Windows 11 24H2, but some machines may experience a black screen during installation, which does not affect the installation process.
+
+- ✔️Azure: B2pts_v2
+- ✔️Alibaba Cloud: g8y, c8y, r8y (may occasionally get stuck on the boot logo during restart; force restart to resolve)
+- ✔️Alibaba Cloud: g6r, c6r
+- ✔️Oracle Cloud: A1.Flex (manual loading of the graphics driver is required after installation)
+- ✔️AWS: T4g
+- ✔️Scaleway: COPARM1
+- ❌Google Cloud: t2a (lacking network card driver)
+
+<details>
+
+<summary>Loading Graphics Driver on Oracle Cloud</summary>
+
+No need to download the driver, just open Device Manager, find the graphics card, select 'Update driver', and choose `Red Hat VirtIO GPU DOD controller` from the list.
+
+![virtio-gpu-1](https://github.com/user-attachments/assets/bf3a9af6-13d8-4f93-9d6c-d3b2dbddb37d)
+![virtio-gpu-2](https://github.com/user-attachments/assets/a9006a78-838f-45bf-a556-2dba193d3c03)
+
+</details>
+
+## Discussion
+
+[![GitHub Issues](https://img.shields.io/badge/github-%23121011.svg?style=for-the-badge&logo=github&logoColor=white)](https://github.com/bin456789/reinstall/issues)
+[![Telegram Group](https://img.shields.io/badge/Telegram-2CA5E0?style=for-the-badge&logo=telegram&logoColor=white)](https://t.me/reinstall_os)
 
 ## How to Modify the Script
 
@@ -319,6 +392,8 @@ Use `Dism++` File menu > Open Image File, select the iso to be installed to get 
 3. Make changes to the other code.
 
 ## Thanks
+
+[![Github Sponsors](https://img.shields.io/badge/sponsor-30363D?style=for-the-badge&logo=GitHub-Sponsors&logoColor=#EA4AAA)](https://github.com/sponsors/bin456789)
 
 Thanks to the following businesses for providing free servers.
 

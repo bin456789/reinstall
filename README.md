@@ -5,8 +5,12 @@
 [![Codacy](https://img.shields.io/codacy/grade/dc679a17751448628fe6d8ac35e26eed?logo=Codacy&label=Codacy&style=flat-square)](https://app.codacy.com/gh/bin456789/reinstall/dashboard)
 [![CodeFactor](https://img.shields.io/codefactor/grade/github/bin456789/reinstall?logo=CodeFactor&logoColor=white&label=CodeFactor&style=flat-square)](https://www.codefactor.io/repository/github/bin456789/reinstall)
 [![Lines of Code](https://aschey.tech/tokei/github/bin456789/reinstall?category=code&label=Lines%20of%20Code&style=flat-square)](https://github.com/aschey/vercel-tokei)
+[![Telegram Group](https://img.shields.io/badge/Telegram-2CA5E0?style=flat-square&logo=telegram&logoColor=white)](https://t.me/reinstall_os)
+[![Github Sponsors](https://img.shields.io/badge/sponsor-30363D?style=flat-square&logo=GitHub-Sponsors&logoColor=#EA4AAA)](https://github.com/sponsors/bin456789)
 
 一键重装脚本 [English](README.en.md)
+
+![捐赠者](https://raw.githubusercontent.com/bin456789/sponsors/refs/heads/master/sponsors.svg)
 
 ## 亮点
 
@@ -57,13 +61,13 @@
 国外服务器：
 
 ```bash
-curl -O https://raw.githubusercontent.com/bin456789/reinstall/main/reinstall.sh
+curl -O https://raw.githubusercontent.com/bin456789/reinstall/main/reinstall.sh || wget -O reinstall.sh $_
 ```
 
 国内服务器：
 
 ```bash
-curl -O https://jihulab.com/bin456789/reinstall/-/raw/main/reinstall.sh
+curl -O https://jihulab.com/bin456789/reinstall/-/raw/main/reinstall.sh || wget -O reinstall.sh $_
 ```
 
 ## 下载（当前系统是 <img width="20" height="20" src="https://blogs.windows.com/wp-content/uploads/prod/2022/09/cropped-Windows11IconTransparent512-32x32.png" /> Windows）
@@ -147,7 +151,7 @@ bash reinstall.sh centos      9
 > 安装 Debian / Kali 时，x86 可通过后台 VNC 查看安装进度，ARM 可通过串行控制台查看安装进度。
 >
 > 安装其它系统时，可通过多种方式（SSH、HTTP 80 端口、后台 VNC、串行控制台）查看安装进度。
-> 即使安装过程出错，也能通过 SSH 安装到 Alpine。
+> 即使安装过程出错，也能通过 SSH 运行 `xda=硬盘名 /trans.sh alpine` 安装 Alpine。
 
 <details>
 
@@ -185,7 +189,7 @@ bash reinstall.sh dd --img https://example.com/xxx.xz
 
 > [!TIP]
 > 可通过多种方式（SSH、HTTP 80 端口、后台 VNC、串行控制台）查看安装进度。
-> 即使安装过程出错，也能通过 SSH 安装到 Alpine。
+> 即使安装过程出错，也能通过 SSH 运行 `xda=硬盘名 /trans.sh alpine` 安装 Alpine。
 
 ### 功能 3: 重启到 <img width="16" height="16" src="https://www.alpinelinux.org/alpine-logo.ico" /> Alpine 救援系统 (Live OS)
 
@@ -217,12 +221,60 @@ bash reinstall.sh netboot.xyz
 #### 方法 1: 让脚本自动查找 ISO
 
 - 脚本会从 <https://massgrave.dev/genuine-installation-media.html> 查找 iso，该网站提供的 iso 都是官方原版
+- 仅支持自动查找常规 Windows 和 Windows Server 版本
 
 ```bash
 bash reinstall.sh windows \
      --image-name 'Windows 10 Enterprise LTSC 2021' \
      --lang zh-cn
 ```
+
+<details>
+<summary>支持的语言</summary>
+
+```text
+ar-sa
+bg-bg
+cs-cz
+da-dk
+de-de
+el-gr
+en-gb
+en-us
+es-es
+es-mx
+et-ee
+fi-fi
+fr-ca
+fr-fr
+he-il
+hr-hr
+hu-hu
+it-it
+ja-jp
+ko-kr
+lt-lt
+lv-lv
+nb-no
+nl-nl
+pl-pl
+pt-pt
+pt-br
+ro-ro
+ru-ru
+sk-sk
+sl-si
+sr-latn-rs
+sv-se
+th-th
+tr-tr
+uk-ua
+zh-cn
+zh-hk
+zh-tw
+```
+
+</details>
 
 #### 方法 2: 自行指定 ISO 连接
 
@@ -269,7 +321,7 @@ Windows 11 Pro
 Windows Server 2022 SERVERDATACENTER
 ```
 
-使用 `Dism++` 文件菜单 > 打开映像文件，选择要安装的 iso，可以得到映像名称
+打开 [DISM++](https://github.com/Chuyu-Team/Dism-Multi-language/releases) 文件菜单 > 打开映像文件，选择要安装的 iso，可以得到映像名称
 
 ![image-name](https://github.com/bin456789/reinstall/assets/7548515/5aae0a9b-61e2-4f66-bb98-d470a6beaac2)
 
@@ -282,7 +334,7 @@ Windows Server 2022 SERVERDATACENTER
   - Hyper-V Server \*
   - Azure Stack HCI \*
 
-\* 需填写 iso 链接
+带 \* 表示需要填写 iso 链接
 
 #### 脚本会按需安装以下驱动
 
@@ -297,20 +349,41 @@ Windows Server 2022 SERVERDATACENTER
 
 > [!WARNING]
 > 未开启 CSM 的 EFI 机器，无法安装 Windows 7 (Server 2008 R2)
-
-> [!WARNING]
-> 只有部分 ARM 机器支持安装 Windows 11
-> <br />✔️ Azure (Hyper-V)
-> <br />✔️ 阿里云 g8y c8y r8y (KVM)
-> <br />❌ 阿里云 g6r c6r (KVM)
-> <br />❌ 甲骨文云 (KVM)
-> <br />❌ 谷歌云 (KVM)
-> <br />❌ AWS (KVM)
+>
+> Hyper-V (Azure) 需选择合适的虚拟机代系 <https://learn.microsoft.com/windows-server/virtualization/hyper-v/plan/should-i-create-a-generation-1-or-2-virtual-machine-in-hyper-v>
 
 > [!WARNING]
 > Windows 10 LTSC 2021 中文版镜像 `zh-cn_windows_10_enterprise_ltsc_2021_x64_dvd_033b7312.iso` 的 `wsappx` 进程会长期占用 CPU
 >
 > 解决方法是更新系统补丁，或者手动安装 `VCLibs` 库 <https://www.google.com/search?q=ltsc+wsappx>
+
+#### ARM 注意事项
+
+大部分 ARM 机器支持 ISO 安装 Windows 11 24H2，部分机器安装过程会黑屏，不影响安装
+
+- ✔️Azure     B2pts_v2
+- ✔️阿里云    g8y c8y r8y (有几率重启时卡开机 Logo，强制重启即可)
+- ✔️阿里云    g6r c6r
+- ✔️甲骨文云  A1.Flex     (安装后需要手动加载显卡驱动)
+- ✔️AWS       T4g
+- ✔️Scaleway  COPARM1
+- ❌谷歌云    t2a         (缺少网卡驱动)
+
+<details>
+
+<summary>甲骨文云加载显卡驱动</summary>
+
+不需要下载驱动，只需打开设备管理器，找到显卡，选择更新驱动，在列表中选择 `Red Hat VirtIO GPU DOD controller`
+
+![virtio-gpu-1](https://github.com/user-attachments/assets/bf3a9af6-13d8-4f93-9d6c-d3b2dbddb37d)
+![virtio-gpu-2](https://github.com/user-attachments/assets/a9006a78-838f-45bf-a556-2dba193d3c03)
+
+</details>
+
+## 讨论
+
+[![GitHub Issues](https://img.shields.io/badge/github-%23121011.svg?style=for-the-badge&logo=github&logoColor=white)](https://github.com/bin456789/reinstall/issues)
+[![Telegram Group](https://img.shields.io/badge/Telegram-2CA5E0?style=for-the-badge&logo=telegram&logoColor=white)](https://t.me/reinstall_os)
 
 ## 如何修改脚本
 
@@ -319,6 +392,8 @@ Windows Server 2022 SERVERDATACENTER
 3. 修改其它代码
 
 ## 感谢
+
+[![Github Sponsors](https://img.shields.io/badge/sponsor-30363D?style=for-the-badge&logo=GitHub-Sponsors&logoColor=#EA4AAA)](https://github.com/sponsors/bin456789)
 
 感谢以下商家提供白嫖机器
 
