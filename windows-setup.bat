@@ -43,6 +43,11 @@ echo list vol | diskpart | find "efi" && (
     set BootType=bios
 )
 
+rem 获取 BuildNumber
+for /f "tokens=3" %%a in ('reg query "HKLM\SOFTWARE\Microsoft\Windows NT\CurrentVersion" /v CurrentBuildNumber') do (
+    set "BuildNumber=%%a"
+)
+
 rem 获取 installer 卷 id
 for /f "tokens=2" %%a in ('echo list vol ^| diskpart ^| find "installer"') do (
     set "VolIndex=%%a"
@@ -125,36 +130,44 @@ for %%a in (RAM TPM SecureBoot) do (
 
 rem 设置
 set EnableEMS=0
-set ForceOldSetup=1
+set ForceOldSetup=0
 set EnableUnattended=1
 
-if %EnableEMS% EQU 1 (
+if "%EnableEMS%"=="1" (
     set EMS=/EMSPort:COM1 /EMSBaudRate:115200
 )
 
-if %EnableUnattended% EQU 1 (
+if "%EnableUnattended%"=="1" (
     set Unattended=/unattend:X:\windows.xml
+)
+
+rem 新版安装程序默认开了 Compact OS
+
+rem 新版安装程序不会创建 BIOS MBR 引导
+rem 因此要回退到旧版，或者手动修复 MBR
+rem server 2025 + bios 也是
+rem 但是 server 2025 官网写支持 bios
+rem TODO: 使用 ms-sys 可以不修复？
+if %BuildNumber% GEQ 26040 if "%BootType%"=="bios" (
+    rem set ForceOldSetup=1
+    bootrec /fixmbr
+)
+
+rem 旧版安装程序不会创建 winre 分区
+rem 新版安装程序会创建 winre 分区
+rem winre 分区创建在 installer 分区前面
+rem 禁止 winre 分区后，winre 储存在 C 盘，依然有效
+if %BuildNumber% GEQ 26040 if "%ForceOldSetup%"=="0" (
+    set ResizeRecoveryPartition=/ResizeRecoveryPartition Disable
 )
 
 rem 运行 ramdisk X:\setup.exe 的话
 rem vista 会找不到安装源
 rem server 23h2 会无法运行
-
-rem 26040 开始有新版安装程序
-rem 新版安装程序不会创建 BIOS MBR 引导
-if %ForceOldSetup% EQU 1 (
+if "%ForceOldSetup%"=="1" (
     set setup=Y:\sources\setup.exe
 ) else (
     set setup=Y:\setup.exe
-    rem 旧版安装程序不会创建 winre 分区
-    rem 新版安装程序会创建 winre 分区
-    rem winre 分区创建在 installer 分区前面
-    rem 禁止 winre 分区后，winre 储存在 C 盘，依然有效
-    for /f "tokens=3" %%a in ('reg query "HKLM\SOFTWARE\Microsoft\Windows NT\CurrentVersion" /v CurrentBuildNumber') do (
-        if %%a GEQ 26040 (
-            set ResizeRecoveryPartition=/ResizeRecoveryPartition Disable
-        )
-    )
 )
 
 %setup% %ResizeRecoveryPartition% %EMS% %Unattended%
