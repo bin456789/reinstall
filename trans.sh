@@ -1184,7 +1184,7 @@ min() {
 get_build_threads() {
     threads_per_mb=$1
 
-    threads_by_core=$(nproc --all)
+    threads_by_core=$(nproc)
     threads_by_ram=$(($(get_approximate_ram_size) / threads_per_mb))
     [ $threads_by_ram -eq 0 ] && threads_by_ram=1
     min $threads_by_ram $threads_by_core
@@ -1806,10 +1806,10 @@ create_part() {
                 set 3 msftdata on
             update_part
 
-            mkfs.fat -n efi /dev/$xda*1                 #1 efi
-            echo                                        #2 msr
-            mkfs.ext4 -E nodiscard -F -L os /dev/$xda*3 #3 os
-            mkfs.ntfs -f -F -L installer /dev/$xda*4    #4 installer
+            mkfs.fat -n efi /dev/$xda*1                           #1 efi
+            dd if=/dev/zero of="$(ls /dev/$xda*2)" bs=1M count=16 #2 msr
+            mkfs.ext4 -F -L os /dev/$xda*3                        #3 os
+            mkfs.ntfs -f -F -L installer /dev/$xda*4              #4 installer
         else
             # bios + mbr 启动盘最大可用 2t
             is_xda_gt_2t && max_usable_size=2TiB || max_usable_size=100%
@@ -1820,8 +1820,8 @@ create_part() {
                 set 1 boot on
             update_part
 
-            mkfs.ext4 -E nodiscard -F -L os /dev/$xda*1 #1 os
-            mkfs.ntfs -f -F -L installer /dev/$xda*2    #2 installer
+            mkfs.ext4 -F -L os /dev/$xda*1           #1 os
+            mkfs.ntfs -f -F -L installer /dev/$xda*2 #2 installer
         fi
     elif is_use_cloud_image; then
         installer_part_size="$(get_cloud_image_part_size)"
@@ -1840,9 +1840,9 @@ create_part() {
                     set 1 esp on
                 update_part
 
-                mkfs.fat -n efi /dev/$xda*1                        #1 efi
-                echo                                               #2 os 用目标系统的格式化工具
-                mkfs.ext4 -E nodiscard -F -L installer /dev/$xda*3 #3 installer
+                mkfs.fat -n efi /dev/$xda*1           #1 efi
+                echo                                  #2 os 用目标系统的格式化工具
+                mkfs.ext4 -F -L installer /dev/$xda*3 #3 installer
             else
                 parted /dev/$xda -s -- \
                     mklabel gpt \
@@ -1852,9 +1852,9 @@ create_part() {
                     set 1 bios_grub on
                 update_part
 
-                echo                                               #1 bios_boot
-                echo                                               #2 os 用目标系统的格式化工具
-                mkfs.ext4 -E nodiscard -F -L installer /dev/$xda*3 #3 installer
+                echo                                  #1 bios_boot
+                echo                                  #2 os 用目标系统的格式化工具
+                mkfs.ext4 -F -L installer /dev/$xda*3 #3 installer
             fi
         else
             # 使用 dd qcow2
@@ -1865,8 +1865,8 @@ create_part() {
                 mkpart '" "' ext4 -$installer_part_size 100%
             update_part
 
-            mkfs.ext4 -E nodiscard -F -L os /dev/$xda*1        #1 os
-            mkfs.ext4 -E nodiscard -F -L installer /dev/$xda*2 #2 installer
+            mkfs.ext4 -F -L os /dev/$xda*1        #1 os
+            mkfs.ext4 -F -L installer /dev/$xda*2 #2 installer
         fi
     elif [ "$distro" = alpine ] || [ "$distro" = arch ] || [ "$distro" = gentoo ] || [ "$distro" = nixos ]; then
         # alpine 本身关闭了 64bit ext4
@@ -1882,8 +1882,8 @@ create_part() {
                 set 1 boot on
             update_part
 
-            mkfs.fat /dev/$xda*1                             #1 efi
-            mkfs.ext4 -E nodiscard -F $ext4_opts /dev/$xda*2 #2 os
+            mkfs.fat /dev/$xda*1                #1 efi
+            mkfs.ext4 -F $ext4_opts /dev/$xda*2 #2 os
         elif is_xda_gt_2t; then
             # bios > 2t
             parted /dev/$xda -s -- \
@@ -1893,8 +1893,8 @@ create_part() {
                 set 1 bios_grub on
             update_part
 
-            echo                                             #1 bios_boot
-            mkfs.ext4 -E nodiscard -F $ext4_opts /dev/$xda*2 #2 os
+            echo                                #1 bios_boot
+            mkfs.ext4 -F $ext4_opts /dev/$xda*2 #2 os
         else
             # bios
             parted /dev/$xda -s -- \
@@ -1903,7 +1903,7 @@ create_part() {
                 set 1 boot on
             update_part
 
-            mkfs.ext4 -E nodiscard -F $ext4_opts /dev/$xda*1 #1 os
+            mkfs.ext4 -F $ext4_opts /dev/$xda*1 #1 os
         fi
     else
         # 安装红帽系或ubuntu
@@ -1938,9 +1938,9 @@ create_part() {
                 set 1 boot on
             update_part
 
-            mkfs.fat -n efi /dev/$xda*1                                   #1 efi
-            mkfs.ext4 -E nodiscard -F -L os /dev/$xda*2                   #2 os
-            mkfs.ext4 -E nodiscard -F -L installer $ext4_opts /dev/$xda*3 #2 installer
+            mkfs.fat -n efi /dev/$xda*1                      #1 efi
+            mkfs.ext4 -F -L os /dev/$xda*2                   #2 os
+            mkfs.ext4 -F -L installer $ext4_opts /dev/$xda*3 #2 installer
         elif is_xda_gt_2t; then
             # bios > 2t
             parted /dev/$xda -s -- \
@@ -1951,9 +1951,9 @@ create_part() {
                 set 1 bios_grub on
             update_part
 
-            echo                                                          #1 bios_boot
-            mkfs.ext4 -E nodiscard -F -L os /dev/$xda*2                   #2 os
-            mkfs.ext4 -E nodiscard -F -L installer $ext4_opts /dev/$xda*3 #3 installer
+            echo                                             #1 bios_boot
+            mkfs.ext4 -F -L os /dev/$xda*2                   #2 os
+            mkfs.ext4 -F -L installer $ext4_opts /dev/$xda*3 #3 installer
         else
             # bios
             parted /dev/$xda -s -- \
@@ -1963,8 +1963,8 @@ create_part() {
                 set 1 boot on
             update_part
 
-            mkfs.ext4 -E nodiscard -F -L os /dev/$xda*1                   #1 os
-            mkfs.ext4 -E nodiscard -F -L installer $ext4_opts /dev/$xda*2 #2 installer
+            mkfs.ext4 -F -L os /dev/$xda*1                   #1 os
+            mkfs.ext4 -F -L installer $ext4_opts /dev/$xda*2 #2 installer
         fi
         update_part
     fi
@@ -2846,8 +2846,8 @@ install_qcow_by_copy() {
     mount_nouuid /dev/$os_part /nbd/
     mount_pseudo_fs /nbd/
     case "$(get_os_fs)" in
-    ext4) chroot /nbd mkfs.ext4 -E nodiscard -F -L "$os_part_label" -U "$os_part_uuid" /dev/$xda*2 ;;
-    xfs) chroot /nbd mkfs.xfs -K -f -L "$os_part_label" -m uuid=$os_part_uuid /dev/$xda*2 ;;
+    ext4) chroot /nbd mkfs.ext4 -F -L "$os_part_label" -U "$os_part_uuid" /dev/$xda*2 ;;
+    xfs) chroot /nbd mkfs.xfs -f -L "$os_part_label" -m uuid=$os_part_uuid /dev/$xda*2 ;;
     esac
     umount -R /nbd/
 
@@ -3569,7 +3569,7 @@ install_windows() {
             # 匹配失败
             file=/image-name
             error "Invalid image name: $image_name"
-            echo "Choose a correct image name by one of follow command to continue:"
+            echo "Choose a correct image name by one of follow command in ssh to continue:"
             while read -r line; do
                 echo "  echo '$line' >$file"
             done < <(echo "$all_image_names")
@@ -3621,10 +3621,8 @@ install_windows() {
     # 用注册表无法绕过
     # https://github.com/pbatard/rufus/issues/1990
     # https://learn.microsoft.com/windows/iot/iot-enterprise/Hardware/System_Requirements
-    if [ "$product_ver" = "11" ]; then
-        if [ "$(grep -c '^processor' /proc/cpuinfo)" -le 1 ]; then
-            wiminfo "$install_wim" "$image_name" --image-property WINDOWS/INSTALLATIONTYPE=Server
-        fi
+    if [ "$product_ver" = "11" ] && [ "$(nproc)" -le 1 ]; then
+        wiminfo "$install_wim" "$image_name" --image-property WINDOWS/INSTALLATIONTYPE=Server
     fi
 
     # 变量名     使用场景
