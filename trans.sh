@@ -3583,6 +3583,11 @@ install_windows() {
     fi
     echo "Image Name: $image_name"
 
+    get_boot_wim_prop() {
+        property=$1
+        wiminfo "/os/boot.wim" | grep -i "^$property:" | cut -d: -f2- | xargs
+    }
+
     get_selected_image_prop() {
         property=$1
         wiminfo "$install_wim" "$image_name" | grep -i "^$property:" | cut -d: -f2- | xargs
@@ -4074,7 +4079,8 @@ install_windows() {
     # 挂载 boot.wim
     info "mount boot.wim"
     mkdir -p /wim
-    wimmountrw /os/boot.wim 2 /wim/
+    boot_index=$(get_boot_wim_prop 'Boot Index')
+    wimmountrw /os/boot.wim "$boot_index" /wim/
 
     cp_drivers() {
         src=$1

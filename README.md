@@ -126,6 +126,7 @@ certutil -urlcache -f -split https://jihulab.com/bin456789/reinstall/-/raw/main/
 - 在虚拟机上，会自动安装合适的官方精简内核
 - 安装 Red Hat 需填写 <https://access.redhat.com/downloads/content/rhel> 得到的 `qcow2` 镜像链接
 - 用户名 `root` 密码 `123@@@`，可能首次开机几分钟后密码才生效
+- 改为密钥登录时，还要修改 `/etc/ssh/sshd_config.d/` 里面的文件
 
 ```bash
 bash reinstall.sh centos      9
@@ -218,6 +219,8 @@ bash reinstall.sh netboot.xyz
 - 如果远程登录失败，尝试使用用户名 `.\administrator`
 - 静态机器会自动配置好 IP，可能首次开机几分钟后才生效
 
+![Windows 安装中](https://github.com/bin456789/reinstall/assets/7548515/07c1aea2-1ce3-4967-904f-aaf9d6eec3f7)
+
 #### 方法 1: 让脚本自动查找 ISO
 
 - 脚本会从 <https://massgrave.dev/genuine-installation-media.html> 查找 iso，该网站提供的 iso 都是官方原版
@@ -225,7 +228,7 @@ bash reinstall.sh netboot.xyz
 
 ```bash
 bash reinstall.sh windows \
-     --image-name 'Windows 10 Enterprise LTSC 2021' \
+     --image-name 'Windows 11 Enterprise LTSC 2024' \
      --lang zh-cn
 ```
 
@@ -282,8 +285,8 @@ zh-tw
 
 ```bash
 bash reinstall.sh windows \
-     --image-name 'Windows 10 Enterprise LTSC 2021' \
-     --iso 'https://drive.massgrave.dev/en-us_windows_10_enterprise_ltsc_2021_x64_dvd_d289cf96.iso'
+     --image-name 'Windows 11 Enterprise LTSC 2024' \
+     --iso 'https://drive.massgrave.dev/zh-cn_windows_11_enterprise_ltsc_2024_x64_dvd_cff9cd2d.iso'
 ```
 
 > [!IMPORTANT]
@@ -308,20 +311,18 @@ bash reinstall.sh windows \
 
 </details>
 
-![Installing Windows](https://github.com/bin456789/reinstall/assets/7548515/07c1aea2-1ce3-4967-904f-aaf9d6eec3f7)
-
 #### 参数说明
 
 `--image-name` 指定要安装的映像，不区分大小写，常用映像有：
 
 ```text
 Windows 7 Ultimate
-Windows 10 Enterprise LTSC 2021
 Windows 11 Pro
-Windows Server 2022 SERVERDATACENTER
+Windows 11 Enterprise LTSC 2024
+Windows Server 2025 SERVERDATACENTER
 ```
 
-打开 [DISM++](https://github.com/Chuyu-Team/Dism-Multi-language/releases) 文件菜单 > 打开映像文件，选择要安装的 iso，可以得到映像名称
+打开 [DISM++](https://github.com/Chuyu-Team/Dism-Multi-language/releases) 文件菜单 > 打开映像文件，选择要安装的 iso，可以得到映像名称（系统全名），所有映像名称都可安装
 
 ![image-name](https://github.com/bin456789/reinstall/assets/7548515/5aae0a9b-61e2-4f66-bb98-d470a6beaac2)
 
@@ -375,8 +376,9 @@ Windows Server 2022 SERVERDATACENTER
 
 不需要下载驱动，只需打开设备管理器，找到显卡，选择更新驱动，在列表中选择 `Red Hat VirtIO GPU DOD controller`
 
-![virtio-gpu-1](https://github.com/user-attachments/assets/bf3a9af6-13d8-4f93-9d6c-d3b2dbddb37d)
-![virtio-gpu-2](https://github.com/user-attachments/assets/a9006a78-838f-45bf-a556-2dba193d3c03)
+![virtio-gpu-1](https://github.com/user-attachments/assets/503e1d82-4fa9-4486-917e-73326ad7c988)
+![virtio-gpu-2](https://github.com/user-attachments/assets/bf3a9af6-13d8-4f93-9d6c-d3b2dbddb37d)
+![virtio-gpu-3](https://github.com/user-attachments/assets/a9006a78-838f-45bf-a556-2dba193d3c03)
 
 </details>
 

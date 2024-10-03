@@ -654,7 +654,11 @@ get_windows_iso_links() {
                 case "$edition" in
                 home | 'home single language') echo consumer ;;
                 pro | education | enterprise | 'pro education' | 'pro for workstations') echo business ;;
+                # iot
                 'iot enterprise') echo 'iot enterprise' ;;
+                # iot ltsc
+                'iot enterprise ltsc 2019' | 'iot enterprise ltsc 2021') echo "$edition" ;;
+                # ltsc
                 'enterprise 2015 ltsb' | 'enterprise 2016 ltsb' | 'enterprise ltsc 2019') echo "$edition" ;;
                 'enterprise ltsc 2021')
                     # arm64 的 enterprise ltsc 2021 要下载 iot enterprise ltsc 2021 iso
@@ -663,16 +667,24 @@ get_windows_iso_links() {
                     x86 | x64) echo 'enterprise ltsc 2021' ;;
                     esac
                     ;;
-                'iot enterprise ltsc 2019' | 'iot enterprise ltsc 2021') echo "$edition" ;;
                 esac
                 ;;
             11)
                 case "$edition" in
                 home | 'home single language') echo consumer ;;
                 pro | education | enterprise | 'pro education' | 'pro for workstations') echo business ;;
+                # iot
                 'iot enterprise' | 'iot enterprise subscription') echo 'iot enterprise' ;;
-                'enterprise ltsc 2024') echo 'enterprise ltsc 2024' ;;
+                # iot ltsc
                 'iot enterprise ltsc 2024' | 'iot enterprise ltsc 2024 subscription') echo 'iot enterprise ltsc 2024' ;;
+                # ltsc
+                'enterprise ltsc 2024')
+                    # arm64 的 enterprise ltsc 2024 要下载 iot enterprise ltsc 2024 iso
+                    case "$arch_win" in
+                    arm64) echo 'iot enterprise ltsc 2024' ;;
+                    x64) echo 'enterprise ltsc 2024' ;;
+                    esac
+                    ;;
                 esac
                 ;;
             esac

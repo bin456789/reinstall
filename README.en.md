@@ -126,6 +126,7 @@ certutil -urlcache -f -split https://jihulab.com/bin456789/reinstall/-/raw/main/
 - On virtual machines, the appropriate official slimmed-down kernel will be automatically installed.
 - To install Red Hat, you need to provide the `qcow2` image link obtained from <https://access.redhat.com/downloads/content/rhel>.
 - Username `root`, password `123@@@`. It may take a few minutes for the password to take effect on the first boot.
+- When switching to key-based authentication, you also need to modify the files inside `/etc/ssh/sshd_config.d/`
 
 ```bash
 bash reinstall.sh centos      9
@@ -218,6 +219,8 @@ bash reinstall.sh netboot.xyz
 - If remote login fails, try using the username `.\administrator`.
 - The machine with a static IP will automatically configure the IP. It may take a few minutes to take effect on the first boot.
 
+![Installing Windows](https://github.com/bin456789/reinstall/assets/7548515/07c1aea2-1ce3-4967-904f-aaf9d6eec3f7)
+
 #### Method 1: Allow the script to automatically find the ISO
 
 - The script will search for ISO files from <https://massgrave.dev/genuine-installation-media.html>. The ISOs provided on this site are all official versions.
@@ -225,7 +228,7 @@ bash reinstall.sh netboot.xyz
 
 ```bash
 bash reinstall.sh windows \
-     --image-name 'Windows 10 Enterprise LTSC 2021' \
+     --image-name 'Windows 11 Enterprise LTSC 2024' \
      --lang zh-cn
 ```
 
@@ -282,8 +285,8 @@ zh-tw
 
 ```bash
 bash reinstall.sh windows \
-     --image-name 'Windows 10 Enterprise LTSC 2021' \
-     --iso 'https://drive.massgrave.dev/en-us_windows_10_enterprise_ltsc_2021_x64_dvd_d289cf96.iso'
+     --image-name 'Windows 11 Enterprise LTSC 2024' \
+     --iso 'https://drive.massgrave.dev/zh-cn_windows_11_enterprise_ltsc_2024_x64_dvd_cff9cd2d.iso'
 ```
 
 > [!IMPORTANT]
@@ -308,20 +311,18 @@ bash reinstall.sh windows \
 
 </details>
 
-![Installing Windows](https://github.com/bin456789/reinstall/assets/7548515/07c1aea2-1ce3-4967-904f-aaf9d6eec3f7)
-
 #### Parameters Description
 
 `--image-name` Specify the image to install, case-insensitive, Commonly used images include:
 
 ```text
 Windows 7 Ultimate
-Windows 10 Enterprise LTSC 2021
 Windows 11 Pro
-Windows Server 2022 SERVERDATACENTER
+Windows 11 Enterprise LTSC 2024
+Windows Server 2025 SERVERDATACENTER
 ```
 
-Open [DISM++](https://github.com/Chuyu-Team/Dism-Multi-language/releases) File menu > Open Image File, select the iso to be installed to get the image name.
+Open [DISM++](https://github.com/Chuyu-Team/Dism-Multi-language/releases) File menu > Open Image File, select the iso to be installed to get the image name (full system name), and all available image names are installable.
 
 ![image-name](https://github.com/bin456789/reinstall/assets/7548515/5aae0a9b-61e2-4f66-bb98-d470a6beaac2)
 
@@ -375,8 +376,9 @@ Most ARM machines support ISO installation of Windows 11 24H2, but some machines
 
 No need to download the driver, just open Device Manager, find the graphics card, select 'Update driver', and choose `Red Hat VirtIO GPU DOD controller` from the list.
 
-![virtio-gpu-1](https://github.com/user-attachments/assets/bf3a9af6-13d8-4f93-9d6c-d3b2dbddb37d)
-![virtio-gpu-2](https://github.com/user-attachments/assets/a9006a78-838f-45bf-a556-2dba193d3c03)
+![virtio-gpu-1](https://github.com/user-attachments/assets/503e1d82-4fa9-4486-917e-73326ad7c988)
+![virtio-gpu-2](https://github.com/user-attachments/assets/bf3a9af6-13d8-4f93-9d6c-d3b2dbddb37d)
+![virtio-gpu-3](https://github.com/user-attachments/assets/a9006a78-838f-45bf-a556-2dba193d3c03)
 
 </details>
 
