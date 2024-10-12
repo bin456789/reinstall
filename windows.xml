@@ -110,8 +110,11 @@
             <FirewallGroups>
                 <FirewallGroup wcm:action="add" wcm:keyValue="RemoteDesktop">
                     <Profile>all</Profile>
+                    <!-- HKLM\System\CurrentControlSet\Services\SharedAccess\Parameters\FirewallPolicy\FirewallRules -->
+                    <!-- Get-NetFirewallRule | Where-Object Name -like 'RemoteDesktop*' | fl Name,DisplayName,Description,DisplayGroup,Group -->
+                    <!-- https://learn.microsoft.com/windows-hardware/customize/desktop/unattend/networking-mpssvc-svc-firewallgroups-firewallgroup-group -->
                     <Group>@FirewallAPI.dll,-28752</Group>
-                    <Active>true</Active>
+                    <Active>%use_default_rdp_port%</Active>
                 </FirewallGroup>
             </FirewallGroups>
         </component>
@@ -144,7 +147,8 @@
                 <SkipMachineOOBE>true</SkipMachineOOBE>
                 <SkipUserOOBE>true</SkipUserOOBE>
             </OOBE>
-            <TimeZone>China Standard Time</TimeZone>
+            <!-- 不设置时区，则使用镜像的默认时区 -->
+            <!-- <TimeZone>China Standard Time</TimeZone> -->
         </component>
     </settings>
 </unattend>

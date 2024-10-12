@@ -126,7 +126,10 @@ certutil -urlcache -f -split https://jihulab.com/bin456789/reinstall/-/raw/main/
 - 在虚拟机上，会自动安装合适的官方精简内核
 - 安装 Red Hat 需填写 <https://access.redhat.com/downloads/content/rhel> 得到的 `qcow2` 镜像链接
 - 用户名 `root` 密码 `123@@@`，可能首次开机几分钟后密码才生效
-- 改为密钥登录时，还要修改 `/etc/ssh/sshd_config.d/` 里面的文件
+- 重装后如需修改 SSH 端口 / 改成密钥登录，还要注意修改 `/etc/ssh/sshd_config.d/` 里面的文件
+- 可选参数
+  - `--ssh-port PORT` 修改 SSH 端口
+  - `--hold 2`        安装结束后不进入系统。可连接 SSH 修改系统内容，系统挂载在 `/os` (此功能不支持 Debian / Kali)
 
 ```bash
 bash reinstall.sh centos      9
@@ -158,6 +161,8 @@ bash reinstall.sh centos      9
 
 <summary>实验性功能</summary>
 
+以下功能为实验性质，可能不支持修改 ssh 端口等其它选项
+
 用云镜像安装 Debian，适合于 CPU 较慢的机器
 
 ```bash
@@ -183,6 +188,10 @@ bash reinstall.sh ubuntu --installer
 - 支持 `raw` `vhd` 或者经过 `xz` `gzip` 压缩的镜像
 - DD Windows 镜像时，会扩展系统盘，静态 IP 的机器会配置好 IP，可能首次开机几分钟后才生效
 - DD Linux 镜像时，脚本不会修改镜像的任何内容
+- 可选参数
+  - `--rdp-port PORT` 修改 RDP 端口 (仅限 Windows)
+  - `--allow-ping`    允许被 Ping (仅限 Windows)
+  - `--hold 2`        DD 结束后不进入系统。可连接 SSH 修改系统内容，系统挂载在 `/os`
 
 ```bash
 bash reinstall.sh dd --img https://example.com/xxx.xz
@@ -218,8 +227,12 @@ bash reinstall.sh netboot.xyz
 - 用户名 `administrator` 密码 `123@@@`
 - 如果远程登录失败，尝试使用用户名 `.\administrator`
 - 静态机器会自动配置好 IP，可能首次开机几分钟后才生效
+- 可选参数
+  - `--rdp-port PORT` 更改 RDP 端口
+  - `--allow-ping`    允许被 Ping
+  - `--hold 2`        在重启进入 Windows 官方安装程序前，可连接 SSH 修改硬盘内容，硬盘挂载在 `/os`
 
-![Windows 安装中](https://github.com/bin456789/reinstall/assets/7548515/07c1aea2-1ce3-4967-904f-aaf9d6eec3f7)
+![Windows 安装界面](https://github.com/bin456789/reinstall/assets/7548515/07c1aea2-1ce3-4967-904f-aaf9d6eec3f7)
 
 #### 方法 1: 让脚本自动查找 ISO
 
@@ -365,9 +378,10 @@ Windows Server 2025 SERVERDATACENTER
 - ✔️Azure     B2pts_v2
 - ✔️阿里云    g8y c8y r8y (有几率重启时卡开机 Logo，强制重启即可)
 - ✔️阿里云    g6r c6r
-- ✔️甲骨文云  A1.Flex     (安装后需要手动加载显卡驱动)
+- ✔️甲骨文云  A1.Flex     (视乎机器的创建日期，越新的越有可能成功安装，安装后还需要手动加载显卡驱动)
 - ✔️AWS       T4g
 - ✔️Scaleway  COPARM1
+- ✔️Gcore
 - ❌谷歌云    t2a         (缺少网卡驱动)
 
 <details>

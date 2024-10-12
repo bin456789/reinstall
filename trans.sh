@@ -75,7 +75,8 @@ wget() {
     echo "$@" | grep -o 'http[^ ]*' >&2
     if command wget 2>&1 | grep -q BusyBox; then
         # busybox wget 没有重试功能
-        retry 5 command wget "$@"
+        # 好像默认永不超时
+        retry 5 command wget "$@" -T 10
     else
         # 原版 wget 自带重试功能
         command wget --tries=5 --progress=bar:force "$@"
@@ -215,11 +216,20 @@ is_use_cloud_image() {
     [ -n "$cloud_image" ] && [ "$cloud_image" = 1 ]
 }
 
+is_allow_ping() {
+    [ -n "$allow_ping" ] && [ "$allow_ping" = 1 ]
+}
+
 setup_nginx() {
     apk add nginx
     # shellcheck disable=SC2154
     wget $confhome/logviewer.html -O /logviewer.html
     wget $confhome/logviewer-nginx.conf -O /etc/nginx/http.d/default.conf
+
+    if [ -z "$web_port" ]; then
+        web_port=80
+    fi
+    sed -i "s/@WEB_PORT@/$web_port/gi" /etc/nginx/http.d/default.conf
 
     # rc-service nginx start
     if pgrep nginx >/dev/null; then
@@ -575,6 +585,14 @@ is_windows_support_rdnss() {
         fi
     done
     error_and_exit "Not found kernel32.dll"
+}
+
+is_need_change_ssh_port() {
+    [ -n "$ssh_port" ] && ! [ "$ssh_port" = 22 ]
+}
+
+is_need_change_rdp_port() {
+    [ -n "$rdp_port" ] && ! [ "$rdp_port" = 3389 ]
 }
 
 is_need_manual_set_dnsv6() {
@@ -1320,6 +1338,9 @@ install_nixos() {
     if [ -e /os/swapfile ] && $keep_swap; then
         nix_swap="swapDevices = [{ device = \"/swapfile\"; size = $swap_size; }];"
     fi
+    if is_need_change_ssh_port; then
+        nix_ssh_ports="services.openssh.ports = [ $ssh_port ];"
+    fi
 
     # TODO: 准确匹配网卡，添加 udev 或者直接配置 networkd 匹配 mac
     create_nixos_network_config /tmp/nixos_network_config.nix
@@ -1332,6 +1353,7 @@ $nix_substituters
 boot.kernelParams = [ $(get_ttys console= | quote_word) ];
 services.openssh.enable = true;
 services.openssh.settings.PermitRootLogin = "yes";
+$nix_ssh_ports
 $(cat /tmp/nixos_network_config.nix)
 ###################################################
 EOF
@@ -1632,6 +1654,9 @@ EOF
     chroot $os_dir systemctl enable systemd-resolved
     chroot $os_dir systemctl enable sshd
     allow_root_password_login $os_dir
+    if is_need_change_ssh_port; then
+        change_ssh_port $os_dir $ssh_port
+    fi
 
     # 修改密码
     change_root_password $os_dir
@@ -2135,6 +2160,13 @@ download_cloud_init_config() {
     # 修改密码
     sed -i "s/@PASSWORD@/$PASSWORD/" $ci_file
 
+    # 修改 ssh 端口
+    if is_need_change_ssh_port; then
+        sed -i "s/@SSH_PORT@/$ssh_port/g" $ci_file
+    else
+        sed -i "/@SSH_PORT@/d" $ci_file
+    fi
+
     # swapfile
     # 如果分区表中已经有swapfile就跳过，例如arch
     if ! grep -w swap $os_dir/etc/fstab; then
@@ -2179,10 +2211,27 @@ modify_windows() {
         use_gpo=false
     fi
 
-    # 下载共同的子脚本
+    # bat 列表
+    bats=
+
+    # 1. rdp 端口
+    if is_need_change_rdp_port; then
+        create_win_change_rdp_port_script $os_dir/windows-change-rdp-port.bat "$rdp_port"
+        bats="$bats windows-change-rdp-port.bat"
+    fi
+
+    # 2. 允许 ping
+    if is_allow_ping; then
+        download $confhome/windows-allow-ping.bat $os_dir/windows-allow-ping.bat
+        bats="$bats windows-allow-ping.bat"
+    fi
+
+    # 3. 合并分区
     # 可能 unattend.xml 已经设置了ExtendOSPartition，不过运行resize没副作用
-    bats="windows-resize.bat"
     download $confhome/windows-resize.bat $os_dir/windows-resize.bat
+    bats="$bats windows-resize.bat"
+
+    # 4. 网络设置
     for ethx in $(get_eths); do
         create_win_set_netconf_script $os_dir/windows-set-netconf-$ethx.bat
         bats="$bats windows-set-netconf-$ethx.bat"
@@ -2535,20 +2584,43 @@ create_swap() {
 }
 
 # arch gentoo 常规安装用
+change_ssh_conf() {
+    os_dir=$1
+    key=$2
+    value=$3
+    sub_conf=$4
+
+    # arch 没有 /etc/ssh/sshd_config.d/ 文件夹
+    # opensuse tumbleweed 有 /etc/ssh/sshd_config.d/ 文件夹，但没有 /etc/ssh/sshd_config，有/usr/etc/ssh/sshd_config
+    if grep -q 'Include.*/etc/ssh/sshd_config.d' $os_dir/etc/ssh/sshd_config ||
+        grep -q '^Include.*/etc/ssh/sshd_config.d/' $os_dir/usr/etc/ssh/sshd_config; then
+        mkdir -p $os_dir/etc/ssh/sshd_config.d/
+        echo "$key $value" >"$os_dir/etc/ssh/sshd_config.d/$sub_conf"
+    else
+        # 如果 sshd_config 存在此 key，则替换
+        # 否则追加
+        line="^#?$key .*"
+        if grep -x "$line" $os_dir/etc/ssh/sshd_config; then
+            sed -Ei "s/$line/$key $value/" $os_dir/etc/ssh/sshd_config
+        else
+            echo "$key $value" >>$os_dir/etc/ssh/sshd_config
+        fi
+    fi
+}
+
+# arch gentoo 常规安装用
 allow_root_password_login() {
     os_dir=$1
 
-    # 允许 root 密码登录
-    # arch 没有 /etc/ssh/sshd_config.d/ 文件夹
-    # opensuse tumbleweed 有 /etc/ssh/sshd_config.d/ 文件夹，但没有 /etc/ssh/sshd_config，但有/usr/etc/ssh/sshd_config
-    if grep 'Include.*/etc/ssh/sshd_config.d' $os_dir/etc/ssh/sshd_config; then
-        mkdir -p $os_dir/etc/ssh/sshd_config.d/
-        echo 'PermitRootLogin yes' >$os_dir/etc/ssh/sshd_config.d/01-permitrootlogin.conf
-    else
-        if ! grep -x 'PermitRootLogin yes' $os_dir/etc/ssh/sshd_config; then
-            echo 'PermitRootLogin yes' >>$os_dir/etc/ssh/sshd_config
-        fi
-    fi
+    change_ssh_conf "$os_dir" PermitRootLogin yes 01-permitrootlogin.conf
+}
+
+# arch gentoo 常规安装用
+change_ssh_port() {
+    os_dir=$1
+    ssh_port=$2
+
+    change_ssh_conf "$os_dir" Port "$ssh_port" 01-change-ssh-port.conf
 }
 
 change_root_password() {
@@ -3418,6 +3490,17 @@ EOF
     unix2dos $target
 }
 
+create_win_change_rdp_port_script() {
+    target=$1
+    rdp_port=$2
+
+    info "Create win change rdp port script"
+
+    echo "set RdpPort=$rdp_port" >$target
+    wget $confhome/windows-change-rdp-port.bat -O- >>$target
+    unix2dos $target
+}
+
 # virt-what 要用最新版
 # vultr 1G High Frequency LAX 实际上是 kvm
 # debian 11 virt-what 1.19 显示为 hyperv qemu
@@ -3656,6 +3739,15 @@ install_windows() {
         arch_dd=  # 华为云没有 arm64 驱动
         ;;
     esac
+
+    # 防止用了不兼容架构的 iso
+    if ! {
+        { [ "$(uname -m)" = "x86_64" ] && [ "$arch_wim" = x86_64 ]; } ||
+            { [ "$(uname -m)" = "x86_64" ] && [ "$arch_wim" = x86 ]; } ||
+            { [ "$(uname -m)" = "aarch64" ] && [ "$arch_wim" = arm64 ]; }
+    }; then
+        error_and_exit "The machine is $(uname -m), but the iso is $arch_wim."
+    fi
 
     add_drivers() {
         info "Add drivers"
@@ -4038,7 +4130,13 @@ install_windows() {
     # 修改应答文件
     download $confhome/windows.xml /tmp/autounattend.xml
     locale=$(get_selected_image_prop 'Default Language')
-    sed -i "s|%arch%|$arch|; s|%image_name%|$image_name|; s|%locale%|$locale|; s|%password%|$PASSWORD|" \
+    use_default_rdp_port=$(is_need_change_rdp_port && echo false || echo true)
+    sed -i \
+        -e "s|%arch%|$arch|" \
+        -e "s|%image_name%|$image_name|" \
+        -e "s|%locale%|$locale|" \
+        -e "s|%password%|$PASSWORD|" \
+        -e "s|%use_default_rdp_port%|$use_default_rdp_port|" \
         /tmp/autounattend.xml
 
     # 修改应答文件，分区配置
@@ -4174,8 +4272,12 @@ install_windows() {
 
     # 添加引导
     if is_efi; then
-        apk add efibootmgr
-        efibootmgr -c -L "Windows Installer" -d /dev/$xda -p1 -l "\\EFI\\boot\\$boot_efi"
+        # 现在 add_default_efi_to_nvram() 添加 bootx64.efi 到最前面
+        # 因此这里重复了
+        if false; then
+            apk add efibootmgr
+            efibootmgr -c -L "Windows Installer" -d /dev/$xda -p1 -l "\\EFI\\boot\\$boot_efi"
+        fi
     else
         # 或者用 ms-sys
         apk add grub-bios
@@ -4491,6 +4593,10 @@ hwclock -s || true
 
 # 设置密码，安装并打开 ssh
 echo "root:$PASSWORD" | chpasswd
+apk add openssh
+if is_need_change_ssh_port; then
+    change_ssh_port / $ssh_port
+fi
 printf '\nyes' | setup-sshd
 
 # shellcheck disable=SC2154

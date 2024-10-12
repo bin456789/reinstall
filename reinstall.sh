@@ -59,6 +59,11 @@ Usage: $reinstall____ centos      9
                       windows     --image-name='windows xxx yyy'  --iso='http://xxx.com/xxx.iso'
                       netboot.xyz
 
+       Options:       [--ssh-port PORT]
+                      [--rdp-port PORT]
+                      [--web-port PORT]
+                      [--allow-ping]
+
 Manual: https://github.com/bin456789/reinstall
 
 EOF
@@ -192,6 +197,14 @@ is_have_initrd() {
 is_use_firmware() {
     # shellcheck disable=SC2154
     [ "$nextos_distro" = debian ] && ! is_virt
+}
+
+is_digit() {
+    [[ "$1" =~ ^[0-9]+$ ]]
+}
+
+is_port_valid() {
+    is_digit "$1" && [ "$1" -ge 1 ] && [ "$1" -le 65535 ]
 }
 
 get_host_by_url() {
@@ -2315,6 +2328,11 @@ find_grub_extlinux_cfg() {
     fi
 }
 
+# 空格、&、用户输入的网址要加引号，否则 grub 无法正确识别
+is_need_quote() {
+    [[ "$1" = *' '* ]] || [[ "$1" = *'&'* ]] || [[ "$1" = http* ]]
+}
+
 # 转换 finalos_a=1 为 finalos.a=1 ，排除 finalos_mirrorlist
 build_finalos_cmdline() {
     if vars=$(compgen -v finalos_); then
@@ -2322,7 +2340,9 @@ build_finalos_cmdline() {
             value=${!key}
             key=${key#finalos_}
             if [ -n "$value" ] && [ $key != "mirrorlist" ]; then
-                finalos_cmdline+=" finalos_$key='$value'"
+                is_need_quote "$value" &&
+                    finalos_cmdline+=" finalos_$key='$value'" ||
+                    finalos_cmdline+=" finalos_$key=$value"
             fi
         done
     fi
@@ -2334,10 +2354,13 @@ build_extra_cmdline() {
     # 会将 extra.xxx=yyy 写入新系统的 /etc/modprobe.d/local.conf
     # https://answers.launchpad.net/ubuntu/+question/249456
     # https://salsa.debian.org/installer-team/rootskel/-/blob/master/src/lib/debian-installer-startup.d/S02module-params?ref_type=heads
-    for key in confhome hold force cloud_image main_disk; do
+    for key in confhome hold force force_old_windows_setup cloud_image main_disk \
+        ssh_port rdp_port web_port allow_ping password; do
         value=${!key}
         if [ -n "$value" ]; then
-            extra_cmdline+=" extra_$key='$value'"
+            is_need_quote "$value" &&
+                extra_cmdline+=" extra_$key='$value'" ||
+                extra_cmdline+=" extra_$key=$value"
         fi
     done
 
@@ -3042,8 +3065,28 @@ else
     fi
 fi
 
+long_opts=
+for o in ci installer debug minimal allow-ping \
+    hold: \
+    sleep: \
+    iso: \
+    image-name: \
+    boot-wim: \
+    img: \
+    lang: \
+    ssh-port: \
+    rdp-port: \
+    web-port: \
+    allow-ping: \
+    commit: \
+    force: \
+    force-old-windows-setup:; do
+    [ -n "$long_opts" ] && long_opts+=,
+    long_opts+=$o
+done
+
 # 整理参数
-if ! opts=$(getopt -n $0 -o "" --long ci,installer,debug,minimal,hold:,sleep:,iso:,image-name:,img:,lang:,commit:,force: -- "$@"); then
+if ! opts=$(getopt -n $0 -o "" --long "$long_opts" -- "$@"); then
     usage_and_exit
 fi
 
@@ -3073,18 +3116,41 @@ while true; do
         minimal=1
         shift
         ;;
+    --allow-ping)
+        allow_ping=1
+        shift
+        ;;
     --hold | --sleep)
-        hold=$2
-        if ! { [ "$hold" = 1 ] || [ "$hold" = 2 ]; }; then
-            error_and_exit "Invalid --hold value: $hold."
+        if ! { [ "$2" = 1 ] || [ "$2" = 2 ]; }; then
+            error_and_exit "Invalid $1 value: $2"
         fi
+        hold=$2
         shift 2
         ;;
     --force)
-        force=$2
-        if ! { [ "$force" = bios ] || [ "$force" = efi ]; }; then
-            error_and_exit "Invalid --force value: $force."
+        if ! { [ "$2" = bios ] || [ "$2" = efi ]; }; then
+            error_and_exit "Invalid $1 value: $2"
         fi
+        force=$2
+        shift 2
+        ;;
+    --ssh-port)
+        is_port_valid $2 || error_and_exit "Invalid $1 value: $2"
+        ssh_port=$2
+        shift 2
+        ;;
+    --rdp-port)
+        is_port_valid $2 || error_and_exit "Invalid $1 value: $2"
+        rdp_port=$2
+        shift 2
+        ;;
+    --web-port)
+        is_port_valid $2 || error_and_exit "Invalid $1 value: $2"
+        web_port=$2
+        shift 2
+        ;;
+    --force-old-windows-setup)
+        force_old_windows_setup=$2
         shift 2
         ;;
     --img)

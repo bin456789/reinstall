@@ -21,10 +21,14 @@ runcmd:
   # 下面这行删除 clout-init 创建的 sshd_config
   - test $(wc -l </etc/ssh/sshd_config) -le 1 && cat /etc/ssh/sshd_config >>/etc/ssh/sshd_config.d/50-cloud-init.conf && rm -f /etc/ssh/sshd_config
   - echo "PermitRootLogin yes" >/etc/ssh/sshd_config.d/01-permitrootlogin.conf || sed -Ei 's/^#?PermitRootLogin.*/PermitRootLogin yes/' /etc/ssh/sshd_config
+  - echo "Port @SSH_PORT@" >/etc/ssh/sshd_config.d/01-change-ssh-port.conf || sed -Ei 's/^#?Port .*/Port @SSH_PORT@/' /etc/ssh/sshd_config
   # 已创建的 ssh 连接会沿用旧的配置（未开启密码登录），这时即使输入正确的密码，也会提示 Access Denied
   # systemctl restart sshd 只会重启监听进程，不会关闭已创建的连接（子进程）
   - pkill sshd || true
-  - systemctl restart sshd || systemctl restart ssh
+  # daemon-reload 会刷新 /run/systemd/generator/ssh.socket.d/addresses.conf
+  - systemctl daemon-reload
+  - for s in ssh.socket ssh.service sshd.socket sshd.service; do systemctl is-enabled $s && systemctl restart $s && break; done
+  - sed -i -e '/^[[:space:]]*password:/d' -e '/[[:space:]]*root:/d' /etc/cloud/cloud.cfg.d/99_fallback.cfg
   - touch /etc/cloud/cloud-init.disabled
   # ubuntu 镜像运行 echo -e '\nDone' ，-e 会被显示出来
   - printf '\n%s\n' 'reinstall done' >/dev/tty0 || true

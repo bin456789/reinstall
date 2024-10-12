@@ -126,7 +126,10 @@ certutil -urlcache -f -split https://jihulab.com/bin456789/reinstall/-/raw/main/
 - On virtual machines, the appropriate official slimmed-down kernel will be automatically installed.
 - To install Red Hat, you need to provide the `qcow2` image link obtained from <https://access.redhat.com/downloads/content/rhel>.
 - Username `root`, password `123@@@`. It may take a few minutes for the password to take effect on the first boot.
-- When switching to key-based authentication, you also need to modify the files inside `/etc/ssh/sshd_config.d/`
+- After reinstalling, if you need to change SSH port or switch to key-based login, be sure to modify the files inside `/etc/ssh/sshd_config.d/`.
+- Optional parameters:
+  - `--ssh-port PORT` to change the SSH port
+  - `--hold 2` to prevent entering the system after installation. You can connect via SSH to modify system content, with the system mounted at `/os` (this feature is not supported on Debian/Kali).
 
 ```bash
 bash reinstall.sh centos      9
@@ -158,6 +161,8 @@ bash reinstall.sh centos      9
 
 <summary>Experimental Features</summary>
 
+The following features are experimental and may not support modifying the SSH port or other options.
+
 Install Debian using a cloud image, suitable for machines with slower CPUs
 
 ```bash
@@ -183,6 +188,10 @@ bash reinstall.sh ubuntu --installer
 - Supports `raw`, `vhd` images or those compressed with `xz` or `gzip`.
 - When deploy a Windows image, the system disk will be expanded, and machines with static IPs will have their IPs configured. However, it may take a few minutes after the first boot for the configuration to take effect.
 - When deploy a Linux image, the script will not modify any contents of the image.
+- Optional parameters:
+  - `--rdp-port PORT` to change the RDP port (Windows only).
+  - `--allow-ping` to allow ping responses (Windows only).
+  - `--hold 2` to prevent entering the system after DD completion. You can connect via SSH to modify system content, with the system mounted at `/os`.
 
 ```bash
 bash reinstall.sh dd --img https://example.com/xxx.xz
@@ -218,8 +227,12 @@ bash reinstall.sh netboot.xyz
 - Username `administrator`, password `123@@@`
 - If remote login fails, try using the username `.\administrator`.
 - The machine with a static IP will automatically configure the IP. It may take a few minutes to take effect on the first boot.
+- Optional parameters:
+  - `--rdp-port PORT` to change the RDP port
+  - `--allow-ping` to allow ping responses
+  - `--hold 2` to allow SSH connections for modifying the hard disk content before rebooting into the official Windows installation program, with the hard disk mounted at `/os`.
 
-![Installing Windows](https://github.com/bin456789/reinstall/assets/7548515/07c1aea2-1ce3-4967-904f-aaf9d6eec3f7)
+![Windows Installation](https://github.com/bin456789/reinstall/assets/7548515/07c1aea2-1ce3-4967-904f-aaf9d6eec3f7)
 
 #### Method 1: Allow the script to automatically find the ISO
 
@@ -365,9 +378,10 @@ Most ARM machines support ISO installation of Windows 11 24H2, but some machines
 - ✔️Azure: B2pts_v2
 - ✔️Alibaba Cloud: g8y, c8y, r8y (may occasionally get stuck on the boot logo during restart; force restart to resolve)
 - ✔️Alibaba Cloud: g6r, c6r
-- ✔️Oracle Cloud: A1.Flex (manual loading of the graphics driver is required after installation)
+- ✔️Oracle Cloud A1.Flex (Success depends on the machine's creation date; newer instances are more likely to install successfully. You will also need to manually load the GPU drivers after installation.)
 - ✔️AWS: T4g
 - ✔️Scaleway: COPARM1
+- ✔️Gcore
 - ❌Google Cloud: t2a (lacking network card driver)
 
 <details>
