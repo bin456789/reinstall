@@ -3606,7 +3606,12 @@ install_windows() {
     mount -o ro /os/windows.iso /iso
 
     # 复制 boot.wim 到 /os，用于临时编辑
-    cp /iso/sources/boot.wim /os/boot.wim
+    if [ -n "$boot_wim" ]; then
+        # 自定义 boot.wim 链接
+        download "$boot_wim" /os/boot.wim
+    else
+        cp /iso/sources/boot.wim /os/boot.wim
+    fi
 
     # 从iso复制文件
     # 复制iso全部文件(除了boot.wim)到installer分区

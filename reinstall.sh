@@ -330,7 +330,9 @@ fix_file_type() {
     # x86 boot sector; partition 1: ...
 
     sed 's/^# //' | awk '{print $1}' | to_lower |
-        sed -e 's,dos/mbr,raw,' -e 's,x86,raw,'
+        sed -e 's,dos/mbr,raw,' \
+            -e 's,x86,raw,' \
+            -e 's,windows,wim,'
 }
 
 file_enhanced() {
@@ -1158,8 +1160,10 @@ Continue?
         # 注意 windows server 2008 r2 serverdatacenter 不用改
         image_name=${image_name/windows server 2008 server/windows longhorn server}
 
-        test_url $iso 'iso|raw'
+        test_url "$iso" 'iso|raw'
+        [ -n "$boot_wim" ] && test_url "$boot_wim" 'wim'
         eval "${step}_iso='$iso'"
+        eval "${step}_boot_wim='$boot_wim'"
         eval "${step}_image_name='$image_name'"
     }
 
@@ -3159,6 +3163,10 @@ while true; do
         ;;
     --iso)
         iso=$2
+        shift 2
+        ;;
+    --boot-wim)
+        boot_wim=$2
         shift 2
         ;;
     --image-name)
