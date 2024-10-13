@@ -4238,10 +4238,11 @@ install_windows() {
     # 移除注释，否则 windows-setup.bat 重新生成的 autounattend.xml 有问题
     apk add xmlstarlet
     xmlstarlet ed -d '//comment()' /tmp/autounattend.xml >/wim/autounattend.xml
-    apk del xmlstarlet
     unix2dos /wim/autounattend.xml
     info "autounattend.xml"
-    cat -n /wim/autounattend.xml
+    # 查看最终文件，并屏蔽密码
+    xmlstarlet ed -d '//*[name()="AdministratorPassword" or name()="Password"]' /wim/autounattend.xml | cat -n
+    apk del xmlstarlet
 
     # 避免无参数运行 setup.exe 时自动安装
     mv /wim/autounattend.xml /wim/windows.xml
