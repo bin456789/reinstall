@@ -1,6 +1,6 @@
 #!/bin/ash
 # shellcheck shell=dash
-# shellcheck disable=SC2086,SC3047,SC3036,SC3010,SC3001
+# shellcheck disable=SC2086,SC3047,SC3036,SC3010,SC3001,SC3060
 # alpine 默认使用 busybox ash
 
 # 出错后停止运行，将进入到登录界面，防止失联
@@ -8,10 +8,7 @@ set -eE
 
 # 用于判断 reinstall.sh 和 trans.sh 是否兼容
 # shellcheck disable=SC2034
-SCRIPT_VERSION=4BACD833-A585-23BA-6CBB-9AA4E08E0001
-
-# debian 安装版、ubuntu 安装版、el/ol 安装版不使用该密码
-PASSWORD=123@@@
+SCRIPT_VERSION=4BACD833-A585-23BA-6CBB-9AA4E08E0002
 
 TRUE=0
 FALSE=1
@@ -430,6 +427,27 @@ is_dmi_contains() {
     # Asset Tag: Amazon EC2
     cache_dmi_and_virt
     echo "$_dmi" | grep -Eiwq "$1"
+}
+
+get_config() {
+    cat "/configs/$1"
+}
+
+get_password_linux_sha512() {
+    get_config password-linux-sha512
+}
+
+get_password_windows_administrator_base64() {
+    get_config password-windows-administrator-base64
+}
+
+# debian 安装版、ubuntu 安装版、el/ol 安装版不使用该密码
+get_password_plaintext() {
+    get_config password-plaintext
+}
+
+is_password_plaintext() {
+    get_password_plaintext >/dev/null 2>&1
 }
 
 show_netconf() {
@@ -1399,8 +1417,8 @@ EOF
     nixos-install --root /os --no-root-passwd -j $threads
 
     # 设置密码
-    echo "root:$PASSWORD" | nixos-enter --root /os -- \
-        /run/current-system/sw/bin/chpasswd
+    echo "root:$(get_password_linux_sha512)" | nixos-enter --root /os -- \
+        /run/current-system/sw/bin/chpasswd -e
 
     # 设置 channel
     if is_in_china; then
@@ -2158,7 +2176,9 @@ download_cloud_init_config() {
     sed -i '1!{/^[[:space:]]*#/d}' $ci_file
 
     # 修改密码
-    sed -i "s/@PASSWORD@/$PASSWORD/" $ci_file
+    # 不能用 sed 替换，因为含有特殊字符
+    content=$(cat $ci_file)
+    echo "${content//@PASSWORD@/$(get_password_linux_sha512)}" >$ci_file
 
     # 修改 ssh 端口
     if is_need_change_ssh_port; then
@@ -2467,9 +2487,9 @@ EOF
         cp_resolv_conf $os_dir
 
         # 在这里修改密码，而不是用cloud-init，因为我们的默认密码太弱
-        sed -i 's/enforce=everyone/enforce=none/' $os_dir/etc/security/passwdqc.conf
-        echo "root:$PASSWORD" | chroot $os_dir chpasswd
-        sed -i 's/enforce=none/enforce=everyone/' $os_dir/etc/security/passwdqc.conf
+        is_password_plaintext && sed -i 's/enforce=everyone/enforce=none/' $os_dir/etc/security/passwdqc.conf
+        echo "root:$(get_password_linux_sha512)" | chroot $os_dir chpasswd -e
+        is_password_plaintext && sed -i 's/enforce=none/enforce=everyone/' $os_dir/etc/security/passwdqc.conf
 
         # 下载仓库，选择 profile
         chroot $os_dir emerge-webrsync
@@ -2628,39 +2648,45 @@ change_root_password() {
 
     info 'change root password'
 
-    pam_d=$os_dir/etc/pam.d
+    if is_password_plaintext; then
+        pam_d=$os_dir/etc/pam.d
 
-    [ -f $pam_d/chpasswd ] && has_pamd_chpasswd=true || has_pamd_chpasswd=false
+        [ -f $pam_d/chpasswd ] && has_pamd_chpasswd=true || has_pamd_chpasswd=false
 
-    if $has_pamd_chpasswd; then
-        cp $pam_d/chpasswd $pam_d/chpasswd.orig
+        if $has_pamd_chpasswd; then
+            cp $pam_d/chpasswd $pam_d/chpasswd.orig
 
-        # cat /etc/pam.d/chpasswd
-        # @include common-password
+            # cat /etc/pam.d/chpasswd
+            # @include common-password
 
-        # cat /etc/pam.d/chpasswd
-        # #%PAM-1.0
-        # auth       include      system-auth
-        # account    include      system-auth
-        # password   substack     system-auth
-        # -password   optional    pam_gnome_keyring.so use_authtok
-        # password   substack     postlogin
+            # cat /etc/pam.d/chpasswd
+            # #%PAM-1.0
+            # auth       include      system-auth
+            # account    include      system-auth
+            # password   substack     system-auth
+            # -password   optional    pam_gnome_keyring.so use_authtok
+            # password   substack     postlogin
 
-        # 通过 /etc/pam.d/chpasswd 找到 /etc/pam.d/system-auth 或者 /etc/pam.d/system-auth
-        # 再找到有 password 和 pam_unix.so 的行，并删除 use_authtok，写入 /etc/pam.d/chpasswd
-        files=$(grep -E '^(password|@include)' $pam_d/chpasswd | awk '{print $NF}' | sort -u)
-        for file in $files; do
-            if [ -f "$pam_d/$file" ] && line=$(grep ^password "$pam_d/$file" | grep -F pam_unix.so); then
-                echo "$line" | sed 's/use_authtok//' >$pam_d/chpasswd
-                break
-            fi
-        done
-    fi
+            # 通过 /etc/pam.d/chpasswd 找到 /etc/pam.d/system-auth 或者 /etc/pam.d/system-auth
+            # 再找到有 password 和 pam_unix.so 的行，并删除 use_authtok，写入 /etc/pam.d/chpasswd
+            files=$(grep -E '^(password|@include)' $pam_d/chpasswd | awk '{print $NF}' | sort -u)
+            for file in $files; do
+                if [ -f "$pam_d/$file" ] && line=$(grep ^password "$pam_d/$file" | grep -F pam_unix.so); then
+                    echo "$line" | sed 's/use_authtok//' >$pam_d/chpasswd
+                    break
+                fi
+            done
+        fi
 
-    echo "root:$PASSWORD" | chroot $os_dir chpasswd
+        # 分两行写，不然遇到错误不会终止
+        plaintext=$(get_password_plaintext)
+        echo "root:$plaintext" | chroot $os_dir chpasswd
 
-    if $has_pamd_chpasswd; then
-        mv $pam_d/chpasswd.orig $pam_d/chpasswd
+        if $has_pamd_chpasswd; then
+            mv $pam_d/chpasswd.orig $pam_d/chpasswd
+        fi
+    else
+        get_password_linux_sha512 | chroot $os_dir chpasswd -e
     fi
 }
 
@@ -4136,11 +4162,12 @@ install_windows() {
     download $confhome/windows.xml /tmp/autounattend.xml
     locale=$(get_selected_image_prop 'Default Language')
     use_default_rdp_port=$(is_need_change_rdp_port && echo false || echo true)
+    password_base64=$(get_password_windows_administrator_base64)
     sed -i \
         -e "s|%arch%|$arch|" \
         -e "s|%image_name%|$image_name|" \
         -e "s|%locale%|$locale|" \
-        -e "s|%password%|$PASSWORD|" \
+        -e "s|%administrator_password%|$password_base64|" \
         -e "s|%use_default_rdp_port%|$use_default_rdp_port|" \
         /tmp/autounattend.xml
 
@@ -4597,7 +4624,7 @@ mount / -o remount,size=100%
 hwclock -s || true
 
 # 设置密码，安装并打开 ssh
-echo "root:$PASSWORD" | chpasswd
+echo "root:$(get_password_linux_sha512)" | chpasswd -e
 apk add openssh
 if is_need_change_ssh_port; then
     change_ssh_port / $ssh_port

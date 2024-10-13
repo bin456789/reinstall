@@ -8,13 +8,13 @@ users:
     lock_passwd: false
 chpasswd:
   expire: false
-  # 20.04 arm 需要
+  # <= cloud-init 22.2.x 需要
   list: |
     root:@PASSWORD@
   users:
     - name: root
       password: "@PASSWORD@"
-      type: text
+      type: hash
 runcmd:
   # opensuse tumbleweed 镜像有 /etc/ssh/sshd_config.d/ 文件夹，没有 /etc/ssh/sshd_config，有/usr/etc/ssh/sshd_config
   # opensuse tumbleweed cloud-init 直接创建并写入 /etc/ssh/sshd_config，造成默认配置丢失
@@ -28,6 +28,7 @@ runcmd:
   # daemon-reload 会刷新 /run/systemd/generator/ssh.socket.d/addresses.conf
   - systemctl daemon-reload
   - for s in ssh.socket ssh.service sshd.socket sshd.service; do systemctl is-enabled $s && systemctl restart $s && break; done
+  # 删除有密码的行
   - sed -i -e '/^[[:space:]]*password:/d' -e '/[[:space:]]*root:/d' /etc/cloud/cloud.cfg.d/99_fallback.cfg
   - touch /etc/cloud/cloud-init.disabled
   # ubuntu 镜像运行 echo -e '\nDone' ，-e 会被显示出来

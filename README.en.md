@@ -125,11 +125,12 @@ certutil -urlcache -f -split https://jihulab.com/bin456789/reinstall/-/raw/main/
 - Does not include a boot partition (except for Fedora), nor a swap partition, maximizing disk space utilization.
 - On virtual machines, the appropriate official slimmed-down kernel will be automatically installed.
 - To install Red Hat, you need to provide the `qcow2` image link obtained from <https://access.redhat.com/downloads/content/rhel>.
-- Username `root`, password `123@@@`. It may take a few minutes for the password to take effect on the first boot.
+- Username `root`, Default password `123@@@`. It may take a few minutes for the password to take effect on the first boot.
 - After reinstalling, if you need to change SSH port or switch to key-based login, be sure to modify the files inside `/etc/ssh/sshd_config.d/`.
 - Optional parameters:
-  - `--ssh-port PORT` to change the SSH port
-  - `--hold 2` to prevent entering the system after installation. You can connect via SSH to modify system content, with the system mounted at `/os` (this feature is not supported on Debian/Kali).
+  - `--password PASSWORD` Set password
+  - `--ssh-port PORT` Change SSH port
+  - `--hold 2` Prevent entering the system after installation. You can connect via SSH to modify system content, with the system mounted at `/os` (this feature is not supported on Debian/Kali).
 
 ```bash
 bash reinstall.sh centos      9
@@ -161,21 +162,27 @@ bash reinstall.sh centos      9
 
 <summary>Experimental Features</summary>
 
-The following features are experimental and may not support modifying the SSH port or other options.
-
 Install Debian using a cloud image, suitable for machines with slower CPUs
 
 ```bash
 bash reinstall.sh debian --ci
 ```
 
-Install CentOS, Alma, Rocky, Fedora using ISO, only supports machines with more than 2G of memory and dynamic IP
+Install CentOS, Alma, Rocky, Fedora using ISO, only supports machines with more than 2G of memory and dynamic IP.
+
+Password `123@@@`, SSH Port `22`
+
+Password and SSH port options are not supported.
 
 ```bash
 bash reinstall.sh centos --installer
 ```
 
-Install Ubuntu using ISO, only supports machines with more than 1G of memory and dynamic IP
+Install Ubuntu using ISO, only supports machines with more than 1G of memory and dynamic IP.
+
+Password `123@@@`, SSH Port `22`
+
+Password and SSH port options are not supported.
 
 ```bash
 bash reinstall.sh ubuntu --installer
@@ -189,9 +196,9 @@ bash reinstall.sh ubuntu --installer
 - When deploy a Windows image, the system disk will be expanded, and machines with static IPs will have their IPs configured. However, it may take a few minutes after the first boot for the configuration to take effect.
 - When deploy a Linux image, the script will not modify any contents of the image.
 - Optional parameters:
-  - `--rdp-port PORT` to change the RDP port (Windows only).
-  - `--allow-ping` to allow ping responses (Windows only).
-  - `--hold 2` to prevent entering the system after DD completion. You can connect via SSH to modify system content, with the system mounted at `/os`.
+  - `--rdp-port PORT` Change RDP port (Windows only).
+  - `--allow-ping` Allow ping responses (Windows only).
+  - `--hold 2` Prevent entering the system after DD completion. You can connect via SSH to modify system content, with the system mounted at `/os`.
 
 ```bash
 bash reinstall.sh dd --img https://example.com/xxx.xz
@@ -204,8 +211,10 @@ bash reinstall.sh dd --img https://example.com/xxx.xz
 ### Feature 3: Reboot to <img width="16" height="16" src="https://www.alpinelinux.org/alpine-logo.ico" /> Alpine Rescue System (Live OS)
 
 - You can use SSH to manually perform DD operations, modify partitions, and manually install Alpine, Arch, Gentoo, and other systems.
-- Username `root`, password `123@@@`
+- Username `root`, Default password `123@@@`
 - If the disk content is not modified, rebooting again will return to the original system.
+- Optional parameters:
+  - `--password PASSWORD` Set password
 
 ```bash
 bash reinstall.sh alpine --hold=1
@@ -224,13 +233,14 @@ bash reinstall.sh netboot.xyz
 
 ### Feature 5: Install <img width="16" height="16" src="https://blogs.windows.com/wp-content/uploads/prod/2022/09/cropped-Windows11IconTransparent512-32x32.png" /> Windows ISO
 
-- Username `administrator`, password `123@@@`
+- Username `administrator`, Default password `123@@@`
 - If remote login fails, try using the username `.\administrator`.
 - The machine with a static IP will automatically configure the IP. It may take a few minutes to take effect on the first boot.
 - Optional parameters:
-  - `--rdp-port PORT` to change the RDP port
-  - `--allow-ping` to allow ping responses
-  - `--hold 2` to allow SSH connections for modifying the hard disk content before rebooting into the official Windows installation program, with the hard disk mounted at `/os`.
+  - `--password PASSWORD` Set Password
+  - `--rdp-port PORT` Change RDP port
+  - `--allow-ping` Allow ping responses
+  - `--hold 2` Allow SSH connections for modifying the hard disk content before rebooting into the official Windows installation program, with the hard disk mounted at `/os`.
 
 ![Windows Installation](https://github.com/bin456789/reinstall/assets/7548515/07c1aea2-1ce3-4967-904f-aaf9d6eec3f7)
 

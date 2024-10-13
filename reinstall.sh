@@ -8,7 +8,8 @@ confhome_cn=https://jihulab.com/bin456789/reinstall/-/raw/main
 # confhome_cn=https://mirror.ghproxy.com/https://raw.githubusercontent.com/bin456789/reinstall/main
 
 # 用于判断 reinstall.sh 和 trans.sh 是否兼容
-SCRIPT_VERSION=4BACD833-A585-23BA-6CBB-9AA4E08E0001
+SCRIPT_VERSION=4BACD833-A585-23BA-6CBB-9AA4E08E0002
+DEFAULT_PASSWORD=123@@@
 
 # https://www.gnu.org/software/gettext/manual/html_node/The-LANGUAGE-variable.html
 export LC_ALL=C
@@ -1562,6 +1563,12 @@ install_pkg() {
             yum | dnf | zypper) pkg="bind-utils" ;;
             esac
             ;;
+        iconv)
+            case "$pkg_mgr" in
+            apk) pkg="musl-utils" ;;
+            *) error_and_exit "Which GNU/Linux do not have iconv built-in?" ;;
+            esac
+            ;;
         *) pkg=$cmd ;;
         esac
     }
@@ -1812,6 +1819,92 @@ del_cr() {
 
 del_empty_lines() {
     sed '/^[[:space:]]*$/d'
+}
+
+prompt_password() {
+    while true; do
+        IFS= read -r -p "Password [$DEFAULT_PASSWORD]: " password
+        IFS= read -r -p "Retype password [$DEFAULT_PASSWORD]: " password_confirm
+        password=${password:-$DEFAULT_PASSWORD}
+        password_confirm=${password_confirm:-$DEFAULT_PASSWORD}
+        if [ -z "$password" ]; then
+            error "Passwords is empty. Try again."
+        elif [ "$password" != "$password_confirm" ]; then
+            error "Passwords don't match. Try again."
+        else
+            break
+        fi
+    done
+}
+
+save_password() {
+    dir=$1
+
+    # mkpasswd 有三个
+    # expect 里的 mkpasswd 是用来生成随机密码的
+    # whois 里的 mkpasswd 才是我们想要的，可能不支持 yescrypt，alpine 的 mkpasswd 是独立的包
+    # busybox 里的 mkpasswd 也是我们想要的，但多数不支持 yescrypt
+
+    # alpine 这两个包有冲突
+    # apk add expect mkpasswd
+
+    # 明文密码
+    # 假如用户运行 alpine live 直接打包硬盘镜像，则会暴露明文密码，因为 netboot initrd 在里面
+    # 通过 --password 传入密码，history 有记录，也会暴露明文密码
+    # /reinstall.log 也会暴露明文密码
+    if false; then
+        echo "$password" >>"$dir/password-plaintext"
+    fi
+
+    # sha512
+    # 以下系统均支持 sha512 密码，但是生成密码需要不同的工具
+    # 兼容性     openssl   mkpasswd          busybox  python
+    # centos 7     ×      只有expect的       需要编译    √
+    # centos 8     √      只有expect的
+    # debian 9     ×         √
+    # ubuntu 16    ×         √
+    # alpine       √      可能系统装了expect     √
+    # cygwin       √
+    # others       √
+
+    # alpine
+    if is_have_cmd busybox && busybox mkpasswd --help 2>&1 | grep -wq sha512; then
+        crypted=$(printf '%s' "$password" | busybox mkpasswd -m sha512)
+    # centos 7
+    elif is_have_cmd python2; then
+        crypted=$(python2 -c "import crypt; print(crypt.crypt('$password', crypt.mksalt(crypt.METHOD_SHA512)))")
+    # others
+    elif install_pkg openssl && openssl passwd --help 2>&1 | grep -wq '\-6'; then
+        crypted=$(printf '%s' "$password" | openssl passwd -6 -stdin)
+    # debian 9 / ubuntu 16
+    elif is_have_cmd apt-get && install_pkg whois && mkpasswd -m help | grep -wq sha-512; then
+        crypted=$(printf '%s' "$password" | mkpasswd -m sha-512 --stdin)
+    else
+        error_and_exit "Could not generate sha512 password."
+    fi
+    echo "$crypted" >"$dir/password-linux-sha512"
+
+    # yescrypt
+    # 旧系统不支持，先不管
+    if false; then
+        if mkpasswd -m help | grep -wq yescrypt; then
+            crypted=$(printf '%s' "$password" | mkpasswd -m yescrypt --stdin)
+            echo "$crypted" >"$dir/password-linux-yescrypt"
+        fi
+    fi
+
+    # windows
+    if [ "$distro" = windows ] || [ "$distro" = dd ]; then
+        install_pkg iconv
+
+        # 要分两行写，因为 echo "$(xxx)" 返回值始终为 0，出错也不会中断脚本
+        # grep . 为了保证脚本没有出错
+        base64=$(printf '%s' "${password}Password" | iconv -f UTF-8 -t UTF-16LE | base64 -w 0 | grep .)
+        echo "$base64" >"$dir/password-windows-user-base64"
+
+        base64=$(printf '%s' "${password}AdministratorPassword" | iconv -f UTF-8 -t UTF-16LE | base64 -w 0 | grep .)
+        echo "$base64" >"$dir/password-windows-administrator-base64"
+    fi
 }
 
 # 记录主硬盘
@@ -2359,7 +2452,7 @@ build_extra_cmdline() {
     # https://answers.launchpad.net/ubuntu/+question/249456
     # https://salsa.debian.org/installer-team/rootskel/-/blob/master/src/lib/debian-installer-startup.d/S02module-params?ref_type=heads
     for key in confhome hold force force_old_windows_setup cloud_image main_disk \
-        ssh_port rdp_port web_port allow_ping password; do
+        ssh_port rdp_port web_port allow_ping; do
         value=${!key}
         if [ -n "$value" ]; then
             is_need_quote "$value" &&
@@ -2728,13 +2821,17 @@ EOF
     # 5. debian 11/12 initrd 无法识别 < <
     # 6. debian 11 initrd 无法识别 set -E
     # 7. debian 11 initrd 无法识别 trap ERR
+    # 8. debian 9 initrd 无法识别 ${string//find/replace}
     # 删除或注释，可能会导致空方法而报错，因此改为替换成'\n: #'
     replace='\n: #'
-    sed -Ei "s/> >/$replace/" $initrd_dir/trans.sh
-    sed -Ei "s/< </$replace/" $initrd_dir/trans.sh
-    sed -Ei "s/(^[[:space:]]*set[[:space:]].*)E/\1/" $initrd_dir/trans.sh
-    sed -Ei "s/^[[:space:]]*apk[[:space:]]/$replace/" $initrd_dir/trans.sh
-    sed -Ei "s/^[[:space:]]*trap[[:space:]]/$replace/" $initrd_dir/trans.sh
+    sed -Ei \
+        -e "s/> >/$replace/" \
+        -e "s/< </$replace/" \
+        -e "s/^[[:space:]]*apk[[:space:]]/$replace/" \
+        -e "s/^[[:space:]]*trap[[:space:]]/$replace/" \
+        -e "s/\\$\{.*\/\/.*\/.*\}/$replace/" \
+        -e "/^[[:space:]]*set[[:space:]]/s/E//" \
+        $initrd_dir/trans.sh
 }
 
 get_disk_drivers() {
@@ -2915,11 +3012,15 @@ EOF
     # ssl_client: SSL_connect
     # wget: bad header line: �
     insert_into_file init before '^exec (/bin/busybox )?switch_root' <<EOF
+        # trans
         # echo "wget --no-check-certificate -O- $confhome/trans.sh | /bin/ash" >\$sysroot/etc/local.d/trans.start
         # wget --no-check-certificate -O \$sysroot/etc/local.d/trans.start $confhome/trans.sh
         cp /trans.sh \$sysroot/etc/local.d/trans.start
         chmod a+x \$sysroot/etc/local.d/trans.start
         ln -s /etc/init.d/local \$sysroot/etc/runlevels/default/
+
+        # 配置文件夹
+        cp -r  /configs \$sysroot/configs
 EOF
 
     # 判断云镜像 debain 能否用云内核
@@ -2958,13 +3059,18 @@ mod_initrd() {
         $(is_in_windows && echo --nonmatching 'dev/console' --nonmatching 'dev/null')
 
     curl -Lo $initrd_dir/trans.sh $confhome/trans.sh
-    if ! grep -i "$SCRIPT_VERSION" $initrd_dir/trans.sh; then
+    if ! grep -iq "$SCRIPT_VERSION" $initrd_dir/trans.sh; then
         error_and_exit "
 This script is outdated, please download reinstall.sh again.
 脚本有更新，请重新下载 reinstall.sh"
     fi
+
     curl -Lo $initrd_dir/alpine-network.sh $confhome/alpine-network.sh
     chmod a+x $initrd_dir/trans.sh $initrd_dir/alpine-network.sh
+
+    # 保存配置
+    mkdir -p $initrd_dir/configs
+    save_password $initrd_dir/configs
 
     if is_distro_like_debian $nextos_distro; then
         mod_initrd_debian_kali
@@ -3071,13 +3177,13 @@ fi
 
 long_opts=
 for o in ci installer debug minimal allow-ping \
-    hold: \
-    sleep: \
+    hold: sleep: \
     iso: \
     image-name: \
     boot-wim: \
     img: \
     lang: \
+    passwd: password: \
     ssh-port: \
     rdp-port: \
     web-port: \
@@ -3091,7 +3197,7 @@ done
 
 # 整理参数
 if ! opts=$(getopt -n $0 -o "" --long "$long_opts" -- "$@"); then
-    usage_and_exit
+    exit
 fi
 
 eval set -- "$opts"
@@ -3136,6 +3242,11 @@ while true; do
             error_and_exit "Invalid $1 value: $2"
         fi
         force=$2
+        shift 2
+        ;;
+    --passwd | --password)
+        [ -n "$2" ] || error_and_exit "Need value for $1"
+        password=$2
         shift 2
         ;;
     --ssh-port)
@@ -3200,6 +3311,21 @@ assert_not_in_container
 # 不支持安全启动
 if is_secure_boot_enabled; then
     error_and_exit "Please disable secure boot first."
+fi
+
+# 密码
+if ! is_netboot_xyz && [ -z "$password" ]; then
+    if is_use_dd; then
+        warn "
+This password is only used for SSH access to view logs during the DD process.
+Password of the image will NOT modify.
+
+密码仅用于 DD 过程中通过 SSH 查看日志。
+镜像的密码将不会被修改。
+"
+
+    fi
+    prompt_password
 fi
 
 # 必备组件
@@ -3635,7 +3761,7 @@ if ! { is_netboot_xyz || is_use_dd; }; then
         username="root"
     fi
     echo "Username: $username"
-    echo "Password: 123@@@"
+    echo "Password: $password"
 fi
 
 if is_netboot_xyz; then

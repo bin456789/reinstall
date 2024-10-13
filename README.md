@@ -125,9 +125,10 @@ certutil -urlcache -f -split https://jihulab.com/bin456789/reinstall/-/raw/main/
 - 不含 boot 分区（Fedora 例外），不含 swap 分区，最大化利用磁盘空间
 - 在虚拟机上，会自动安装合适的官方精简内核
 - 安装 Red Hat 需填写 <https://access.redhat.com/downloads/content/rhel> 得到的 `qcow2` 镜像链接
-- 用户名 `root` 密码 `123@@@`，可能首次开机几分钟后密码才生效
+- 用户名 `root` 默认密码 `123@@@`，密码可能首次开机几分钟后才生效
 - 重装后如需修改 SSH 端口 / 改成密钥登录，还要注意修改 `/etc/ssh/sshd_config.d/` 里面的文件
 - 可选参数
+  - `--password PASSWORD` 设置密码
   - `--ssh-port PORT` 修改 SSH 端口
   - `--hold 2`        安装结束后不进入系统。可连接 SSH 修改系统内容，系统挂载在 `/os` (此功能不支持 Debian / Kali)
 
@@ -161,8 +162,6 @@ bash reinstall.sh centos      9
 
 <summary>实验性功能</summary>
 
-以下功能为实验性质，可能不支持修改 ssh 端口等其它选项
-
 用云镜像安装 Debian，适合于 CPU 较慢的机器
 
 ```bash
@@ -171,11 +170,19 @@ bash reinstall.sh debian --ci
 
 用 ISO 安装 CentOS, Alma, Rocky, Fedora ，仅支持内存大于 2G 且为动态 IP 的机器
 
+密码 `123@@@`，SSH 端口 `22`
+
+不支持设置密码、SSH 端口等选项
+
 ```bash
 bash reinstall.sh centos --installer
 ```
 
 用 ISO 安装 Ubuntu ，仅支持内存大于 1G 且为动态 IP 的机器
+
+密码 `123@@@`，SSH 端口 `22`
+
+不支持设置密码、SSH 端口等选项
 
 ```bash
 bash reinstall.sh ubuntu --installer
@@ -204,8 +211,10 @@ bash reinstall.sh dd --img https://example.com/xxx.xz
 ### 功能 3: 重启到 <img width="16" height="16" src="https://www.alpinelinux.org/alpine-logo.ico" /> Alpine 救援系统 (Live OS)
 
 - 可用 ssh 连接，进行手动 DD、修改分区、手动安装 Alpine / Arch / Gentoo 等操作
-- 用户名 `root` 密码 `123@@@`
+- 用户名 `root` 默认密码 `123@@@`
 - 如果没有修改硬盘内容，再次重启将回到原系统
+- 可选参数
+  - `--password PASSWORD` 设置密码
 
 ```bash
 bash reinstall.sh alpine --hold=1
@@ -224,10 +233,11 @@ bash reinstall.sh netboot.xyz
 
 ### 功能 5: 安装 <img width="16" height="16" src="https://blogs.windows.com/wp-content/uploads/prod/2022/09/cropped-Windows11IconTransparent512-32x32.png" /> Windows ISO
 
-- 用户名 `administrator` 密码 `123@@@`
+- 用户名 `administrator` 默认密码 `123@@@`
 - 如果远程登录失败，尝试使用用户名 `.\administrator`
 - 静态机器会自动配置好 IP，可能首次开机几分钟后才生效
 - 可选参数
+  - `--password PASSWORD` 设置密码
   - `--rdp-port PORT` 更改 RDP 端口
   - `--allow-ping`    允许被 Ping
   - `--hold 2`        在重启进入 Windows 官方安装程序前，可连接 SSH 修改硬盘内容，硬盘挂载在 `/os`

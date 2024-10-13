@@ -41,6 +41,7 @@ rem 检查是否国内
 if not exist %tmp%\geoip (
     rem 部分地区 www.cloudflare.com 被墙
     call :download http://dash.cloudflare.com/cdn-cgi/trace %tmp%\geoip
+    if errorlevel 1 goto :download_failed
 )
 findstr /c:"loc=CN" %tmp%\geoip >nul
 if not errorlevel 1 (
@@ -61,9 +62,9 @@ if not errorlevel 1 (
 )
 
 rem pkgs 改动了才重新运行 Cygwin 安装程序
-set pkgs="curl,cpio,p7zip,bind-utils,ipcalc,dos2unix,binutils,jq"
-set tags=%tmp%\cygwin-installed-!pkgs!
-if not exist !tags! (
+set pkgs=curl,cpio,p7zip,bind-utils,ipcalc,dos2unix,binutils,jq,xz,gzip,zstd,openssl,libiconv
+set tags=%tmp%\cygwin-installed-%pkgs%
+if not exist "%tags%" (
     rem win10 arm 支持运行 x86 软件
     rem win11 arm 支持运行 x86 和 x86_64 软件
     rem wmic os get osarchitecture 显示中文
@@ -102,6 +103,7 @@ if not exist !tags! (
 
     rem 下载 Cygwin
     call :download http://www.cygwin.com/setup-!CygwinArch!.exe %tmp%\setup-cygwin.exe
+    if errorlevel 1 goto :download_failed
 
     rem 安装 Cygwin
     set site=!mirror!!dir!
@@ -111,13 +113,14 @@ if not exist !tags! (
                            --site !site! ^
                            --root %SystemDrive%\cygwin ^
                            --local-package-dir %tmp%\cygwin-local-package-dir ^
-                           --packages !pkgs! ^
-    && type nul >!tags!
+                           --packages %pkgs% ^
+                           && type nul >"%tags%"
 )
 
 rem 下载 reinstall.sh
 if not exist reinstall.sh (
     call :download %confhome%/reinstall.sh %~dp0reinstall.sh
+    if errorlevel 1 goto :download_failed
 )
 
 rem 为每个参数添加引号，使参数正确传递到 bash
@@ -147,8 +150,13 @@ rem https://learn.microsoft.com/en-us/windows/win32/bits/http-requirements-for-b
 rem certutil 会被 windows Defender 报毒
 rem windows server 2019 要用第二条 certutil 命令
 echo Download: %~1 %~2
-certutil -urlcache -f -split %~1 %~2
-if not exist %~2 (
-    certutil -urlcache -split %~1 %~2
-)
+del /q "%~2" 2>nul
+if exist "%~2" (echo Cannot delete %~2 & exit /b 1)
+if not exist "%~2" certutil -urlcache -f -split "%~1" "%~2" >nul
+if not exist "%~2" certutil -urlcache -split "%~1" "%~2" >nul
+if not exist "%~2" exit /b 1
 exit /b
+
+:download_failed
+echo Download failed.
+exit /b 1
