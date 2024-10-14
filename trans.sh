@@ -2686,7 +2686,7 @@ change_root_password() {
             mv $pam_d/chpasswd.orig $pam_d/chpasswd
         fi
     else
-        get_password_linux_sha512 | chroot $os_dir chpasswd -e
+        echo "root:$(get_password_linux_sha512)" | chroot $os_dir chpasswd -e
     fi
 }
 
