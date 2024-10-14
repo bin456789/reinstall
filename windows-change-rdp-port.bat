@@ -18,16 +18,6 @@ rem v2.33|Action=Allow|Active=TRUE|Dir=In|Protocol=17|LPort=3389|App=%SystemRoot
 rem 设置端口
 reg add "HKLM\SYSTEM\CurrentControlSet\Control\Terminal Server\WinStations\RDP-Tcp" /v PortNumber /t REG_DWORD /d %RdpPort% /f
 
-rem 重启服务
-rem 可以用 sc 或者 net
-rem UmRdpService 依赖 TermService
-rem sc stop 不能处理依赖关系，因此 sc stop TermService 前需要 sc stop UmRdpService
-rem net stop 可以处理依赖关系
-rem sc stop 是异步的，rem net stop 不是异步，但有 timeout 时间
-rem TermService 运行后，UmRdpService 会自动运行
-net stop TermService /y
-net start TermService
-
 rem 设置防火墙
 rem 各个版本的防火墙自带的 rdp 规则略有不同
 rem 全部版本都有: program=%SystemRoot%\system32\svchost.exe service=TermService
@@ -43,5 +33,25 @@ for %%a in (TCP, UDP) do (
         localport=%RdpPort%
 )
 
-rem 删除此脚本
+rem 家庭版没有 rdp 服务
+sc query TermService
+if %errorlevel% == 1060 goto :del
+
+rem 重启服务 可以用 sc 或者 net
+rem UmRdpService 依赖 TermService
+rem sc stop 不能处理依赖关系，因此 sc stop TermService 前需要 sc stop UmRdpService
+rem net stop 可以处理依赖关系
+rem sc stop 是异步的，rem net stop 不是异步，但有 timeout 时间
+rem TermService 运行后，UmRdpService 会自动运行
+
+rem 如果刚好系统在启动 rdp 服务，则会失败，因此要用 goto 循环
+rem The Remote Desktop Services service could not be stopped.
+
+:restartRDP
+net stop TermService /y && net start TermService || (
+    timeout 5
+    goto :restartRDP
+)
+
+:del
 del "%~f0"
