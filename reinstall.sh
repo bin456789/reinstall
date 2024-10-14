@@ -661,7 +661,7 @@ get_windows_iso_links() {
                 ;;
             8.1)
                 case "$edition" in
-                '') echo _ ;;
+                '') ;; # massgrave 不提供 windows 8.1 家庭版链接
                 pro) echo pro ;;
                 enterprise) echo enterprise ;;
                 esac
