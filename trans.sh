@@ -3809,6 +3809,12 @@ install_windows() {
         mkdir -p "$drv"         # 驱动下载临时文件夹
         mkdir -p "/wim/drivers" # boot.wim 驱动文件夹
 
+        # 这里有坑
+        # $(get_cloud_vendor) 调用了 cache_dmi_and_virt
+        # 但是 $(get_cloud_vendor) 运行在 subshell 里面
+        # subshell 运行结束后里面的变量就消失了
+        # 因此先运行 cache_dmi_and_virt
+        cache_dmi_and_virt
         vendor="$(get_cloud_vendor)"
 
         # virtio
