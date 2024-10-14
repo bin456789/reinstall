@@ -4658,6 +4658,9 @@ if [ "$1" = "update" ]; then
     wget -O /trans.sh "$confhome/trans.sh"
     chmod +x /trans.sh
     exec /trans.sh
+elif [ "$1" = "alpine" ]; then
+    info 'switch to alpine'
+    distro=alpine
 fi
 
 # 无参数运行部分
