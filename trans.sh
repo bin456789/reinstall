@@ -387,22 +387,31 @@ clear_previous() {
     # mount /1/file2 /2
 }
 
+# virt-what 自动安装 dmidecode，因此同时缓存
 cache_dmi_and_virt() {
-    if [ -z "$_dmi" ] || [ -z "$_virt" ]; then
-        # virt-what 自动安装 dmidecode
+    if ! [ "$_dmi_and_virt_cached" = 1 ]; then
         apk add virt-what
 
         # 区分 kvm 和 virtio，原因:
         # 1. 阿里云 c8y virt-what 不显示 kvm
         # 2. 不是所有 kvm 都需要 virtio 驱动，例如 aws nitro
+        # 3. virt-what 不会检测 virtio
+        _virt=$(
+            virt-what
 
-        # virt-what 不会检测 virtio
-        _virt=$(virt-what)
-        if [ -d /sys/bus/virtio ]; then
-            _virt=$({ echo "$_virt" && echo virtio; } | sort -u)
-        fi
+            # hyper-v 环境下 modprobe virtio_scsi 也会创建 /sys/bus/virtio/drivers
+            # 因此用 devices 判断更准确，有设备时才有 devices
+            # 或者加上 lspci 检测?
+
+            # 不要用 [ -d /sys/bus/virtio/devices ] && echo virtio
+            # 因为非 virtio 时返回值不为 0
+            if [ -d /sys/bus/virtio/devices ]; then
+                echo virtio
+            fi
+        )
 
         _dmi=$(dmidecode | grep -E '(Manufacturer|Asset Tag|Vendor): ' | awk -F': ' '{print $2}')
+        _dmi_and_virt_cached=1
         apk del virt-what
     fi
 }
@@ -427,6 +436,19 @@ is_dmi_contains() {
     # Asset Tag: Amazon EC2
     cache_dmi_and_virt
     echo "$_dmi" | grep -Eiwq "$1"
+}
+
+cache_lspci() {
+    if [ -z "$_lspci" ]; then
+        apk add pciutils
+        _lspci=$(lspci)
+        apk del pciutils
+    fi
+}
+
+is_lspci_contains() {
+    cache_lspci
+    echo "$_lspci" | grep -Eiwq "$1"
 }
 
 get_config() {
@@ -3812,6 +3834,14 @@ install_windows() {
             fi
         fi
 
+        # vmd
+        # 改进: 像检测 virtio 那样直接从 /sys 检测设备
+        # inf 有要求 19041 或以上
+        if [ "$build_ver" -ge 19041 ] && [ "$arch_wim" = x86_64 ] &&
+            is_lspci_contains 'Volume Management Device'; then
+            add_driver_vmd
+        fi
+
         # 厂商驱动
         case "$vendor" in
         aws)
@@ -4156,6 +4186,14 @@ install_windows() {
         download https://aka.ms/manawindowsdrivers $drv/azure.zip
         unzip $drv/azure.zip -d $drv/azure/
         cp_drivers $drv/azure
+    }
+
+    add_driver_vmd() {
+        apk add 7zip
+        download https://downloadmirror.intel.com/820815/SetupRST.exe $drv/SetupRST.exe
+        7z x $drv/SetupRST.exe -o$drv/SetupRST -i!.text
+        7z x $drv/SetupRST/.text -o$drv/vmd
+        cp_drivers $drv/vmd
     }
 
     # 修改应答文件

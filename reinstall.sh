@@ -3186,7 +3186,7 @@ for o in ci installer debug minimal allow-ping \
     passwd: password: \
     ssh-port: \
     rdp-port: \
-    web-port: \
+    web-port: http-port: \
     allow-ping: \
     commit: \
     force: \
@@ -3259,7 +3259,7 @@ while true; do
         rdp_port=$2
         shift 2
         ;;
-    --web-port)
+    --web-port | --http-port)
         is_port_valid $2 || error_and_exit "Invalid $1 value: $2"
         web_port=$2
         shift 2

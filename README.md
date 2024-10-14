@@ -129,7 +129,8 @@ certutil -urlcache -f -split https://jihulab.com/bin456789/reinstall/-/raw/main/
 - 重装后如需修改 SSH 端口 / 改成密钥登录，还要注意修改 `/etc/ssh/sshd_config.d/` 里面的文件
 - 可选参数
   - `--password PASSWORD` 设置密码
-  - `--ssh-port PORT` 修改 SSH 端口
+  - `--ssh-port PORT` 修改 SSH 端口（目标系统 + 安装期间观察日志）
+  - `--web-port PORT` 修改 Web 端口（安装期间观察日志）
   - `--hold 2`        安装结束后不进入系统。可连接 SSH 修改系统内容，系统挂载在 `/os` (此功能不支持 Debian / Kali)
 
 ```bash
@@ -196,8 +197,10 @@ bash reinstall.sh ubuntu --installer
 - DD Windows 镜像时，会扩展系统盘，静态 IP 的机器会配置好 IP，可能首次开机几分钟后才生效
 - DD Linux 镜像时，脚本不会修改镜像的任何内容
 - 可选参数
-  - `--rdp-port PORT` 修改 RDP 端口 (仅限 Windows)
-  - `--allow-ping`    允许被 Ping (仅限 Windows)
+  - `--allow-ping`    允许被 Ping (仅限 DD Windows)
+  - `--rdp-port PORT` 修改 RDP 端口 (仅限 DD Windows)
+  - `--ssh-port PORT` 修改 SSH 端口（安装期间观察日志）
+  - `--web-port PORT` 修改 Web 端口（安装期间观察日志）
   - `--hold 2`        DD 结束后不进入系统。可连接 SSH 修改系统内容，系统挂载在 `/os`
 
 ```bash
@@ -215,6 +218,7 @@ bash reinstall.sh dd --img https://example.com/xxx.xz
 - 如果没有修改硬盘内容，再次重启将回到原系统
 - 可选参数
   - `--password PASSWORD` 设置密码
+  - `--ssh-port PORT` 修改 SSH 端口
 
 ```bash
 bash reinstall.sh alpine --hold=1
@@ -238,8 +242,10 @@ bash reinstall.sh netboot.xyz
 - 静态机器会自动配置好 IP，可能首次开机几分钟后才生效
 - 可选参数
   - `--password PASSWORD` 设置密码
-  - `--rdp-port PORT` 更改 RDP 端口
   - `--allow-ping`    允许被 Ping
+  - `--rdp-port PORT` 更改 RDP 端口
+  - `--ssh-port PORT` 修改 SSH 端口（安装期间观察日志）
+  - `--web-port PORT` 修改 Web 端口（安装期间观察日志）
   - `--hold 2`        在重启进入 Windows 官方安装程序前，可连接 SSH 修改硬盘内容，硬盘挂载在 `/os`
 
 ![Windows 安装界面](https://github.com/bin456789/reinstall/assets/7548515/07c1aea2-1ce3-4967-904f-aaf9d6eec3f7)
@@ -362,11 +368,12 @@ Windows Server 2025 SERVERDATACENTER
 
 #### 脚本会按需安装以下驱动
 
-- KVM ([Virtio](https://fedorapeople.org/groups/virt/virtio-win/direct-downloads/)、[阿里云](https://www.alibabacloud.com/help/ecs/user-guide/update-red-hat-virtio-drivers-of-windows-instances))
+- Virtio ([Virtio](https://fedorapeople.org/groups/virt/virtio-win/direct-downloads/)、[阿里云](https://www.alibabacloud.com/help/ecs/user-guide/update-red-hat-virtio-drivers-of-windows-instances))
 - XEN ([XEN](https://xenproject.org/windows-pv-drivers/)、[Citrix](https://docs.aws.amazon.com/AWSEC2/latest/UserGuide/Upgrading_PV_drivers.html#win2008-citrix-upgrade)、[AWS](https://docs.aws.amazon.com/AWSEC2/latest/UserGuide/xen-drivers-overview.html))
 - AWS ([ENA 网卡](https://docs.aws.amazon.com/AWSEC2/latest/UserGuide/ena-driver-releases-windows.html)、[NVME 存储控制器](https://docs.aws.amazon.com/AWSEC2/latest/UserGuide/nvme-driver-version-history.html))
 - GCP ([gVNIC 网卡](https://cloud.google.com/compute/docs/networking/using-gvnic)、[GGA 显卡](https://cloud.google.com/compute/docs/instances/enable-instance-virtual-display))
 - Azure ([MANA 网卡](https://learn.microsoft.com/azure/virtual-network/accelerated-networking-mana-windows))
+- Intel ([VMD 存储控制器](https://www.intel.com/content/www/us/en/download/720755/intel-rapid-storage-technology-driver-installation-software-with-intel-optane-memory-11th-up-to-13th-gen-platforms.html))
 
 > [!WARNING]
 > Vista (Server 2008) 和 32 位系统可能会缺少驱动
@@ -383,7 +390,9 @@ Windows Server 2025 SERVERDATACENTER
 
 #### ARM 注意事项
 
-大部分 ARM 机器支持 ISO 安装 Windows 11 24H2，部分机器安装过程会黑屏，不影响安装
+大部分 ARM 机器支持 ISO 安装 Windows 11 24H2
+
+安装过程可能会黑屏，串行控制台可能会显示 `ConvertPages: failed to find range`，均不影响安装
 
 - ✔️Azure     B2pts_v2
 - ✔️阿里云    g8y c8y r8y (有几率重启时卡开机 Logo，强制重启即可)

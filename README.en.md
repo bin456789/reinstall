@@ -129,7 +129,8 @@ certutil -urlcache -f -split https://jihulab.com/bin456789/reinstall/-/raw/main/
 - After reinstalling, if you need to change SSH port or switch to key-based login, be sure to modify the files inside `/etc/ssh/sshd_config.d/`.
 - Optional parameters:
   - `--password PASSWORD` Set password
-  - `--ssh-port PORT` Change SSH port
+  - `--ssh-port PORT` Change SSH port (for both the target system and log observation during installation)
+  - `--web-port PORT` Change Web port (for log observation during installation)
   - `--hold 2` Prevent entering the system after installation. You can connect via SSH to modify system content, with the system mounted at `/os` (this feature is not supported on Debian/Kali).
 
 ```bash
@@ -196,8 +197,10 @@ bash reinstall.sh ubuntu --installer
 - When deploy a Windows image, the system disk will be expanded, and machines with static IPs will have their IPs configured. However, it may take a few minutes after the first boot for the configuration to take effect.
 - When deploy a Linux image, the script will not modify any contents of the image.
 - Optional parameters:
-  - `--rdp-port PORT` Change RDP port (Windows only).
-  - `--allow-ping` Allow ping responses (Windows only).
+  - `--allow-ping` Allow ping responses (Windows only)
+  - `--rdp-port PORT` Change RDP port (DD Windows only)
+  - `--ssh-port PORT` Change SSH port (for log observation during installation)
+  - `--web-port PORT` Change Web port (for log observation during installation)
   - `--hold 2` Prevent entering the system after DD completion. You can connect via SSH to modify system content, with the system mounted at `/os`.
 
 ```bash
@@ -215,6 +218,7 @@ bash reinstall.sh dd --img https://example.com/xxx.xz
 - If the disk content is not modified, rebooting again will return to the original system.
 - Optional parameters:
   - `--password PASSWORD` Set password
+  - `--ssh-port PORT` Change SSH port
 
 ```bash
 bash reinstall.sh alpine --hold=1
@@ -238,8 +242,10 @@ bash reinstall.sh netboot.xyz
 - The machine with a static IP will automatically configure the IP. It may take a few minutes to take effect on the first boot.
 - Optional parameters:
   - `--password PASSWORD` Set Password
-  - `--rdp-port PORT` Change RDP port
   - `--allow-ping` Allow ping responses
+  - `--rdp-port PORT` Change RDP port
+  - `--ssh-port PORT` Change SSH port (for log observation during installation)
+  - `--web-port PORT` Change Web port (for log observation during installation)
   - `--hold 2` Allow SSH connections for modifying the hard disk content before rebooting into the official Windows installation program, with the hard disk mounted at `/os`.
 
 ![Windows Installation](https://github.com/bin456789/reinstall/assets/7548515/07c1aea2-1ce3-4967-904f-aaf9d6eec3f7)
@@ -362,11 +368,12 @@ With * indicating that an ISO link is required.
 
 #### The script will install the following drivers as needed
 
-- KVM ([Virtio](https://fedorapeople.org/groups/virt/virtio-win/direct-downloads/), [Alibaba Cloud](https://www.alibabacloud.com/help/ecs/user-guide/update-red-hat-virtio-drivers-of-windows-instances))
+- Virtio ([Virtio](https://fedorapeople.org/groups/virt/virtio-win/direct-downloads/), [Alibaba Cloud](https://www.alibabacloud.com/help/ecs/user-guide/update-red-hat-virtio-drivers-of-windows-instances))
 - XEN ([XEN](https://xenproject.org/windows-pv-drivers/), [Citrix](https://docs.aws.amazon.com/AWSEC2/latest/UserGuide/Upgrading_PV_drivers.html#win2008-citrix-upgrade), [AWS](https://docs.aws.amazon.com/AWSEC2/latest/UserGuide/xen-drivers-overview.html))
 - AWS ([ENA Network Adapter](https://docs.aws.amazon.com/AWSEC2/latest/UserGuide/ena-driver-releases-windows.html), [NVMe Storage Controller](https://docs.aws.amazon.com/AWSEC2/latest/UserGuide/nvme-driver-version-history.html))
-- GCP ([gVNIC Network Adapter](https://cloud.google.com/compute/docs/networking/using-gvnic), [GGA Graphics](https://cloud.google.com/compute/docs/instances/enable-instance-virtual-display))
+- GCP ([gVNIC Network Adapter](https://cloud.google.com/compute/docs/networking/using-gvnic), [GGA Display Adapter](https://cloud.google.com/compute/docs/instances/enable-instance-virtual-display))
 - Azure ([MANA Network Adapter](https://learn.microsoft.com/azure/virtual-network/accelerated-networking-mana-windows))
+- Intel ([VMD Storage Controller](https://www.intel.com/content/www/us/en/download/720755/intel-rapid-storage-technology-driver-installation-software-with-intel-optane-memory-11th-up-to-13th-gen-platforms.html))
 
 > [!WARNING]
 > Vista (Server 2008) and 32-bit systems may lack drivers.
@@ -383,7 +390,9 @@ With * indicating that an ISO link is required.
 
 #### ARM Considerations
 
-Most ARM machines support ISO installation of Windows 11 24H2, but some machines may experience a black screen during installation, which does not affect the installation process.
+Most ARM machines support installing Windows 11 24H2 via ISO.
+
+During the installation process, you might encounter a black screen, and the serial console may display `ConvertPages: failed to find range`, but neither issue affects the installation.
 
 - ✔️Azure: B2pts_v2
 - ✔️Alibaba Cloud: g8y, c8y, r8y (may occasionally get stuck on the boot logo during restart; force restart to resolve)
