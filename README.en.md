@@ -14,8 +14,8 @@ One-Click Script to Reinstall System [中文](README.md)
 
 ## Highlights
 
-- Supports installation of 17 common Linux distributions
-- Supports installation of official Windows ISO, automatically finds ISO links, and integrates virtual machine drivers
+- Supports one-click installation of Linux: allows install 17 common distributions.
+- Supports one-click Windows installation: Uses the official ISO for installation instead of custom images. The script automatically retrieves the ISO link and installs `Virtio` and other drivers.
 - Supports installation in any direction, i.e., `Linux to Linux`, `Linux to Windows`, `Windows to Windows`, `Windows to Linux`
 - No need to input IP parameters; automatically recognizes dynamic and static IPs, supports `/32`, `/128`, `gateway outside subnet`, `IPv6 only`, `dual NIC` and other special network configurations
 - Specially optimized for low-spec servers, requires less memory than the official netboot
@@ -25,6 +25,10 @@ One-Click Script to Reinstall System [中文](README.md)
 - Includes many comments.
 
 ## System Requirements
+
+The original system can be any system listed in the table.
+
+The system requirements for the target system are as follows:
 
 | Target System                                                                                                                                                                                                                                              | Version                               | Memory    | Disk                   |
 | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------- | --------- | ---------------------- |
@@ -47,9 +51,9 @@ One-Click Script to Reinstall System [中文](README.md)
 | <img width="16" height="16" src="https://blogs.windows.com/wp-content/uploads/prod/2022/09/cropped-Windows11IconTransparent512-32x32.png" /> Windows (ISO)                                                                                                 | Vista, 7, 8.x (Server 2008 ~ 2012 R2) | 512 MB    | 25 GB                  |
 | <img width="16" height="16" src="https://blogs.windows.com/wp-content/uploads/prod/2022/09/cropped-Windows11IconTransparent512-32x32.png" /> Windows (ISO)                                                                                                 | 10, 11 (Server 2016 ~ 2025)           | 1 GB      | 25 GB                  |
 
-(\*) Indicates installation using cloud images, not traditional network installation.
+\* Indicates installation using cloud images, not traditional network installation.
 
-(^) indicates requiring either 256 MB memory + 1.5 GB disk, or 512 MB memory + 1 GB disk
+^ Indicates requiring either 256 MB memory + 1.5 GB disk, or 512 MB memory + 1 GB disk
 
 > [!WARNING]
 > ❌ This script does not support OpenVZ or LXC virtual machines.
@@ -67,7 +71,7 @@ curl -O https://raw.githubusercontent.com/bin456789/reinstall/main/reinstall.sh 
 For server inside China:
 
 ```bash
-curl -O https://jihulab.com/bin456789/reinstall/-/raw/main/reinstall.sh || wget -O reinstall.sh $_
+curl -O https://www.ghproxy.cc/https://raw.githubusercontent.com/bin456789/reinstall/main/reinstall.sh || wget -O reinstall.sh $_
 ```
 
 ## Download (Current system is <img width="20" height="20" src="https://blogs.windows.com/wp-content/uploads/prod/2022/09/cropped-Windows11IconTransparent512-32x32.png" /> Windows)
@@ -109,7 +113,7 @@ certutil -urlcache -f -split https://raw.githubusercontent.com/bin456789/reinsta
 For server inside China:
 
 ```batch
-certutil -urlcache -f -split https://jihulab.com/bin456789/reinstall/-/raw/main/reinstall.bat
+certutil -urlcache -f -split https://www.ghproxy.cc/https://raw.githubusercontent.com/bin456789/reinstall/main/reinstall.bat
 ```
 
 ## Usage
@@ -117,21 +121,16 @@ certutil -urlcache -f -split https://jihulab.com/bin456789/reinstall/-/raw/main/
 **All features** can be used on both Linux and Windows.
 
 - on Linux, execute `bash reinstall.sh`
-- on Windows, execute `reinstall.bat`
+- on Windows, execute `.\reinstall.bat`
 
 ### Feature 1: Install <img width="16" height="16" src="https://www.kernel.org/theme/images/logos/favicon.png" /> Linux
 
-- If no version number is entered, the latest version will be installed.
-- Does not include a boot partition (except for Fedora), nor a swap partition, maximizing disk space utilization.
-- On virtual machines, the appropriate official slimmed-down kernel will be automatically installed.
-- To install Red Hat, you need to provide the `qcow2` image link obtained from <https://access.redhat.com/downloads/content/rhel>.
-- Username `root`, Default password `123@@@`. It may take a few minutes for the password to take effect on the first boot.
-- After reinstalling, if you need to change SSH port or switch to key-based login, be sure to modify the files inside `/etc/ssh/sshd_config.d/`.
-- Optional parameters:
-  - `--password PASSWORD` Set password
-  - `--ssh-port PORT` Change SSH port (for both the target system and log observation during installation)
-  - `--web-port PORT` Change Web port (for log observation during installation)
-  - `--hold 2` Prevent entering the system after installation. You can connect via SSH to modify system content, with the system mounted at `/os` (this feature is not supported on Debian/Kali).
+- The username is `root` with a default password of `123@@@`. It may take a few minutes after the first boot to successfully log in.
+- When installing the latest version, the version number does not need to be specified.
+- Maximizes disk space usage: no boot partition (except for Fedora) and no swap partition.
+- Automatically selects different optimized kernels based on machine type, such as `Cloud` or `HWE` kernels.
+- When installing Red Hat, you must provide the `qcow2` image link obtained from <https://access.redhat.com/downloads/content/rhel>.
+- After reinstallation, if you need to change the SSH port or switch to key-based login, make sure to also modify the files inside `/etc/ssh/sshd_config.d/`.
 
 ```bash
 bash reinstall.sh centos      9
@@ -153,37 +152,44 @@ bash reinstall.sh centos      9
                   gentoo
 ```
 
+#### Optional Parameters
+
+- `--password PASSWORD` Set the password
+- `--ssh-port PORT` Change the SSH port (for log observation during installation and for the new system)
+- `--web-port PORT` Change the Web port (for log observation during installation)
+- `--hold 2` Prevent reboot after installation completes, allowing SSH login to modify system content; the system is mounted at `/os` (this feature is not supported on Debian/Kali).
+
 > [!TIP]
 > When installing Debian / Kali, x86 architectures can monitor the installation progress through VNC in the background, while ARM architectures can use the serial console.
 >
 > When installing other systems, can monitor the progress through various methods (SSH, HTTP 80 port, VNC in the background, serial console).
-> Even if errors occur during the installation process, you can still install Alpine via SSH by running `xda=drive_name /trans.sh alpine`
+> <br />Even if errors occur during the installation process, you can still install to Alpine via SSH by running `xda=drive_name /trans.sh alpine`
 
 <details>
 
 <summary>Experimental Features</summary>
 
-Install Debian using a cloud image, suitable for machines with slower CPUs
+Install Debian using a cloud image
+
+- Suitable for machines with slower CPUs
 
 ```bash
 bash reinstall.sh debian --ci
 ```
 
-Install CentOS, Alma, Rocky, Fedora using ISO, only supports machines with more than 2G of memory and dynamic IP.
+Install CentOS, Alma, Rocky, Fedora using ISO
 
-Password `123@@@`, SSH Port `22`
-
-Password and SSH port options are not supported.
+- Only supports machines with more than 2G of memory and dynamic IP.
+- Password is `123@@@`, and the SSH port is `22`; modifying them using parameters is not supported.
 
 ```bash
 bash reinstall.sh centos --installer
 ```
 
-Install Ubuntu using ISO, only supports machines with more than 1G of memory and dynamic IP.
+Install Ubuntu using ISO
 
-Password `123@@@`, SSH Port `22`
-
-Password and SSH port options are not supported.
+- Only supports machines with more than 1G of memory and dynamic IP.
+- Password is `123@@@`, and the SSH port is `22`; modifying them using parameters is not supported.
 
 ```bash
 bash reinstall.sh ubuntu --installer
@@ -194,40 +200,44 @@ bash reinstall.sh ubuntu --installer
 ### Feature 2: DD
 
 - Supports `raw`, `vhd` images or those compressed with `xz` or `gzip`.
-- When deploy a Windows image, the system disk will be expanded, and machines with static IPs will have their IPs configured. However, it may take a few minutes after the first boot for the configuration to take effect.
-- When deploy a Linux image, the script will not modify any contents of the image.
-- Optional parameters:
-  - `--allow-ping` Allow ping responses (Windows only)
-  - `--rdp-port PORT` Change RDP port (DD Windows only)
-  - `--ssh-port PORT` Change SSH port (for log observation during installation)
-  - `--web-port PORT` Change Web port (for log observation during installation)
-  - `--hold 2` Prevent entering the system after DD completion. You can connect via SSH to modify system content, with the system mounted at `/os`.
+- When deploy a Windows image, the system disk will be automatically expanded, and machines with a static IP will have their IP configured, and may take a few minutes after the first boot for the configuration to take effect.
+- When deploy a Linux image, will **NOT** modify any contents of the image.
 
 ```bash
 bash reinstall.sh dd --img https://example.com/xxx.xz
 ```
 
+#### Optional parameters
+
+- `--allow-ping` Allow ping responses (DD Windows only)
+- `--rdp-port PORT` Change RDP port (DD Windows only)
+- `--ssh-port PORT` Change SSH port (for log observation during installation)
+- `--web-port PORT` Change Web port (for log observation during installation)
+- `--hold 2` Prevent entering the system after DD completion. You can connect via SSH to modify system content, with the system mounted at `/os`.
+
 > [!TIP]
 > Can monitor the progress through various methods (SSH, HTTP 80 port, VNC in the background, serial console).
-> Even if errors occur during the installation process, you can still install Alpine via SSH by running `xda=drive_name /trans.sh alpine`
+> <br />Even if errors occur during the installation process, you can still install to Alpine via SSH by running `xda=drive_name /trans.sh alpine`
 
 ### Feature 3: Reboot to <img width="16" height="16" src="https://www.alpinelinux.org/alpine-logo.ico" /> Alpine Rescue System (Live OS)
 
-- You can use SSH to manually perform DD operations, modify partitions, and manually install Alpine, Arch, Gentoo, and other systems.
+- You can use SSH to backup/restore disk, manually perform DD operations, modify partitions, and manually install Alpine, Arch, Gentoo, and other systems.
 - Username `root`, Default password `123@@@`
-- If the disk content is not modified, rebooting again will return to the original system.
-- Optional parameters:
-  - `--password PASSWORD` Set password
-  - `--ssh-port PORT` Change SSH port
+- If manual operations do not damage the original system, rebooting will return to the original system.
 
 ```bash
 bash reinstall.sh alpine --hold=1
 ```
 
+#### Optional parameters
+
+- `--password PASSWORD` Set password
+- `--ssh-port PORT` Change SSH port
+
 ### Feature 4: Reboot to <img width="16" height="16" src="https://netboot.xyz/img/favicon.ico" /> netboot.xyz
 
-- Can install [more systems](https://github.com/netbootxyz/netboot.xyz?tab=readme-ov-file#what-operating-systems-are-currently-available-on-netbootxyz) using vendor backend VNC.
-- If the disk content is not modified, rebooting again will return to the original system.
+- Can manually install [more systems](https://github.com/netbootxyz/netboot.xyz?tab=readme-ov-file#what-operating-systems-are-currently-available-on-netbootxyz) using vendor backend VNC.
+- If manual operations do not damage the original system, rebooting will return to the original system.
 
 ```bash
 bash reinstall.sh netboot.xyz
@@ -237,23 +247,27 @@ bash reinstall.sh netboot.xyz
 
 ### Feature 5: Install <img width="16" height="16" src="https://blogs.windows.com/wp-content/uploads/prod/2022/09/cropped-Windows11IconTransparent512-32x32.png" /> Windows ISO
 
+![Windows Installation](https://github.com/bin456789/reinstall/assets/7548515/07c1aea2-1ce3-4967-904f-aaf9d6eec3f7)
+
 - Username `administrator`, Default password `123@@@`
 - If remote login fails, try using the username `.\administrator`.
 - The machine with a static IP will automatically configure the IP. It may take a few minutes to take effect on the first boot.
-- Optional parameters:
-  - `--password PASSWORD` Set Password
-  - `--allow-ping` Allow ping responses
-  - `--rdp-port PORT` Change RDP port
-  - `--ssh-port PORT` Change SSH port (for log observation during installation)
-  - `--web-port PORT` Change Web port (for log observation during installation)
-  - `--hold 2` Allow SSH connections for modifying the hard disk content before rebooting into the official Windows installation program, with the hard disk mounted at `/os`.
+- Supports all languages.
 
-![Windows Installation](https://github.com/bin456789/reinstall/assets/7548515/07c1aea2-1ce3-4967-904f-aaf9d6eec3f7)
+#### 支持的系统
 
-#### Method 1: Allow the script to automatically find the ISO
+- Windows (Vista ~ 11)
+- Windows Server (2008 ~ 2025)
+  - Windows Server Essentials \*
+  - Windows Server (Semi) Annual Channel \*
+  - Hyper-V Server \*
+  - Azure Stack HCI \*
 
-- The script will search for ISO files from <https://massgrave.dev/genuine-installation-media.html>. The ISOs provided on this site are all official versions.
-- Only supports automatic detection of standard Windows and Windows Server versions.
+#### Method 1: Let the Script Automatically Search for ISO (Recommended)
+
+- Typically, Windows releases new official ISOs every month, which integrate the latest system patches, avoiding the need to download a bunch of updates right after installation.
+- The script will search for ISOs from <https://massgrave.dev/genuine-installation-media.html>, a site that collects monthly released ISOs, ensuring that the ISOs found by the script are the official latest versions.
+- Systems marked with \* do not support automatic ISO searching.
 
 ```bash
 bash reinstall.sh windows \
@@ -310,7 +324,7 @@ zh-tw
 
 #### Method 2: Specify the ISO link manually
 
-- If you don’t know the `--image-name`, you can enter any value. After rebooting, connect via SSH and re-enter the correct value based on the error messages.
+- If you don't know the `--image-name`, you can enter any value. After rebooting, connect via SSH and re-enter the correct value based on the error messages.
 
 ```bash
 bash reinstall.sh windows \
@@ -318,12 +332,9 @@ bash reinstall.sh windows \
      --iso 'https://drive.massgrave.dev/zh-cn_windows_11_enterprise_ltsc_2024_x64_dvd_cff9cd2d.iso'
 ```
 
-> [!IMPORTANT]
-> Note that parameters should be enclosed in quotation marks.
-
 <details>
 
-<summary>The following website provides iso links.</summary>
+<summary>The following website provides ISO links.</summary>
 
 - <https://massgrave.dev/genuine-installation-media.html> (Recommended, iso sourced from official channels, updated monthly, includes the latest patches)
 - <https://www.microsoft.com/software-download/windows10> (Need to open it with a non-Windows User-Agent)
@@ -340,9 +351,22 @@ bash reinstall.sh windows \
 
 </details>
 
-#### Parameters Description
+#### Optional parameters
 
-`--image-name` Specify the image to install, case-insensitive, Commonly used images include:
+- `--password PASSWORD` Set Password
+- `--allow-ping` Allow ping responses
+- `--rdp-port PORT` Change RDP port
+- `--ssh-port PORT` Change SSH port (for log observation during installation)
+- `--web-port PORT` Change Web port (for log observation during installation)
+- `--hold 2` Allow SSH connections for modifying the disk content before rebooting into the official Windows installation program, with the disk mounted at `/os`.
+
+#### How to Specify the Image Name `--image-name`
+
+Typically, an ISO will contain multiple system versions, such as Home Edition and Professional Edition. The image name `--image-name` is used to specify the version to be installed, and it is case-insensitive when entered.
+
+You can use tools like DISM, DISM++, or Wimlib to query the image names included in the ISO.
+
+Commonly used image names include:
 
 ```text
 Windows 7 Ultimate
@@ -351,20 +375,11 @@ Windows 11 Enterprise LTSC 2024
 Windows Server 2025 SERVERDATACENTER
 ```
 
-Open [DISM++](https://github.com/Chuyu-Team/Dism-Multi-language/releases) File menu > Open Image File, select the iso to be installed to get the image name (full system name), and all available image names are installable.
+#### How to Use [DISM++](https://github.com/Chuyu-Team/Dism-Multi-language/releases) to Query the Image Names Included in the ISO
+
+Open File menu > Open Image File, select the iso to be installed to get the image name (full system name), and all available image names are installable.
 
 ![image-name](https://github.com/bin456789/reinstall/assets/7548515/5aae0a9b-61e2-4f66-bb98-d470a6beaac2)
-
-#### Supported systems
-
-- Windows (Vista ~ 11)
-- Windows Server (2008 ~ 2025)
-  - Windows Server Essentials \*
-  - Windows Server (Semi) Annual Channel \*
-  - Hyper-V Server \*
-  - Azure Stack HCI \*
-
-With * indicating that an ISO link is required.
 
 #### The script will install the following drivers as needed
 
@@ -388,26 +403,28 @@ With * indicating that an ISO link is required.
 >
 > The solution is to update the system patches or manually install the `VCLibs` library <https://www.google.com/search?q=ltsc+wsappx>.
 
-#### ARM Considerations
+#### Considerations for Installing Windows on ARM
 
-Most ARM machines support installing Windows 11 24H2 via ISO.
+Most ARM machines support installing Windows 11 24H2.
 
 During the installation process, you might encounter a black screen, and the serial console may display `ConvertPages: failed to find range`, but neither issue affects the installation.
 
-- ✔️Azure: B2pts_v2
-- ✔️Alibaba Cloud: g8y, c8y, r8y (may occasionally get stuck on the boot logo during restart; force restart to resolve)
-- ✔️Alibaba Cloud: g6r, c6r
-- ✔️Oracle Cloud A1.Flex (Success depends on the machine's creation date; newer instances are more likely to install successfully. You will also need to manually load the GPU drivers after installation.)
-- ✔️AWS: T4g
-- ✔️Scaleway: COPARM1
-- ✔️Gcore
-- ❌Google Cloud: t2a (lacking network card driver)
+| Compatibility | Cloud Provider | Instance Type | Issues                                                                                                                                                 |
+| ------------- | -------------- | ------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| ✔️            | Azure          | B2pts_v2      |                                                                                                                                                        |
+| ✔️            | Alibaba Cloud  | g6r, c6r      |                                                                                                                                                        |
+| ✔️            | Alibaba Cloud  | g8y, c8y, r8y | There is a chance of hanging at the boot logo during restart; forced reboot will resolve it.                                                           |
+| ✔️            | AWS            | T4g           |                                                                                                                                                        |
+| ✔️            | Scaleway       | COPARM1       |                                                                                                                                                        |
+| ✔️            | Gcore          |               |                                                                                                                                                        |
+| ❔            | Oracle Cloud   | A1.Flex       | Installation success is not guaranteed; newer instances are more likely to succeed.<br />Manual loading of GPU drivers is required after installation. |
+| ❌            | Google Cloud   | t2a           | Missing network card drivers                                                                                                                           |
 
 <details>
 
 <summary>Loading Graphics Driver on Oracle Cloud</summary>
 
-No need to download the driver, just open Device Manager, find the graphics card, select 'Update driver', and choose `Red Hat VirtIO GPU DOD controller` from the list.
+Log in to the server using Remote Desktop, open Device Manager, locate the graphics card, select "Update Driver," and choose `Red Hat VirtIO GPU DOD controller` from the list. There's no need to download the drivers in advance.
 
 ![virtio-gpu-1](https://github.com/user-attachments/assets/503e1d82-4fa9-4486-917e-73326ad7c988)
 ![virtio-gpu-2](https://github.com/user-attachments/assets/bf3a9af6-13d8-4f93-9d6c-d3b2dbddb37d)
@@ -420,7 +437,7 @@ No need to download the driver, just open Device Manager, find the graphics card
 [![GitHub Issues](https://img.shields.io/badge/github-%23121011.svg?style=for-the-badge&logo=github&logoColor=white)](https://github.com/bin456789/reinstall/issues)
 [![Telegram Group](https://img.shields.io/badge/Telegram-2CA5E0?style=for-the-badge&logo=telegram&logoColor=white)](https://t.me/reinstall_os)
 
-## How to Modify the Script
+## How to Modify the Script for your own
 
 1. Fork this repository.
 2. Modify the `confhome` and `confhome_cn` at the beginning of `reinstall.sh` and `reinstall.bat`.
