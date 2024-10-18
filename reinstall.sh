@@ -18,8 +18,8 @@ export LC_ALL=C
 # 不要漏了最后的 $PATH，否则会找不到 windows 系统程序例如 diskpart
 export PATH=/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin:$PATH
 
-# 记录日志
-exec > >(exec tee /reinstall.log) 2>&1
+# 记录日志，过滤含有 password 的行
+exec > >(tee >(grep -iv password >>/reinstall.log)) 2>&1
 THIS_SCRIPT=$(readlink -f "$0")
 trap 'trap_err $LINENO $?' ERR
 
