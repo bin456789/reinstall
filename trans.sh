@@ -3098,6 +3098,11 @@ install_qcow_by_copy() {
             chroot_dnf install NetworkManager
         fi
 
+        # firmware + microcode
+        if ! is_virt; then
+            chroot_dnf install linux-firmware microcode_ctl
+        fi
+
         # anolis 7 镜像自带 nm
 
         # 删除云镜像自带的 dhcp 配置，防止歧义
