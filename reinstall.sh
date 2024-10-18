@@ -1870,15 +1870,18 @@ save_password() {
     # alpine
     if is_have_cmd busybox && busybox mkpasswd --help 2>&1 | grep -wq sha512; then
         crypted=$(printf '%s' "$password" | busybox mkpasswd -m sha512)
-    # centos 7
-    elif is_have_cmd python2; then
-        crypted=$(python2 -c "import crypt; print(crypt.crypt('$password', crypt.mksalt(crypt.METHOD_SHA512)))")
     # others
     elif install_pkg openssl && openssl passwd --help 2>&1 | grep -wq '\-6'; then
         crypted=$(printf '%s' "$password" | openssl passwd -6 -stdin)
     # debian 9 / ubuntu 16
     elif is_have_cmd apt-get && install_pkg whois && mkpasswd -m help | grep -wq sha-512; then
         crypted=$(printf '%s' "$password" | mkpasswd -m sha-512 --stdin)
+    # centos 7
+    # crypt.mksalt 是 python3 的
+    # 红帽把它 backport 到了 centos7 的 python2 上
+    # 在其它发行版的 python2 上运行会出错
+    elif is_have_cmd yum && is_have_cmd python2; then
+        crypted=$(python2 -c "import crypt, sys; print(crypt.crypt(sys.argv[1], crypt.mksalt(crypt.METHOD_SHA512)))" "$password")
     else
         error_and_exit "Could not generate sha512 password."
     fi
