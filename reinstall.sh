@@ -2813,7 +2813,7 @@ EOF
     # hack 3
     # 修改 trans.sh
     # 1. 直接调用 create_ifupdown_config
-    insert_into_file $initrd_dir/trans.sh after ': main' <<EOF
+    insert_into_file $initrd_dir/trans.sh after '^: main' <<EOF
         distro=$nextos_distro
         create_ifupdown_config /etc/network/interfaces
         exit

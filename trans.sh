@@ -1830,38 +1830,36 @@ dd_gzip_xz_raw() {
         # vhd 文件结尾有 512 字节额外信息，可以忽略
         if grep -iq 'No space' /tmp/dd_stderr; then
             apk add parted
-            disk_size=$(get_xda_size)
+            disk_size=$(get_disk_size /dev/$xda)
             disk_end=$((disk_size - 1))
-            # 这里要 Ignore 两次
-            # Error: Can't have a partition outside the disk!
-            # Ignore/Cancel? i
-            # Error: Can't have a partition outside the disk!
-            # Ignore/Cancel? i
-            last_part_end=$(yes i | parted /dev/$xda 'unit b print' ---pretend-input-tty |
-                del_empty_lines | tail -1 | awk '{print $3}' | sed 's/B//')
 
-            echo "Last part end: $last_part_end"
-            echo "Disk end:      $disk_end"
+            # 如果报错，那大概是因为镜像比硬盘大
+            if last_part_end=$(parted -sf /dev/$xda 'unit b print' ---pretend-input-tty |
+                del_empty_lines | tail -1 | awk '{print $3}' | sed 's/B//' | grep .); then
 
-            if [ "$last_part_end" -le "$disk_end" ]; then
-                echo "Safely ignore no space error."
-                return
+                echo "Last part end: $last_part_end"
+                echo "Disk end:      $disk_end"
+
+                if [ "$last_part_end" -le "$disk_end" ]; then
+                    echo "Safely ignore no space error."
+                    return
+                fi
             fi
         fi
         error_and_exit "$(cat /tmp/dd_stderr)"
     fi
 }
 
-get_xda_size() {
-    blockdev --getsize64 /dev/$xda
+get_dick_sector_count() {
+    blockdev --getsz "$1"
 }
 
-get_nbd_size() {
-    blockdev --getsize64 /dev/nbd0
+get_disk_size() {
+    blockdev --getsize64 "$1"
 }
 
 is_xda_gt_2t() {
-    disk_size=$(get_xda_size)
+    disk_size=$(get_disk_size /dev/$xda)
     disk_2t=$((2 * 1024 * 1024 * 1024 * 1024))
     [ "$disk_size" -gt "$disk_2t" ]
 }
@@ -3366,11 +3364,19 @@ EOF
     parted /dev/$xda -s rm 3
 }
 
+get_partition_table_format() {
+    apk add parted
+    parted "$1" -s print | grep 'Partition Table:' | awk '{print $NF}'
+}
+
 dd_qcow() {
     info "DD qcow2"
 
     if true; then
         connect_qcow
+
+        partition_table_format=$(get_partition_table_format /dev/nbd0)
+        orig_nbd_virtual_size=$(get_disk_size /dev/nbd0)
 
         # 检查最后一个分区是否是 btrfs
         # 即使awk结果为空，返回值也是0，加上 grep . 检查是否结果为空
@@ -3449,34 +3455,138 @@ dd_qcow() {
     # 将前1M从内存 dd 到硬盘
     umount /installer/
     dd if=/first-1M of=/dev/$xda
-    update_part
 
+    # gpt 分区表开头记录了备份分区表的位置
+    # 如果 qcow2 虚拟容量 大于 实际硬盘容量
+    # 备份分区表的位置 将超出实际硬盘容量的大小
+    # partprobe 会报错
+    # Error: Invalid argument during seek for read on /dev/vda
+    # parted 也无法正常工作
+    # 需要提前修复分区表
+
+    # 目前只有这个例子，因为其他 qcow2 虚拟容量最多 5g，是设定支持的容量
+    # openSUSE-Leap-15.5-Minimal-VM.x86_64-kvm-and-xen.qcow2 容量是 25g
+    # 缩小 btrfs 分区后 dd 到 10g 的机器上
+    # 备份分区表的位置是 25g
+    # 需要修复到 10g 的位置上
+    # 否则 partprobe parted 都无法正常工作
+
+    # 仅这种情况才用 sgdisk 修复
+    if [ "$partition_table_format" = gpt ] &&
+        [ "$orig_nbd_virtual_size" -gt "$(get_disk_size /dev/$xda)" ]; then
+        fix_gpt_backup_partition_table_by_sgdisk
+    fi
+    update_part
 }
 
-fix_partition_table_by_parted() {
+fix_gpt_backup_partition_table_by_sgdisk() {
+    # 当备份分区表超出实际硬盘容量时，只能用 sgdisk 修复分区表
+    # 应用场景：镜像大小超出硬盘实际硬盘，但缩小分区后不超出实际硬盘容量，可以顺利 DD
+    # 例子 openSUSE-Leap-15.5-Minimal-VM.x86_64-kvm-and-xen.qcow2
+
+    # parted 无法修复
+    # parted /dev/$xda -f -s print
+
+    # fdisk/sfdisk 显示主分区表损坏
+    # echo write | sfdisk /dev/$xda
+    # GPT PMBR size mismatch (50331647 != 20971519) will be corrected by write.
+    # The primary GPT table is corrupt, but the backup appears OK, so that will be used.
+
+    # 除此之外的场景应该用 parted 来修复
+
+    apk add sgdisk
+
+    # 两种方法都可以，但都不会修复备份分区表的 GUID
+    # 此时 sgdisk -v /dev/vda 会提示主副分区表 guid 不相同
+    # localhost:~# sgdisk -v /dev/$xda
+    # Problem: main header's disk GUID (A24485F3-2C02-43BD-BF4E-F52E42B00DEA) doesn't
+    # match the backup GPT header's disk GUID (ADAF57BC-B4F5-4E04-BCBA-BDDCD796C388)
+    # You should use the 'b' or 'd' option on the recovery & transformation menu to
+    # select one or the other header.
+    if false; then
+        sgdisk --backup /gpt-partition-table /dev/$xda
+        sgdisk --load-backup /gpt-partition-table /dev/$xda
+    else
+        sgdisk --move-second-header /dev/$xda
+    fi
+
+    # 因此需要运行一次设置 guid
+    if new_guid=$(sgdisk -v /dev/$xda | grep GUID | head -1 | grep -Eo '[0-9A-F-]{36}'); then
+        sgdisk --disk-guid $new_guid /dev/$xda
+    fi
+
+    update_part
+
+    apk del sgdisk
+}
+
+# 适用于 DD 后修复 gpt 备份分区表
+fix_gpt_backup_partition_table_by_parted() {
     parted /dev/$xda -f -s print
+    update_part
 }
 
 resize_after_install_cloud_image() {
     # 提前扩容
     # 1 修复 vultr 512m debian 11 generic/genericcloud 首次启动 kernel panic
-    # 2 修复 gentoo websync 时空间不足
-    if [ "$distro" = debian ] || [ "$distro" = gentoo ]; then
-        info "Resize after install cloud image"
+    # 2 防止 gentoo 云镜像 websync 时空间不足
+    info "Resize after dd"
+    lsblk -f /dev/$xda
 
-        apk add parted
-        if fix_partition_table_by_parted 2>&1 | grep -q 'Fixing'; then
-            system_part_num=$(parted /dev/$xda -m print | tail -1 | cut -d: -f1)
-            printf "yes" | parted /dev/$xda resizepart $system_part_num 100% ---pretend-input-tty
-            update_part
+    # 打印分区表，并自动修复备份分区表
+    fix_gpt_backup_partition_table_by_parted
 
-            if [ "$distro" = gentoo ]; then
-                apk add e2fsprogs-extra
-                e2fsck -p -f /dev/$xda*$system_part_num
-                resize2fs /dev/$xda*$system_part_num
-            fi
-            update_part
-        fi
+    disk_size=$(get_disk_size /dev/$xda)
+    disk_end=$((disk_size - 1))
+
+    # 不能漏掉最后的 _ ，否则第6部分都划到给 last_part_fs
+    IFS=: read -r last_part_num _ last_part_end _ last_part_fs _ \
+        < <(parted -msf /dev/$xda 'unit b print' | tail -1)
+    last_part_end=$(echo $last_part_end | sed 's/B//')
+
+    # 大于 100M 才扩容
+    if [ $((disk_end - last_part_end)) -ge $((100 * 1024 * 1024)) ]; then
+        printf "yes" | parted /dev/$xda resizepart $last_part_num 100% ---pretend-input-tty
+        update_part
+
+        mkdir -p /os
+
+        # lvm ?
+        # 用 cloud-utils-growpart？
+        case "$last_part_fs" in
+        ext4)
+            # debian ci
+            apk add e2fsprogs-extra
+            e2fsck -p -f /dev/$xda*$last_part_num
+            resize2fs /dev/$xda*$last_part_num
+            apk del e2fsprogs-extra
+            ;;
+        xfs)
+            # opensuse ci
+            apk add xfsprogs-extra
+            mount /dev/$xda*$last_part_num /os
+            xfs_growfs /dev/$xda*$last_part_num
+            umount /os
+            apk del xfsprogs-extra
+            ;;
+        btrfs)
+            # fedora ci
+            apk add btrfs-progs
+            mount /dev/$xda*$last_part_num /os
+            btrfs filesystem resize max /os
+            umount /os
+            apk del btrfs-progs
+            ;;
+        ntfs)
+            # windows dd
+            apk add ntfs-3g-progs
+            echo y | ntfsresize /dev/$xda*$last_part_num
+            ntfsfix -d /dev/$xda*$last_part_num
+            apk del ntfs-3g-progs
+            ;;
+        esac
+        update_part
+        parted /dev/$xda -s print
     fi
 }
 
@@ -4624,6 +4734,11 @@ trans() {
         case "$img_type" in
         raw)
             dd_gzip_xz_raw
+            if false; then
+                # linux 扩容后无法轻易缩小，例如 xfs
+                # windows 扩容在 windows 下完成
+                resize_after_install_cloud_image
+            fi
             modify_os_on_disk windows
             ;;
         qemu) # dd qemu 不可能到这里，因为上面已处理
