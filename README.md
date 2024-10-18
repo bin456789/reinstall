@@ -163,7 +163,7 @@ bash reinstall.sh centos      9
 > 安装 Debian / Kali 时，x86 可通过后台 VNC 查看安装进度，ARM 可通过串行控制台查看安装进度。
 >
 > 安装其它系统时，可通过多种方式（SSH、HTTP 80 端口、后台 VNC、串行控制台）查看安装进度。
-> <br />即使安装过程出错，也能通过 SSH 运行 `xda=硬盘名 /trans.sh alpine` 安装到 Alpine。
+> <br />即使安装过程出错，也能通过 SSH 运行 `/trans.sh alpine` 安装到 Alpine。
 
 <details>
 
@@ -217,7 +217,7 @@ bash reinstall.sh dd --img https://example.com/xxx.xz
 
 > [!TIP]
 > 可通过多种方式（SSH、HTTP 80 端口、后台 VNC、串行控制台）查看安装进度。
-> <br />即使安装过程出错，也能通过 SSH 运行 `xda=硬盘名 /trans.sh alpine` 安装到 Alpine。
+> <br />即使安装过程出错，也能通过 SSH 运行 `/trans.sh alpine` 安装到 Alpine。
 
 ### 功能 3: 重启到 <img width="16" height="16" src="https://www.alpinelinux.org/alpine-logo.ico" /> Alpine Live OS（救援系统）
 

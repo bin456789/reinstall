@@ -163,7 +163,7 @@ bash reinstall.sh centos      9
 > When installing Debian / Kali, x86 architectures can monitor the installation progress through VNC in the background, while ARM architectures can use the serial console.
 >
 > When installing other systems, can monitor the progress through various methods (SSH, HTTP 80 port, VNC in the background, serial console).
-> <br />Even if errors occur during the installation process, you can still install to Alpine via SSH by running `xda=drive_name /trans.sh alpine`
+> <br />Even if errors occur during the installation process, you can still install to Alpine via SSH by running `/trans.sh alpine`
 
 <details>
 
@@ -217,7 +217,7 @@ bash reinstall.sh dd --img https://example.com/xxx.xz
 
 > [!TIP]
 > Can monitor the progress through various methods (SSH, HTTP 80 port, VNC in the background, serial console).
-> <br />Even if errors occur during the installation process, you can still install to Alpine via SSH by running `xda=drive_name /trans.sh alpine`
+> <br />Even if errors occur during the installation process, you can still install to Alpine via SSH by running `/trans.sh alpine`
 
 ### Feature 3: Reboot to <img width="16" height="16" src="https://www.alpinelinux.org/alpine-logo.ico" /> Alpine Rescue System (Live OS)
 

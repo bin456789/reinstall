@@ -284,6 +284,14 @@ get_ttys() {
 }
 
 find_xda() {
+    # 出错后再运行脚本，硬盘可能已经格式化，之前记录的分区表 id 无效
+    # 因此找到 xda 后要保存 xda 到 /config/xda
+
+    # 先读取之前保存的
+    if xda=$(get_config xda 2>/dev/null) && [ -n "$xda" ]; then
+        return
+    fi
+
     # 防止 $main_disk 为空
     if [ -z "$main_disk" ]; then
         error_and_exit "cmdline main_disk is empty."
@@ -316,7 +324,9 @@ find_xda() {
         xda=$(lsblk --nodeps -rno NAME,PTUUID | grep -iw "$main_disk" | awk '{print $1}')
     fi
 
-    if [ -z "$xda" ]; then
+    if [ -n "$xda" ]; then
+        set_config xda "$xda"
+    else
         error_and_exit "Could not find xda: $main_disk"
     fi
 
@@ -476,6 +486,10 @@ is_lspci_contains() {
 
 get_config() {
     cat "/configs/$1"
+}
+
+set_config() {
+    printf '%s' "$2" >"/configs/$1"
 }
 
 get_password_linux_sha512() {
