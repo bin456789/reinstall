@@ -706,7 +706,6 @@ to_lower() {
 }
 
 del_empty_lines() {
-    # grep .
     sed '/^[[:space:]]*$/d'
 }
 
@@ -4559,6 +4558,12 @@ get_ubuntu_kernel_flavor() {
             echo generic-hwe-$releasever
         fi
     else
+        # 这里有坑
+        # $(get_cloud_vendor) 调用了 cache_dmi_and_virt
+        # 但是 $(get_cloud_vendor) 运行在 subshell 里面
+        # subshell 运行结束后里面的变量就消失了
+        # 因此先运行 cache_dmi_and_virt
+        cache_dmi_and_virt
         vendor="$(get_cloud_vendor)"
         case "$vendor" in
         aws | gcp | oracle | azure | ibm) echo $vendor ;;

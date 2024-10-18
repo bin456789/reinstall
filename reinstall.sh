@@ -33,37 +33,37 @@ trap_err() {
 
 usage_and_exit() {
     if is_in_windows; then
-        reinstall____=' reinstall.bat'
+        reinstall_____='.\reinstall.bat'
     else
-        reinstall____='./reinstall.sh'
+        reinstall_____=' ./reinstall.sh'
     fi
     cat <<EOF
-Usage: $reinstall____ centos      9
-                      anolis      7|8
-                      alma        8|9
-                      rocky       8|9
-                      redhat      8|9   --img='http://xxx.com/xxx.qcow2'
-                      opencloudos 8|9
-                      oracle      7|8|9
-                      fedora      39|40
-                      nixos       24.05
-                      debian      9|10|11|12
-                      openeuler   20.03|22.03|24.03
-                      alpine      3.17|3.18|3.19|3.20
-                      opensuse    15.5|15.6|tumbleweed
-                      ubuntu      16.04|18.04|20.04|22.04|24.04 [--minimal]
-                      kali
-                      arch
-                      gentoo
-                      dd          --img='http://xxx.com/xxx.raw'  (supports raw vhd gzip xz)
-                      windows     --image-name='windows xxx yyy'  --lang=xx-yy
-                      windows     --image-name='windows xxx yyy'  --iso='http://xxx.com/xxx.iso'
-                      netboot.xyz
+Usage: $reinstall_____ centos      9
+                       anolis      7|8
+                       alma        8|9
+                       rocky       8|9
+                       redhat      8|9 --img='http://xxx.com/xxx.qcow2'
+                       opencloudos 8|9
+                       oracle      7|8|9
+                       fedora      39|40
+                       nixos       24.05
+                       debian      9|10|11|12
+                       openeuler   20.03|22.03|24.03
+                       alpine      3.17|3.18|3.19|3.20
+                       opensuse    15.5|15.6|tumbleweed
+                       ubuntu      16.04|18.04|20.04|22.04|24.04 [--minimal]
+                       kali
+                       arch
+                       gentoo
+                       dd          --img='http://xxx.com/xxx.raw' (supports raw vhd gzip xz)
+                       windows     --image-name='windows xxx yyy' --lang=xx-yy
+                       windows     --image-name='windows xxx yyy' --iso='http://xxx.com/xxx.iso'
+                       netboot.xyz
 
-       Options:       [--ssh-port PORT]
-                      [--rdp-port PORT]
-                      [--web-port PORT]
-                      [--allow-ping]
+       Options:        [--ssh-port PORT]
+                       [--rdp-port PORT]
+                       [--web-port PORT]
+                       [--allow-ping]
 
 Manual: https://github.com/bin456789/reinstall
 
@@ -73,15 +73,16 @@ EOF
 
 info() {
     upper=$(to_upper <<<"$@")
-    echo_color_text '\e[32m' "***** $upper *****"
+    echo_color_text '\e[32m' "***** $upper *****" >&2
 }
 
 warn() {
-    echo_color_text '\e[33m' "Warning: $*"
+    echo_color_text '\e[33m' "Warning: $*" >&2
 }
 
 error() {
-    echo_color_text '\e[31m' "Error: $*"
+    echo_color_text '\e[31m' "***** ERROR *****" >&2
+    echo_color_text '\e[31m' "Error: $*" >&2
 }
 
 echo_color_text() {
@@ -1848,12 +1849,16 @@ save_password() {
     # alpine 这两个包有冲突
     # apk add expect mkpasswd
 
+    # 不要用 echo "$password" 保存密码，原因：
+    # password="-n"
+    # echo "$password"  # 空白
+
     # 明文密码
-    # 假如用户运行 alpine live 直接打包硬盘镜像，则会暴露明文密码，因为 netboot initrd 在里面
+    # 假如用户运行 alpine live 直接打包硬盘镜像，如果保存了明文密码，则会暴露明文密码，因为 netboot initrd 在里面
     # 通过 --password 传入密码，history 有记录，也会暴露明文密码
-    # /reinstall.log 也会暴露明文密码
+    # /reinstall.log 也会暴露明文密码（已处理）
     if false; then
-        echo "$password" >>"$dir/password-plaintext"
+        printf '%s' "$password" >>"$dir/password-plaintext"
     fi
 
     # sha512
@@ -3319,12 +3324,12 @@ fi
 # 密码
 if ! is_netboot_xyz && [ -z "$password" ]; then
     if is_use_dd; then
-        warn "
+        echo "
 This password is only used for SSH access to view logs during the DD process.
 Password of the image will NOT modify.
 
 密码仅用于 DD 过程中通过 SSH 查看日志。
-镜像的密码将不会被修改。
+镜像的密码不会被修改。
 "
 
     fi

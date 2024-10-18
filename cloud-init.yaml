@@ -32,4 +32,5 @@ runcmd:
   - sed -i -e '/^[[:space:]]*password:/d' -e '/[[:space:]]*root:/d' /etc/cloud/cloud.cfg.d/99_fallback.cfg
   - touch /etc/cloud/cloud-init.disabled
   # ubuntu 镜像运行 echo -e '\nDone' ，-e 会被显示出来
-  - printf '\n%s\n' 'reinstall done' >/dev/tty0 || true
+  # 加 true 因为有的 tty 不可写
+  - for tty in tty0 ttyS0 ttyAMA0; do [ -c /dev/$tty ] && printf '\n%s\n' 'reinstall done' >/dev/$tty || true; done
