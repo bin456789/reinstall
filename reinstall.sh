@@ -1730,6 +1730,12 @@ check_ram() {
         fi
     fi
 
+    # 用于兜底，不太准确
+    if [ -z $ram_size ]; then
+        ram_size=$(free -m | grep ^Mem: | awk '{print $2}')
+        ram_size=$((ram_size + 64 + 4))
+    fi
+
     if [ -z $ram_size ] || [ $ram_size -le 0 ]; then
         error_and_exit "Could not detect RAM size."
     fi
