@@ -191,14 +191,14 @@ update_part() {
     # 如果 rm -rf 的时候刚好 mdev 在创建链接，rm -rf 会报错 Directory not empty
     # 因此要先停止 mdev 服务
     # 还要删除 /dev/$xda*?
-    rc-service mdev stop
+    ensure_service_stopped mdev
     rm -rf /dev/disk/*
 
     # 没挂载 modloop 时会提示
     # modprobe: can't change directory to '/lib/modules': No such file or directory
     # 因此强制不显示上面的提示
     mdev -sf 2>/dev/null
-    rc-service mdev start 2>/dev/null
+    ensure_service_started mdev 2>/dev/null
     sleep 1
 }
 
@@ -229,7 +229,7 @@ setup_nginx() {
     fi
     sed -i "s/@WEB_PORT@/$web_port/gi" /etc/nginx/http.d/default.conf
 
-    # rc-service nginx start
+    # rc-service -q nginx start
     if pgrep nginx >/dev/null; then
         nginx -s reload
     else
@@ -274,7 +274,7 @@ setup_web_if_enough_ram() {
 setup_lighttpd() {
     apk add lighttpd
     ln -sf /reinstall.html /var/www/localhost/htdocs/index.html
-    rc-service lighttpd start
+    rc-service -q lighttpd start
 }
 
 get_ttys() {
@@ -343,10 +343,22 @@ extract_env_from_cmdline() {
     done
 }
 
-ensure_modloop_started() {
-    if ! rc-service modloop status; then
-        if ! retry 5 rc-service modloop start; then
-            error_and_exit "modloop failed to start."
+ensure_service_started() {
+    service=$1
+
+    if ! rc-service -q $service status; then
+        if ! retry 5 rc-service -q $service start; then
+            error_and_exit "Failed to start $service."
+        fi
+    fi
+}
+
+ensure_service_stopped() {
+    service=$1
+
+    if rc-service -q $service status; then
+        if ! retry 5 rc-service -q $service stop; then
+            error_and_exit "Failed to stop $service."
         fi
     fi
 }
@@ -389,7 +401,7 @@ clear_previous() {
         dmsetup remove_all
     fi
     disconnect_qcow
-    rc-service --ifexists --ifstarted nix-daemon stop
+    rc-service -q --ifexists --ifstarted nix-daemon stop
     swapoff -a
     umount_all
 
@@ -1099,7 +1111,7 @@ install_alpine() {
 
     if $hack_lowram_modloop; then
         # 预先加载需要的模块
-        if rc-service modloop status; then
+        if rc-service -q modloop status; then
             modules="ext4 vfat nls_utf8 nls_cp437"
             for mod in $modules; do
                 modprobe $mod
@@ -1110,7 +1122,7 @@ install_alpine() {
         fi
 
         # 删除 modloop ，释放内存
-        rc-service modloop stop
+        ensure_service_stopped modloop
         rm -f /lib/modloop-lts /lib/modloop-virt
     fi
 
@@ -1327,7 +1339,7 @@ install_nixos() {
         if is_in_china; then
             echo "substituters = $mirror/store" >>/etc/nix/nix.conf
         fi
-        rc-service nix-daemon restart
+        rc-service -q nix-daemon restart
         # 添加 nix-env 安装的软件到 PATH
         PATH="/root/.nix-profile/bin:$PATH"
         ;;
@@ -4537,7 +4549,7 @@ trans() {
     # 先检查 modloop 是否正常
     # 防止格式化硬盘后，缺少 ext4 模块导致 mount 失败
     # https://github.com/bin456789/reinstall/issues/136
-    ensure_modloop_started
+    ensure_service_started modloop
 
     cat /proc/cmdline
     clear_previous
