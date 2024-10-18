@@ -4684,6 +4684,8 @@ if [ "$1" = "update" ]; then
 elif [ "$1" = "alpine" ]; then
     info 'switch to alpine'
     distro=alpine
+    # 后面的步骤很多都会用到这个，例如分区布局
+    cloud_image=0
 fi
 
 # 无参数运行部分
