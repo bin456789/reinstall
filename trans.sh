@@ -17,6 +17,7 @@ EFI_UUID=C12A7328-F81F-11D2-BA4B-00A0C93EC93B
 error() {
     color='\e[31m'
     plain='\e[0m'
+    echo -e "${color}***** ERROR *****${plain}" >&2
     echo -e "${color}Error: $*${plain}" >&2
 }
 
@@ -236,6 +237,16 @@ setup_nginx() {
     fi
 }
 
+setup_websocketd() {
+    apk add websocketd
+    wget $confhome/logviewer.html -O /tmp/index.html
+    apk add coreutils
+    killall websocketd || true
+    # websocketd 遇到 \n 才推送，因此要转换 \r 为 \n
+    websocketd --loglevel=fatal --staticdir=/tmp \
+        stdbuf -oL -eL sh -c "tail -fn+0 /reinstall.log | tr '\r' '\n'" &
+}
+
 get_approximate_ram_size() {
     # lsmem 需要 util-linux
     if false && is_have_cmd lsmem; then
@@ -255,8 +266,8 @@ setup_web_if_enough_ram() {
     if [ $total_ram -gt 400 ]; then
         # lighttpd 虽然运行占用内存少，但安装占用空间大
         # setup_lighttpd
-        setup_nginx
-        # setup_websocketd
+        # setup_nginx
+        setup_websocketd
     fi
 }
 
@@ -4692,15 +4703,15 @@ fi
 case 1 in
 1)
     # ChatGPT 说这种性能最高
-    exec > >(exec tee -a $(get_ttys /dev/) /reinstall.log) 2>&1
+    exec > >(exec tee $(get_ttys /dev/) /reinstall.log) 2>&1
     trans
     ;;
 2)
-    exec > >(tee -a $(get_ttys /dev/) /reinstall.log) 2>&1
+    exec > >(tee $(get_ttys /dev/) /reinstall.log) 2>&1
     trans
     ;;
 3)
-    trans 2>&1 | tee -a $(get_ttys /dev/) /reinstall.log
+    trans 2>&1 | tee $(get_ttys /dev/) /reinstall.log
     ;;
 esac
 

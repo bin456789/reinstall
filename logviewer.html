@@ -11,8 +11,9 @@
         }
 
         #log-container {
-            height: calc(100vh - 24px);
-            padding: 12px;
+            height: calc(100vh);
+            margin: 0;
+            padding: 8px;
             overflow-y: scroll;
         }
 
@@ -20,7 +21,7 @@
             position: fixed;
             bottom: 24px;
             right: 24px;
-            background-color: #007bff;
+            background-color: #0099FF;
             color: #fff;
             border: none;
             cursor: pointer;
@@ -30,8 +31,20 @@
             border-radius: 50%;
         }
 
+        #scroll-to-bottom:hover {
+            background-color: #00CCFF;
+        }
+
         #scroll-to-bottom svg {
             fill: #fff;
+        }
+
+        .done {
+            background-color: #cfc;
+        }
+
+        .error {
+            background-color: #fcc;
         }
     </style>
 </head>
@@ -44,44 +57,14 @@
         </svg>
     </button>
 
+    <script
+        src="https://lf3-cdn-tos.bytecdntp.com/cdn/expire-1-d/reconnecting-websocket/1.0.0/reconnecting-websocket.min.js"
+        type="application/javascript"></script>
+
     <script>
         const logContainer = document.getElementById('log-container');
         const scrollToBottomButton = document.getElementById('scroll-to-bottom');
         let shouldScrollToBottom = true;
-        let logFetchInterval;
-
-        async function getLogContent() {
-            try {
-                const response = await fetch('reinstall.log', {
-                    cache: 'no-store'
-                });
-
-                if (response.ok) {
-                    const logContent = await response.text();
-                    // 修复 wget 换行符为 \r 导致不换行
-                    logContainer.textContent = logContent.replace(/[\r\n]+/g, "\n");;
-
-                    if (shouldScrollToBottom) {
-                        logContainer.scrollTop = logContainer.scrollHeight;
-                    }
-
-                    if (logContent.includes("Error:")) {
-                        clearInterval(logFetchInterval);
-                        alert("Error occurred.");
-                    }
-
-                } else {
-                    console.error('Failed to fetch log file.');
-                }
-
-            } catch (error) {
-                console.error('An error occurred: ' + error.message);
-            }
-
-            finally {
-                logFetchInterval = setTimeout(getLogContent, 2000);
-            }
-        }
 
         scrollToBottomButton.addEventListener('click', () => {
             logContainer.scrollTop = logContainer.scrollHeight;
@@ -98,7 +81,31 @@
             shouldScrollToBottom = isAtBottom;
         });
 
-        getLogContent();
+        var ws = new ReconnectingWebSocket('ws://' + location.host + '/');
+        ws.onopen = function () {
+            logContainer.textContent += '\nWebSocket Connected.';
+        };
+        ws.onclose = function () {
+            logContainer.textContent += '\nWebSocket Disconnected.';
+        };
+        ws.onmessage = function (event) {
+            logContainer.textContent += '\n' + event.data;
+            if (shouldScrollToBottom) {
+                logContainer.scrollTop = logContainer.scrollHeight;
+            }
+            // 开始/重新开始
+            if (event.data.includes('***** START TRANS *****')) {
+                document.body.className = ''
+            }
+            // 错误
+            else if (event.data.includes('***** ERROR *****')) {
+                document.body.className = 'error'
+            }
+            // 完成
+            else if (event.data.includes('***** DONE *****')) {
+                document.body.className = 'done'
+            }
+        };
     </script>
 </body>
 
