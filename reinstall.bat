@@ -117,19 +117,21 @@ if not exist "%tags%" (
                            && type nul >"%tags%"
 )
 
+rem 在c盘根目录下执行 cygpath -ua . 会得到 /cygdrive/c，因此末尾要有 /
+for /f %%a in ('%SystemDrive%\cygwin\bin\cygpath -ua ./') do set thisdir=%%a
+
 rem 下载 reinstall.sh
 if not exist reinstall.sh (
-    call :download %confhome%/reinstall.sh %~dp0reinstall.sh
+    rem call :download %confhome%/reinstall.sh %~dp0reinstall.sh
+    call :download_with_curl %confhome%/reinstall.sh %thisdir%reinstall.sh
     if errorlevel 1 goto :download_failed
+    call :chmod a+x %thisdir%reinstall.sh
 )
 
 rem 为每个参数添加引号，使参数正确传递到 bash
 for %%a in (%*) do (
     set "param=!param! "%%~a""
 )
-
-rem 在c盘根目录下执行 cygpath -ua . 会得到 /cygdrive/c，因此末尾要有 /
-for /f %%a in ('%SystemDrive%\cygwin\bin\cygpath -ua ./') do set thisdir=%%a
 
 rem 方法1
 %SystemDrive%\cygwin\bin\dos2unix -q '%thisdir%reinstall.sh'
@@ -155,6 +157,15 @@ if exist "%~2" (echo Cannot delete %~2 & exit /b 1)
 if not exist "%~2" certutil -urlcache -f -split "%~1" "%~2" >nul
 if not exist "%~2" certutil -urlcache -split "%~1" "%~2" >nul
 if not exist "%~2" exit /b 1
+exit /b
+
+:download_with_curl
+echo Download: %~1 %~2
+%SystemDrive%\cygwin\bin\curl -L "%~1" -o "%~2"
+exit /b
+
+:chmod
+%SystemDrive%\cygwin\bin\chmod "%~1" "%~2"
 exit /b
 
 :download_failed
