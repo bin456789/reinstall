@@ -437,13 +437,13 @@ cache_dmi_and_virt() {
         _virt=$(
             virt-what
 
-            # hyper-v 环境下 modprobe virtio_scsi 也会创建 /sys/bus/virtio/drivers
-            # 因此用 devices 判断更准确，有设备时才有 devices
+            # hyper-v 环境下 modprobe virtio_scsi 也会创建 /sys/bus/virtio/drivers/virtio_scsi
+            # 因此用 devices 判断更准确，有设备时才有 /sys/bus/virtio/drivers/*
             # 或者加上 lspci 检测?
 
-            # 不要用 [ -d /sys/bus/virtio/devices ] && echo virtio
-            # 因为非 virtio 时返回值不为 0
-            if [ -d /sys/bus/virtio/devices ]; then
+            # 不要用 ls /sys/bus/virtio/devices/* && echo virtio
+            # 因为有可能返回值不为 0 而中断脚本
+            if ls /sys/bus/virtio/devices/* >/dev/null 2>&1; then
                 echo virtio
             fi
         )
