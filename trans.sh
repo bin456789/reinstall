@@ -241,9 +241,14 @@ setup_websocketd() {
     apk add websocketd
     wget $confhome/logviewer.html -O /tmp/index.html
     apk add coreutils
+
+    if [ -z "$web_port" ]; then
+        web_port=80
+    fi
+
     killall websocketd || true
     # websocketd 遇到 \n 才推送，因此要转换 \r 为 \n
-    websocketd --loglevel=fatal --staticdir=/tmp \
+    websocketd --port "$web_port" --loglevel=fatal --staticdir=/tmp \
         stdbuf -oL -eL sh -c "tail -fn+0 /reinstall.log | tr '\r' '\n'" &
 }
 
