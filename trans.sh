@@ -2523,9 +2523,38 @@ EOF
     fi
 
     # opensuse tumbleweed
-    # TODO: cloud-init 更新后删除
+    # 更新到 cloud-init 24.1 后删除
     if grep opensuse-tumbleweed $os_dir/etc/os-release; then
         touch $os_dir/etc/NetworkManager/NetworkManager.conf
+    fi
+
+    # opensuse
+    # kernel-default-base 缺少 nvme 驱动
+    # https://documentation.suse.com/smart/virtualization-cloud/html/minimal-vm/index.html
+    if grep -q opensuse $os_dir/etc/os-release; then
+        create_swap_if_ram_less_than 1024 $os_dir/swapfile
+        mount_pseudo_fs $os_dir
+        cp_resolv_conf $os_dir
+
+        # 不能同时装
+        chroot $os_dir zypper remove -y kernel-default-base
+        # 只有 leap 有 kernel-azure
+        if grep -q opensuse-leap $os_dir/etc/os-release && [ "$(get_cloud_vendor)" = azure ]; then
+            kernel='kernel-azure'
+        else
+            kernel='kernel-default'
+        fi
+        # 必须设置一个密码，否则报错
+        # Failed to get root password hash
+        # Failed to import /etc/uefi/certs/76B6A6A0.crt
+        # warning: %post(kernel-default-5.14.21-150500.55.83.1.x86_64) scriptlet failed, exit status 255
+        echo "root:$(mkpasswd '')" | chroot $os_dir chpasswd -e
+        chroot $os_dir zypper install -y $kernel
+        chroot $os_dir passwd -d root
+
+        restore_resolv_conf $os_dir
+        swapoff $os_dir/swapfile
+        rm -f $os_dir/swapfile
     fi
 
     # arch
