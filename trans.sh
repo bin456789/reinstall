@@ -669,6 +669,10 @@ is_windows_support_rdnss() {
     error_and_exit "Not found kernel32.dll"
 }
 
+is_elts() {
+    [ -n "$elts" ] && [ "$elts" = 1 ]
+}
+
 is_need_change_ssh_port() {
     [ -n "$ssh_port" ] && ! [ "$ssh_port" = 22 ]
 }
@@ -1236,6 +1240,12 @@ install_alpine() {
     chroot /os setup-timezone -i Asia/Shanghai
     chroot /os setup-ntp chrony || true
 
+    # 安装固件微码
+    # shellcheck disable=SC2046
+    if is_need_ucode_firmware; then
+        chroot /os apk add $(get_ucode_firmware_pkgs)
+    fi
+
     # 3.19 或以上，非 efi 需要手动安装 grub
     if ! is_efi; then
         grub-install --boot-directory=/os/boot --target=i386-pc /dev/$xda
@@ -1266,7 +1276,7 @@ install_alpine() {
 }
 
 get_cpu_vendor() {
-    cpu_vendor=$(grep 'vendor_id' /proc/cpuinfo | head -n 1 | cut -d: -f2 | xargs)
+    cpu_vendor=$(grep 'vendor_id' /proc/cpuinfo | head -1 | awk '{print $NF}')
     case "$cpu_vendor" in
     GenuineIntel) echo intel ;;
     AuthenticAMD) echo amd ;;
@@ -1578,15 +1588,9 @@ EOF
         fi
 
         # firmware + microcode
-        if ! is_virt; then
-            chroot $os_dir pacman -Syu --noconfirm linux-firmware
-
-            if [ "$(uname -m)" = x86_64 ]; then
-                cpu_vendor="$(get_cpu_vendor)"
-                case "$cpu_vendor" in
-                intel | amd) chroot $os_dir pacman -Syu --noconfirm "$cpu_vendor-ucode" ;;
-                esac
-            fi
+        if is_need_ucode_firmware; then
+            # shellcheck disable=SC2046
+            chroot $os_dir pacman -Syu --noconfirm $(get_ucode_firmware_pkgs)
         fi
 
         # arm 的内核有多种选择，默认是 linux-aarch64，所以要添加 --noconfirm
@@ -1702,13 +1706,9 @@ EOF
         fi
 
         # firmware + microcode
-        if ! is_virt; then
-            chroot $os_dir emerge sys-kernel/linux-firmware
-
-            # amd microcode 包括在 linux-firmware 里面
-            if [ "$(uname -m)" = x86_64 ] && [ "$(get_cpu_vendor)" = intel ]; then
-                chroot $os_dir emerge sys-firmware/intel-microcode
-            fi
+        if is_need_ucode_firmware; then
+            # shellcheck disable=SC2046
+            chroot $os_dir emerge $(get_ucode_firmware_pkgs)
         fi
 
         # 安装 grub + 内核
@@ -1855,6 +1855,7 @@ dd_gzip_xz_raw() {
 }
 
 get_dick_sector_count() {
+    # cat /proc/partitions
     blockdev --getsz "$1"
 }
 
@@ -2425,6 +2426,56 @@ restore_resolv_conf() {
     fi
 }
 
+is_need_ucode_firmware() {
+    ! is_virt && [ -n "$(get_ucode_firmware_pkgs)" ]
+}
+
+get_ucode_firmware_pkgs() {
+    case "$distro" in
+    centos | alma | rocky | oracle | redhat | anolis | opencloudos | openeuler) os=elol ;;
+    *) os=$distro ;;
+    esac
+
+    case "$os-$(get_cpu_vendor)" in
+    alpine-intel) echo linux-firmware linux-firmware-intel intel-ucode ;;
+    alpine-amd) echo linux-firmware linux-firmware-amd linux-firmware-amd-ucode amd-ucode ;;
+    alpine-*) echo linux-firmware ;;
+
+    debian-intel) echo firmware-linux intel-microcode ;;
+    debian-amd) echo firmware-linux amd64-microcode ;;
+    debian-*) echo firmware-linux ;;
+
+    ubuntu-intel) echo linux-firmware intel-microcode ;;
+    ubuntu-amd) echo linux-firmware amd64-microcode ;;
+    ubuntu-*) echo linux-firmware ;;
+
+    # 无法同时安装 kernel-firmware kernel-firmware-intel
+    opensuse-intel) echo kernel-firmware ucode-intel ;;
+    opensuse-amd) echo kernel-firmware ucode-amd ;;
+    opensuse-*) echo kernel-firmware ;;
+
+    arch-intel) echo linux-firmware intel-ucode ;;
+    arch-amd) echo linux-firmware amd-ucode ;;
+    arch-*) echo linux-firmware ;;
+
+    gentoo-intel) echo linux-firmware intel-microcode ;;
+    gentoo-amd) echo linux-firmware ;;
+    gentoo-*) echo linux-firmware ;;
+
+    nixos-intel) echo linux-firmware microcodeIntel ;;
+    nixos-amd) echo linux-firmware microcodeAmd ;;
+    nixos-*) echo linux-firmware ;;
+
+    fedora-intel) echo linux-firmware microcode_ctl ;;
+    fedora-amd) echo linux-firmware amd-ucode-firmware microcode_ctl ;;
+    fedora-*) echo linux-firmware microcode_ctl ;;
+
+    elol-intel) echo linux-firmware microcode_ctl ;;
+    elol-amd) echo linux-firmware microcode_ctl ;;
+    elol-*) echo linux-firmware microcode_ctl ;;
+    esac
+}
+
 modify_linux() {
     os_dir=$1
     info "Modify Linux"
@@ -2452,50 +2503,120 @@ EOF
 
     truncate_machine_id $os_dir
 
-    # 为红帽系禁用 selinux kdump
+    # el/ol/fedora/国产fork
+    # 1. 禁用 selinux kdump
+    # 2. 添加微码+固件
     if [ -f $os_dir/etc/redhat-release ]; then
         find_and_mount /boot
         find_and_mount /boot/efi
+        mount_pseudo_fs $os_dir
+        cp_resolv_conf $os_dir
+
         disable_selinux_kdump $os_dir
+        if is_need_ucode_firmware; then
+            is_have_cmd_on_disk $os_dir dnf && mgr=dnf || mgr=yum
+            # shellcheck disable=SC2046
+            chroot $os_dir $mgr install -y $(get_ucode_firmware_pkgs)
+        fi
+
+        restore_resolv_conf $os_dir
     fi
 
-    # debian 网络问题
+    # debian
+    # 1. EOL 换源
+    # 2. 修复网络问题
+    # 3. 添加微码+固件
     # 注意 ubuntu 也有 /etc/debian_version
     if [ "$distro" = debian ]; then
         # 修复 onlink 网关
         add_onlink_script_if_need
 
         mount_pseudo_fs $os_dir
+        cp_resolv_conf $os_dir
+        find_and_mount /boot
+        find_and_mount /boot/efi
+
+        # 获取当前开启的 Components, 后面要用
+        if [ -f $os_dir/etc/apt/sources.list.d/debian.sources ]; then
+            comps=$(grep ^Components: $os_dir/etc/apt/sources.list.d/debian.sources | head -1 | cut -d' ' -f2-)
+        else
+            comps=$(grep '^deb ' $os_dir/etc/apt/sources.list | head -1 | cut -d' ' -f4-)
+        fi
+
+        # EOL 处理
+        if is_elts; then
+            wget https://deb.freexian.com/extended-lts/archive-key.gpg \
+                -O $os_dir/etc/apt/trusted.gpg.d/freexian-archive-extended-lts.gpg
+
+            is_in_china &&
+                mirror=http://mirror.nju.edu.cn/debian-elts ||
+                mirror=http://deb.freexian.com/extended-lts
+
+            codename=$(grep '^VERSION_CODENAME=' $os_dir/etc/os-release | cut -d= -f2)
+
+            if [ -f $os_dir/etc/apt/sources.list.d/debian.sources ]; then
+                cat <<EOF >$os_dir/etc/apt/sources.list.d/debian.sources
+Types: deb
+URIs: $mirror
+Suites: $codename
+Components: $comps
+Signed-By: /etc/apt/trusted.gpg.d/freexian-archive-extended-lts.gpg
+EOF
+            else
+                echo "deb $mirror $codename $comps" >$os_dir/etc/apt/sources.list
+            fi
+        fi
 
         # 检测机器是否能用 cloud 内核
-        axx64=$(get_axx64)
-        eths=$(get_eths)
-        if ls $os_dir/boot/vmlinuz-*-cloud-$axx64 2>/dev/null &&
-            ! sh /can_use_cloud_kernel.sh "$xda" $eths; then
+        # shellcheck disable=SC2046
+        if ls $os_dir/boot/vmlinuz-*-cloud-$(get_axx64) 2>/dev/null &&
+            ! sh /can_use_cloud_kernel.sh "$xda" $(get_eths); then
 
-            cp_resolv_conf $os_dir
-            chroot $os_dir apt-get update
-            DEBIAN_FRONTEND=noninteractive chroot $os_dir apt-get install -y linux-image-$axx64
+            chroot_apt_install $os_dir "linux-image-$(get_axx64)"
 
             # 标记云内核包
             # apt-mark showmanual 结果为空，返回值也是 0
-            if pkgs=$(chroot $os_dir apt-mark showmanual linux-*-cloud-$axx64 | grep .); then
+            if pkgs=$(chroot $os_dir apt-mark showmanual "linux-*-cloud-$(get_axx64)" | grep .); then
                 chroot $os_dir apt-mark auto $pkgs
 
                 # 使用 autoremove
                 chroot_apt_autoremove $os_dir
             fi
-            restore_resolv_conf $os_dir
+        fi
+
+        # 微码+固件
+        if is_need_ucode_firmware; then
+            #  debian 10 11 的 iucode-tool 在 contrib 里面
+            #  debian 12 的 iucode-tool 在 main 里面
+            [ "$releasever" -ge 12 ] &&
+                comps_to_add=non-free-firmware ||
+                comps_to_add="contrib non-free"
+
+            if [ -f $os_dir/etc/apt/sources.list.d/debian.sources ]; then
+                file=$os_dir/etc/apt/sources.list.d/debian.sources
+                search='^[# ]*Components:'
+            else
+                file=$os_dir/etc/apt/sources.list
+                search='^[# ]*deb'
+            fi
+
+            for c in $comps_to_add; do
+                if ! echo "$comps" | grep -wq "$c"; then
+                    sed -Ei "/$search/s/$/ $c/" $file
+                fi
+            done
+
+            # shellcheck disable=SC2046
+            chroot_apt_install $os_dir $(get_ucode_firmware_pkgs)
         fi
 
         if [ "$releasever" -le 11 ]; then
-            cp_resolv_conf $os_dir
             chroot $os_dir apt-get update
 
             if true; then
                 # 将 debian 11 设置为 12 一样的网络管理器
                 # 可解决 ifupdown dhcp 不支持 24位掩码+不规则网关的问题
-                DEBIAN_FRONTEND=noninteractive chroot $os_dir apt-get install -y netplan.io
+                chroot_apt_install $os_dir netplan.io
                 chroot $os_dir systemctl disable networking resolvconf
                 chroot $os_dir systemctl enable systemd-networkd systemd-resolved
                 rm_resolv_conf $os_dir
@@ -2509,41 +2630,54 @@ EOF
 
             else
                 # debian 11 默认不支持 rdnss，要安装 rdnssd 或者 nm
-                DEBIAN_FRONTEND=noninteractive chroot $os_dir apt-get install -y rdnssd
-                # 不会自动建立链接，因此不能删除
-                restore_resolv_conf $os_dir
+                chroot_apt_install $os_dir rdnssd
             fi
         fi
-    fi
 
-    # opensuse leap
-    if grep opensuse-leap $os_dir/etc/os-release; then
-        # 修复 onlink 网关
-        add_onlink_script_if_need
-    fi
-
-    # opensuse tumbleweed
-    # 更新到 cloud-init 24.1 后删除
-    if grep opensuse-tumbleweed $os_dir/etc/os-release; then
-        touch $os_dir/etc/NetworkManager/NetworkManager.conf
+        # 不会自动建立链接，因此不能删除
+        restore_resolv_conf $os_dir
     fi
 
     # opensuse
-    # kernel-default-base 缺少 nvme 驱动
+    # 1. kernel-default-base 缺少 nvme 驱动，换成 kernel-default
+    # 2. 添加微码+固件
     # https://documentation.suse.com/smart/virtualization-cloud/html/minimal-vm/index.html
     if grep -q opensuse $os_dir/etc/os-release; then
         create_swap_if_ram_less_than 1024 $os_dir/swapfile
         mount_pseudo_fs $os_dir
         cp_resolv_conf $os_dir
+        find_and_mount /boot
+        find_and_mount /boot/efi
 
-        # 不能同时装
+        # opensuse leap
+        if grep opensuse-leap $os_dir/etc/os-release; then
+            # 修复 onlink 网关
+            add_onlink_script_if_need
+        fi
+
+        # opensuse tumbleweed
+        # 更新到 cloud-init 24.1 后删除
+        if grep opensuse-tumbleweed $os_dir/etc/os-release; then
+            touch $os_dir/etc/NetworkManager/NetworkManager.conf
+        fi
+
+        # 不能同时装 kernel-default-base 和 kernel-default
         chroot $os_dir zypper remove -y kernel-default-base
+
+        # 固件+微码
+        if is_need_ucode_firmware; then
+            # shellcheck disable=SC2046
+            chroot $os_dir zypper install -y $(get_ucode_firmware_pkgs)
+        fi
+
+        # 选择新内核
         # 只有 leap 有 kernel-azure
         if grep -q opensuse-leap $os_dir/etc/os-release && [ "$(get_cloud_vendor)" = azure ]; then
             kernel='kernel-azure'
         else
             kernel='kernel-default'
         fi
+
         # 必须设置一个密码，否则报错
         # Failed to get root password hash
         # Failed to import /etc/uefi/certs/76B6A6A0.crt
@@ -2918,6 +3052,19 @@ chroot_dnf() {
     fi
 }
 
+chroot_apt_install() {
+    os_dir=$1
+    shift
+
+    current_hash=$(cat $os_dir/etc/apt/sources.list $os_dir/etc/apt/sources.list.d/*.sources 2>/dev/null | md5sum)
+    if ! [ "$saved_hash" = "$current_hash" ]; then
+        chroot $os_dir apt-get update
+        saved_hash="$current_hash"
+    fi
+
+    DEBIAN_FRONTEND=noninteractive chroot $os_dir apt-get install -y "$@"
+}
+
 chroot_apt_autoremove() {
     os_dir=$1
 
@@ -3133,8 +3280,9 @@ install_qcow_by_copy() {
         fi
 
         # firmware + microcode
-        if ! is_virt; then
-            chroot_dnf install linux-firmware microcode_ctl
+        if is_need_ucode_firmware; then
+            # shellcheck disable=SC2046
+            chroot_dnf install $(get_ucode_firmware_pkgs)
         fi
 
         # anolis 7 镜像自带 nm
@@ -3296,11 +3444,13 @@ configfile \$prefix/grub.cfg
 EOF
         fi
 
+        # 更新包索引
+        chroot $os_dir apt-get update
+
         # 安装最佳内核
         flavor=$(get_ubuntu_kernel_flavor)
         echo "Use kernel flavor: $flavor"
-        chroot $os_dir apt-get update
-        DEBIAN_FRONTEND=noninteractive chroot $os_dir apt-get install -y "linux-image-$flavor"
+        chroot_apt_install $os_dir "linux-image-$flavor"
 
         # 自带内核：
         # 常规版本             generic
@@ -3318,10 +3468,16 @@ EOF
             chroot_apt_autoremove $os_dir
         fi
 
+        # 安装固件+微码
+        if is_need_ucode_firmware; then
+            # shellcheck disable=SC2046
+            chroot_apt_install $os_dir $(get_ucode_firmware_pkgs)
+        fi
+
         # 16.04 镜像用 ifupdown/networking 管理网络
         # 要安装 resolveconf，不然 /etc/resolv.conf 为空
         if [ "$releasever" = 16.04 ]; then
-            chroot $os_dir apt-get install -y resolvconf
+            chroot_apt_install $os_dir resolvconf
             ln -sf /run/resolvconf/resolv.conf $os_dir/etc/resolv.conf.orig
         fi
 

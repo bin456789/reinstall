@@ -160,7 +160,7 @@ bash reinstall.sh centos      9
 - `--hold 2` Prevent reboot after installation completes, allowing SSH login to modify system content; the system is mounted at `/os` (this feature is not supported on Debian/Kali).
 
 > [!TIP]
-> When installing Debian / Kali, x86 architectures can monitor the installation progress through VNC in the background, while ARM architectures can use the serial console.
+> When installing Debian/Kali, x86 architectures can monitor the installation progress through VNC in the background, while ARM architectures can use the serial console.
 >
 > When installing other systems, can monitor the progress through various methods (SSH, HTTP 80 port, VNC in the background, serial console).
 > <br />Even if errors occur during the installation process, you can still install to Alpine via SSH by running `/trans.sh alpine`
@@ -213,7 +213,7 @@ bash reinstall.sh dd --img https://example.com/xxx.xz
 - `--rdp-port PORT` Change RDP port (DD Windows only)
 - `--ssh-port PORT` Change SSH port (for log observation during installation)
 - `--web-port PORT` Change Web port (for log observation during installation)
-- `--hold 2` Prevent entering the system after DD completion. You can connect via SSH to modify system content, with the system mounted at `/os`.
+- `--hold 2` Prevent reboot after the DD process finishes, allowing SSH login to modify system content. The Windows system will be mounted at `/os`, but Linux systems will **NOT** be automatically mounted.
 
 > [!TIP]
 > Can monitor the progress through various methods (SSH, HTTP 80 port, VNC in the background, serial console).

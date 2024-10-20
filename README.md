@@ -157,10 +157,10 @@ bash reinstall.sh centos      9
 - `--password PASSWORD` 设置密码
 - `--ssh-port PORT` 修改 SSH 端口（安装期间观察日志用，也用于新系统）
 - `--web-port PORT` 修改 Web 端口（安装期间观察日志用）
-- `--hold 2` 安装结束后不重启，此时可以 SSH 登录修改系统内容，系统挂载在 `/os` (此功能不支持 Debian / Kali)
+- `--hold 2` 安装结束后不重启，此时可以 SSH 登录修改系统内容，系统挂载在 `/os` (此功能不支持 Debian/Kali)
 
 > [!TIP]
-> 安装 Debian / Kali 时，x86 可通过后台 VNC 查看安装进度，ARM 可通过串行控制台查看安装进度。
+> 安装 Debian/Kali 时，x86 可通过后台 VNC 查看安装进度，ARM 可通过串行控制台查看安装进度。
 >
 > 安装其它系统时，可通过多种方式（SSH、HTTP 80 端口、后台 VNC、串行控制台）查看安装进度。
 > <br />即使安装过程出错，也能通过 SSH 运行 `/trans.sh alpine` 安装到 Alpine。
@@ -213,7 +213,7 @@ bash reinstall.sh dd --img https://example.com/xxx.xz
 - `--rdp-port PORT` 修改 RDP 端口 (仅限 DD Windows)
 - `--ssh-port PORT` 修改 SSH 端口（安装期间观察日志用）
 - `--web-port PORT` 修改 Web 端口（安装期间观察日志用）
-- `--hold 2` DD 结束后不重启，此时可以 SSH 登录修改系统内容，系统挂载在 `/os`
+- `--hold 2` DD 结束后不重启，此时可以 SSH 登录修改系统内容，Windows 系统会挂载在 `/os`，Linux 系统**不会**自动挂载
 
 > [!TIP]
 > 可通过多种方式（SSH、HTTP 80 端口、后台 VNC、串行控制台）查看安装进度。

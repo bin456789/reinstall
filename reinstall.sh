@@ -855,7 +855,7 @@ setos() {
     }
 
     setos_debian() {
-        is_debian_eol() {
+        is_debian_elts() {
             [ "$releasever" -le 10 ]
         }
 
@@ -877,11 +877,14 @@ setos() {
 
         if is_use_cloud_image; then
             # cloud image
+            # debian --ci 用此标记要是否要换 elts 源
+            # shellcheck disable=SC2034
+            is_debian_elts && elts=1 || elts=0
             is_virt && ci_type=genericcloud || ci_type=generic
             eval ${step}_img=$cdimage_mirror/cloud/$codename/latest/debian-$releasever-$ci_type-$basearch_alt.qcow2
         else
             # 传统安装
-            if is_debian_eol; then
+            if is_debian_elts; then
                 # https://github.com/tuna/issues/issues/1999
                 # nju 也没同步
                 if false && is_in_china; then
@@ -2465,7 +2468,7 @@ build_extra_cmdline() {
     # 会将 extra.xxx=yyy 写入新系统的 /etc/modprobe.d/local.conf
     # https://answers.launchpad.net/ubuntu/+question/249456
     # https://salsa.debian.org/installer-team/rootskel/-/blob/master/src/lib/debian-installer-startup.d/S02module-params?ref_type=heads
-    for key in confhome hold force force_old_windows_setup cloud_image main_disk \
+    for key in confhome hold force force_old_windows_setup cloud_image main_disk elts \
         ssh_port rdp_port web_port allow_ping; do
         value=${!key}
         if [ -n "$value" ]; then
@@ -2517,8 +2520,8 @@ build_nextos_cmdline() {
         nextos_cmdline+=" mirror/http/hostname=$nextos_hostname"
         nextos_cmdline+=" mirror/http/directory=/$nextos_directory"
         nextos_cmdline+=" base-installer/kernel/image=$nextos_kernel"
-        # eol 的 debian 不能用 security 源，否则安装过程会提示无法访问
-        if [ "$nextos_distro" = debian ] && is_debian_eol; then
+        # elts 的 debian 不能用 security 源，否则安装过程会提示无法访问
+        if [ "$nextos_distro" = debian ] && is_debian_elts; then
             nextos_cmdline+=" apt-setup/services-select="
         fi
         # kali 安装好后网卡是 eth0 这种格式，但安装时不是
@@ -2750,7 +2753,7 @@ EOF
         chmod a+x cdrom/simple-cdd/kali.postinst
     fi
 
-    if [ "$distro" = debian ] && is_debian_eol; then
+    if [ "$distro" = debian ] && is_debian_elts; then
         curl -Lo usr/share/keyrings/debian-archive-keyring.gpg https://deb.freexian.com/extended-lts/archive-key.gpg
     fi
 
