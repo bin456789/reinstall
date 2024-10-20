@@ -246,7 +246,7 @@ setup_websocketd() {
         web_port=80
     fi
 
-    killall websocketd || true
+    pkill websocketd || true
     # websocketd 遇到 \n 才推送，因此要转换 \r 为 \n
     websocketd --port "$web_port" --loglevel=fatal --staticdir=/tmp \
         stdbuf -oL -eL sh -c "tail -fn+0 /reinstall.log | tr '\r' '\n'" &
@@ -416,6 +416,8 @@ clear_previous() {
         dmsetup remove_all
     fi
     disconnect_qcow
+    # 安装 arch 有 gpg-agent 进程驻留
+    pkill gpg-agent || true
     rc-service -q --ifexists --ifstarted nix-daemon stop
     swapoff -a
     umount_all
@@ -1539,6 +1541,13 @@ install_arch_gentoo() {
 
         apk add arch-install-scripts
 
+        # 为了二次运行时 /etc/pacman.conf 未修改
+        if [ -f /etc/pacman.conf.orig ]; then
+            cp /etc/pacman.conf.orig /etc/pacman.conf
+        else
+            cp /etc/pacman.conf /etc/pacman.conf.orig
+        fi
+
         # 设置 repo
         insert_into_file /etc/pacman.conf before '\[core\]' <<EOF
 SigLevel = Never
@@ -1728,8 +1737,12 @@ EOF
     install_$distro
 
     # 初始化
-    chroot $os_dir systemctl preset-all
-    chroot $os_dir systemd-firstboot --force --setup-machine-id
+    if false; then
+        # preset-all 后多了很多服务，内存占用多了几十M
+        chroot $os_dir systemctl preset-all
+    fi
+    # 此时不能用
+    # chroot $os_dir timedatectl set-timezone Asia/Shanghai
     chroot $os_dir systemd-firstboot --force --timezone=Asia/Shanghai
     chroot $os_dir systemctl enable systemd-networkd
     chroot $os_dir systemctl enable systemd-resolved
@@ -1744,8 +1757,8 @@ EOF
 
     # 网络配置
     apk add cloud-init
-    useradd systemd-network
-    touch net.cfg
+    # 第二次运行会报错
+    useradd systemd-network || true
     create_cloud_init_network_config net.cfg
     # 正常应该是 -D gentoo，但 alpine 的 cloud-init 包缺少 gentoo 配置
     cloud-init devel net-convert -p net.cfg -k yaml -d out -D alpine -O networkd
@@ -2106,7 +2119,12 @@ get_yq_name() {
 
 create_cloud_init_network_config() {
     ci_file=$1
+
     info "Create Cloud Init network config"
+
+    # 防止文件未创建
+    mkdir -p "$(dirname "$ci_file")"
+    touch "$ci_file"
 
     apk add "$(get_yq_name)"
 
@@ -2223,10 +2241,17 @@ create_cloud_init_network_config() {
     apk del "$(get_yq_name)"
 }
 
-truncate_machine_id() {
+# 实测没用，生成的 machine-id 是固定的
+clear_machine_id() {
     os_dir=$1
 
-    truncate -s 0 $os_dir/etc/machine-id
+    # https://www.freedesktop.org/software/systemd/man/latest/machine-id.html
+    if [ -f $os_dir/etc/machine-id ]; then
+        echo uninitialized >$os_dir/etc/machine-id
+    fi
+
+    # https://build.opensuse.org/projects/Virtualization:Appliances:Images:openSUSE-Leap-15.5/packages/kiwi-templates-Minimal/files/config.sh?expand=1
+    rm -f $os_dir/var/lib/systemd/random-seed
 }
 
 download_cloud_init_config() {
@@ -2501,7 +2526,7 @@ EOF
 
     download_cloud_init_config $os_dir
 
-    truncate_machine_id $os_dir
+    clear_machine_id $os_dir
 
     # el/ol/fedora/国产fork
     # 1. 禁用 selinux kdump
@@ -3256,8 +3281,8 @@ install_qcow_by_copy() {
         # selinux kdump
         disable_selinux_kdump /os
 
-        # 部分镜像例如 centos7 要手动删除 machine-id
-        truncate_machine_id /os
+        # centos7 删除 machine-id 后不会自动重建
+        clear_machine_id /os
 
         # el7 yum 可能会使用 ipv6，即使没有 ipv6 网络
         if [ "$releasever" = 7 ]; then
