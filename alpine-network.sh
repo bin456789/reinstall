@@ -9,16 +9,22 @@ ipv6_addr=$4
 ipv6_gateway=$5
 is_in_china=$6
 
+# 检测是否有网络是通过检测这些 IP 的端口是否开放
+# 因为 debian initrd 没有 nslookup
+# 改成 generate_204？但检测网络时可能 resolv.conf 为空
+# HTTP 80
+# HTTPS/DOH 443
+# DOT 853
 if $is_in_china; then
     ipv4_dns1='223.5.5.5'
-    ipv4_dns2='119.29.29.29'
+    ipv4_dns2='119.29.29.29' # 不开放 853
     ipv6_dns1='2400:3200::1'
-    ipv6_dns2='2402:4e00::'
+    ipv6_dns2='2402:4e00::' # 不开放 853
 else
     ipv4_dns1='1.1.1.1'
-    ipv4_dns2='8.8.8.8'
+    ipv4_dns2='8.8.8.8' # 不开放 80
     ipv6_dns1='2606:4700:4700::1111'
-    ipv6_dns2='2001:4860:4860::8888'
+    ipv6_dns2='2001:4860:4860::8888' # 不开放 80
 fi
 
 # 找到主网卡
@@ -55,6 +61,10 @@ get_first_ipv4_addr() {
     else
         ip -4 -o addr show scope global dev "$ethx" | head -1 | grep -o '[0-9\.]*/[0-9]*'
     fi
+}
+
+remove_netmask() {
+    cut -d/ -f1
 }
 
 get_first_ipv6_addr() {
@@ -99,7 +109,13 @@ add_missing_ipv4_config() {
 
         if ! is_have_ipv4_gateway; then
             # 如果 dhcp 无法设置onlink网关，那么在这里设置
-            ip -4 route add default via "$ipv4_gateway" dev "$ethx" onlink
+            # debian 9 ipv6 不能识别 onlink，但 ipv4 能识别 onlink
+            if true; then
+                ip -4 route add "$ipv4_gateway" dev "$ethx"
+                ip -4 route add default via "$ipv4_gateway" dev "$ethx"
+            else
+                ip -4 route add default via "$ipv4_gateway" dev "$ethx" onlink
+            fi
         fi
     fi
 }
@@ -112,7 +128,13 @@ add_missing_ipv6_config() {
 
         if ! is_have_ipv6_gateway; then
             # 如果 dhcp 无法设置onlink网关，那么在这里设置
-            ip -6 route add default via "$ipv6_gateway" dev "$ethx" onlink
+            # debian 9 ipv6 不能识别 onlink
+            if true; then
+                ip -6 route add "$ipv6_gateway" dev "$ethx"
+                ip -6 route add default via "$ipv6_gateway" dev "$ethx"
+            else
+                ip -6 route add default via "$ipv6_gateway" dev "$ethx" onlink
+            fi
         fi
     fi
 }
@@ -125,16 +147,71 @@ is_need_test_ipv6() {
     is_have_ipv6 && ! $ipv6_has_internet
 }
 
+# 测试方法：
+# ping   有的机器禁止
+# nc     测试 dot doh 端口是否开启
+# wget   测试下载
+
+# initrd 里面的软件版本，是否支持指定源IP/网卡
+# 软件     nc  wget  nslookup
+# debian9  ×    √   没有此软件
+# alpine   √    ×      ×
+
+TIMEOUT=10
+
+test_by_wget() {
+    src=$1
+    dst=$2
+
+    # ipv6 需要添加 []
+    if echo "$dst" | grep -q ':'; then
+        url="https://[$dst]"
+    else
+        url="https://$dst"
+    fi
+
+    # tcp 443 通了就算成功，不管 http 是不是 404
+    wget -T "$TIMEOUT" \
+        --bind-address="$src" \
+        --no-check-certificate \
+        --max-redirect 0 \
+        --tries 1 \
+        -O /dev/null \
+        "$url" 2>&1 | grep -iq connected
+}
+
+test_by_nc() {
+    src=$1
+    dst=$2
+
+    # tcp 443 通了就算成功
+    nc -z -v \
+        -w "$TIMEOUT" \
+        -s "$src" \
+        "$dst" 443
+}
+
+is_debian() {
+    [ -f /etc/lsb-release ] && grep -iq Debian /etc/lsb-release
+}
+
+test_connect() {
+    if is_debian; then
+        test_by_wget "$1" "$2"
+    else
+        test_by_nc "$1" "$2"
+    fi
+}
+
 test_internet() {
     echo 'Testing Internet Connection...'
 
-    # debian 没有 nslookup，因此用 ping
     for i in $(seq 10); do
-        if is_need_test_ipv4 && ping -c1 -W5 -I "$ethx" "$ipv4_dns1" >/dev/null 2>&1; then
+        if is_need_test_ipv4 && test_connect "$(get_first_ipv4_addr | remove_netmask)" "$ipv4_dns1" >/dev/null 2>&1; then
             echo "IPv4 has internet."
             ipv4_has_internet=true
         fi
-        if is_need_test_ipv6 && ping -c1 -W5 -I "$ethx" "$ipv6_dns1" >/dev/null 2>&1; then
+        if is_need_test_ipv6 && test_connect "$(get_first_ipv6_addr | remove_netmask)" "$ipv6_dns1" >/dev/null 2>&1; then
             echo "IPv6 has internet."
             ipv6_has_internet=true
         fi
