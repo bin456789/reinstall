@@ -3199,7 +3199,7 @@ install_qcow_by_copy() {
         efi_part_label=$(lsblk /dev/$efi_part -no LABEL)
     fi
 
-    mkdir -p /nbd /nbd-boot /nbd-efi /os
+    mkdir -p /nbd /nbd-boot /nbd-efi
 
     # 使用目标系统的格式化程序
     # centos8 如果用alpine格式化xfs，grub2-mkconfig和grub2里面都无法识别xfs分区
@@ -3213,35 +3213,46 @@ install_qcow_by_copy() {
 
     # TODO: ubuntu 镜像缺少 mkfs.fat/vfat/dosfstools? initrd 不需要检查fs完整性？
 
-    # 复制系统
+    # 创建并挂载 /os
+    mkdir -p /os
+    mount -o noatime /dev/$xda*2 /os/
+
+    # 如果是 efi 则创建 /os/boot/efi
+    # 如果镜像有 efi 分区也创建 /os/boot/efi，用于复制 efi 分区的文件
+    if is_efi || [ -n "$efi_part" ]; then
+        mkdir -p /os/boot/efi/
+
+        # 挂载 /os/boot/efi
+        # 预先挂载 /os/boot/efi 因为可能 boot 和 efi 在同一个分区（openeuler 24.03 arm）
+        # 复制 boot 时可以会复制 efi 的文件
+        if is_efi; then
+            mount -o $efi_mount_opts /dev/$xda*1 /os/boot/efi/
+        fi
+    fi
+
+    # 复制系统分区
     echo Copying os partition...
     mount_nouuid -o ro /dev/$os_part /nbd/
-    mount -o noatime /dev/$xda*2 /os/
     cp -a /nbd/* /os/
+    umount /nbd/
 
     # 复制boot分区，如果有
     if [ -n "$boot_part" ]; then
         echo Copying boot partition...
         mount_nouuid -o ro /dev/$boot_part /nbd-boot/
         cp -a /nbd-boot/* /os/boot/
+        umount /nbd-boot/
     fi
 
-    # efi 分区
-    if is_efi; then
-        # 挂载 efi
-        mkdir -p /os/boot/efi/
-        mount -o $efi_mount_opts /dev/$xda*1 /os/boot/efi/
-
-        # 复制文件
-        if [ -n "$efi_part" ]; then
-            echo Copying efi partition...
-            mount -o ro /dev/$efi_part /nbd-efi/
-            cp -a /nbd-efi/* /os/boot/efi/
-        fi
+    # 复制efi分区，如果有
+    if [ -n "$efi_part" ]; then
+        echo Copying efi partition...
+        mount -o ro /dev/$efi_part /nbd-efi/
+        cp -a /nbd-efi/* /os/boot/efi/
+        umount /nbd-efi/
     fi
 
-    # 取消挂载 nbd
-    umount /nbd/ /nbd-boot/ /nbd-efi/ || true
+    # 断开 qcow
     if is_have_cmd vgchange; then
         vgchange -an
     fi
@@ -3301,7 +3312,6 @@ install_qcow_by_copy() {
             fi
             sed -Ei -e 's,(mirrorlist=),#\1,' \
                 -e "s,#(baseurl=http://)mirror.centos.org,\1$mirror," /os/etc/yum.repos.d/CentOS-Base.repo
-            chroot_dnf install NetworkManager
         fi
 
         # firmware + microcode
@@ -3310,6 +3320,10 @@ install_qcow_by_copy() {
             chroot_dnf install $(get_ucode_firmware_pkgs)
         fi
 
+        # centos 7 安装 NetworkManager
+        if [ "$releasever" = 7 ]; then
+            chroot_dnf install NetworkManager
+        fi
         # anolis 7 镜像自带 nm
 
         # 删除云镜像自带的 dhcp 配置，防止歧义
@@ -3373,6 +3387,10 @@ EOF
             rm -rf /os/boot/grub2/grubenv /os/boot/grub2/grub.cfg
         }
 
+        # openeuler arm 镜像 grub.cfg 在 /os/grub.cfg，可能给外部的 grub 读取，我们用不到
+        # centos7 有 grub1 的配置
+        rm -rf /os/grub.cfg /os/boot/grub/grub.conf /os/boot/grub/menu.lst
+
         # 安装引导
         if is_efi; then
             # 只有centos 和 oracle x86_64 镜像没有efi，其他系统镜像已经从efi分区复制了文件
@@ -3397,22 +3415,24 @@ EOF
             sed -i -E 's,((linux|initrd) /),\1boot/,g' /os/boot/loader/entries/*.conf
         fi
 
+        # grub-efi-x64 包里面有 /etc/grub2-efi.cfg
+        # 指向 /boot/efi/EFI/xxx/grub.cfg 或 /boot/grub2/grub.cfg
+        # 指向哪里哪里就是 grub2-mkconfig 应该生成文件的位置
+        # grubby 也是靠 /etc/grub2-efi.cfg 定位 grub.cfg 的位置
+        # openeuler 24.03 x64 aa64 指向的文件不同
         if is_efi; then
+            grub_o_cfg=$(chroot /os readlink -f /etc/grub2-efi.cfg)
+        else
+            grub_o_cfg=/boot/grub2/grub.cfg
+        fi
+
+        # efi 分区 grub.cfg
+        # https://github.com/rhinstaller/anaconda/blob/346b932a26a19b339e9073c049b08bdef7f166c3/pyanaconda/modules/storage/bootloader/efi.py#L198
+        # https://github.com/rhinstaller/anaconda/commit/15c3b2044367d375db6739e8b8f419ef3e17cae7
+        if is_efi && ! echo "$grub_o_cfg" | grep -q '/boot/efi/EFI'; then
             # oracle linux 文件夹是 redhat
             # shellcheck disable=SC2010
             distro_efi=$(cd /os/boot/efi/EFI/ && ls -d -- * | grep -Eiv BOOT)
-        fi
-
-        is_grub_efi_load_config_from_os() {
-            { [ "$distro" = openeuler ] && ! [ "$releasever" = 20.03 ]; } ||
-                [ "$releasever" -ge 9 ]
-        }
-
-        # efi 分区 grub.cfg
-        # >=34.24
-        # https://github.com/rhinstaller/anaconda/blob/346b932a26a19b339e9073c049b08bdef7f166c3/pyanaconda/modules/storage/bootloader/efi.py#L198
-        # https://github.com/rhinstaller/anaconda/commit/15c3b2044367d375db6739e8b8f419ef3e17cae7
-        if is_efi && is_grub_efi_load_config_from_os; then
             cat <<EOF >/os/boot/efi/EFI/$distro_efi/grub.cfg
 search --no-floppy --fs-uuid --set=dev $os_part_uuid
 set prefix=(\$dev)/boot/grub2
@@ -3422,12 +3442,8 @@ EOF
         fi
 
         # 主 grub.cfg
-        if is_efi && ! is_grub_efi_load_config_from_os; then
-            chroot /os/ grub2-mkconfig -o /boot/efi/EFI/$distro_efi/grub.cfg
-        else
-            # --update-bls-cmdline
-            chroot /os/ grub2-mkconfig -o /boot/grub2/grub.cfg
-        fi
+        # --update-bls-cmdline
+        chroot /os/ grub2-mkconfig -o "$grub_o_cfg"
 
         # 不删除可能网络管理器不会写入dns
         rm_resolv_conf /os
