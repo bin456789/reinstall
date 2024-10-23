@@ -2242,6 +2242,7 @@ create_cloud_init_network_config() {
 }
 
 # 实测没用，生成的 machine-id 是固定的
+# 而且 lightsail centos 9 模板 machine-id 也是相同的，显然相同 id 不是个问题
 clear_machine_id() {
     os_dir=$1
 
@@ -2526,7 +2527,7 @@ EOF
 
     download_cloud_init_config $os_dir
 
-    clear_machine_id $os_dir
+    # clear_machine_id $os_dir
 
     # el/ol/fedora/国产fork
     # 1. 禁用 selinux kdump
@@ -3293,7 +3294,7 @@ install_qcow_by_copy() {
         disable_selinux_kdump /os
 
         # centos7 删除 machine-id 后不会自动重建
-        clear_machine_id /os
+        # clear_machine_id /os
 
         # el7 yum 可能会使用 ipv6，即使没有 ipv6 网络
         if [ "$releasever" = 7 ]; then
