@@ -199,7 +199,7 @@ bash reinstall.sh ubuntu --installer
 
 ### 功能 2: DD
 
-- 支持 `raw` `vhd` 或者经过 `xz` `gzip` 压缩的镜像
+- 支持 `raw` `vhd` 格式的镜像（未压缩，或者压缩成 `.gz` `.xz` `.zst` `.tar` `.tar.gz` `.tar.xz` `.tar.zst`）
 - DD Windows 镜像时，会自动扩展系统盘，静态 IP 的机器会配置好 IP，可能首次开机几分钟后才生效
 - DD Linux 镜像时，**不会**修改镜像的任何内容
 

@@ -199,7 +199,7 @@ bash reinstall.sh ubuntu --installer
 
 ### Feature 2: DD
 
-- Supports `raw`, `vhd` images or those compressed with `xz` or `gzip`.
+- Supports `raw` and `vhd` image formats (either uncompressed or compressed as `.gz`, `.xz`, `.zst`, `.tar`, `.tar.gz`, `.tar.xz`, `.tar.zst`).
 - When deploy a Windows image, the system disk will be automatically expanded, and machines with a static IP will have their IP configured, and may take a few minutes after the first boot for the configuration to take effect.
 - When deploy a Linux image, will **NOT** modify any contents of the image.
 

@@ -1736,6 +1736,9 @@ EOF
     # 安装系统
     install_$distro
 
+    # 安装 arch 有 gpg-agent 进程驻留
+    pkill gpg-agent || true
+
     # 初始化
     if false; then
         # preset-all 后多了很多服务，内存占用多了几十M
@@ -1825,20 +1828,26 @@ get_http_file_size() {
 pipe_extract() {
     # alpine busybox 自带 gzip，但官方版也许性能更好
     case "$img_type_warp" in
-    xz | gzip) apk add $img_type_warp ;;
-    '') ;;
+    xz | gzip | zstd)
+        apk add $img_type_warp
+        "$img_type_warp" -dc
+        ;;
+    tar)
+        apk add tar
+        tar x -O
+        ;;
+    tar.*)
+        type=$(echo "$img_type_warp" | cut -d. -f2)
+        apk add tar "$type"
+        tar x "--$type" -O
+        ;;
+    '') cat ;;
     *) error_and_exit "Not supported img_type_warp: $img_type_warp" ;;
     esac
-
-    if [ -n "$img_type_warp" ]; then
-        "$img_type_warp" -dc
-    else
-        cat
-    fi
 }
 
-dd_gzip_xz_raw() {
-    info "dd gzip xz raw"
+dd_raw_with_extract() {
+    info "dd raw"
 
     # 用官方 wget，一来带进度条，二来自带重试功能
     apk add wget
@@ -4967,7 +4976,7 @@ trans() {
             ;;
         raw)
             # 暂时没用到 raw 格式的云镜像
-            dd_gzip_xz_raw
+            dd_raw_with_extract
             resize_after_install_cloud_image
             modify_os_on_disk linux
             ;;
@@ -4975,7 +4984,7 @@ trans() {
     elif [ "$distro" = "dd" ]; then
         case "$img_type" in
         raw)
-            dd_gzip_xz_raw
+            dd_raw_with_extract
             if false; then
                 # linux 扩容后无法轻易缩小，例如 xfs
                 # windows 扩容在 windows 下完成

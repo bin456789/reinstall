@@ -292,24 +292,21 @@ test_url_real() {
     if [ -n "$expect_types" ]; then
         install_pkg file
         real_type=$(file_enhanced $tmp_file)
-        echo "$real_type"
+        echo "File type: $real_type"
 
-        # 期待值没有.表示要只需判断外侧
-        if ! grep -Fq . <<<"$expect_types"; then
-            real_type=$(echo "$real_type" | cut -d. -f2-)
-        fi
+        for type in $expect_types; do
+            if [[ ."$real_type" = *."$type" ]]; then
+                # 如果要设置变量
+                if [ -n "$var_to_eval" ]; then
+                    IFS=. read -r "${var_to_eval?}" "${var_to_eval}_warp" <<<"$real_type"
+                fi
+                return
+            fi
+        done
 
-        # 检查
-        if ! grep -Foq "|$real_type|" <<<"|$expect_types|"; then
-            failed "$url
-expected: $expect_types
-actually: $real_type"
-        fi
-    fi
-
-    # 如果要设置变量
-    if [ -n "$var_to_eval" ]; then
-        IFS=. read -r "${var_to_eval?}" "${var_to_eval}_warp" <<<"$real_type"
+        failed "$url
+Expected type: $expect_types
+Actually type: $real_type"
     fi
 }
 
@@ -319,45 +316,78 @@ fix_file_type() {
     # 所以不用mime判断
     # https://www.digipres.org/formats/sources/tika/formats/#application/gzip
 
+    # centos 7 上的 file 显示 qcow2 的 mime 为 application/octet-stream
+    # file debian-12-genericcloud-amd64.qcow2
+    # debian-12-genericcloud-amd64.qcow2: QEMU QCOW Image (v3), 2147483648 bytes
+    # file --mime debian-12-genericcloud-amd64.qcow2
+    # debian-12-genericcloud-amd64.qcow2: application/octet-stream; charset=binary
+
     # --extension 不靠谱
     # file -b /reinstall-tmp/img-test --mime-type
     # application/x-qemu-disk
     # file -b /reinstall-tmp/img-test --extension
     # ???
 
-    # 有些 file 版本输出的是 # ISO 9660 CD-ROM filesystem data ，要去掉开头的井号
+    # 1. 删除,;#
+    # DOS/MBR boot sector; partition 1: ...
+    # gzip compressed data, was ...
+    # # ISO 9660 CD-ROM filesystem data... (有些 file 版本开头输出有井号)
 
-    # 下面两种都是 raw
+    # 2. 删除开头的空格
+
+    # 3. 删除无意义的单词 POSIX, Unicode, UTF-8, ASCII
+    # POSIX tar archive (GNU)
+    # Unicode text, UTF-8 text
+    # UTF-8 Unicode text, with very long lines
+    # ASCII text
+
+    # 4. 下面两种都是 raw
     # DOS/MBR boot sector
     # x86 boot sector; partition 1: ...
-
-    sed 's/^# //' | awk '{print $1}' | to_lower |
-        sed -e 's,dos/mbr,raw,' \
-            -e 's,x86,raw,' \
-            -e 's,windows,wim,'
+    sed -E \
+        -e 's/[,;#]//g' \
+        -e 's/^[[:space:]]*//' \
+        -e 's/(POSIX|Unicode|UTF-8|ASCII)//gi' \
+        -e 's/DOS\/MBR boot sector/raw/i' \
+        -e 's/x86 boot sector/raw/i' \
+        -e 's/Zstandard/zstd/i' \
+        -e 's/Windows imaging \(WIM\) image/wim/i' |
+        awk '{print $1}' | to_lower
 }
 
+# 不用 file -z，因为
+# 1. file -z 只能看透一层
+# 2. alpine file -z 无法看透部分镜像（前1M），例如：
+# guajibao-win10-ent-ltsc-2021-x64-cn-efi.vhd.gz
+# guajibao-win7-sp1-ent-x64-cn-efi.vhd.gz
+# win7-ent-sp1-x64-cn-efi.vhd.gz
+# 还要注意 centos 7 没有 -Z 只有 -z
 file_enhanced() {
-    local file=$1
-    local outside inside
+    file=$1
 
-    outside=$(file -b $file | fix_file_type)
-
-    if [ "$outside" = "xz" ] || [ "$outside" = "gzip" ]; then
-        # 要安装 xz 或者 gzip，不然会报错
-        # ERROR:[xz: Wait failed, No child process]
-        install_pkg "$outside"
-
-        # 加 if 是为了避免以下情况（外面是xz，但是识别不到里面的东西，即使装了xz）,
-        # 即使 file 报错返回值也是 0
-        # [root@localhost ~]# file -bZ /reinstall-tmp/img-test
-        # ERROR:[xz: Unexpected end of input]
-        if inside="$(file -bZ $file | fix_file_type)" && ! grep -iq "^Error" <<<"$inside"; then
-            echo "$inside.$outside"
-            return
-        fi
-    fi
-    echo "$outside"
+    full_type=
+    while true; do
+        type="$(file -b $file | fix_file_type)"
+        full_type="$type.$full_type"
+        case "$type" in
+        xz | gzip | zstd)
+            install_pkg "$type"
+            $type -dc <"$file" | head -c 1048576 >"$file.inside"
+            mv -f "$file.inside" "$file"
+            ;;
+        tar)
+            install_pkg "$type"
+            # 隐藏 gzip: unexpected end of file 提醒
+            tar xf "$file" -O 2>/dev/null | head -c 1048576 >"$file.inside"
+            mv -f "$file.inside" "$file"
+            ;;
+        *)
+            break
+            ;;
+        esac
+    done
+    # shellcheck disable=SC2001
+    echo "$full_type" | sed 's/\.$//'
 }
 
 add_community_repo_for_alpine() {
@@ -433,7 +463,7 @@ is_virt() {
         if [ -z "$_is_virt" ]; then
             _is_virt=false
         fi
-        echo "vm: $_is_virt"
+        echo "VM: $_is_virt"
     fi
     $_is_virt
 }
@@ -1037,7 +1067,7 @@ Continue?
             filename=$(curl -L $mirror | grep -oP "ubuntu-$releasever.*?-live-server-$basearch_alt.iso" | head -1)
             iso=$mirror/$filename
             # 在 ubuntu 20.04 上，file 命令检测 ubuntu 22.04 iso 结果是 DOS/MBR boot sector
-            test_url $iso 'iso|raw'
+            test_url $iso 'iso raw'
             eval ${step}_iso=$iso
 
             # ks
@@ -1088,8 +1118,8 @@ Continue?
         else
             # 传统安装
             # 该服务器文件缓存 miss 时会响应 206 + Location 头
-            # 但 curl 这种情况不会重定向，所以添加 ascii 类型让它不要报错
-            test_url $mirror/nixos-$releasever/store-paths.xz 'xz|ascii'
+            # 但 curl 这种情况不会重定向，所以添加 text 类型让它不要报错
+            test_url $mirror/nixos-$releasever/store-paths.xz 'xz text'
             eval ${step}_mirror=$mirror
         fi
     }
@@ -1113,7 +1143,7 @@ Continue?
             dir=releases/$basearch_alt/autobuilds/current-$prefix
             file=$(curl -L $mirror/$dir/latest-$prefix.txt | grep '.tar.xz' | awk '{print $1}')
             stage3=$mirror/$dir/$file
-            test_url $stage3 'xz'
+            test_url $stage3 'tar.xz'
             eval ${step}_img=$stage3
         fi
     }
@@ -1165,7 +1195,7 @@ Continue?
         # 注意 windows server 2008 r2 serverdatacenter 不用改
         image_name=${image_name/windows server 2008 server/windows longhorn server}
 
-        test_url "$iso" 'iso|raw'
+        test_url "$iso" 'iso raw'
         [ -n "$boot_wim" ] && test_url "$boot_wim" 'wim'
         eval "${step}_iso='$iso'"
         eval "${step}_boot_wim='$boot_wim'"
@@ -1175,23 +1205,10 @@ Continue?
     # shellcheck disable=SC2154
     setos_dd() {
         # raw 包含 vhd
-        test_url $img 'raw|raw.gzip|raw.xz' img_type
+        test_url $img 'raw raw.gzip raw.xz raw.zstd raw.tar.gzip raw.tar.xz raw.tar.zstd' img_type
 
         if is_efi; then
             install_pkg hexdump
-
-            extract() {
-                case "$img_type_warp" in
-                '') cat "$1" ;;
-                xz | gzip)
-                    install_pkg $img_type_warp
-                    # xz/gzip -d 文件必须有正确的扩展名，否则报扩展名错误
-                    # 因此用 stdin
-                    "$img_type_warp" -dc <"$1"
-                    ;;
-                *) error_and_exit "warp type $img_type_warp not support." ;;
-                esac
-            }
 
             # openwrt 镜像 efi part type 不是 esp
             # 因此改成检测 fat?
@@ -1204,7 +1221,7 @@ Continue?
 
             # 仅打印前34个扇区 * 4096字节（按最大的算）
             # 每行128字节
-            extract "$tmp/img-test" | hexdump -n $((34 * 4096)) -e '128/1 "%02x" "\n"' -v >$tmp/img-test-hex
+            hexdump -n $((34 * 4096)) -e '128/1 "%02x" "\n"' -v "$tmp/img-test" >$tmp/img-test-hex
             if grep -q '^28732ac11ff8d211ba4b00a0c93ec93b' $tmp/img-test-hex; then
                 echo 'DD: Image is EFI.'
             else
@@ -1392,7 +1409,7 @@ Continue with DD?
     # 集中测试云镜像格式
     if is_use_cloud_image && [ "$step" = finalos ]; then
         # shellcheck disable=SC2154
-        test_url $finalos_img 'qemu|qemu.gzip|qemu.xz' finalos_img_type
+        test_url $finalos_img 'qemu qemu.gzip qemu.xz qemu.zstd' finalos_img_type
     fi
 }
 
