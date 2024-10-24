@@ -1249,9 +1249,9 @@ Continue with DD?
             "centos")
                 case $releasever in
                 "7")
-                    # aarch64 需要特殊处理
-                    [ "$basearch" = aarch64 ] && ver=-2211 || ver=
-                    ci_image=$ci_mirror/$releasever/images/CentOS-$releasever-$basearch-GenericCloud$ver.qcow2
+                    # CentOS-7-aarch64-GenericCloud.qcow2c 是旧版本
+                    ver=-2211
+                    ci_image=$ci_mirror/$releasever/images/CentOS-$releasever-$basearch-GenericCloud$ver.qcow2c
                     ;;
                 "9") ci_image=$ci_mirror/$releasever-stream/$basearch/images/CentOS-Stream-GenericCloud-$releasever-latest.$basearch.qcow2 ;;
                 esac
