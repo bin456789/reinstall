@@ -45,7 +45,7 @@ Usage: $reinstall_____ centos      9
                        redhat      8|9 --img='http://xxx.com/xxx.qcow2'
                        opencloudos 8|9
                        oracle      7|8|9
-                       fedora      39|40
+                       fedora      40|41
                        nixos       24.05
                        debian      9|10|11|12
                        openeuler   20.03|22.03|24.03
@@ -773,7 +773,7 @@ get_windows_iso_links() {
     label_vlsc=$(get_label_vlsc)
     page=$(get_page)
 
-    page_url=https://massgrave.dev/windows_${page}_links.html
+    page_url=https://massgrave.dev/windows_${page}_links
 
     info "Find windows iso"
     echo "Version:    $version"
@@ -787,7 +787,7 @@ get_windows_iso_links() {
         error_and_exit "Not support find this iso. Check --image-name or set --iso manually."
     fi
 
-    curl -L "$page_url" | grep -ioP 'https://.*?.iso' >$tmp/win.list
+    curl -L "$page_url" | grep -ioP 'https://.*?.(iso|img)' >$tmp/win.list
 
     # 如果不是 ltsc ，应该先去除 ltsc 链接，否则最终链接有 ltsc 的
     # 例如查找 windows 10 iot enterprise，会得到
@@ -821,14 +821,14 @@ get_windows_iso_link() {
                     regex+="${i}_"
                 fi
             done
-            regex+=".*${arch_win}.*.iso"
+            regex+=".*${arch_win}.*.(iso|img)"
             regexs+=("$regex")
         done
     fi
 
     # vlsc
     if [ -n "$label_vlsc" ]; then
-        regex="sw_dvd9_win_${label_vlsc}_${version}.*${arch_win}_${full_lang}.*.iso"
+        regex="sw_dvd[59]_win_${label_vlsc}_${version}.*${arch_win}_${full_lang}.*.(iso|img)"
         regexs+=("$regex")
     fi
 
@@ -1161,7 +1161,7 @@ Continue?
         if is_in_china; then
             mirror=https://mirror.sjtu.edu.cn/opensuse
         else
-            mirror=https://provo-mirror.opensuse.org
+            mirror=https://mirror.fcix.net/opensuse
         fi
 
         if [ "$releasever" = tumbleweed ]; then
@@ -1446,7 +1446,7 @@ verify_os_name() {
         'redhat      8|9' \
         'opencloudos 8|9' \
         'oracle      7|8|9' \
-        'fedora      39|40' \
+        'fedora      40|41' \
         'nixos       24.05' \
         'debian      9|10|11|12' \
         'openeuler   20.03|22.03|24.03' \
@@ -2334,7 +2334,7 @@ install_grub_linux_efi() {
         if is_in_china; then
             mirror=https://mirror.sjtu.edu.cn/opensuse
         else
-            mirror=https://provo-mirror.opensuse.org
+            mirror=https://mirror.fcix.net/opensuse
         fi
 
         [ "$basearch" = x86_64 ] && ports='' || ports=/ports/$basearch

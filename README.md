@@ -41,7 +41,7 @@
 | <img width="16" height="16" src="https://www.redhat.com/favicon.ico" /> RedHat &nbsp; <img width="16" height="16" src="https://almalinux.org/fav/favicon.ico" /> Alma &nbsp; <img width="16" height="16" src="https://rockylinux.org/favicon.png" /> Rocky | 8, 9                                  | 512 MB \* | 5 GB         |
 | <img width="16" height="16" src="https://opencloudos.org/qq.ico" /> OpenCloudOS                                                                                                                                                                            | 8, 9                                  | 512 MB \* | 5 GB         |
 | <img width="16" height="16" src="https://www.oracle.com/asset/web/favicons/favicon-32.png" /> Oracle                                                                                                                                                       | 7, 8, 9                               | 512 MB \* | 5 GB         |
-| <img width="16" height="16" src="https://fedoraproject.org/favicon.ico" /> Fedora                                                                                                                                                                          | 39, 40                                | 512 MB \* | 5 GB         |
+| <img width="16" height="16" src="https://fedoraproject.org/favicon.ico" /> Fedora                                                                                                                                                                          | 40, 41                                | 512 MB \* | 5 GB         |
 | <img width="16" height="16" src="https://www.openeuler.org/favicon.ico" /> openEuler                                                                                                                                                                       | 20.03, 22.03, 24.03                   | 512 MB \* | 5 GB         |
 | <img width="16" height="16" src="https://static.opensuse.org/favicon.ico" /> openSUSE                                                                                                                                                                      | 15.5, 15.6, Tumbleweed (滚动)         | 512 MB \* | 5 GB         |
 | <img width="16" height="16" src="https://nixos.org/_astro/flake-blue.Bf2X2kC4_Z1yqDoT.svg" /> NixOS                                                                                                                                                        | 24.05                                 | 512 MB    | 5 GB         |
@@ -140,7 +140,7 @@ bash reinstall.sh centos      9
                   redhat      8|9   --img='http://xxx.com/xxx.qcow2'
                   opencloudos 8|9
                   oracle      7|8|9
-                  fedora      39|40
+                  fedora      40|41
                   nixos       24.05
                   debian      9|10|11|12
                   openeuler   20.03|22.03|24.03
@@ -266,7 +266,7 @@ bash reinstall.sh netboot.xyz
 #### 方法 1: 让脚本自动查找 ISO （推荐）
 
 - 通常情况下 Windows 每个月都会发布新的官方 ISO，集成了最新的系统补丁，避免了刚安装好系统就要下载一堆补丁
-- 脚本会从 <https://massgrave.dev/genuine-installation-media.html> 查找 ISO，该网站收录了每月发布的 ISO，因此脚本查找到的 ISO 都是官方最新版
+- 脚本会从 <https://massgrave.dev/genuine-installation-media> 查找 ISO，该网站收录了每月发布的 ISO，因此脚本查找到的 ISO 都是官方最新版
 - 上面带 \* 的系统不支持自动查找 ISO
 
 ```bash
@@ -336,13 +336,13 @@ bash reinstall.sh windows \
 
 <summary>以下网站可找到 ISO 链接</summary>
 
-- <https://massgrave.dev/genuine-installation-media.html> (推荐，iso 来自官方，每月更新，包含最新补丁)
+- <https://massgrave.dev/genuine-installation-media> (推荐，iso 来自官方，每月更新，包含最新补丁)
 - <https://www.microsoft.com/software-download/windows10> (需用非 Windows User-Agent 打开)
 - <https://www.microsoft.com/software-download/windows11>
 - <https://www.microsoft.com/software-download/windowsinsiderpreviewiso> (预览版)
 - <https://www.microsoft.com/evalcenter/download-windows-10-enterprise>
 - <https://www.microsoft.com/evalcenter/download-windows-11-enterprise>
-- <https://www.microsoft.com/evalcenter/download-windows-11-iot-enterprise-ltsc>
+- <https://www.microsoft.com/evalcenter/download-windows-11-iot-enterprise-ltsc-eval>
 - <https://www.microsoft.com/evalcenter/download-windows-server-2012-r2>
 - <https://www.microsoft.com/evalcenter/download-windows-server-2016>
 - <https://www.microsoft.com/evalcenter/download-windows-server-2019>

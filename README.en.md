@@ -41,7 +41,7 @@ The system requirements for the target system are as follows:
 | <img width="16" height="16" src="https://www.redhat.com/favicon.ico" /> RedHat &nbsp; <img width="16" height="16" src="https://almalinux.org/fav/favicon.ico" /> Alma &nbsp; <img width="16" height="16" src="https://rockylinux.org/favicon.png" /> Rocky | 8, 9                                  | 512 MB \* | 5 GB                   |
 | <img width="16" height="16" src="https://opencloudos.org/qq.ico" /> OpenCloudOS                                                                                                                                                                            | 8, 9                                  | 512 MB \* | 5 GB                   |
 | <img width="16" height="16" src="https://www.oracle.com/asset/web/favicons/favicon-32.png" /> Oracle                                                                                                                                                       | 7, 8, 9                               | 512 MB \* | 5 GB                   |
-| <img width="16" height="16" src="https://fedoraproject.org/favicon.ico" /> Fedora                                                                                                                                                                          | 39, 40                                | 512 MB \* | 5 GB                   |
+| <img width="16" height="16" src="https://fedoraproject.org/favicon.ico" /> Fedora                                                                                                                                                                          | 40, 41                                | 512 MB \* | 5 GB                   |
 | <img width="16" height="16" src="https://www.openeuler.org/favicon.ico" /> openEuler                                                                                                                                                                       | 20.03, 22.03, 24.03                   | 512 MB \* | 5 GB                   |
 | <img width="16" height="16" src="https://static.opensuse.org/favicon.ico" /> openSUSE                                                                                                                                                                      | 15.5, 15.6, Tumbleweed (Rolling)      | 512 MB \* | 5 GB                   |
 | <img width="16" height="16" src="https://nixos.org/_astro/flake-blue.Bf2X2kC4_Z1yqDoT.svg" /> NixOS                                                                                                                                                        | 24.05                                 | 512 MB    | 5 GB                   |
@@ -140,7 +140,7 @@ bash reinstall.sh centos      9
                   redhat      8|9   --img='http://xxx.com/xxx.qcow2'
                   opencloudos 8|9
                   oracle      7|8|9
-                  fedora      39|40
+                  fedora      40|41
                   nixos       24.05
                   debian      9|10|11|12
                   openeuler   20.03|22.03|24.03
@@ -266,7 +266,7 @@ bash reinstall.sh netboot.xyz
 #### Method 1: Let the Script Automatically Search for ISO (Recommended)
 
 - Typically, Windows releases new official ISOs every month, which integrate the latest system patches, avoiding the need to download a bunch of updates right after installation.
-- The script will search for ISOs from <https://massgrave.dev/genuine-installation-media.html>, a site that collects monthly released ISOs, ensuring that the ISOs found by the script are the official latest versions.
+- The script will search for ISOs from <https://massgrave.dev/genuine-installation-media>, a site that collects monthly released ISOs, ensuring that the ISOs found by the script are the official latest versions.
 - Systems marked with \* do not support automatic ISO searching.
 
 ```bash
@@ -336,13 +336,13 @@ bash reinstall.sh windows \
 
 <summary>The following website provides ISO links.</summary>
 
-- <https://massgrave.dev/genuine-installation-media.html> (Recommended, iso sourced from official channels, updated monthly, includes the latest patches)
+- <https://massgrave.dev/genuine-installation-media> (Recommended, iso sourced from official channels, updated monthly, includes the latest patches)
 - <https://www.microsoft.com/software-download/windows10> (Need to open it with a non-Windows User-Agent)
 - <https://www.microsoft.com/software-download/windows11>
 - <https://www.microsoft.com/software-download/windowsinsiderpreviewiso> (Preview)
 - <https://www.microsoft.com/evalcenter/download-windows-10-enterprise>
 - <https://www.microsoft.com/evalcenter/download-windows-11-enterprise>
-- <https://www.microsoft.com/evalcenter/download-windows-11-iot-enterprise-ltsc>
+- <https://www.microsoft.com/evalcenter/download-windows-11-iot-enterprise-ltsc-eval>
 - <https://www.microsoft.com/evalcenter/download-windows-server-2012-r2>
 - <https://www.microsoft.com/evalcenter/download-windows-server-2016>
 - <https://www.microsoft.com/evalcenter/download-windows-server-2019>
