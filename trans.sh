@@ -4271,6 +4271,7 @@ install_windows() {
         nvme_ver=$(
             case "$nt_ver" in
             6.1) echo 1.3.2 ;; # sha1 签名
+            6.2 | 6.3) echo 1.5.1 ;;
             *) echo Latest ;;
             esac
         )
