@@ -90,11 +90,16 @@ rem 重新分区/格式化
 
     echo create part primary
     echo format fs=ntfs quick
+    rem echo assign letter=Z
 ) else (
     echo select disk %DiskIndex%
 
     echo select part 1
+    rem echo delete part override
+    rem echo create part primary
     echo format fs=ntfs quick
+    echo active
+    rem echo assign letter=Z
 )) > X:\diskpart.txt
 
 rem 使用 diskpart /s ，出错不会执行剩下的 diskpart 命令
@@ -104,6 +109,21 @@ del X:\diskpart.txt
 rem 盘符
 rem X boot.wim (ram)
 rem Y installer
+rem Z os
+
+rem 删除 boot.wim (bios 才有，vista 也有) 并创建虚拟内存
+rem vista/2008 不能删除，安装时要用
+if %BuildNumber% GEQ 7600 if exist Y:\sources\boot.wim (
+    del Y:\sources\boot.wim
+    call :createPageFile
+)
+
+rem 旧版安装程序会自动在C盘设置虚拟内存，新版安装程序(24h2)不会
+rem 如果不创建虚拟内存，do/aws 1g 内存 bios 引导的机器无法完成安装
+if %BuildNumber% GEQ 26040 (
+    rem 因为上面已经删除了 boot.wim 并创建虚拟内存，因此这步不需要
+    rem call :createPageFileOnZ
+)
 
 rem 设置应答文件的主硬盘 id
 set "file=X:\windows.xml"
@@ -184,10 +204,14 @@ exit /b
 
 :createPageFile
 rem 尽量填满空间，pagefile 默认 64M
-for /l %%i in (1, 1, 10) do (
+for /l %%i in (1, 1, 100) do (
     wpeutil CreatePageFile /path=Y:\pagefile%%i.sys 2>nul
     if errorlevel 1 (
         exit /b
     )
 )
+exit /b
+
+:createPageFileOnZ
+wpeutil CreatePageFile /path=Z:\pagefile.sys /size=512
 exit /b
