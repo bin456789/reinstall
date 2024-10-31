@@ -4725,6 +4725,12 @@ install_windows() {
         cp /os/boot.wim /os/installer/sources/boot.wim
     fi
 
+    # vista 安装时需要 boot.wim，原因见上面
+    if [ "$nt_ver" = 6.0 ] &&
+        ! [ -e /os/installer/sources/boot.wim ]; then
+        cp /os/boot.wim /os/installer/sources/boot.wim
+    fi
+
     # windows 7 没有 invoke-webrequest
     # installer分区盘符不一定是D盘
     # 所以复制 resize.bat 到 install.wim
