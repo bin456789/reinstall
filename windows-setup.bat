@@ -43,6 +43,11 @@ echo list vol | diskpart | find "efi" && (
     set BootType=bios
 )
 
+rem 获取 ProductType
+for /f "tokens=3" %%a in ('reg query "HKLM\SYSTEM\CurrentControlSet\Control\ProductOptions" /v ProductType') do (
+    set "ProductType=%%a"
+)
+
 rem 获取 BuildNumber
 for /f "tokens=3" %%a in ('reg query "HKLM\SOFTWARE\Microsoft\Windows NT\CurrentVersion" /v CurrentBuildNumber') do (
     set "BuildNumber=%%a"
@@ -149,12 +154,16 @@ for %%a in (RAM TPM SecureBoot) do (
 )
 
 rem 设置
-set EnableEMS=0
 set ForceOldSetup=0
 set EnableUnattended=1
 
-if "%EnableEMS%"=="1" (
-    set EMS=/EMSPort:COM1 /EMSBaudRate:115200
+rem 运行 ramdisk X:\setup.exe 的话
+rem vista 会找不到安装源
+rem server 23h2 会无法运行
+if "%ForceOldSetup%"=="1" (
+    set setup=Y:\sources\setup.exe
+) else (
+    set setup=Y:\setup.exe
 )
 
 if "%EnableUnattended%"=="1" (
@@ -181,13 +190,11 @@ if %BuildNumber% GEQ 26040 if "%ForceOldSetup%"=="0" (
     set ResizeRecoveryPartition=/ResizeRecoveryPartition Disable
 )
 
-rem 运行 ramdisk X:\setup.exe 的话
-rem vista 会找不到安装源
-rem server 23h2 会无法运行
-if "%ForceOldSetup%"=="1" (
-    set setup=Y:\sources\setup.exe
-) else (
-    set setup=Y:\setup.exe
+rem 为 windows server 打开 EMS
+rem 普通 windows 没有自带 EMS 组件，暂不处理
+if "%ProductType%"=="ServerNT" (
+    rem set EMS=/EMSPort:UseBIOSSettings /EMSBaudRate:115200
+    set EMS=/EMSPort:COM1 /EMSBaudRate:115200
 )
 
 %setup% %ResizeRecoveryPartition% %EMS% %Unattended%
