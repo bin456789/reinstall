@@ -4700,15 +4700,22 @@ install_windows() {
     wimunmount --commit /wim/
 
     # 优化 boot.wim 大小
-    # vista 删除镜像1 会报错
-    # Windows cannot access the required file Drive:\Sources\Boot.wim.
-    # Make sure all files required for installation are available and restart the installation.
-    # Error code: 0x80070491
-    du -h /iso/sources/boot.wim
-    du -h /os/boot.wim
-    # wimdelete /os/boot.wim 1
-    wimoptimize /os/boot.wim
-    du -h /os/boot.wim
+    echo "boot.wim size:"
+    echo "Original: $(du -h /iso/sources/boot.wim | cut -f1)"
+    echo "Original + Drivers: $(du -h /os/boot.wim | cut -f1)"
+    if is_nt_ver_ge 6.1 && [ "$boot_index" = 2 ]; then
+        # win7 或以上删除 boot.wim 镜像 1 不会报错
+        # 因为 win7 winre 镜像在 install.wim Windows\System32\Recovery\winRE.wim
+        wimdelete /os/boot.wim 1
+    else
+        # vista 删除 boot.wim 镜像 1 会报错
+        # Windows cannot access the required file Drive:\Sources\Boot.wim.
+        # Make sure all files required for installation are available and restart the installation.
+        # Error code: 0x80070491
+        # vista install.wim 没有 Windows\System32\Recovery\winRE.wim
+        wimoptimize /os/boot.wim
+    fi
+    echo "Original + Drivers + Optimized: $(du -h /os/boot.wim | cut -f1)"
 
     # 将 boot.wim 放到正确的位置
     if is_efi; then
