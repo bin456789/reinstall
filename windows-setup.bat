@@ -116,17 +116,11 @@ rem X boot.wim (ram)
 rem Y installer
 rem Z os
 
-rem 删除 boot.wim (bios 才有，vista 也有) 并创建虚拟内存
-rem vista/2008 不能删除，安装时要用
-if %BuildNumber% GEQ 7600 if exist Y:\sources\boot.wim (
-    del Y:\sources\boot.wim
-    call :createPageFile
-)
-
 rem 旧版安装程序会自动在C盘设置虚拟内存，新版安装程序(24h2)不会
-rem 如果不创建虚拟内存，do/aws 1g 内存 bios 引导的机器无法完成安装
+rem 如果不创建虚拟内存，1g 内存的机器安装时会报错/杀进程
 if %BuildNumber% GEQ 26040 (
-    rem 因为上面已经删除了 boot.wim 并创建虚拟内存，因此这步不需要
+    rem 已经在 installer 分区创建了虚拟内存，约等于 boot.wim 的大小，因此这步不需要
+    rem vista/2008 没有删除 boot.wim，200M预留空间-(文件系统占用+驱动占用)后，实测能创建1个64M虚拟内存文件
     rem call :createPageFileOnZ
 )
 
@@ -197,6 +191,7 @@ if "%ProductType%"=="ServerNT" (
     set EMS=/EMSPort:COM1 /EMSBaudRate:115200
 )
 
+echo on
 %setup% %ResizeRecoveryPartition% %EMS% %Unattended%
 exit /b
 
@@ -212,10 +207,7 @@ exit /b
 :createPageFile
 rem 尽量填满空间，pagefile 默认 64M
 for /l %%i in (1, 1, 100) do (
-    wpeutil CreatePageFile /path=Y:\pagefile%%i.sys 2>nul
-    if errorlevel 1 (
-        exit /b
-    )
+    wpeutil CreatePageFile /path=Y:\pagefile%%i.sys >nul 2>nul && echo Created pagefile%%i.sys || exit /b
 )
 exit /b
 

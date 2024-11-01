@@ -1914,7 +1914,11 @@ create_part() {
         fi
 
         # 按iso容量计算分区大小
-        # 200m 用于驱动/文件系统自身占用 + pagefile (手动 dism 释放镜像时使用)
+        # 200m 用于驱动/文件系统自身占用 + pagefile
+        # 理论上 installer 分区可以删除 boot.wim，这样就不用额外添加 200m，但是
+        # 1. vista/2008 不能删除 boot.wim
+        # 2. 下载镜像前不知道是 vista/2008，因为 --image-name 可以随便输入
+        # 因此还是要额外添加 200m
         part_size="$((size_bytes / 1024 / 1024 + 200))MiB"
 
         apk add ntfs-3g-progs
@@ -1926,7 +1930,7 @@ create_part() {
                 mklabel gpt \
                 mkpart '" "' fat32 1MiB 1025MiB \
                 mkpart '" "' fat32 1025MiB 1041MiB \
-                mkpart '" "' ext4 1041MiB -${part_size} \
+                mkpart '" "' ntfs 1041MiB -${part_size} \
                 mkpart '" "' ntfs -${part_size} 100% \
                 set 1 boot on \
                 set 2 msftres on \
@@ -1935,7 +1939,7 @@ create_part() {
 
             mkfs.fat -n efi /dev/$xda*1                           #1 efi
             dd if=/dev/zero of="$(ls /dev/$xda*2)" bs=1M count=16 #2 msr
-            mkfs.ext4 -F -L os /dev/$xda*3                        #3 os
+            mkfs.ntfs -f -F -L os /dev/$xda*3                     #3 os
             mkfs.ntfs -f -F -L installer /dev/$xda*4              #4 installer
         else
             # bios + mbr 启动盘最大可用 2t
@@ -1947,7 +1951,7 @@ create_part() {
                 set 1 boot on
             update_part
 
-            mkfs.ext4 -F -L os /dev/$xda*1           #1 os
+            mkfs.ntfs -f -F -L os /dev/$xda*1        #1 os
             mkfs.ntfs -f -F -L installer /dev/$xda*2 #2 installer
         fi
     elif is_use_cloud_image; then
@@ -3859,19 +3863,22 @@ mount_part_basic_layout() {
 mount_part_for_iso_installer() {
     info "Mount part for iso installer"
 
+    if [ "$distro" = windows ]; then
+        mount_args="-t ntfs3"
+    else
+        mount_args=
+    fi
+
     # 挂载主分区
     mkdir -p /os
-    mount /dev/disk/by-label/os /os
+    mount $mount_args /dev/disk/by-label/os /os
 
     # 挂载其他分区
-    mkdir -p /os/boot/efi
     if is_efi; then
+        mkdir -p /os/boot/efi
         mount /dev/disk/by-label/efi /os/boot/efi
     fi
     mkdir -p /os/installer
-    if [ "$distro" = windows ]; then
-        mount_args="-t ntfs3"
-    fi
     mount $mount_args /dev/disk/by-label/installer /os/installer
 }
 
@@ -4036,6 +4043,10 @@ get_cloud_vendor() {
     fi
 }
 
+get_filesize_mb() {
+    du -m "$1" | awk '{print $1}'
+}
+
 install_windows() {
     info "Process windows iso"
 
@@ -4045,42 +4056,20 @@ install_windows() {
     mkdir -p /iso
     mount -o ro /os/windows.iso /iso
 
-    # 复制 boot.wim 到 /os，用于临时编辑
-    if [ -n "$boot_wim" ]; then
-        # 自定义 boot.wim 链接
-        download "$boot_wim" /os/boot.wim
+    if [ -e /iso/sources/install.esd ]; then
+        iso_install_wim=/iso/sources/install.esd
     else
-        cp /iso/sources/boot.wim /os/boot.wim
+        iso_install_wim=/iso/sources/install.wim
     fi
-
-    # 从iso复制文件
-    # 复制iso全部文件(除了boot.wim)到installer分区
-    # efi: 额外复制boot开头的文件+efi目录到efi分区，
-    if is_efi; then
-        cp -rv /iso/boot* /os/boot/efi/
-        cp -rv /iso/efi/ /os/boot/efi/
-    fi
-
-    echo 'Copying installer files...'
-    if false; then
-        rsync -rv --exclude=/sources/boot.wim /iso/* /os/installer/
-    else
-        (
-            cd /iso
-            find . -type f -not -name boot.wim -exec cp -r --parents {} /os/installer/ \;
-        )
-    fi
-
-    if [ -e /os/installer/sources/install.esd ]; then
-        install_wim=/os/installer/sources/install.esd
-    else
-        install_wim=/os/installer/sources/install.wim
-    fi
+    install_wim=/os/installer/sources/install.wim
 
     # 匹配映像版本
     # 需要整行匹配，因为要区分 Windows 10 Pro 和 Windows 10 Pro for Workstations
-    image_count=$(wiminfo $install_wim | grep "^Image Count:" | cut -d: -f2 | xargs)
-    all_image_names=$(wiminfo $install_wim | grep ^Name: | sed 's/^Name: *//')
+    image_count=$(wiminfo $iso_install_wim | grep "^Image Count:" | cut -d: -f2 | xargs)
+    all_image_names=$(wiminfo $iso_install_wim | grep ^Name: | sed 's/^Name: *//')
+    info "Images Count: $image_count"
+    echo "$all_image_names"
+    echo
 
     if [ "$image_count" = 1 ]; then
         # 只有一个版本就用那个版本
@@ -4109,7 +4098,6 @@ install_windows() {
             done
         done
     fi
-    echo "Image Name: $image_name"
 
     get_boot_wim_prop() {
         property=$1
@@ -4118,7 +4106,7 @@ install_windows() {
 
     get_selected_image_prop() {
         property=$1
-        wiminfo "$install_wim" "$image_name" | grep -i "^$property:" | cut -d: -f2- | xargs
+        wiminfo "$iso_install_wim" "$image_name" | grep -i "^$property:" | cut -d: -f2- | xargs
     }
 
     # PRODUCTTYPE:
@@ -4143,12 +4131,68 @@ install_windows() {
         esac
     )
 
-    info "Windows image info"
+    info "Selected image info"
     echo "Image Name: $image_name"
+    echo "Product Version: $product_ver"
+    echo "Product Type: $product_type"
     echo "NT Version: $nt_ver"
     echo "Build Version: $build_ver"
-    echo "Product Type: $product_type"
-    echo "Product Version: $product_ver"
+    echo
+
+    # 复制 boot.wim 到 /os，用于临时编辑
+    if [ -n "$boot_wim" ]; then
+        # 自定义 boot.wim 链接
+        download "$boot_wim" /os/boot.wim
+    else
+        cp /iso/sources/boot.wim /os/boot.wim
+    fi
+
+    # efi 启动目录为 efi 分区
+    # bios 启动目录为 os 分区
+    if is_efi; then
+        boot_dir=/os/boot/efi
+    else
+        boot_dir=/os
+    fi
+
+    # 复制启动相关的文件
+    # efi 额外复制efi目录
+    echo 'Copying boot files...'
+    cp -r /iso/boot* $boot_dir
+    if is_efi; then
+        echo 'Copying efi files...'
+        cp -r /iso/efi/ $boot_dir
+    fi
+
+    # 复制iso全部文件(除了boot.wim)到installer分区
+    echo 'Copying installer files...'
+    if false; then
+        rsync -rv \
+            --exclude=/sources/boot.wim \
+            --exclude=/sources/install.wim \
+            /iso/* /os/installer/
+    else
+        (
+            cd /iso
+            find . -type f \
+                -not -name boot.wim \
+                -not -name install.wim \
+                -exec cp -r --parents {} /os/installer/ \;
+        )
+    fi
+
+    # 优化 install.wim
+    # 优点1: 可以节省 200M~600M 空间，用来创建虚拟内存
+    #       （意义不大，因为已经删除了 boot.wim 用来创建虚拟内存）
+    # 优点2: 可以将 esd 转为 wim，但要提前预留更多空间
+    # 缺点: 如果 install.wim 只有一个镜像，则只能缩小 10M+
+    if false; then
+        time wimexport --threads "$(get_build_threads 512)" "$iso_install_wim" "$image_name" "$install_wim"
+        echo "Original: $(get_filesize_mb "$iso_install_wim")"
+        echo "Optimized: $(get_filesize_mb "$install_wim")"
+    else
+        cp "$iso_install_wim" "$install_wim"
+    fi
 
     # win11 要求 1GHz 2核（1核超线程也行）
     # 用注册表无法绕过
@@ -4699,36 +4743,34 @@ install_windows() {
     info "Unmount boot.wim"
     wimunmount --commit /wim/
 
-    # 优化 boot.wim 大小
-    echo "boot.wim size:"
-    echo "Original: $(du -h /iso/sources/boot.wim | cut -f1)"
-    echo "Original + Drivers: $(du -h /os/boot.wim | cut -f1)"
-    if is_nt_ver_ge 6.1 && [ "$boot_index" = 2 ]; then
+    # 原地优化可以用以下命令之一
+    # wimdelete /os/boot.wim 1
+    # wimoptimize /os/boot.wim
+
+    # 优化 boot.wim 并复制到正确的位置
+    mkdir -p $boot_dir/sources/
+    if is_nt_ver_ge 6.1; then
         # win7 或以上删除 boot.wim 镜像 1 不会报错
         # 因为 win7 winre 镜像在 install.wim Windows\System32\Recovery\winRE.wim
-        wimdelete /os/boot.wim 1
+        images=$boot_index
     else
         # vista 删除 boot.wim 镜像 1 会报错
         # Windows cannot access the required file Drive:\Sources\Boot.wim.
         # Make sure all files required for installation are available and restart the installation.
         # Error code: 0x80070491
         # vista install.wim 没有 Windows\System32\Recovery\winRE.wim
-        wimoptimize /os/boot.wim
+        images=all
     fi
-    echo "Original + Drivers + Optimized: $(du -h /os/boot.wim | cut -f1)"
-
-    # 将 boot.wim 放到正确的位置
-    if is_efi; then
-        mkdir -p /os/boot/efi/sources/
-        cp /os/boot.wim /os/boot/efi/sources/boot.wim
-    else
-        cp /os/boot.wim /os/installer/sources/boot.wim
-    fi
+    wimexport --boot /os/boot.wim "$images" $boot_dir/sources/boot.wim
+    echo "boot.wim size:"
+    echo "Original: $(get_filesize_mb /iso/sources/boot.wim)"
+    echo "Added Drivers: $(get_filesize_mb /os/boot.wim)"
+    echo "Optimized: $(get_filesize_mb "$boot_dir/sources/boot.wim")"
 
     # vista 安装时需要 boot.wim，原因见上面
     if [ "$nt_ver" = 6.0 ] &&
         ! [ -e /os/installer/sources/boot.wim ]; then
-        cp /os/boot.wim /os/installer/sources/boot.wim
+        cp $boot_dir/sources/boot.wim /os/installer/sources/boot.wim
     fi
 
     # windows 7 没有 invoke-webrequest
@@ -4769,7 +4811,7 @@ install_windows() {
         cat <<EOF >/os/boot/grub/grub.cfg
             set timeout=5
             menuentry "reinstall" {
-                search --no-floppy --label --set=root installer
+                search --no-floppy --label --set=root os
                 ntldr /bootmgr
             }
 EOF
