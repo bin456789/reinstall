@@ -14,14 +14,14 @@ One-Click Script to Reinstall System [中文](README.md)
 
 ## Highlights
 
-- Supports one-click installation of Linux: allows install 17 common distributions.
-- Supports one-click Windows installation: Uses the official ISO for installation instead of custom images. The script automatically retrieves the ISO link and installs `Virtio` and other drivers.
+- One-click Linux installation: allows install 17 common distributions.
+- One-click Windows installation: Uses the official ISO for installation instead of custom images. The script automatically retrieves the ISO link and installs `Virtio` and other drivers.
 - Supports installation in any direction, i.e., `Linux to Linux`, `Linux to Windows`, `Windows to Windows`, `Windows to Linux`
 - No need to input IP parameters; automatically recognizes dynamic and static IPs, supports `/32`, `/128`, `gateway outside subnet`, `IPv6 only`, `dual NIC` and other special network configurations
 - Specially optimized for low-spec servers, requires less memory than the official netboot
 - Uses partition table ID to identify hard drives throughout the process, ensuring no wrong disk is written
 - Supports BIOS and EFI boot, and ARM architecture
-- No homemades image included, all resources are obtained in real-time from source sites
+- No homemades image included, all resources are obtained in real-time from mirror sites
 - Includes many comments.
 
 ## System Requirements
@@ -254,7 +254,7 @@ bash reinstall.sh netboot.xyz
 - The machine with a static IP will automatically configure the IP. It may take a few minutes to take effect on the first boot.
 - Supports all languages.
 
-#### 支持的系统
+#### Supported Systems
 
 - Windows (Vista ~ 11)
 - Windows Server (2008 ~ 2025)
