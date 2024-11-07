@@ -4059,10 +4059,11 @@ install_windows() {
 
     if [ -e /iso/sources/install.esd ]; then
         iso_install_wim=/iso/sources/install.esd
+        install_wim=/os/installer/sources/install.esd
     else
         iso_install_wim=/iso/sources/install.wim
+        install_wim=/os/installer/sources/install.wim
     fi
-    install_wim=/os/installer/sources/install.wim
 
     # 匹配映像版本
     # 需要整行匹配，因为要区分 Windows 10 Pro 和 Windows 10 Pro for Workstations
@@ -4171,6 +4172,7 @@ install_windows() {
         rsync -rv \
             --exclude=/sources/boot.wim \
             --exclude=/sources/install.wim \
+            --exclude=/sources/install.esd \
             /iso/* /os/installer/
     else
         (
@@ -4178,19 +4180,21 @@ install_windows() {
             find . -type f \
                 -not -name boot.wim \
                 -not -name install.wim \
+                -not -name install.esd \
                 -exec cp -r --parents {} /os/installer/ \;
         )
     fi
 
     # 优化 install.wim
-    # 优点1: 可以节省 200M~600M 空间，用来创建虚拟内存
-    #       （意义不大，因为已经删除了 boot.wim 用来创建虚拟内存）
-    # 优点2: 可以将 esd 转为 wim，但要提前预留更多空间
+    # 优点: 可以节省 200M~600M 空间，用来创建虚拟内存
+    #       （意义不大，因为已经删除了 boot.wim 用来创建虚拟内存，vista 除外）
     # 缺点: 如果 install.wim 只有一个镜像，则只能缩小 10M+
-    if false; then
+    if true; then
         time wimexport --threads "$(get_build_threads 512)" "$iso_install_wim" "$image_name" "$install_wim"
-        echo "Original: $(get_filesize_mb "$iso_install_wim")"
+        info "install.wim size"
+        echo "Original:  $(get_filesize_mb "$iso_install_wim")"
         echo "Optimized: $(get_filesize_mb "$install_wim")"
+        echo
     else
         cp "$iso_install_wim" "$install_wim"
     fi
@@ -4763,10 +4767,11 @@ install_windows() {
         images=all
     fi
     wimexport --boot /os/boot.wim "$images" $boot_dir/sources/boot.wim
-    echo "boot.wim size:"
-    echo "Original: $(get_filesize_mb /iso/sources/boot.wim)"
+    info "boot.wim size"
+    echo "Original:      $(get_filesize_mb /iso/sources/boot.wim)"
     echo "Added Drivers: $(get_filesize_mb /os/boot.wim)"
-    echo "Optimized: $(get_filesize_mb "$boot_dir/sources/boot.wim")"
+    echo "Optimized:     $(get_filesize_mb "$boot_dir/sources/boot.wim")"
+    echo
 
     # vista 安装时需要 boot.wim，原因见上面
     if [ "$nt_ver" = 6.0 ] &&
@@ -4777,8 +4782,7 @@ install_windows() {
     # windows 7 没有 invoke-webrequest
     # installer分区盘符不一定是D盘
     # 所以复制 resize.bat 到 install.wim
-    # TODO: 由于esd文件无法修改，要将resize.bat放到boot.wim
-    if [[ "$install_wim" = '*.wim' ]]; then
+    if true; then
         info "mount install.wim"
         wimmountrw $install_wim "$image_name" /wim/
         if false; then
