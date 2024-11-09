@@ -4374,6 +4374,7 @@ install_windows() {
             case "$nt_ver" in
             6.1) echo 8.3.2 ;; # sha1 签名
             # 6.1) echo 8.3.5 ;; # sha256 签名
+            6.2 | 6.3) echo 8.4.3 ;;
             *) echo Latest ;;
             esac
         )
