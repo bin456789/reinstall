@@ -41,7 +41,7 @@ rem 重启服务 可以用 sc 或者 net
 rem UmRdpService 依赖 TermService
 rem sc stop 不能处理依赖关系，因此 sc stop TermService 前需要 sc stop UmRdpService
 rem net stop 可以处理依赖关系
-rem sc stop 是异步的，rem net stop 不是异步，但有 timeout 时间
+rem sc stop 是异步的，net stop 不是异步，但有 timeout 时间
 rem TermService 运行后，UmRdpService 会自动运行
 
 rem 如果刚好系统在启动 rdp 服务，则会失败，因此要用 goto 循环

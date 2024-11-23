@@ -137,9 +137,7 @@ for /f %%a in ('%SystemDrive%\cygwin\bin\cygpath -ua ./') do set thisdir=%%a
 
 rem 下载 reinstall.sh
 if not exist reinstall.sh (
-    rem call :download %confhome%/reinstall.sh %~dp0reinstall.sh
-    call :download_with_curl %confhome%/reinstall.sh %thisdir%reinstall.sh
-    if errorlevel 1 goto :download_failed
+    call :download_with_curl %confhome%/reinstall.sh %thisdir%reinstall.sh || goto :download_failed
     call :chmod a+x %thisdir%reinstall.sh
 )
 
@@ -163,6 +161,7 @@ exit /b
 
 :download
 rem bits 要求有 Content-Length 才能下载
+rem 据说如果网络设为“按流量计费” bits 也无法下载
 rem https://learn.microsoft.com/en-us/windows/win32/bits/http-requirements-for-bits-downloads
 rem certutil 会被 windows Defender 报毒
 rem windows server 2019 要用第二条 certutil 命令
@@ -175,8 +174,12 @@ if not exist "%~2" exit /b 1
 exit /b
 
 :download_with_curl
+rem 加 --insecure 防止以下错误
+rem curl: (77) error setting certificate verify locations:
+rem   CAfile: /etc/ssl/certs/ca-certificates.crt
+rem   CApath: none
 echo Download: %~1 %~2
-%SystemDrive%\cygwin\bin\curl -L "%~1" -o "%~2"
+%SystemDrive%\cygwin\bin\curl -L --insecure "%~1" -o "%~2"
 exit /b
 
 :chmod

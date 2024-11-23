@@ -63,5 +63,5 @@ if defined mac_addr (
     )
 )
 
-rem 删除脚本文件
+rem 删除此脚本
 del "%~f0"
