@@ -443,6 +443,80 @@ run_with_del_cr_template() {
     fi
 }
 
+_wmic() {
+    if is_have_cmd wmic; then
+        # 如果参数没有 GET，添加 GET，防止以下报错
+        # wmic memorychip /format:list
+        # 此级别的开关异常。
+        has_get=false
+        for i in "$@"; do
+            # 如果参数有 GET
+            if [ "$(to_upper <<<"$i")" = GET ]; then
+                has_get=true
+                break
+            fi
+        done
+
+        # 输出为 /format:list 格式
+        if $has_get; then
+            command wmic "$@" /format:list
+        else
+            command wmic "$@" get /format:list
+        fi
+        return
+    fi
+
+    # powershell wmi 默认参数
+    local namespace='root\cimv2'
+    local class=
+    local filter=
+    local props=
+
+    # namespace
+    if [[ "$(to_upper <<<"$1")" = /NAMESPACE* ]]; then
+        # 删除引号，删除 \\
+        namespace=$(cut -d: -f2 <<<"$1" | sed -e "s/[\"']//g" -e 's/\\\\//g')
+        shift
+    fi
+
+    # class
+    if [[ "$(to_upper <<<"$1")" = PATH ]]; then
+        class=$2
+        shift 2
+    else
+        case "$(to_lower <<<"$1")" in
+        nicconfig) class=Win32_NetworkAdapterConfiguration ;;
+        memorychip) class=Win32_PhysicalMemory ;;
+        *) class=Win32_$1 ;;
+        esac
+        shift
+    fi
+
+    # filter
+    if [[ "$(to_upper <<<"$1")" = WHERE ]]; then
+        filter=$2
+        shift 2
+    fi
+
+    # props
+    if [[ "$(to_upper <<<"$1")" = GET ]]; then
+        props=$2
+        shift 2
+    fi
+
+    if ! [ -f "$tmp/wmic.ps1" ]; then
+        curl -Lo "$tmp/wmic.ps1" "$confhome/wmic.ps1"
+    fi
+
+    # shellcheck disable=SC2046
+    powershell -NoLogo -NoProfile -NonInteractive -ExecutionPolicy Bypass \
+        -File "$(cygpath -w "$tmp/wmic.ps1")" \
+        -Namespace $namespace \
+        -Class $class \
+        $([ -n "$filter" ] && echo "-Filter $filter") \
+        $([ -n "$props" ] && echo "-Properties $props")
+}
+
 is_virt() {
     if [ -z "$_is_virt" ]; then
         if is_in_windows; then
@@ -450,7 +524,7 @@ is_virt() {
             # https://sources.debian.org/src/hw-detect/1.159/hw-detect.finish-install.d/08hw-detect/
             vmstr='VMware|Virtual|Virtualization|VirtualBox|VMW|Hyper-V|Bochs|QEMU|KVM|OpenStack|KubeVirt|innotek|Xen|Parallels|BHYVE'
             for name in ComputerSystem BIOS BaseBoard; do
-                if wmic $name get /format:list | grep -Eiw $vmstr; then
+                if wmic $name | grep -Eiw $vmstr; then
                     _is_virt=true
                     break
                 fi
@@ -458,8 +532,8 @@ is_virt() {
 
             # 没有风扇和温度信息，大概是虚拟机
             if [ -z "$_is_virt" ] &&
-                ! wmic /namespace:'\\root\cimv2' PATH Win32_Fan 2>/dev/null | grep -q Name &&
-                ! wmic /namespace:'\\root\wmi' PATH MSAcpi_ThermalZoneTemperature 2>/dev/null | grep -q Name; then
+                ! wmic /namespace:'\\root\cimv2' PATH Win32_Fan 2>/dev/null | grep -q ^Name &&
+                ! wmic /namespace:'\\root\wmi' PATH MSAcpi_ThermalZoneTemperature 2>/dev/null | grep -q ^Name; then
                 _is_virt=true
             fi
         else
@@ -1702,7 +1776,7 @@ install_pkg() {
             return 0
         fi
 
-        # busybox grep 无法 grep -oP
+        # busybox grep 不支持 -oP
         if [ "$cmd" = grep ] && is_have_cmd apk && $cmd |& grep -wq BusyBox; then
             return 0
         fi
@@ -1748,7 +1822,7 @@ check_ram() {
     )
 
     if is_in_windows; then
-        ram_size=$(wmic memorychip get capacity | tail +2 | awk '{sum+=$1} END {print sum/1024/1024}')
+        ram_size=$(wmic memorychip get capacity | awk -F= '{sum+=$2} END {print sum/1024/1024}')
     else
         # lsmem最准确但 centos7 arm 和 alpine 不能用，debian 9 util-linux 没有 lsmem
         # arm 24g dmidecode 显示少了128m
@@ -2094,7 +2168,7 @@ collect_netconf() {
                     gateway=$(awk '{print $6}' <<<"$route")
                 fi
 
-                config=$(wmic nicconfig where InterfaceIndex=$id get MACAddress,IPAddress,IPSubnet,DefaultIPGateway /format:list)
+                config=$(wmic nicconfig where InterfaceIndex=$id get MACAddress,IPAddress,IPSubnet,DefaultIPGateway)
                 # 排除 IP/子网/网关/MAC 为空的
                 if grep -q '=$' <<<"$config"; then
                     continue
@@ -3425,8 +3499,7 @@ if is_in_windows; then
     # x64-based PC
     # ARM-based PC
     # ARM64-based PC
-    basearch=$(wmic ComputerSystem get SystemType /format:list |
-        grep '=' | cut -d= -f2 | cut -d- -f1)
+    basearch=$(wmic ComputerSystem get SystemType | grep '=' | cut -d= -f2 | cut -d- -f1)
 else
     # archlinux 云镜像没有 arch 命令
     # https://en.wikipedia.org/wiki/Uname

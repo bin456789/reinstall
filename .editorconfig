@@ -14,5 +14,8 @@ end_of_line = crlf
 [*.{bat,cmd,ps1}]
 end_of_line = crlf
 
+[*.ps1]
+charset = utf-8-bom
+
 [*.{yml,yaml}]
 indent_size = 2

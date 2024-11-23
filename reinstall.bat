@@ -31,12 +31,6 @@ if not exist %tmp% (
     md %tmp%
 )
 
-rem 24h2 默认禁用了 wmic
-where wmic >nul 2>nul
-if errorlevel 1 (
-    DISM /Online /Add-Capability /CapabilityName:WMIC
-)
-
 rem 检查是否国内
 if not exist %tmp%\geoip (
     rem 部分地区 www.cloudflare.com 被墙
@@ -70,19 +64,34 @@ if not exist "%tags%" (
     rem wmic os get osarchitecture 显示中文
     rem wmic ComputerSystem get SystemType 显示英文
 
-    for /f "tokens=2 delims==" %%a in ('wmic os get BuildNumber /format:list ^| find "BuildNumber"') do (
-        set /a BuildNumber=%%a
+    rem SystemType
+    rem windows 11 24h2 没有 wmic
+    rem 有的系统精简了 powershell
+    where wmic >nul 2>&1
+    if not errorlevel 1 (
+        for /f "tokens=*" %%a in ('wmic ComputerSystem get SystemType ^| find /i "based"') do (
+            set "SystemType=%%a"
+        )
+    ) else (
+        for /f "delims=" %%a in ('powershell -NoLogo -NoProfile -NonInteractive -Command "(Get-WmiObject win32_computersystem).SystemType"') do (
+            set "SystemType=%%a"
+        )
+    )
+
+    rem BuildNumber
+    for /f "tokens=3" %%a in ('reg query "HKLM\SOFTWARE\Microsoft\Windows NT\CurrentVersion" /v CurrentBuildNumber') do (
+         set /a BuildNumber=%%a
     )
 
     set CygwinEOL=1
 
-    wmic ComputerSystem get SystemType | find "ARM" > nul
+    echo !SystemType! | find "ARM" > nul
     if not errorlevel 1 (
         if !BuildNumber! GEQ 22000 (
             set CygwinEOL=0
         )
     ) else (
-        wmic ComputerSystem get SystemType | find "x64" > nul
+        echo !SystemType! | find "x64" > nul
         if not errorlevel 1 (
             if !BuildNumber! GEQ 9600 (
                 set CygwinEOL=0
