@@ -7,9 +7,13 @@ confhome=https://raw.githubusercontent.com/bin456789/reinstall/main
 confhome_cn=https://www.ghproxy.cc/https://raw.githubusercontent.com/bin456789/reinstall/main
 # confhome_cn=https://jihulab.com/bin456789/reinstall/-/raw/main
 
+DEFAULT_PASSWORD=123@@@
+
 # 用于判断 reinstall.sh 和 trans.sh 是否兼容
 SCRIPT_VERSION=4BACD833-A585-23BA-6CBB-9AA4E08E0002
-DEFAULT_PASSWORD=123@@@
+
+# 记录要用到的 windows 程序，运行时输出删除 cr
+WINDOWS_EXES="cmd powershell wmic reg diskpart netsh bcdedit mountvol"
 
 # https://www.gnu.org/software/gettext/manual/html_node/The-LANGUAGE-variable.html
 export LC_ALL=C
@@ -419,6 +423,23 @@ assert_not_in_container() {
         if [ -d /proc/vz ] || grep -q container=lxc /proc/1/environ; then
             _error_and_exit
         fi
+    fi
+}
+
+# 使用 | del_br ，但返回 del_br 之前返回值
+# ash 不支持 PIPESTATUS[n]
+run_with_del_cr() {
+    res=$("$@") && ret=0 || ret=$?
+    echo "$res" | del_cr
+    return $ret
+}
+
+run_with_del_cr_template() {
+    # 调用链：wmic() -> run_with_del_cr(wmic) -> _wmic() -> command wmic
+    if command -v _$exe >/dev/null; then
+        run_with_del_cr _$exe "$@"
+    else
+        run_with_del_cr command $exe "$@"
     fi
 }
 
@@ -1957,7 +1978,7 @@ find_main_disk() {
         # 磁盘 ID: E5FDE61C
         # 磁盘 ID: {92CF6564-9B2E-4348-A3BD-D84E3507EBD7}
         main_disk=$(printf "%s\n%s" "select volume $c" "uniqueid disk" | diskpart |
-            tail -1 | awk '{print $NF}' | sed 's,[{}],,g' | del_cr)
+            tail -1 | awk '{print $NF}' | sed 's,[{}],,g')
     else
         # centos7下测试     lsblk --inverse $mapper | grep -w disk     grub2-probe -t disk /
         # 跨硬盘btrfs       只显示第一个硬盘                            显示两个硬盘
@@ -2026,7 +2047,7 @@ collect_netconf() {
 
         # 部分机器精简了 powershell
         # 所以不要用 powershell 获取网络信息
-        # ids=$(wmic nic where "PhysicalAdapter=true and MACAddress is not null and (PNPDeviceID like '%VEN_%&DEV_%' or PNPDeviceID like '%{F8615163-DF3E-46C5-913F-F2D2F965ED0E}%')" get InterfaceIndex | del_cr | sed '1d')
+        # ids=$(wmic nic where "PhysicalAdapter=true and MACAddress is not null and (PNPDeviceID like '%VEN_%&DEV_%' or PNPDeviceID like '%{F8615163-DF3E-46C5-913F-F2D2F965ED0E}%')" get InterfaceIndex | sed '1d')
 
         # 否        手动        0    0.0.0.0/0                  19  192.168.1.1
         # 否        手动        0    0.0.0.0/0                  59  nekoray-tun
@@ -2056,9 +2077,9 @@ collect_netconf() {
         for v in 4 6; do
             if [ "$v" = 4 ]; then
                 # 或者 route print
-                routes=$(netsh int ipv4 show route | awk '$4 == "0.0.0.0/0"' | del_cr)
+                routes=$(netsh int ipv4 show route | awk '$4 == "0.0.0.0/0"')
             else
-                routes=$(netsh int ipv6 show route | awk '$4 == "::/0"' | del_cr)
+                routes=$(netsh int ipv6 show route | awk '$4 == "::/0"')
             fi
 
             if [ -z "$routes" ]; then
@@ -2073,7 +2094,7 @@ collect_netconf() {
                     gateway=$(awk '{print $6}' <<<"$route")
                 fi
 
-                config=$(wmic nicconfig where InterfaceIndex=$id get MACAddress,IPAddress,IPSubnet,DefaultIPGateway /format:list | del_cr)
+                config=$(wmic nicconfig where InterfaceIndex=$id get MACAddress,IPAddress,IPSubnet,DefaultIPGateway /format:list)
                 # 排除 IP/子网/网关/MAC 为空的
                 if grep -q '=$' <<<"$config"; then
                     continue
@@ -3195,6 +3216,11 @@ if is_in_windows; then
     # 更改 windows 命令输出语言为英文
     # chcp 会清屏
     mode.com con cp select=437 >/dev/null
+
+    # 为 windows 程序输出删除 cr
+    for exe in $WINDOWS_EXES; do
+        eval "$exe(){ $(get_function_content run_with_del_cr_template | sed "s/\$exe/$exe/g") }"
+    done
 fi
 
 # 检查 root
