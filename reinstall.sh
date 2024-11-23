@@ -2964,7 +2964,7 @@ get_ip_conf_cmd() {
     collect_netconf >&2
     is_in_china && is_in_china=true || is_in_china=false
 
-    sh=/alpine-network.sh
+    sh=/initrd-network.sh
     if is_found_ipv4_netconf && is_found_ipv6_netconf && [ "$ipv4_mac" = "$ipv6_mac" ]; then
         echo "'$sh' '$ipv4_mac' '$ipv4_addr' '$ipv4_gateway' '$ipv6_addr' '$ipv6_gateway' '$is_in_china'"
     else
@@ -3099,8 +3099,8 @@ This script is outdated, please download reinstall.sh again.
 脚本有更新，请重新下载 reinstall.sh"
     fi
 
-    curl -Lo $initrd_dir/alpine-network.sh $confhome/alpine-network.sh
-    chmod a+x $initrd_dir/trans.sh $initrd_dir/alpine-network.sh
+    curl -Lo $initrd_dir/initrd-network.sh $confhome/initrd-network.sh
+    chmod a+x $initrd_dir/trans.sh $initrd_dir/initrd-network.sh
 
     # 保存配置
     mkdir -p $initrd_dir/configs
