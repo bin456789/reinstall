@@ -317,10 +317,38 @@ EOF
     db_progress INFO netcfg/link_detect_progress
 else
     # alpine
-    ip link set dev "$ethx" up
-    sleep 1
-    udhcpc -i "$ethx" -f -q -n || true
-    udhcpc6 -i "$ethx" -f -q -n || true
+    # h3c 移动云电脑使用 udhcpc 会重复提示 sending select，无法获得 ipv6，因此使用 dhcpcd
+    method=dhcpcd
+
+    case "$method" in
+    udhcpc)
+        udhcpc -i "$ethx" -f -q -n || true
+        udhcpc6 -i "$ethx" -f -q -n || true
+        sleep $DNS_FILE_TIMEOUT # 好像不用等待写入 dns，但是以防万一
+        ;;
+    dhcpcd)
+        # https://gitlab.alpinelinux.org/alpine/aports/-/blob/master/main/dhcpcd/dhcpcd.pre-install
+        grep -q dhcpcd /etc/group || addgroup -S dhcpcd
+        grep -q dhcpcd /etc/passwd || adduser -S -D \
+            -h /var/lib/dhcpcd \
+            -s /sbin/nologin \
+            -G dhcpcd \
+            -g dhcpcd \
+            dhcpcd
+
+        # --noipv4ll 禁止生成 169.254.x.x
+        if false; then
+            # 等待 DHCP 全过程
+            timeout $DHCP_TIMEOUT \
+                dhcpcd --persistent --noipv4ll --nobackground "$ethx"
+        else
+            # 等待 DNS
+            dhcpcd --persistent --noipv4ll "$ethx" # 获取到 IP 后立即切换到后台
+            sleep $DNS_FILE_TIMEOUT                # 需要等待写入 dns
+            dhcpcd -x "$ethx"                      # 终止
+        fi
+        ;;
+    esac
 fi
 
 # 等待slaac

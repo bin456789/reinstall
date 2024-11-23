@@ -395,6 +395,8 @@ file_enhanced() {
 }
 
 add_community_repo_for_alpine() {
+    local alpine_ver
+
     # 先检查原来的repo是不是egde
     if grep -q '^http.*/edge/main$' /etc/apk/repositories; then
         alpine_ver=edge
@@ -2395,17 +2397,19 @@ add_efi_entry_in_linux() {
     error_and_exit "Can't find efi partition."
 }
 
+get_grub_efi_filename() {
+    case "$basearch" in
+    x86_64) echo grubx64.efi ;;
+    aarch64) echo grubaa64.efi ;;
+    esac
+}
+
 install_grub_linux_efi() {
     info 'download grub efi'
 
-    if [ "$basearch" = aarch64 ]; then
-        grub_efi=grubaa64.efi
-    else
-        grub_efi=grubx64.efi
-    fi
-
     # fedora 39 的 efi 无法识别 opensuse tumbleweed 的 xfs
     efi_distro=opensuse
+    grub_efi=$(get_grub_efi_filename)
 
     # 不要用 download.opensuse.org 和 download.fedoraproject.org
     # 因为 ipv6 访问有时跳转到 ipv4 地址，造成 ipv6 only 机器无法下载
@@ -2440,6 +2444,24 @@ install_grub_linux_efi() {
     add_efi_entry_in_linux $tmp/$grub_efi
 }
 
+download_and_extract_apk() {
+    local alpine_ver=$1
+    local package=$2
+    local extract_dir=$3
+
+    install_pkg tar xz
+    is_in_china && mirror=http://mirror.nju.edu.cn/alpine || mirror=https://dl-cdn.alpinelinux.org/alpine
+    package_apk=$(curl -L $mirror/v$alpine_ver/main/$basearch/ | grep -oP "$package-[^-]*-[^-]*\.apk" | sort -u)
+    if ! [ "$(wc -l <<<"$package_apk")" -eq 1 ]; then
+        error_and_exit "find no/multi apks."
+    fi
+    mkdir -p "$extract_dir"
+
+    # 屏蔽警告
+    tar 2>&1 | grep -q BusyBox && tar_args= || tar_args=--warning=no-unknown-keyword
+    curl -L "$mirror/v$alpine_ver/main/$basearch/$package_apk" | tar xz $tar_args -C "$extract_dir"
+}
+
 install_grub_win() {
     # 下载 grub
     info download grub
@@ -2471,20 +2493,23 @@ install_grub_win() {
     if is_efi; then
         # efi
         info install grub for efi
-        if [ "$basearch" = aarch64 ]; then
+
+        case "$basearch" in
+        x86_64) grub_arch=x86_64 ;;
+        aarch64) grub_arch=arm64 ;;
+        esac
+
+        # 下载 grub arm64 模块
+        if ! [ -d $grub_dir/grub/$grub_arch-efi ]; then
             # 3.20 是 grub 2.12，可能会有问题
             alpine_ver=3.19
-            is_in_china && mirror=http://mirror.nju.edu.cn/alpine || mirror=https://dl-cdn.alpinelinux.org/alpine
-            grub_efi_apk=$(curl -L $mirror/v$alpine_ver/main/aarch64/ | grep -oP 'grub-efi-.*?apk' | head -1)
-            mkdir -p $tmp/grub-efi
-            curl -L "$mirror/v$alpine_ver/main/aarch64/$grub_efi_apk" | tar xz --warning=no-unknown-keyword -C $tmp/grub-efi/
-            cp -r $tmp/grub-efi/usr/lib/grub/arm64-efi/ $grub_dir
-            $grub-mkimage -p $prefix -O arm64-efi -o "$(cygpath -w $grub_dir/grubaa64.efi)" $grub_modules
-            add_efi_entry_in_windows $grub_dir/grubaa64.efi
-        else
-            $grub-mkimage -p $prefix -O x86_64-efi -o "$(cygpath -w $grub_dir/grubx64.efi)" $grub_modules
-            add_efi_entry_in_windows $grub_dir/grubx64.efi
+            download_and_extract_apk $alpine_ver grub-efi $tmp/grub-efi
+            cp -r $tmp/grub-efi/usr/lib/grub/$grub_arch-efi/ $grub_dir
         fi
+
+        grub_efi=$(get_grub_efi_filename)
+        $grub-mkimage -p $prefix -O $grub_arch-efi -o "$(cygpath -w "$grub_dir/$grub_efi")" $grub_modules
+        add_efi_entry_in_windows "$grub_dir/$grub_efi"
     else
         # bios
         info install grub for bios
@@ -3091,6 +3116,11 @@ mod_initrd_alpine() {
             fi
         fi
     fi
+
+    # hack 下载 dhcpcd
+    # shellcheck disable=SC2154
+    download_and_extract_apk "$nextos_releasever" dhcpcd "$initrd_dir"
+    sed -i -e '/^slaac private/s/^/#/' -e '/^#slaac hwaddr/s/^#//' $initrd_dir/etc/dhcpcd.conf
 
     # hack 2 /usr/share/udhcpc/default.script
     # 脚本被调用的顺序
