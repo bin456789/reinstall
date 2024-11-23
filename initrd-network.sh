@@ -9,6 +9,10 @@ ipv6_addr=$4
 ipv6_gateway=$5
 is_in_china=$6
 
+DHCP_TIMEOUT=15
+DNS_FILE_TIMEOUT=5
+TEST_TIMEOUT=10
+
 # 检测是否有网络是通过检测这些 IP 的端口是否开放
 # 因为 debian initrd 没有 nslookup
 # 改成 generate_204？但检测网络时可能 resolv.conf 为空
@@ -63,6 +67,16 @@ get_first_ipv4_addr() {
     fi
 }
 
+get_first_ipv4_gateway() {
+    # debian 11 initrd 没有 xargs awk
+    # debian 12 initrd 没有 xargs
+    if false; then
+        ip -4 route show default dev "$ethx" | head -1 | awk '{print $3}'
+    else
+        ip -4 route show default dev "$ethx" | head -1 | cut -d' ' -f3
+    fi
+}
+
 remove_netmask() {
     cut -d/ -f1
 }
@@ -74,6 +88,16 @@ get_first_ipv6_addr() {
         ip -6 -o addr show scope global dev "$ethx" | head -1 | awk '{print $4}'
     else
         ip -6 -o addr show scope global dev "$ethx" | head -1 | grep -o '[0-9a-f\:]*/[0-9]*'
+    fi
+}
+
+get_first_ipv6_gateway() {
+    # debian 11 initrd 没有 xargs awk
+    # debian 12 initrd 没有 xargs
+    if false; then
+        ip -6 route show default dev "$ethx" | head -1 | awk '{print $3}'
+    else
+        ip -6 route show default dev "$ethx" | head -1 | cut -d' ' -f3
     fi
 }
 
@@ -99,6 +123,14 @@ is_have_ipv4() {
 
 is_have_ipv6() {
     is_have_ipv6_addr && is_have_ipv6_gateway
+}
+
+is_have_ipv4_dns() {
+    [ -f /etc/resolv.conf ] && grep -q '^nameserver .*\.' /etc/resolv.conf
+}
+
+is_have_ipv6_dns() {
+    [ -f /etc/resolv.conf ] && grep -q '^nameserver .*:' /etc/resolv.conf
 }
 
 add_missing_ipv4_config() {
@@ -157,8 +189,6 @@ is_need_test_ipv6() {
 # debian9  ×    √   没有此软件
 # alpine   √    ×      ×
 
-TIMEOUT=10
-
 test_by_wget() {
     src=$1
     dst=$2
@@ -171,7 +201,7 @@ test_by_wget() {
     fi
 
     # tcp 443 通了就算成功，不管 http 是不是 404
-    wget -T "$TIMEOUT" \
+    wget -T "$TEST_TIMEOUT" \
         --bind-address="$src" \
         --no-check-certificate \
         --max-redirect 0 \
@@ -186,7 +216,7 @@ test_by_nc() {
 
     # tcp 443 通了就算成功
     nc -z -v \
-        -w "$TIMEOUT" \
+        -w "$TEST_TIMEOUT" \
         -s "$src" \
         "$dst" 443
 }
@@ -204,9 +234,8 @@ test_connect() {
 }
 
 test_internet() {
-    echo 'Testing Internet Connection...'
-
-    for i in $(seq 10); do
+    for i in $(seq 5); do
+        echo "Testing Internet Connection. Test $i... "
         if is_need_test_ipv4 && test_connect "$(get_first_ipv4_addr | remove_netmask)" "$ipv4_dns1" >/dev/null 2>&1; then
             echo "IPv4 has internet."
             ipv4_has_internet=true
@@ -243,20 +272,22 @@ if [ -z "$ethx" ]; then
     exit
 fi
 
-echo "Configuring $ethx ($mac_addr)"
+echo "Configuring $ethx ($mac_addr)..."
 
-# dhcp v4 /v6
+# 开启 ethx
+ip link set dev "$ethx" up
+sleep 1
+
+# 开启 dhcpv4/v6
 # debian / kali
 if [ -f /usr/share/debconf/confmodule ]; then
     # shellcheck source=/dev/null
     . /usr/share/debconf/confmodule
 
-    # 开启 ethx + dhcpv4/v6
-    ip link set dev "$ethx" up
-    sleep 1
     db_progress STEP 1
 
     # dhcpv4
+    # 无需等待写入 dns，在 dhcpv6 等待
     db_progress INFO netcfg/dhcp_progress
     udhcpc -i "$ethx" -f -q -n || true
     db_progress STEP 1
@@ -276,7 +307,7 @@ id-assoc na 0 {
 };
 EOF
     dhcp6c -c /var/lib/netcfg/dhcp6c.conf "$ethx" || true
-    sleep 10
+    sleep $DHCP_TIMEOUT # 等待获取 ip 和写入 dns
     # kill-all-dhcp
     kill -9 "$(cat /var/run/dhcp6c.pid)" || true
     db_progress STEP 1
@@ -306,50 +337,55 @@ done
 # 由于还没设置静态ip，所以有条目表示有动态地址
 is_have_ipv4_addr && dhcpv4=true || dhcpv4=false
 is_have_ipv6_addr && dhcpv6_or_slaac=true || dhcpv6_or_slaac=false
+should_disable_ra_slaac=false
 
-# 设置静态地址，或者设置udhcpc无法设置的网关
+# 如果自动获取的 IPv4 地址不是重装前的，则使用之前的
+if $dhcpv4 && [ -n "$ipv4_addr" ] && [ -n "$ipv4_gateway" ] &&
+    ! [ "$ipv4_addr" = "$(get_first_ipv4_addr)" ]; then
+    echo "IPv4 address auto obtained is different from old system."
+    dhcpv4=false
+    flush_ipv4_config
+fi
+
+# 如果自动获取的 IPv6 地址不是重装前的，则使用之前的
+if $dhcpv6_or_slaac && [ -n "$ipv6_addr" ] && [ -n "$ipv6_gateway" ] &&
+    ! [ "$ipv6_addr" = "$(get_first_ipv6_addr)" ]; then
+    echo "IPv6 address auto obtained is different from old system."
+    dhcpv6_or_slaac=false
+    should_disable_ra_slaac=true
+    flush_ipv6_config
+fi
+
+# 设置静态地址，或者设置 debian 9 udhcpc 无法设置的网关
 add_missing_ipv4_config
 add_missing_ipv6_config
 
 # 检查 ipv4/ipv6 是否连接联网
 ipv4_has_internet=false
 ipv6_has_internet=false
-
 test_internet
 
-# 防止自动获取的 IP 无法上网
-# 防止自动获取的 IP 不是重装前的 IP 而造成失联
-if $dhcpv4 && [ -n "$ipv4_addr" ] && [ -n "$ipv4_gateway" ] &&
-    { ! $ipv4_has_internet || ! [ "$ipv4_addr" = "$(get_first_ipv4_addr)" ]; }; then
-    echo "IPv4 from DHCPv4 can't access Internet or not matched."
+# 如果 IPv4 无法上网，并且自动获取的网关不是重装前的网关，则改成静态
+if ! $ipv4_has_internet &&
+    $dhcpv4 && [ -n "$ipv4_addr" ] && [ -n "$ipv4_gateway" ] &&
+    ! [ "$ipv4_gateway" = "$(get_first_ipv4_gateway)" ]; then
+    echo "IPv4 gateway auto obtained is different from old system."
+    dhcpv4=false
     flush_ipv4_config
     add_missing_ipv4_config
     test_internet
-    if $ipv4_has_internet; then
-        dhcpv4=false
-    fi
 fi
 
-should_disable_ra_slaac=false
-# 防止自动获取的 IP 无法上网
-# 防止自动获取的 IP 不是重装前的 IP 而造成失联
-if $dhcpv6_or_slaac && [ -n "$ipv6_addr" ] && [ -n "$ipv6_gateway" ] &&
-    { ! $ipv6_has_internet || ! [ "$ipv6_addr" = "$(get_first_ipv6_addr)" ]; }; then
-    echo "IPv6 from SLAAC/DHCPv6 can't access Internet or not matched."
+# 如果 IPv6 无法上网，并且自动获取的网关不是重装前的网关，则改成静态
+if ! $ipv6_has_internet &&
+    $dhcpv6_or_slaac && [ -n "$ipv6_addr" ] && [ -n "$ipv6_gateway" ] &&
+    ! [ "$ipv6_gateway" = "$(get_first_ipv6_gateway)" ]; then
+    echo "IPv6 gateway auto obtained is different from old system."
+    dhcpv6_or_slaac=false
+    should_disable_ra_slaac=true
     flush_ipv6_config true
     add_missing_ipv6_config
     test_internet
-    if $ipv6_has_internet; then
-        dhcpv6_or_slaac=false
-        should_disable_ra_slaac=true
-    fi
-fi
-
-# 等待 udhcpc 创建 /etc/resolv.conf
-# 好像只有 dhcpv4 会创建 resolv.conf
-if { $dhcpv4 || $dhcpv6_or_slaac; } && [ ! -e /etc/resolv.conf ]; then
-    echo "Waiting for /etc/resolv.conf..."
-    sleep 5
 fi
 
 # 要删除不联网协议的ip，因为
@@ -365,11 +401,11 @@ elif ! $ipv4_has_internet && $ipv6_has_internet; then
 fi
 
 # 如果联网了，但没获取到默认 DNS，则添加我们的 DNS
-if $ipv4_has_internet && ! { [ -e /etc/resolv.conf ] && grep -F '.' /etc/resolv.conf; }; then
+if $ipv4_has_internet && ! { [ -e /etc/resolv.conf ] && is_have_ipv4_dns; }; then
     echo "nameserver $ipv4_dns1" >>/etc/resolv.conf
     echo "nameserver $ipv4_dns2" >>/etc/resolv.conf
 fi
-if $ipv6_has_internet && ! { [ -e /etc/resolv.conf ] && grep -F ':' /etc/resolv.conf; }; then
+if $ipv6_has_internet && ! { [ -e /etc/resolv.conf ] && is_have_ipv6_dns; }; then
     echo "nameserver $ipv6_dns1" >>/etc/resolv.conf
     echo "nameserver $ipv6_dns2" >>/etc/resolv.conf
 fi
