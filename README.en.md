@@ -81,26 +81,17 @@ curl -O https://www.ghproxy.cc/https://raw.githubusercontent.com/bin456789/reins
 
 <details>
 
-<summary>😢Still unable to download?</summary>
+<summary>Resolving Script Download Issues on Windows 7</summary>
 
-### Try the following methods
+Due to lack of support for TLS 1.2, SHA-256, or outdated root certificates, Windows Vista, 7, and Server 2008 (R2) may not be able to download scripts automatically. Manual downloading is required, as follows:
 
-1. For Windows 7, install this patch to enable TLS 1.2.
+Use Internet Explorer (enable TLS 1.2 in IE's advanced settings first) to download, or use Remote Desktop to save the following two files into the same directory:
 
-   <https://aka.ms/easyfix51044>
+- <https://raw.githubusercontent.com/bin456789/reinstall/main/reinstall.bat>
 
-2. Update SSL root certificates.
+- <https://www.cygwin.com/setup-x86.exe>
 
-   ```batch
-   certutil -generateSSTFromWU root.sst
-   certutil -addstore Root root.sst
-   ```
-
-3. Download manually by copying these two files through `Remote Desktop Connection`.
-
-   <https://raw.githubusercontent.com/bin456789/reinstall/main/reinstall.bat>
-
-   <https://raw.githubusercontent.com/bin456789/reinstall/main/reinstall.sh>
+To use, run the downloaded `reinstall.bat`.
 
 </details>
 

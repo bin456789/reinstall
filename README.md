@@ -81,26 +81,17 @@ curl -O https://www.ghproxy.cc/https://raw.githubusercontent.com/bin456789/reins
 
 <details>
 
-<summary>😢还是无法下载？</summary>
+<summary>解决 Windows 7 下无法下载脚本</summary>
 
-### 可尝试以下几种方法
+由于不支持 TLS 1.2、SHA-256、根证书没有更新等原因，Vista，7 和 Server 2008 (R2) 可能无法自动下载脚本，因此需要手动下载，具体操作如下：
 
-1. Windows 7 安装此补丁启用 TLS 1.2
+用 IE 下载 (先在 IE 高级设置里启用 TLS 1.2)，或者通过远程桌面，将这两个文件保存到同一个目录
 
-   <https://aka.ms/easyfix51044>
+- <https://raw.githubusercontent.com/bin456789/reinstall/main/reinstall.bat>
 
-2. 更新 SSL 根证书
+- <https://www.cygwin.com/setup-x86.exe>
 
-   ```batch
-   certutil -generateSSTFromWU root.sst
-   certutil -addstore Root root.sst
-   ```
-
-3. 手动下载，通过 `远程桌面` 复制这两个文件
-
-   <https://raw.githubusercontent.com/bin456789/reinstall/main/reinstall.bat>
-
-   <https://raw.githubusercontent.com/bin456789/reinstall/main/reinstall.sh>
+使用时运行下载的 `reinstall.bat`
 
 </details>
 

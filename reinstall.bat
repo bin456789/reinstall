@@ -32,12 +32,11 @@ if not exist %tmp% (
 )
 
 rem 检查是否国内
-if not exist %tmp%\geoip (
+if not exist geoip (
     rem 部分地区 www.cloudflare.com 被墙
-    call :download http://dash.cloudflare.com/cdn-cgi/trace %tmp%\geoip
-    if errorlevel 1 goto :download_failed
+    call :download http://dash.cloudflare.com/cdn-cgi/trace %~dp0geoip || goto :download_failed
 )
-findstr /c:"loc=CN" %tmp%\geoip >nul
+findstr /c:"loc=CN" geoip >nul
 if not errorlevel 1 (
     rem mirrors.tuna.tsinghua.edu.cn 会强制跳转 https
     set mirror=http://mirror.nju.edu.cn
@@ -111,19 +110,26 @@ if not exist "%tags%" (
     )
 
     rem 下载 Cygwin
-    call :download http://www.cygwin.com/setup-!CygwinArch!.exe %tmp%\setup-cygwin.exe
-    if errorlevel 1 goto :download_failed
+    if not exist setup-!CygwinArch!.exe (
+        call :download http://www.cygwin.com/setup-!CygwinArch!.exe %~dp0setup-!CygwinArch!.exe || goto :download_failed
+    )
 
     rem 安装 Cygwin
     set site=!mirror!!dir!
-    %tmp%\setup-cygwin.exe --allow-unsupported-windows ^
-                           --quiet-mode ^
-                           --only-site ^
-                           --site !site! ^
-                           --root %SystemDrive%\cygwin ^
-                           --local-package-dir %tmp%\cygwin-local-package-dir ^
-                           --packages %pkgs% ^
-                           && type nul >"%tags%"
+    start /wait setup-!CygwinArch!.exe ^
+        --allow-unsupported-windows ^
+        --quiet-mode ^
+        --only-site ^
+        --site !site! ^
+        --root %SystemDrive%\cygwin ^
+        --local-package-dir %tmp%\cygwin-local-package-dir ^
+        --packages %pkgs% ^
+        && type nul >"%tags%"
+
+        if errorlevel 1 (
+            echo "Failed to install Cygwin."
+            exit /b 1
+        )
 )
 
 rem 在c盘根目录下执行 cygpath -ua . 会得到 /cygdrive/c，因此末尾要有 /
