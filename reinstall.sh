@@ -2725,28 +2725,27 @@ mod_initrd_debian_kali() {
     get_ip_conf_cmd | insert_into_file $postinst after ": get_ip_conf_cmd"
     # cat $postinst
 
-    # shellcheck disable=SC2317
     change_priority() {
         while IFS= read -r line; do
-            key_=$(echo "$line" | cut -d' ' -f1)
-            value=$(echo "$line" | cut -d' ' -f2-)
+            if [[ "$line" = Package:* ]]; then
+                package=$(echo "$line" | cut -d' ' -f2-)
 
-            case "$key_" in
-            Package:)
-                package="$value"
-                ;;
-            Priority:)
+            elif [[ "$line" = Priority:* ]]; then
                 # shellcheck disable=SC2154
-                if [ "$value" = standard ] && echo "$disabled_list" | grep -qx "$package"; then
-                    line="Priority: optional"
+                if [ "$line" = "Priority: standard" ]; then
+                    for p in $disabled_list; do
+                        if [ "$package" = "$p" ]; then
+                            line="Priority: optional"
+                            break
+                        fi
+                    done
                 elif [[ "$package" = ata-modules* ]]; then
                     # 改成强制安装
                     # 因为是 pata-modules sata-modules scsi-modules 的依赖
                     # 但我们没安装它们，也就不会自动安装 ata-modules
                     line="Priority: standard"
                 fi
-                ;;
-            esac
+            fi
             echo "$line"
         done
     }
