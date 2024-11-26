@@ -3146,6 +3146,11 @@ del_default_user() {
     done < <(grep -v nologin$ "$os_dir/etc/passwd" | cut -d: -f1 | grep -v root)
 }
 
+is_el7_family() {
+    is_have_cmd_on_disk "$1" yum &&
+        ! is_have_cmd_on_disk "$1" dnf
+}
+
 install_qcow_by_copy() {
     info "Install qcow2 by copy"
 
@@ -3307,26 +3312,31 @@ install_qcow_by_copy() {
         # selinux kdump
         disable_selinux_kdump /os
 
-        # centos7 删除 machine-id 后不会自动重建
+        # el7 删除 machine-id 后不会自动重建
         clear_machine_id /os
 
-        # el7 yum 可能会使用 ipv6，即使没有 ipv6 网络
-        if [ "$releasever" = 7 ]; then
+        # el7 forks 特殊处理
+        if is_el7_family /os; then
+            # centos 7 eol 换源
+            if [ -f /os/etc/yum.repos.d/CentOS-Base.repo ]; then
+                # 保持默认的 http 因为自带的 ssl 证书可能过期
+                if is_in_china; then
+                    mirror=mirror.nju.edu.cn/centos-vault
+                else
+                    mirror=vault.centos.org
+                fi
+                sed -Ei -e 's,(mirrorlist=),#\1,' \
+                    -e "s,#(baseurl=http://)mirror.centos.org,\1$mirror," /os/etc/yum.repos.d/CentOS-Base.repo
+            fi
+
+            # el7 yum 可能会使用 ipv6，即使没有 ipv6 网络
             if [ "$(cat /dev/netconf/eth*/ipv6_has_internet | sort -u)" = 0 ]; then
                 echo 'ip_resolve=4' >>/os/etc/yum.conf
             fi
-        fi
 
-        # centos 7 eol 特殊处理
-        if [ "$releasever" = 7 ] && [ -f /os/etc/yum.repos.d/CentOS-Base.repo ]; then
-            # 保持默认的 http 因为自带的 ssl 证书可能过期
-            if is_in_china; then
-                mirror=mirror.nju.edu.cn/centos-vault
-            else
-                mirror=vault.centos.org
-            fi
-            sed -Ei -e 's,(mirrorlist=),#\1,' \
-                -e "s,#(baseurl=http://)mirror.centos.org,\1$mirror," /os/etc/yum.repos.d/CentOS-Base.repo
+            # el7 安装 NetworkManager
+            # anolis 7 镜像自带 NetworkManager
+            chroot_dnf install NetworkManager
         fi
 
         # firmware + microcode
@@ -3334,12 +3344,6 @@ install_qcow_by_copy() {
             # shellcheck disable=SC2046
             chroot_dnf install $(get_ucode_firmware_pkgs)
         fi
-
-        # centos 7 安装 NetworkManager
-        if [ "$releasever" = 7 ]; then
-            chroot_dnf install NetworkManager
-        fi
-        # anolis 7 镜像自带 nm
 
         # 删除云镜像自带的 dhcp 配置，防止歧义
         # clout-init 网络配置在 /etc/sysconfig/network-scripts/
