@@ -1331,7 +1331,9 @@ install_nixos() {
 
     # 挂载分区，创建 swapfile
     mount_part_basic_layout /os /os/efi
-    create_swap $swap_size /os/swapfile
+    if [ "$swap_size" -gt 0 ]; then
+        create_swap "$swap_size" /os/swapfile
+    fi
 
     # 步骤
     # 1. 安装 nix (nix-xxx)
