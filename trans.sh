@@ -1961,7 +1961,7 @@ create_part() {
     elif is_use_cloud_image; then
         installer_part_size="$(get_cloud_image_part_size)"
         # 这几个系统不使用dd，而是复制文件
-        if [ "$distro" = centos ] || [ "$distro" = alma ] || [ "$distro" = rocky ] ||
+        if [ "$distro" = centos ] || [ "$distro" = almalinux ] || [ "$distro" = rocky ] ||
             [ "$distro" = oracle ] || [ "$distro" = redhat ] ||
             [ "$distro" = anolis ] || [ "$distro" = opencloudos ] || [ "$distro" = openeuler ] ||
             [ "$distro" = ubuntu ]; then
@@ -2474,7 +2474,7 @@ is_need_ucode_firmware() {
 
 get_ucode_firmware_pkgs() {
     case "$distro" in
-    centos | alma | rocky | oracle | redhat | anolis | opencloudos | openeuler) os=elol ;;
+    centos | almalinux | rocky | oracle | redhat | anolis | opencloudos | openeuler) os=elol ;;
     *) os=$distro ;;
     esac
 
@@ -3038,7 +3038,7 @@ get_os_fs() {
     case "$distro" in
     ubuntu) echo ext4 ;;
     anolis | openeuler) echo ext4 ;;
-    centos | alma | rocky | oracle | redhat) echo xfs ;;
+    centos | almalinux | rocky | oracle | redhat) echo xfs ;;
     opencloudos) echo xfs ;;
     esac
 }
@@ -3173,7 +3173,7 @@ install_qcow_by_copy() {
     connect_qcow
 
     # 镜像分区格式
-    # centos/rocky/alma/rhel: xfs
+    # centos/rocky/almalinux/rhel: xfs
     # oracle x86_64:          lvm + xfs
     # oracle aarch64 cloud:   xfs
 
@@ -3191,7 +3191,7 @@ install_qcow_by_copy() {
     os_part=$(lsblk /dev/nbd0p* --sort SIZE -no NAME,FSTYPE | grep -E 'ext4|xfs' | tail -1 | awk '{print $1}')
     efi_part=$(lsblk /dev/nbd0p* --sort SIZE -no NAME,PARTTYPE | grep -i "$EFI_UUID" | awk '{print $1}')
     # 排除前两个，再选择最大分区
-    # alma 9 boot 分区的类型不是规定的 uuid
+    # almalinux9 boot 分区的类型不是规定的 uuid
     # openeuler boot 分区是 fat 格式
     boot_part=$(lsblk /dev/nbd0p* --sort SIZE -no NAME,FSTYPE | grep -E 'ext4|xfs|fat' | awk '{print $1}' |
         grep -vx "$os_part" | grep -vx "$efi_part" | tail -1 | awk '{print $1}')
@@ -3361,7 +3361,7 @@ install_qcow_by_copy() {
 EOF
 
         # fstab 删除多余分区
-        # alma/rocky 镜像有 boot 分区
+        # almalinux/rocky 镜像有 boot 分区
         # oracle 镜像有 swap 分区
         sed -i '/[[:space:]]\/boot[[:space:]]/d' /os/etc/fstab
         sed -i '/[[:space:]]swap[[:space:]]/d' /os/etc/fstab
@@ -3428,7 +3428,7 @@ EOF
         fi
 
         # blscfg 启动项
-        # rocky/alma镜像是独立的boot分区，但我们不是
+        # rocky/almalinux镜像是独立的boot分区，但我们不是
         # 因此要添加boot目录
         if ls /os/boot/loader/entries/*.conf 2>/dev/null &&
             ! grep -q 'initrd /boot/' /os/boot/loader/entries/*.conf; then
@@ -5041,7 +5041,7 @@ trans() {
             create_part
             download_qcow
             case "$distro" in
-            centos | alma | rocky | oracle | redhat | anolis | opencloudos | openeuler)
+            centos | almalinux | rocky | oracle | redhat | anolis | opencloudos | openeuler)
                 # 这几个系统云镜像系统盘是8~9g xfs，而我们的目标是能在5g硬盘上运行，因此改成复制系统文件
                 install_qcow_by_copy
                 ;;
@@ -5096,7 +5096,7 @@ trans() {
             create_part
             mount_part_for_iso_installer
             case "$distro" in
-            centos | alma | rocky | fedora | ubuntu | redhat) install_redhat_ubuntu ;;
+            centos | almalinux | rocky | fedora | ubuntu | redhat) install_redhat_ubuntu ;;
             windows) install_windows ;;
             esac
             ;;

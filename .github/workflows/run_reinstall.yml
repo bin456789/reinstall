@@ -23,7 +23,7 @@ jobs:
       - uses: actions/checkout@v4
       - run: |
           ${{ matrix.command }} centos
-          ${{ matrix.command }} alma-8
+          ${{ matrix.command }} almalinux 8
           ${{ matrix.command }} rocky 9
           ${{ matrix.command }} fedora
           ${{ matrix.command }} ubuntu

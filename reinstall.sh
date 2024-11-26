@@ -44,7 +44,7 @@ usage_and_exit() {
     cat <<EOF
 Usage: $reinstall_____ centos      9
                        anolis      7|8
-                       alma        8|9
+                       almalinux   8|9
                        rocky       8|9
                        redhat      8|9 --img='http://xxx.com/xxx.qcow2'
                        opencloudos 8|9
@@ -1363,20 +1363,20 @@ Continue with DD?
         eval "${step}_img_type_warp='$img_type_warp'"
     }
 
-    setos_centos_alma_rocky_fedora() {
+    setos_centos_almalinux_rocky_fedora() {
         if is_use_cloud_image; then
             # ci
             if is_in_china; then
                 case $distro in
                 "centos") ci_mirror="https://mirror.nju.edu.cn/centos-cloud/centos" ;;
-                "alma") ci_mirror="https://mirror.nju.edu.cn/almalinux/$releasever/cloud/$basearch/images" ;;
+                "almalinux") ci_mirror="https://mirror.nju.edu.cn/almalinux/$releasever/cloud/$basearch/images" ;;
                 "rocky") ci_mirror="https://mirror.nju.edu.cn/rocky/$releasever/images/$basearch" ;;
                 "fedora") ci_mirror="https://mirror.nju.edu.cn/fedora/releases/$releasever/Cloud/$basearch/images" ;;
                 esac
             else
                 case $distro in
                 "centos") ci_mirror="https://cloud.centos.org/centos" ;;
-                "alma") ci_mirror="https://repo.almalinux.org/almalinux/$releasever/cloud/$basearch/images" ;;
+                "almalinux") ci_mirror="https://repo.almalinux.org/almalinux/$releasever/cloud/$basearch/images" ;;
                 "rocky") ci_mirror="https://download.rockylinux.org/pub/rocky/$releasever/images/$basearch" ;;
                 "fedora") ci_mirror="https://dl.fedoraproject.org/pub/fedora/linux/releases/$releasever/Cloud/$basearch/images" ;;
                 esac
@@ -1392,7 +1392,7 @@ Continue with DD?
                 "9") ci_image=$ci_mirror/$releasever-stream/$basearch/images/CentOS-Stream-GenericCloud-$releasever-latest.$basearch.qcow2 ;;
                 esac
                 ;;
-            "alma") ci_image=$ci_mirror/AlmaLinux-$releasever-GenericCloud-latest.$basearch.qcow2 ;;
+            "almalinux") ci_image=$ci_mirror/AlmaLinux-$releasever-GenericCloud-latest.$basearch.qcow2 ;;
             "rocky") ci_image=$ci_mirror/Rocky-$releasever-GenericCloud-Base.latest.$basearch.qcow2 ;;
             "fedora")
                 # Fedora-Cloud-Base-39-1.5.x86_64.qcow2
@@ -1413,12 +1413,12 @@ Continue with DD?
             # 传统安装
             case $distro in
             "centos") mirrorlist="https://mirrors.centos.org/mirrorlist?repo=centos-baseos-$releasever-stream&arch=$basearch" ;;
-            "alma") mirrorlist="https://mirrors.almalinux.org/mirrorlist/$releasever/baseos" ;;
+            "almalinux") mirrorlist="https://mirrors.almalinux.org/mirrorlist/$releasever/baseos" ;;
             "rocky") mirrorlist="https://mirrors.rockylinux.org/mirrorlist?arch=$basearch&repo=BaseOS-$releasever" ;;
             "fedora") mirrorlist="https://mirrors.fedoraproject.org/mirrorlist?arch=$basearch&repo=fedora-$releasever" ;;
             esac
 
-            # rocky/centos9 需要删除第一行注释， alma 需要替换$basearch
+            # rocky/centos9 需要删除第一行注释， almalinux 需要替换$basearch
             for cur_mirror in $(curl -L $mirrorlist | sed "/^#/d" | sed "s,\$basearch,$basearch,"); do
                 host=$(get_host_by_url $cur_mirror)
                 if is_host_has_ipv4_and_ipv6 $host &&
@@ -1516,7 +1516,7 @@ Continue with DD?
     eval ${step}_releasever=$releasever
 
     case "$distro" in
-    centos | alma | rocky | fedora) setos_centos_alma_rocky_fedora ;;
+    centos | almalinux | rocky | fedora) setos_centos_almalinux_rocky_fedora ;;
     *) setos_$distro ;;
     esac
 
@@ -1538,7 +1538,7 @@ is_distro_like_redhat() {
     else
         _distro=$distro
     fi
-    [ "$_distro" = redhat ] || [ "$_distro" = centos ] || [ "$_distro" = alma ] || [ "$_distro" = rocky ] || [ "$_distro" = fedora ] || [ "$_distro" = oracle ]
+    [ "$_distro" = redhat ] || [ "$_distro" = centos ] || [ "$_distro" = almalinux ] || [ "$_distro" = rocky ] || [ "$_distro" = fedora ] || [ "$_distro" = oracle ]
 }
 
 is_distro_like_debian() {
@@ -1560,7 +1560,7 @@ verify_os_name() {
     for os in \
         'centos      7|9' \
         'anolis      7|8' \
-        'alma        8|9' \
+        'almalinux   8|9' \
         'rocky       8|9' \
         'redhat      8|9' \
         'opencloudos 8|9' \
@@ -1713,10 +1713,10 @@ install_pkg() {
         esac
     }
 
-    # 系统                                 package名称              repo名称
-    # centos/alma/rocky/fedora/anolis      epel-release             epel
-    # oracle linux                         oracle-epel-release      ol9_developer_EPEL
-    # opencloudos                          epol-release             EPOL
+    # 系统                                   package名称              repo名称
+    # centos/almalinux/rocky/fedora/anolis   epel-release             epel
+    # oracle linux                           oracle-epel-release      ol9_developer_EPEL
+    # opencloudos                            epol-release             EPOL
     check_is_need_epel() {
         is_need_epel() {
             case "$pkg" in
@@ -1825,7 +1825,7 @@ check_ram() {
         netboot.xyz) echo 0 ;;
         alpine | debian | kali | dd) echo 256 ;;
         arch | gentoo | nixos | windows) echo 512 ;;
-        redhat | centos | alma | rocky | fedora | oracle | ubuntu | anolis | opencloudos | openeuler) echo 1024 ;;
+        redhat | centos | almalinux | rocky | fedora | oracle | ubuntu | anolis | opencloudos | openeuler) echo 1024 ;;
         opensuse) echo -1 ;; # 没有安装模式
         esac
     )
@@ -1840,7 +1840,7 @@ check_ram() {
 
     has_cloud_image=$(
         case "$distro" in
-        redhat | centos | alma | rocky | oracle | fedora | debian | ubuntu | opensuse | anolis | openeuler) echo true ;;
+        redhat | centos | almalinux | rocky | oracle | fedora | debian | ubuntu | opensuse | anolis | openeuler) echo true ;;
         netboot.xyz | alpine | dd | arch | gentoo | nixos | kali | windows) echo false ;;
         esac
     )
@@ -3532,7 +3532,7 @@ dd | windows | netboot.xyz | kali | alpine | arch | gentoo | nixos)
 oracle | opensuse | anolis | opencloudos | openeuler)
     cloud_image=1
     ;;
-redhat | centos | alma | rocky | fedora | ubuntu)
+redhat | centos | almalinux | rocky | fedora | ubuntu)
     if is_force_use_installer; then
         unset cloud_image
     else
