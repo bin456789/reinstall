@@ -4053,6 +4053,21 @@ get_filesize_mb() {
 }
 
 install_windows() {
+    get_wim_prop() {
+        wim=$1
+        property=$2
+
+        wiminfo "$wim" | grep -i "^$property:" | cut -d: -f2- | xargs
+    }
+
+    get_image_prop() {
+        wim=$1
+        index=$2
+        property=$3
+
+        wiminfo "$wim" "$index" | grep -i "^$property:" | cut -d: -f2- | xargs
+    }
+
     info "Process windows iso"
 
     apk add wimlib
@@ -4060,6 +4075,17 @@ install_windows() {
     download $iso /os/windows.iso
     mkdir -p /iso
     mount -o ro /os/windows.iso /iso
+
+    # 防止用了不兼容架构的 iso
+    boot_index=$(get_wim_prop /iso/sources/boot.wim 'Boot Index')
+    arch_wim=$(get_image_prop /iso/sources/boot.wim "$boot_index" 'Architecture' | to_lower)
+    if ! {
+        { [ "$(uname -m)" = "x86_64" ] && [ "$arch_wim" = x86_64 ]; } ||
+            { [ "$(uname -m)" = "x86_64" ] && [ "$arch_wim" = x86 ]; } ||
+            { [ "$(uname -m)" = "aarch64" ] && [ "$arch_wim" = arm64 ]; }
+    }; then
+        error_and_exit "The machine is $(uname -m), but the iso is $arch_wim."
+    fi
 
     if [ -e /iso/sources/install.esd ]; then
         iso_install_wim=/iso/sources/install.esd
@@ -4105,14 +4131,8 @@ install_windows() {
         done
     fi
 
-    get_boot_wim_prop() {
-        property=$1
-        wiminfo "/os/boot.wim" | grep -i "^$property:" | cut -d: -f2- | xargs
-    }
-
     get_selected_image_prop() {
-        property=$1
-        wiminfo "$iso_install_wim" "$image_name" | grep -i "^$property:" | cut -d: -f2- | xargs
+        get_image_prop "$iso_install_wim" "$image_name" "$1"
     }
 
     # PRODUCTTYPE:
@@ -4219,7 +4239,6 @@ install_windows() {
     # arch_dd    华为云驱动                   32   64
 
     # 将 wim 的 arch 转为驱动和应答文件的 arch
-    arch_wim=$(get_selected_image_prop Architecture | to_lower)
     case "$arch_wim" in
     x86)
         arch=x86
@@ -4237,15 +4256,6 @@ install_windows() {
         arch_dd=  # 华为云没有 arm64 驱动
         ;;
     esac
-
-    # 防止用了不兼容架构的 iso
-    if ! {
-        { [ "$(uname -m)" = "x86_64" ] && [ "$arch_wim" = x86_64 ]; } ||
-            { [ "$(uname -m)" = "x86_64" ] && [ "$arch_wim" = x86 ]; } ||
-            { [ "$(uname -m)" = "aarch64" ] && [ "$arch_wim" = arm64 ]; }
-    }; then
-        error_and_exit "The machine is $(uname -m), but the iso is $arch_wim."
-    fi
 
     add_drivers() {
         info "Add drivers"
@@ -4624,11 +4634,17 @@ install_windows() {
                     fi
                 done
             fi
-        done
 
-        [ "$arch_wim" = x86 ] && gvnic_suffix=-32 || gvnic_suffix=
-        cp_drivers $drv/gce/gvnic -ipath "*/win$nt_ver$gvnic_suffix/*"
-        cp_drivers $drv/gce/gga -ipath "*/win$nt_ver/*"
+            case "$name" in
+            gvnic)
+                [ "$arch_wim" = x86 ] && suffix=-32 || suffix=
+                cp_drivers $drv/gce/gvnic -ipath "*/win$nt_ver$suffix/*"
+                ;;
+            gga)
+                cp_drivers $drv/gce/gga -ipath "*/win$nt_ver/*"
+                ;;
+            esac
+        done
     }
 
     # azure
@@ -4700,7 +4716,6 @@ install_windows() {
     # 挂载 boot.wim
     info "mount boot.wim"
     mkdir -p /wim
-    boot_index=$(get_boot_wim_prop 'Boot Index')
     wimmountrw /os/boot.wim "$boot_index" /wim/
 
     cp_drivers() {

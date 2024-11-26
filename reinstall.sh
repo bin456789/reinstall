@@ -1294,6 +1294,28 @@ Continue?
 
         test_url "$iso" 'iso raw'
         [ -n "$boot_wim" ] && test_url "$boot_wim" 'wim'
+
+        # 判断 iso 架构是否兼容
+        # https://gitlab.com/libosinfo/osinfo-db/-/tree/main/data/os/microsoft.com?ref_type=heads
+        if file -b "$tmp/img-test" | grep -q '_A64'; then
+            iso_arch=arm64
+        else
+            iso_arch=x86_or_x64
+        fi
+
+        if ! {
+            { [ "$basearch" = x86_64 ] && [ "$iso_arch" = x86_or_x64 ]; } ||
+                { [ "$basearch" = aarch64 ] && [ "$iso_arch" = arm64 ]; }
+        }; then
+            warn "
+The current machine is $basearch, but it seems the ISO is for $iso_arch. Continue?
+当前机器是 $basearch，但 ISO 似乎是 $iso_arch。继续安装?"
+            read -r -p '[y/N]: '
+            if ! [[ "$REPLY" = [Yy] ]]; then
+                exit
+            fi
+        fi
+
         eval "${step}_iso='$iso'"
         eval "${step}_boot_wim='$boot_wim'"
         eval "${step}_image_name='$image_name'"
