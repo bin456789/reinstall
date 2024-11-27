@@ -1258,7 +1258,7 @@ Continue?
         if is_in_china; then
             mirror=https://mirror.sjtu.edu.cn/opensuse
         else
-            mirror=https://mirror.fcix.net/opensuse
+            mirror=https://ftp.gwdg.de/pub/opensuse
         fi
 
         if [ "$releasever" = tumbleweed ]; then
@@ -2455,7 +2455,7 @@ install_grub_linux_efi() {
         if is_in_china; then
             mirror=https://mirror.sjtu.edu.cn/opensuse
         else
-            mirror=https://mirror.fcix.net/opensuse
+            mirror=https://ftp.gwdg.de/pub/opensuse
         fi
 
         [ "$basearch" = x86_64 ] && ports='' || ports=/ports/$basearch
