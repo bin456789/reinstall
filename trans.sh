@@ -2136,6 +2136,8 @@ get_yq_name() {
 
 create_cloud_init_network_config() {
     ci_file=$1
+    recognize_static6=${2:-true}
+    recognize_ipv6_types=${3:-true}
 
     info "Create Cloud Init network config"
 
@@ -2191,32 +2193,32 @@ create_cloud_init_network_config() {
 
         # ipv6
         if is_slaac; then
-            if is_enable_other_flag; then
-                type=ipv6_dhcpv6-stateless
+            if $recognize_ipv6_types; then
+                if is_enable_other_flag; then
+                    type=ipv6_dhcpv6-stateless
+                else
+                    type=ipv6_slaac
+                fi
             else
-                type=ipv6_slaac
+                type=dhcp6
             fi
             yq -i ".network.config[$config_id].subnets[$subnet_id] = {\"type\": \"$type\"}" $ci_file
 
         elif is_dhcpv6; then
-            yq -i ".network.config[$config_id].subnets[$subnet_id] = {\"type\": \"ipv6_dhcpv6-stateful\"}" $ci_file
+            if $recognize_ipv6_types; then
+                type=ipv6_dhcpv6-stateful
+            else
+                type=dhcp6
+            fi
+            yq -i ".network.config[$config_id].subnets[$subnet_id] = {\"type\": \"$type\"}" $ci_file
 
         elif is_staticv6; then
             get_netconf_to ipv6_addr
             get_netconf_to ipv6_gateway
-            # el7 不认识 static6，但可改成 static，作用相同
-            # >=20.1 修复
-            # https://github.com/canonical/cloud-init/commit/dacdd30080bd8183d1f1c1dc9dbcbc8448301529
-            # anolis 7:        cloud-init 19.1
-            # openeuler 20.03: cloud-init 19.4
-            # shellcheck disable=SC2154
-            if { [ "$distro" = centos ] && [ "$releasever" = 7 ]; } ||
-                { [ "$distro" = oracle ] && [ "$releasever" = 7 ]; } ||
-                { [ "$distro" = anolis ] && [ "$releasever" = 7 ]; } ||
-                { [ "$distro" = openeuler ] && [ "$releasever" = 20.03 ]; }; then
-                type_ipv6_static=static
-            else
+            if $recognize_static6; then
                 type_ipv6_static=static6
+            else
+                type_ipv6_static=static
             fi
             yq -i ".network.config[$config_id].subnets[$subnet_id] = {
                     \"type\": \"$type_ipv6_static\",
@@ -2273,6 +2275,8 @@ clear_machine_id() {
 
 download_cloud_init_config() {
     os_dir=$1
+    recognize_static6=$2
+    recognize_ipv6_types=$3
 
     ci_file=$os_dir/etc/cloud/cloud.cfg.d/99_fallback.cfg
     download $confhome/cloud-init.yaml $ci_file
@@ -2314,7 +2318,7 @@ EOF
         fi
     fi
 
-    create_cloud_init_network_config $ci_file
+    create_cloud_init_network_config "$ci_file" "$recognize_static6" "$recognize_ipv6_types"
     cat -n $ci_file
 }
 
@@ -3339,6 +3343,8 @@ install_qcow_by_copy() {
             # el7 安装 NetworkManager
             # anolis 7 镜像自带 NetworkManager
             chroot_dnf install NetworkManager
+            chroot /os systemctl disable network
+            chroot /os systemctl enable NetworkManager
         fi
 
         # firmware + microcode
@@ -3604,8 +3610,41 @@ EOF
         restore_resolv_conf $os_dir
     fi
 
+    # cloud-init 路径
+    # /usr/lib/python2.7/site-packages/cloudinit/net/
+    # /usr/lib/python3/dist-packages/cloudinit/net/
+    # /usr/lib/python3.9/site-packages/cloudinit/net/
+
+    # el7 不认识 static6，但可改成 static，作用相同
+    recognize_static6=true
+    if ls $os_dir/usr/lib/python*/*-packages/cloudinit/net/sysconfig.py 2>/dev/null &&
+        ! grep -q static6 $os_dir/usr/lib/python*/*-packages/cloudinit/net/sysconfig.py; then
+        recognize_static6=false
+    fi
+
+    # cloud-init 20.1 才支持以下配置
+    # https://cloudinit.readthedocs.io/en/20.4/topics/network-config-format-v1.html#subnet-ip
+    # https://cloudinit.readthedocs.io/en/21.1/topics/network-config-format-v1.html#subnet-ip
+    # ipv6_dhcpv6-stateful: Configure this interface with dhcp6
+    # ipv6_dhcpv6-stateless: Configure this interface with SLAAC and DHCP
+    # ipv6_slaac: Configure address with SLAAC
+
+    # el7 最新 cloud-init 版本
+    # centos 7         19.4-7.0.5.el7_9.6  backport 了 ipv6_xxx
+    # openeuler 20.03  19.4-15.oe2003sp4   backport 了 ipv6_xxx
+    # anolis 7         19.1.17-1.0.1.an7   没有更新到 centos7 相同版本,也没 backport ipv6_xxx，坑
+
+    # 最好还修改 ifcfg-eth* 的 IPV6_AUTOCONF
+    # 但实测 anolis7 cloud-init dhcp6 不会生成 IPV6_AUTOCONF，因此暂时不管
+    # https://www.redhat.com/zh/blog/configuring-ipv6-rhel-7-8
+    recognize_ipv6_types=true
+    if ls -d $os_dir/usr/lib/python*/*-packages/cloudinit/net/ 2>/dev/null &&
+        ! grep -qr ipv6_slaac $os_dir/usr/lib/python*/*-packages/cloudinit/net/; then
+        recognize_ipv6_types=false
+    fi
+
     # cloud-init
-    download_cloud_init_config $os_dir
+    download_cloud_init_config "$os_dir" "$recognize_static6" "$recognize_ipv6_types"
 
     case "$distro" in
     ubuntu) modify_ubuntu ;;
