@@ -2964,16 +2964,14 @@ disable_selinux_kdump() {
     os_dir=$1
 
     # selinux
+    # https://access.redhat.com/solutions/3176
+    # centos7 也建议将 selinux 开关写在 cmdline
+    # grep selinux=0 /usr/lib/dracut/modules.d/98selinux/selinux-loadpolicy.sh
+    #     warn "To disable selinux, add selinux=0 to the kernel command line."
     if [ -f $os_dir/etc/selinux/config ]; then
         sed -i 's/^SELINUX=enforcing/SELINUX=disabled/g' $os_dir/etc/selinux/config
     fi
-
-    # https://access.redhat.com/solutions/3176
-    # shellcheck disable=SC2154
-    # openeuler 版本是 24.03
-    if [ "$distro" = openeuler ] || [ "$releasever" -ge 9 ]; then
-        chroot $os_dir grubby --update-kernel ALL --args selinux=0
-    fi
+    chroot $os_dir grubby --update-kernel ALL --args selinux=0
 
     # kdump
     # grubby 只处理 GRUB_CMDLINE_LINUX，不会处理 GRUB_CMDLINE_LINUX_DEFAULT
