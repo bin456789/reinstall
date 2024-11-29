@@ -1219,9 +1219,13 @@ install_alpine() {
     # 避免占用 Live OS 内存
 
     # 网络
-    # 坑1 udhcpc下，ip -4 addr 无法知道是否是 dhcp
-    # 坑2 udhcpc不支持dhcpv6
-    # 坑3 dhcpcd的slaac默认开了隐私保护，造成ip和后台面板不一致
+    # udhcpc
+    # 坑1 ip -4 addr 无法知道是否是 dhcp
+    # 坑2 networking 服务不会运行 udhcpc6
+    # 坑3 h3c 移动云电脑 udhcpc6 无法获取 dhcpv6
+
+    # dhcpcd
+    # 坑1 slaac默认开了隐私保护，造成ip和后台面板不一致
 
     # slaac方案1: udhcpc + rdnssd
     # slaac方案2: dhcpcd + 关闭隐私保护
@@ -1440,7 +1444,7 @@ install_nixos() {
     # TODO: 准确匹配网卡，添加 udev 或者直接配置 networkd 匹配 mac
     create_nixos_network_config /tmp/nixos_network_config.nix
 
-    add_space 2 <<EOF | del_empty_lines | add_newline both |
+    del_empty_lines <<EOF | add_space 2 | add_newline both |
 ############### Add by reinstall.sh ###############
 $nix_bootloader
 $nix_swap
@@ -2180,6 +2184,7 @@ create_cloud_init_network_config() {
             # 旧版 cloud-init 有 bug
             # 有的版本会只从第一种配置中读取 dns，有的从第二种读取
             # 因此写两种配置
+            # https://github.com/canonical/cloud-init/commit/1b8030e0c7fd6fbff7e38ad1e3e6266ae50c83a5
             for cur in $(get_current_dns 4); do
                 yq -i ".network.config[$config_id].subnets[$subnet_id].dns_nameservers += [\"$cur\"]" $ci_file
             done

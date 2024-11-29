@@ -429,11 +429,16 @@ assert_not_in_container() {
 }
 
 # 使用 | del_br ，但返回 del_br 之前返回值
-# ash 不支持 PIPESTATUS[n]
 run_with_del_cr() {
-    res=$("$@") && ret=0 || ret=$?
-    echo "$res" | del_cr
-    return $ret
+    if false; then
+        # ash 不支持 PIPESTATUS[n]
+        res=$("$@") && ret=0 || ret=$?
+        echo "$res" | del_cr
+        return $ret
+    else
+        "$@" | del_cr
+        return ${PIPESTATUS[0]}
+    fi
 }
 
 run_with_del_cr_template() {
@@ -513,10 +518,10 @@ _wmic() {
     # shellcheck disable=SC2046
     powershell -NoLogo -NoProfile -NonInteractive -ExecutionPolicy Bypass \
         -File "$(cygpath -w "$tmp/wmic.ps1")" \
-        -Namespace $namespace \
-        -Class $class \
-        $([ -n "$filter" ] && echo "-Filter $filter") \
-        $([ -n "$props" ] && echo "-Properties $props")
+        -Namespace "$namespace" \
+        -Class "$class" \
+        $([ -n "$filter" ] && echo -Filter "$filter") \
+        $([ -n "$props" ] && echo -Properties "$props")
 }
 
 is_virt() {
@@ -881,7 +886,7 @@ get_windows_iso_links() {
     echo
 
     if [ -z "$page" ] || { [ -z "$label_msdn" ] && [ -z "$label_vlsc" ]; }; then
-        error_and_exit "Not support find this iso. Check --image-name or set --iso manually."
+        error_and_exit "Not support find this iso. Check if --image-name is wrong. If not, set --iso manually."
     fi
 
     curl -L "$page_url" | grep -ioP 'https://.*?.(iso|img)' >$tmp/win.list
@@ -939,7 +944,7 @@ get_windows_iso_link() {
         fi
     done
 
-    error_and_exit "Could not find windows iso."
+    error_and_exit "Could not find iso for this windows edition or language."
 }
 
 setos() {
@@ -1369,42 +1374,35 @@ Continue with DD?
             # ci
             if is_in_china; then
                 case $distro in
-                "centos") ci_mirror="https://mirror.nju.edu.cn/centos-cloud/centos" ;;
-                "almalinux") ci_mirror="https://mirror.nju.edu.cn/almalinux/$releasever/cloud/$basearch/images" ;;
-                "rocky") ci_mirror="https://mirror.nju.edu.cn/rocky/$releasever/images/$basearch" ;;
-                "fedora") ci_mirror="https://mirror.nju.edu.cn/fedora/releases/$releasever/Cloud/$basearch/images" ;;
+                centos) ci_mirror="https://mirror.nju.edu.cn/centos-cloud/centos" ;;
+                almalinux) ci_mirror="https://mirror.nju.edu.cn/almalinux/$releasever/cloud/$basearch/images" ;;
+                rocky) ci_mirror="https://mirror.nju.edu.cn/rocky/$releasever/images/$basearch" ;;
+                fedora) ci_mirror="https://mirror.nju.edu.cn/fedora/releases/$releasever/Cloud/$basearch/images" ;;
                 esac
             else
                 case $distro in
-                "centos") ci_mirror="https://cloud.centos.org/centos" ;;
-                "almalinux") ci_mirror="https://repo.almalinux.org/almalinux/$releasever/cloud/$basearch/images" ;;
-                "rocky") ci_mirror="https://download.rockylinux.org/pub/rocky/$releasever/images/$basearch" ;;
-                "fedora") ci_mirror="https://dl.fedoraproject.org/pub/fedora/linux/releases/$releasever/Cloud/$basearch/images" ;;
+                centos) ci_mirror="https://cloud.centos.org/centos" ;;
+                almalinux) ci_mirror="https://repo.almalinux.org/almalinux/$releasever/cloud/$basearch/images" ;;
+                rocky) ci_mirror="https://download.rockylinux.org/pub/rocky/$releasever/images/$basearch" ;;
+                fedora) ci_mirror="https://dl.fedoraproject.org/pub/fedora/linux/releases/$releasever/Cloud/$basearch/images" ;;
                 esac
             fi
             case $distro in
-            "centos")
+            centos)
                 case $releasever in
-                "7")
+                7)
                     # CentOS-7-aarch64-GenericCloud.qcow2c 是旧版本
                     ver=-2211
                     ci_image=$ci_mirror/$releasever/images/CentOS-$releasever-$basearch-GenericCloud$ver.qcow2c
                     ;;
-                "9") ci_image=$ci_mirror/$releasever-stream/$basearch/images/CentOS-Stream-GenericCloud-$releasever-latest.$basearch.qcow2 ;;
+                *) ci_image=$ci_mirror/$releasever-stream/$basearch/images/CentOS-Stream-GenericCloud-$releasever-latest.$basearch.qcow2 ;;
                 esac
                 ;;
-            "almalinux") ci_image=$ci_mirror/AlmaLinux-$releasever-GenericCloud-latest.$basearch.qcow2 ;;
-            "rocky") ci_image=$ci_mirror/Rocky-$releasever-GenericCloud-Base.latest.$basearch.qcow2 ;;
-            "fedora")
-                # Fedora-Cloud-Base-39-1.5.x86_64.qcow2
-                # Fedora-Cloud-Base-Generic.x86_64-40-1.14.qcow2
-                page=$(curl -L $ci_mirror)
-                # 40
-                filename=$(grep -oP "Fedora-Cloud-Base-Generic.*?.qcow2" <<<"$page" | head -1)
-                # 38/39
-                if [ -z "$filename" ]; then
-                    filename=$(grep -oP "Fedora-Cloud-Base-$releasever.*?.qcow2" <<<"$page" | head -1)
-                fi
+            almalinux) ci_image=$ci_mirror/AlmaLinux-$releasever-GenericCloud-latest.$basearch.qcow2 ;;
+            rocky) ci_image=$ci_mirror/Rocky-$releasever-GenericCloud-Base.latest.$basearch.qcow2 ;;
+            fedora)
+                filename=$(curl -L $ci_mirror | grep -oP "Fedora-Cloud-Base-Generic.*?.qcow2" |
+                    sort -uV | tail -1 | grep .)
                 ci_image=$ci_mirror/$filename
                 ;;
             esac
@@ -1413,10 +1411,10 @@ Continue with DD?
         else
             # 传统安装
             case $distro in
-            "centos") mirrorlist="https://mirrors.centos.org/mirrorlist?repo=centos-baseos-$releasever-stream&arch=$basearch" ;;
-            "almalinux") mirrorlist="https://mirrors.almalinux.org/mirrorlist/$releasever/baseos" ;;
-            "rocky") mirrorlist="https://mirrors.rockylinux.org/mirrorlist?arch=$basearch&repo=BaseOS-$releasever" ;;
-            "fedora") mirrorlist="https://mirrors.fedoraproject.org/mirrorlist?arch=$basearch&repo=fedora-$releasever" ;;
+            centos) mirrorlist="https://mirrors.centos.org/mirrorlist?repo=centos-baseos-$releasever-stream&arch=$basearch" ;;
+            almalinux) mirrorlist="https://mirrors.almalinux.org/mirrorlist/$releasever/baseos" ;;
+            rocky) mirrorlist="https://mirrors.rockylinux.org/mirrorlist?arch=$basearch&repo=BaseOS-$releasever" ;;
+            fedora) mirrorlist="https://mirrors.fedoraproject.org/mirrorlist?arch=$basearch&repo=fedora-$releasever" ;;
             esac
 
             # rocky/centos9 需要删除第一行注释， almalinux 需要替换$basearch
@@ -1638,7 +1636,6 @@ install_pkg() {
                 alpine) pkg_mgr=apk ;;
                 arch) pkg_mgr=pacman ;;
                 gentoo) pkg_mgr=emerge ;;
-                openwrt) pkg_mgr=opkg ;;
                 nixos) pkg_mgr=nix-env ;;
                 esac
                 [ -n "$pkg_mgr" ] && return
@@ -1646,7 +1643,7 @@ install_pkg() {
         fi
 
         # 查找方法 2
-        for mgr in dnf yum apt-get pacman zypper emerge apk opkg nix-env; do
+        for mgr in dnf yum apt-get pacman zypper emerge apk nix-env; do
             is_have_cmd $mgr && pkg_mgr=$mgr && return
         done
 
@@ -1777,10 +1774,6 @@ install_pkg() {
         apt-get)
             [ -z "$apt_updated" ] && apt-get update && apt_updated=1
             DEBIAN_FRONTEND=noninteractive apt-get install -y $pkg
-            ;;
-        opkg)
-            [ -z "$opkg_updated" ] && opkg update && opkg_updated=1
-            opkg install $pkg
             ;;
         nix-env)
             # 不指定 channel 会很慢，而且很占内存
