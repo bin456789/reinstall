@@ -999,9 +999,7 @@ setos() {
         esac
 
         if is_in_china; then
-            # 部分源没有 firmware
-            # https://mirror.nju.edu.cn/debian-cdimage/firmware/
-            cdimage_mirror=https://mirror.sjtu.edu.cn/debian-cdimage
+            cdimage_mirror=https://mirror.nju.edu.cn/debian-cdimage
         else
             cdimage_mirror=https://cdimage.debian.org/images # 在瑞典，不是 cdn
             # cloud.debian.org 同样在瑞典，不是 cdn
@@ -1047,7 +1045,7 @@ Continue?
                 if is_in_china; then
                     # ftp.cn.debian.org 不在国内还严重丢包
                     # https://www.itdog.cn/ping/ftp.cn.debian.org
-                    hostname=mirror.sjtu.edu.cn
+                    hostname=mirror.nju.edu.cn
                 else
                     hostname=deb.debian.org # fastly
                 fi
@@ -1064,7 +1062,7 @@ Continue?
             eval ${step}_vmlinuz=https://$initrd_mirror/$initrd_dir/linux
             eval ${step}_initrd=https://$initrd_mirror/$initrd_dir/initrd.gz
             eval ${step}_ks=$confhome/debian.cfg
-            eval ${step}_firmware=$cdimage_mirror/firmware/$codename/current/firmware.cpio.gz
+            eval ${step}_firmware=$cdimage_mirror/unofficial/non-free/firmware/$codename/current/firmware.cpio.gz
             eval ${step}_hostname=$hostname
             eval ${step}_directory=$directory
             eval ${step}_codename=$codename
