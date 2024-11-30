@@ -1215,6 +1215,9 @@ install_alpine() {
     export BOOTLOADER="grub"
     setup-disk -m sys -k $kernel_flavor /os
 
+    # 删除 setup-disk 时自动安装的包
+    apk del e2fsprogs dosfstools efibootmgr grub*
+
     # 安装到硬盘后才安装各种应用
     # 避免占用 Live OS 内存
 
@@ -1246,6 +1249,13 @@ install_alpine() {
     chroot /os setup-timezone -i Asia/Shanghai
     chroot /os setup-ntp chrony || true
 
+    # 安装固件微码会触发 grub-probe
+    # 如果没挂载会报错
+    # Executing grub-2.12-r5.trigger
+    # /usr/sbin/grub-probe: error: failed to get canonical path of `/dev/vda1'.
+    # ERROR: grub-2.12-r5.trigger: script exited with error 1
+    mount_pseudo_fs /os
+
     # 安装固件微码
     # shellcheck disable=SC2046
     if is_need_ucode_firmware; then
@@ -1254,20 +1264,11 @@ install_alpine() {
 
     # 3.19 或以上，非 efi 需要手动安装 grub
     if ! is_efi; then
-        grub-install --boot-directory=/os/boot --target=i386-pc /dev/$xda
+        chroot /os grub-install --target=i386-pc /dev/$xda
     fi
 
     # efi grub 添加 fwsetup 条目
-    if is_efi; then
-        mount_pseudo_fs /os
-        chroot /os update-grub
-    fi
-
-    # 删除 chroot 历史记录
-    rm -rf /os/root/.ash_history
-
-    # 关闭 swap 前删除应用，避免占用内存
-    apk del e2fsprogs dosfstools grub*
+    chroot /os update-grub
 
     # 是否保留 swap
     if [ -e /os/swapfile ]; then
