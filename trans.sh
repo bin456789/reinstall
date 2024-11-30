@@ -1256,7 +1256,8 @@ install_alpine() {
     # ERROR: grub-2.12-r5.trigger: script exited with error 1
     mount_pseudo_fs /os
 
-    # 安装固件微码
+    # setup-disk 会自动选择固件，但不包括微码？
+    # https://github.com/alpinelinux/alpine-conf/blob/e18384a85e93c9cad30437a0a06802a3f385e550/setup-disk.in#L421
     # shellcheck disable=SC2046
     if is_need_ucode_firmware; then
         chroot /os apk add $(get_ucode_firmware_pkgs)
@@ -2489,9 +2490,11 @@ get_ucode_firmware_pkgs() {
     esac
 
     case "$os-$(get_cpu_vendor)" in
-    alpine-intel) echo linux-firmware linux-firmware-intel intel-ucode ;;
-    alpine-amd) echo linux-firmware linux-firmware-amd linux-firmware-amd-ucode amd-ucode ;;
-    alpine-*) echo linux-firmware ;;
+    # setup-alpine 会自动选择 firmware
+    # https://github.com/alpinelinux/alpine-conf/blob/e18384a85e93c9cad30437a0a06802a3f385e550/setup-disk.in#L421
+    alpine-intel) echo intel-ucode ;;
+    alpine-amd) echo amd-ucode ;;
+    alpine-*) ;;
 
     debian-intel) echo firmware-linux intel-microcode ;;
     debian-amd) echo firmware-linux amd64-microcode ;;
