@@ -3376,11 +3376,13 @@ install_qcow_by_copy() {
         rm -rf /os/etc/NetworkManager/system-connections/*.nmconnection
         rm -rf /os/etc/sysconfig/network-scripts/ifcfg-*
 
-        # 修复 cloud-init 添加了 IPV*_FAILURE_FATAL
-        # 甲骨文 dhcp6 获取不到 IP 将视为 fatal，原有的 ipv4 地址也会被删除
+        # 1. 修复 cloud-init 添加了 IPV*_FAILURE_FATAL
+        #    甲骨文 dhcp6 获取不到 IP 将视为 fatal，原有的 ipv4 地址也会被删除
+        # 2. 修复 dhcpv6 下，ifcfg 添加了 IPV6_AUTOCONF=no 导致无法获取网关
         insert_into_file $ci_file after '^runcmd:' <<EOF
   - sed -i '/IPV4_FAILURE_FATAL/d' /etc/sysconfig/network-scripts/ifcfg-* || true
   - sed -i '/IPV6_FAILURE_FATAL/d' /etc/sysconfig/network-scripts/ifcfg-* || true
+  - for f in /etc/sysconfig/network-scripts/ifcfg-*; do grep -q '^DHCPV6C=yes' "\$f" && sed -i '/IPV6_AUTOCONF=no/d' "\$f"; done
   - systemctl restart NetworkManager
 EOF
 
