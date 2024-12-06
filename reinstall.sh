@@ -44,18 +44,18 @@ usage_and_exit() {
         reinstall_____=' ./reinstall.sh'
     fi
     cat <<EOF
-Usage: $reinstall_____ centos      9
-                       anolis      7|8
-                       almalinux   8|9
+Usage: $reinstall_____ anolis      7|8
                        rocky       8|9
                        redhat      8|9 --img='http://xxx.com/xxx.qcow2'
+                       almalinux   8|9
                        opencloudos 8|9
+                       centos      9|10
                        oracle      7|8|9
                        fedora      40|41
-                       nixos       24.05
+                       nixos       24.11
                        debian      9|10|11|12
                        openeuler   20.03|22.03|24.03
-                       alpine      3.17|3.18|3.19|3.20
+                       alpine      3.18|3.19|3.20|3.21
                        opensuse    15.5|15.6|tumbleweed
                        ubuntu      16.04|18.04|20.04|22.04|24.04 [--minimal]
                        kali
@@ -1559,7 +1559,7 @@ verify_os_name() {
 
     # 不要删除 centos 7
     for os in \
-        'centos      7|9' \
+        'centos      7|9|10' \
         'anolis      7|8' \
         'almalinux   8|9' \
         'rocky       8|9' \
@@ -1567,10 +1567,10 @@ verify_os_name() {
         'opencloudos 8|9' \
         'oracle      7|8|9' \
         'fedora      40|41' \
-        'nixos       24.05' \
+        'nixos       24.11' \
         'debian      9|10|11|12' \
         'openeuler   20.03|22.03|24.03' \
-        'alpine      3.17|3.18|3.19|3.20' \
+        'alpine      3.18|3.19|3.20|3.21' \
         'opensuse    15.5|15.6|tumbleweed' \
         'ubuntu      16.04|18.04|20.04|22.04|24.04' \
         'kali' \
@@ -3607,8 +3607,9 @@ if is_netboot_xyz ||
     }; }; then
     setos nextos $distro $releasever
 else
-    # alpine 作为中间系统时，使用 3.20
-    alpine_ver_for_trans=3.20
+    # alpine 作为中间系统时，使用最新版
+    alpine_ver_for_trans=$(get_function_content verify_os_name |
+        grep -o 'alpine[ 0-9\.\|]*' | awk -F'|' '{print $NF}')
     setos finalos $distro $releasever
     setos nextos alpine $alpine_ver_for_trans
 fi

@@ -386,7 +386,7 @@ mod_motd() {
         cp $file $file.orig
         # shellcheck disable=SC2016
         echo "mv "\$mnt$file.orig" "\$mnt$file"" |
-            insert_into_file /sbin/setup-disk before 'cleanup_chroot_mounts "\$mnt"'
+            insert_into_file "$(which setup-disk)" before 'cleanup_chroot_mounts "\$mnt"'
 
         cat <<EOF >$file
 Reinstalling...
@@ -1212,7 +1212,7 @@ install_alpine() {
     # 防止部分机器不会 fallback 到 bootx64.efi
     if is_efi; then
         apk add efibootmgr
-        sed -i 's/--no-nvram//' /sbin/setup-disk
+        sed -i 's/--no-nvram//' "$(which setup-disk)"
     fi
 
     # 安装到硬盘
