@@ -1130,10 +1130,17 @@ EOF
 install_alpine() {
     info "install alpine"
 
-    hack_lowram_modloop=true
-    hack_lowram_swap=true
+    need_ram=512
+    swap_size=$(get_need_swap_size $need_ram)
+    [ "$swap_size" -gt 0 ] && hack_lowram=true || hack_lowram=false
 
-    if $hack_lowram_modloop; then
+    # alpine 安装时会自动检测安装需要的 firmware
+    # https://github.com/alpinelinux/alpine-conf/blob/3.18.1/setup-disk.in#L421
+    # 但如果没有 modloop 则无法检测
+    # 所以删除 modloop 前先记录用到的 firmware 包
+    fw_pkgs=$(get_alpine_firmware_pkgs)
+
+    if $hack_lowram; then
         # 预先加载需要的模块
         if rc-service -q modloop status; then
             modules="ext4 vfat nls_utf8 nls_cp437"
@@ -1156,8 +1163,8 @@ install_alpine() {
     mount_part_basic_layout /os /os/boot/efi
 
     # 创建 swap
-    if $hack_lowram_swap; then
-        create_swap 256 /os/swapfile
+    if $hack_lowram; then
+        create_swap $swap_size /os/swapfile
     fi
 
     # 网络配置
@@ -1175,7 +1182,7 @@ install_alpine() {
     rc-update add hwclock boot
 
     # 通过 setup-alpine 安装会启用以下几个服务
-    # https://github.com/alpinelinux/alpine-conf/blob/c5131e9a038b09881d3d44fb35e86851e406c756/setup-alpine.in#L189
+    # https://github.com/alpinelinux/alpine-conf/blob/3.18.1/setup-alpine.in#L229
 
     # boot
     rc-update add networking boot
@@ -1257,10 +1264,9 @@ install_alpine() {
     mount_pseudo_fs /os
 
     # setup-disk 会自动选择固件，但不包括微码？
-    # https://github.com/alpinelinux/alpine-conf/blob/e18384a85e93c9cad30437a0a06802a3f385e550/setup-disk.in#L421
-    # shellcheck disable=SC2046
-    if is_need_ucode_firmware; then
-        chroot /os apk add $(get_ucode_firmware_pkgs)
+    # https://github.com/alpinelinux/alpine-conf/blob/3.18.1/setup-disk.in#L421
+    if fw_pkgs="$fw_pkgs $(get_ucode_firmware_pkgs)" && [ -n "$fw_pkgs" ]; then
+        chroot /os apk add $fw_pkgs
     fi
 
     # 3.19 或以上，非 efi 需要手动安装 grub
@@ -1605,9 +1611,8 @@ EOF
         fi
 
         # firmware + microcode
-        if is_need_ucode_firmware; then
-            # shellcheck disable=SC2046
-            chroot $os_dir pacman -Syu --noconfirm $(get_ucode_firmware_pkgs)
+        if fw_pkgs=$(get_ucode_firmware_pkgs) && [ -n "$fw_pkgs" ]; then
+            chroot $os_dir pacman -Syu --noconfirm $fw_pkgs
         fi
 
         # arm 的内核有多种选择，默认是 linux-aarch64，所以要添加 --noconfirm
@@ -1723,9 +1728,8 @@ EOF
         fi
 
         # firmware + microcode
-        if is_need_ucode_firmware; then
-            # shellcheck disable=SC2046
-            chroot $os_dir emerge $(get_ucode_firmware_pkgs)
+        if fw_pkgs=$(get_ucode_firmware_pkgs) && [ -n "$fw_pkgs" ]; then
+            chroot $os_dir emerge $fw_pkgs
         fi
 
         # 安装 grub + 内核
@@ -2479,19 +2483,36 @@ restore_resolv_conf() {
     fi
 }
 
-is_need_ucode_firmware() {
-    ! is_virt && [ -n "$(get_ucode_firmware_pkgs)" ]
+# 抄 https://github.com/alpinelinux/alpine-conf/blob/3.18.1/setup-disk.in#L421
+get_alpine_firmware_pkgs() {
+    # 需要有 modloop，不然 modinfo 会报错
+    ensure_service_started modloop >&2
+
+    # 如果不在单独的文件夹，则用 linux-firmware-other
+    # 如果在单独的文件夹，则用 linux-firmware-xxx
+    # 如果不需要 firmware，则用 linux-firmware-none
+    firmware_pkgs=$(
+        cd /sys/module && modinfo -F firmware -- * 2>/dev/null |
+            awk -F/ '{print $1 == $0 ? "linux-firmware-other" : "linux-firmware-"$1}' |
+            sort -u
+    )
+
+    # 使用 command 因为自己覆盖了 apk 添加了 >&2
+    retry 5 command apk search --quiet --exact ${firmware_pkgs:-linux-firmware-none}
 }
 
 get_ucode_firmware_pkgs() {
+    is_virt && return
+
     case "$distro" in
     centos | almalinux | rocky | oracle | redhat | anolis | opencloudos | openeuler) os=elol ;;
     *) os=$distro ;;
     esac
 
     case "$os-$(get_cpu_vendor)" in
-    # setup-alpine 会自动选择 firmware
-    # https://github.com/alpinelinux/alpine-conf/blob/e18384a85e93c9cad30437a0a06802a3f385e550/setup-disk.in#L421
+    # alpine 的 linux-firmware 以文件夹进行拆分
+    # setup-alpine 会自动安装需要的 firmware（modloop 没挂载则无效）
+    # https://github.com/alpinelinux/alpine-conf/blob/3.18.1/setup-disk.in#L421
     alpine-intel) echo intel-ucode ;;
     alpine-amd) echo amd-ucode ;;
     alpine-*) ;;
@@ -2568,10 +2589,9 @@ EOF
         cp_resolv_conf $os_dir
 
         disable_selinux_kdump $os_dir
-        if is_need_ucode_firmware; then
+        if fw_pkgs=$(get_ucode_firmware_pkgs) && [ -n "$fw_pkgs" ]; then
             is_have_cmd_on_disk $os_dir dnf && mgr=dnf || mgr=yum
-            # shellcheck disable=SC2046
-            chroot $os_dir $mgr install -y $(get_ucode_firmware_pkgs)
+            chroot $os_dir $mgr install -y $fw_pkgs
         fi
 
         restore_resolv_conf $os_dir
@@ -2640,7 +2660,7 @@ EOF
         fi
 
         # 微码+固件
-        if is_need_ucode_firmware; then
+        if fw_pkgs=$(get_ucode_firmware_pkgs) && [ -n "$fw_pkgs" ]; then
             #  debian 10 11 的 iucode-tool 在 contrib 里面
             #  debian 12 的 iucode-tool 在 main 里面
             [ "$releasever" -ge 12 ] &&
@@ -2661,8 +2681,7 @@ EOF
                 fi
             done
 
-            # shellcheck disable=SC2046
-            chroot_apt_install $os_dir $(get_ucode_firmware_pkgs)
+            chroot_apt_install $os_dir $fw_pkgs
         fi
 
         if [ "$releasever" -le 11 ]; then
@@ -2720,9 +2739,8 @@ EOF
         chroot $os_dir zypper remove -y kernel-default-base
 
         # 固件+微码
-        if is_need_ucode_firmware; then
-            # shellcheck disable=SC2046
-            chroot $os_dir zypper install -y $(get_ucode_firmware_pkgs)
+        if fw_pkgs=$(get_ucode_firmware_pkgs) && [ -n "$fw_pkgs" ]; then
+            chroot $os_dir zypper install -y $fw_pkgs
         fi
 
         # 选择新内核
@@ -3355,9 +3373,8 @@ install_qcow_by_copy() {
         fi
 
         # firmware + microcode
-        if is_need_ucode_firmware; then
-            # shellcheck disable=SC2046
-            chroot_dnf install $(get_ucode_firmware_pkgs)
+        if fw_pkgs=$(get_ucode_firmware_pkgs) && [ -n "$fw_pkgs" ]; then
+            chroot_dnf install $fw_pkgs
         fi
 
         # 删除云镜像自带的 dhcp 配置，防止歧义
@@ -3544,9 +3561,8 @@ EOF
         fi
 
         # 安装固件+微码
-        if is_need_ucode_firmware; then
-            # shellcheck disable=SC2046
-            chroot_apt_install $os_dir $(get_ucode_firmware_pkgs)
+        if fw_pkgs=$(get_ucode_firmware_pkgs) && [ -n "$fw_pkgs" ]; then
+            chroot_apt_install $os_dir $fw_pkgs
         fi
 
         # 16.04 镜像用 ifupdown/networking 管理网络

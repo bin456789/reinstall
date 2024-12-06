@@ -7,14 +7,16 @@ confhome=https://raw.githubusercontent.com/bin456789/reinstall/main
 confhome_cn=https://www.ghproxy.cc/https://raw.githubusercontent.com/bin456789/reinstall/main
 # confhome_cn=https://jihulab.com/bin456789/reinstall/-/raw/main
 
+# 默认密码
 DEFAULT_PASSWORD=123@@@
 
 # 用于判断 reinstall.sh 和 trans.sh 是否兼容
 SCRIPT_VERSION=4BACD833-A585-23BA-6CBB-9AA4E08E0002
 
-# 记录要用到的 windows 程序，运行时输出删除 cr
-WINDOWS_EXES="cmd powershell wmic reg diskpart netsh bcdedit mountvol"
+# 记录要用到的 windows 程序，运行时输出删除 \r
+WINDOWS_EXES='cmd powershell wmic reg diskpart netsh bcdedit mountvol'
 
+# 强制 linux 程序输出英文，防止 grep 不到想要的内容
 # https://www.gnu.org/software/gettext/manual/html_node/The-LANGUAGE-variable.html
 export LC_ALL=C
 
@@ -1255,12 +1257,11 @@ Continue?
 
         # 很多国内源缺少 aarch64 tumbleweed appliances
         #                 https://download.opensuse.org/ports/aarch64/tumbleweed/appliances/
-        #           https://mirrors.nju.edu.cn/opensuse/ports/aarch64/tumbleweed/appliances/
         #          https://mirrors.ustc.edu.cn/opensuse/ports/aarch64/tumbleweed/appliances/
         # https://mirrors.tuna.tsinghua.edu.cn/opensuse/ports/aarch64/tumbleweed/appliances/
 
         if is_in_china; then
-            mirror=https://mirror.sjtu.edu.cn/opensuse
+            mirror=https://mirror.nju.edu.cn/opensuse
         else
             mirror=https://ftp.gwdg.de/pub/opensuse
         fi
@@ -2448,7 +2449,7 @@ install_grub_linux_efi() {
         curl -Lo $tmp/$grub_efi $mirror/releases/$fedora_ver/Everything/$basearch/os/EFI/BOOT/$grub_efi
     else
         if is_in_china; then
-            mirror=https://mirror.sjtu.edu.cn/opensuse
+            mirror=https://mirror.nju.edu.cn/opensuse
         else
             mirror=https://ftp.gwdg.de/pub/opensuse
         fi
@@ -3638,7 +3639,7 @@ if is_efi; then
 fi
 
 # 有的机器开启了 kexec，例如腾讯云轻量 debian，要禁用
-if ! is_in_windows && [ -f /etc/default/kexec ]; then
+if [ -f /etc/default/kexec ]; then
     sed -i 's/LOAD_KEXEC=true/LOAD_KEXEC=false/' /etc/default/kexec
 fi
 
@@ -3689,9 +3690,9 @@ if is_need_grub_extlinux; then
     if is_in_windows; then
         install_grub_win
     else
-        # linux aarch64 原系统的 grub 可能无法启动 alpine 3.19 的内核
-        # 要用去除了内核 magic number 校验的 grub
-        # 为了方便测试，linux x86 efi 也采用外部 grub
+        # linux efi 使用外部 grub，因为
+        # 1. 原系统 grub 可能没有去除 aarch64 内核 magic number 校验
+        # 2. 原系统可能不是用 grub
         if is_efi; then
             install_grub_linux_efi
         fi
