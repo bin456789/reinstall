@@ -1975,7 +1975,8 @@ create_part() {
             [ "$distro" = oracle ] || [ "$distro" = redhat ] ||
             [ "$distro" = anolis ] || [ "$distro" = opencloudos ] || [ "$distro" = openeuler ] ||
             [ "$distro" = ubuntu ]; then
-            fs="$(get_os_fs)"
+            # 这里的 fs 没有用，最终使用目标系统的格式化工具
+            fs=ext4
             if is_efi; then
                 parted /dev/$xda -s -- \
                     mklabel gpt \
@@ -3063,15 +3064,6 @@ disconnect_qcow() {
     fi
 }
 
-get_os_fs() {
-    case "$distro" in
-    ubuntu) echo ext4 ;;
-    anolis | openeuler) echo ext4 ;;
-    centos | almalinux | rocky | oracle | redhat) echo xfs ;;
-    opencloudos) echo xfs ;;
-    esac
-}
-
 get_cloud_image_part_size() {
     # 8
     # https://repo.almalinux.org/almalinux/8/cloud/x86_64/images/AlmaLinux-8-GenericCloud-latest.x86_64.qcow2 600m
@@ -3185,13 +3177,6 @@ is_el7_family() {
 install_qcow_by_copy() {
     info "Install qcow2 by copy"
 
-    mount_nouuid() {
-        case "$(get_os_fs)" in
-        ext4) mount "$@" ;;
-        xfs) mount -o nouuid "$@" ;;
-        esac
-    }
-
     efi_mount_opts=$(
         case "$distro" in
         ubuntu) echo "umask=0077" ;;
@@ -3205,6 +3190,7 @@ install_qcow_by_copy() {
     # centos/rocky/almalinux/rhel: xfs
     # oracle x86_64:          lvm + xfs
     # oracle aarch64 cloud:   xfs
+    # alibaba cloud linux 3:  ext4
 
     is_lvm_image=false
     if lsblk -f /dev/nbd0p* | grep LVM2_member; then
@@ -3244,6 +3230,7 @@ install_qcow_by_copy() {
     # read -r os_part_uuid os_part_label < <(lsblk /dev/$os_part -no UUID,LABEL)
     os_part_uuid=$(lsblk /dev/$os_part -no UUID)
     os_part_label=$(lsblk /dev/$os_part -no LABEL)
+    os_part_fstype=$(lsblk /dev/$os_part -no FSTYPE)
 
     if [ -n "$efi_part" ]; then
         efi_part_uuid=$(lsblk /dev/$efi_part -no UUID)
@@ -3252,11 +3239,18 @@ install_qcow_by_copy() {
 
     mkdir -p /nbd /nbd-boot /nbd-efi
 
+    mount_nouuid() {
+        case "$os_part_fstype" in
+        ext4) mount "$@" ;;
+        xfs) mount -o nouuid "$@" ;;
+        esac
+    }
+
     # 使用目标系统的格式化程序
     # centos8 如果用alpine格式化xfs，grub2-mkconfig和grub2里面都无法识别xfs分区
     mount_nouuid /dev/$os_part /nbd/
     mount_pseudo_fs /nbd/
-    case "$(get_os_fs)" in
+    case "$os_part_fstype" in
     ext4) chroot /nbd mkfs.ext4 -F -L "$os_part_label" -U "$os_part_uuid" /dev/$xda*2 ;;
     xfs) chroot /nbd mkfs.xfs -f -L "$os_part_label" -m uuid=$os_part_uuid /dev/$xda*2 ;;
     esac
