@@ -2331,7 +2331,6 @@ EOF
     fi
 
     create_cloud_init_network_config "$ci_file" "$recognize_static6" "$recognize_ipv6_types"
-    cat -n $ci_file
 }
 
 modify_windows() {
@@ -2820,6 +2819,16 @@ EOF
         # 修复 onlink 网关
         add_onlink_script_if_need
     fi
+
+    # 修复 cloud-init + sysconfig / NetworkManager 的各种网络问题
+    if [ -d "$os_dir/etc/sysconfig" ] || [ -d "$os_dir/etc/NetworkManager" ]; then
+        fix_sysconfig_NetworkManager $os_dir
+    fi
+
+    # 查看 cloud-init 最终配置
+    if [ -f "$ci_file" ]; then
+        cat -n "$ci_file"
+    fi
 }
 
 modify_os_on_disk() {
@@ -3174,6 +3183,28 @@ is_el7_family() {
         ! is_have_cmd_on_disk "$1" dnf
 }
 
+fix_sysconfig_NetworkManager() {
+    os_dir=$1
+    ci_file=$os_dir/etc/cloud/cloud.cfg.d/99_fallback.cfg
+
+    # 删除云镜像自带的 dhcp 配置，防止歧义
+    rm -rf $os_dir/etc/NetworkManager/system-connections/*.nmconnection
+    rm -rf $os_dir/etc/sysconfig/network-scripts/ifcfg-*
+
+    # 1. 修复 cloud-init 添加了 IPV*_FAILURE_FATAL / may-fail=false
+    #    甲骨文 dhcpv6 获取不到 IP 将视为 fatal，原有的 ipv4 地址也会被删除
+    # 2. 修复 dhcpv6 下，ifcfg 添加了 IPV6_AUTOCONF=no 导致无法获取网关
+    # 3. 修复 dhcpv6 下，NM method=dhcp 导致无法获取网关
+
+    insert_into_file $ci_file after '^runcmd:' <<EOF
+  - sed -i '/^IPV[46]_FAILURE_FATAL=/d' /etc/sysconfig/network-scripts/ifcfg-* || true
+  - sed -i '/^may-fail=/d' /etc/NetworkManager/system-connections/*.nmconnection || true
+  - for f in /etc/sysconfig/network-scripts/ifcfg-*; do grep -q '^DHCPV6C=yes' "\$f" && sed -i '/^IPV6_AUTOCONF=no/d' "\$f"; done
+  - sed -i 's/^method=dhcp/method=auto/' /etc/NetworkManager/system-connections/*.nmconnection || true
+  - systemctl is-enabled NetworkManager && systemctl restart NetworkManager || true
+EOF
+}
+
 install_qcow_by_copy() {
     info "Install qcow2 by copy"
 
@@ -3371,21 +3402,8 @@ install_qcow_by_copy() {
             chroot_dnf install $fw_pkgs
         fi
 
-        # 删除云镜像自带的 dhcp 配置，防止歧义
-        rm -rf /os/etc/NetworkManager/system-connections/*.nmconnection
-        rm -rf /os/etc/sysconfig/network-scripts/ifcfg-*
-
-        # 1. 修复 cloud-init 添加了 IPV*_FAILURE_FATAL / may-fail=false
-        #    甲骨文 dhcp6 获取不到 IP 将视为 fatal，原有的 ipv4 地址也会被删除
-        # 2. 修复 dhcpv6 下，ifcfg 添加了 IPV6_AUTOCONF=no 导致无法获取网关
-        # 3. 修复 dhcpv6 下，NM method=dhcp 导致无法获取网关
-        insert_into_file $ci_file after '^runcmd:' <<EOF
-  - sed -i '/^IPV[46]_FAILURE_FATAL=/d' /etc/sysconfig/network-scripts/ifcfg-* || true
-  - sed -i '/^may-fail=/d' /etc/NetworkManager/system-connections/*.nmconnection || true
-  - for f in /etc/sysconfig/network-scripts/ifcfg-*; do grep -q '^DHCPV6C=yes' "\$f" && sed -i '/^IPV6_AUTOCONF=no/d' "\$f"; done
-  - sed -i 's/^method=dhcp/method=auto/' /etc/NetworkManager/system-connections/*.nmconnection || true
-  - systemctl is-enabled NetworkManager && systemctl restart NetworkManager || true
-EOF
+        # 修复 cloud-init + dhcp 的各种网络问题
+        fix_sysconfig_NetworkManager /os
 
         # fstab 删除多余分区
         # almalinux/rocky 镜像有 boot 分区
