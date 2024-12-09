@@ -3372,18 +3372,19 @@ install_qcow_by_copy() {
         fi
 
         # 删除云镜像自带的 dhcp 配置，防止歧义
-        # clout-init 网络配置在 /etc/sysconfig/network-scripts/
         rm -rf /os/etc/NetworkManager/system-connections/*.nmconnection
         rm -rf /os/etc/sysconfig/network-scripts/ifcfg-*
 
-        # 1. 修复 cloud-init 添加了 IPV*_FAILURE_FATAL
+        # 1. 修复 cloud-init 添加了 IPV*_FAILURE_FATAL / may-fail=false
         #    甲骨文 dhcp6 获取不到 IP 将视为 fatal，原有的 ipv4 地址也会被删除
         # 2. 修复 dhcpv6 下，ifcfg 添加了 IPV6_AUTOCONF=no 导致无法获取网关
+        # 3. 修复 dhcpv6 下，NM method=dhcp 导致无法获取网关
         insert_into_file $ci_file after '^runcmd:' <<EOF
-  - sed -i '/IPV4_FAILURE_FATAL/d' /etc/sysconfig/network-scripts/ifcfg-* || true
-  - sed -i '/IPV6_FAILURE_FATAL/d' /etc/sysconfig/network-scripts/ifcfg-* || true
-  - for f in /etc/sysconfig/network-scripts/ifcfg-*; do grep -q '^DHCPV6C=yes' "\$f" && sed -i '/IPV6_AUTOCONF=no/d' "\$f"; done
-  - systemctl restart NetworkManager
+  - sed -i '/^IPV[46]_FAILURE_FATAL=/d' /etc/sysconfig/network-scripts/ifcfg-* || true
+  - sed -i '/^may-fail=/d' /etc/NetworkManager/system-connections/*.nmconnection || true
+  - for f in /etc/sysconfig/network-scripts/ifcfg-*; do grep -q '^DHCPV6C=yes' "\$f" && sed -i '/^IPV6_AUTOCONF=no/d' "\$f"; done
+  - sed -i 's/^method=dhcp/method=auto/' /etc/NetworkManager/system-connections/*.nmconnection || true
+  - systemctl is-enabled NetworkManager && systemctl restart NetworkManager || true
 EOF
 
         # fstab 删除多余分区
