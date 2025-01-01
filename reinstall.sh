@@ -286,9 +286,23 @@ test_url_real() {
             ret=$?
             msg="$url not accessible"
             case $ret in
-            22) failed "$msg" ;;                # 403 404
-            23) break ;;                        # 限制了空间
-            *) [ $i -eq 0 ] && failed "$msg" ;; # 其他错误
+            22)
+                # 403 404
+                # 这里的 failed 虽然返回 1，但是不会中断脚本，因此要手动 return
+                failed "$msg"
+                return "$ret"
+                ;;
+            23)
+                # 限制了空间
+                break
+                ;;
+            *)
+                # 其他错误
+                if [ $i -eq 0 ]; then
+                    failed "$msg"
+                    return "$ret"
+                fi
+                ;;
             esac
             sleep 1
         fi
