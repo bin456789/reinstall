@@ -2056,9 +2056,7 @@ create_part() {
                 # 默认值，假设 iso 3g
                 size_bytes=$((3 * 1024 * 1024 * 1024))
             fi
-            # 假设需要预留 10% 空间
-            size_bytes_mb=$((size_bytes * 110 / 100 / 1024 / 1024))
-            installer_part_size=${size_bytes_mb}MiB
+            installer_part_size="$(get_part_size_mb_for_file_size_b $size_bytes)MiB"
         else
             # redhat
             installer_part_size=2GiB
@@ -3071,7 +3069,41 @@ disconnect_qcow() {
     fi
 }
 
+get_part_size_mb_for_file_size_b() {
+    local file_b=$1
+    local file_mb=$((file_b / 1024 / 1024))
+
+    # ext4 默认参数下
+    #  分区大小   可用大小   利用率
+    #  100 MiB      86 MiB   86.0%
+    #  200 MiB     177 MiB   88.5%
+    #  500 MiB     454 MiB   90.8%
+    #  512 MiB     476 MiB   92.9%
+    # 1024 MiB     957 MiB   93.4%
+    # 2000 MiB    1914 MiB   95.7%
+    # 2048 MiB    1929 MiB   94.1% 这里反而下降了
+    # 5120 MiB    4938 MiB   96.4%
+
+    # 文件系统大约占用 5% 空间
+
+    # 假设 1929M 的文件，计算得到需要创建 2031M 的分区
+    # 但是实测 2048M 的分区才能存放 1929M 的文件
+    # 因此预留不足 150M 时补够 150M
+    local reserve_mb=$((file_mb * 100 / 95 - file_mb))
+    if [ $reserve_mb -lt 150 ]; then
+        reserve_mb=150
+    fi
+
+    part_mb=$((file_mb + reserve_mb))
+    echo "File size:      $file_mb MiB" >&2
+    echo "Part size need: $part_mb MiB" >&2
+    echo $part_mb
+}
+
 get_cloud_image_part_size() {
+    # 7
+    # https://cloud.centos.org/centos/7/images/CentOS-7-x86_64-GenericCloud-2211.qcow2c 400m
+
     # 8
     # https://repo.almalinux.org/almalinux/8/cloud/x86_64/images/AlmaLinux-8-GenericCloud-latest.x86_64.qcow2 600m
     # https://download.rockylinux.org/pub/rocky/8/images/x86_64/Rocky-8-GenericCloud-Base.latest.x86_64.qcow2 1.8g
@@ -3083,7 +3115,10 @@ get_cloud_image_part_size() {
     # https://repo.almalinux.org/almalinux/9/cloud/x86_64/images/AlmaLinux-9-GenericCloud-latest.x86_64.qcow2 600m
     # https://download.rockylinux.org/pub/rocky/9/images/x86_64/Rocky-9-GenericCloud-Base.latest.x86_64.qcow2 600m
     # https://yum.oracle.com/templates/OracleLinux/OL9/u3/x86_64/OL9U3_x86_64-kvm-b220.qcow2 600m
-    # rhel-9.4-x86_64-kvm.qcow2 900m
+    # https://rhel-9.4-x86_64-kvm.qcow2 900m
+
+    # 10
+    # https://cloud.centos.org/centos/10-stream/x86_64/images/CentOS-Stream-GenericCloud-10-latest.x86_64.qcow2 900m
 
     # https://dl-cdn.alpinelinux.org/alpine/v3.19/releases/cloud/nocloud_alpine-3.19.1-x86_64-uefi-cloudinit-r0.qcow2 200m
     # https://kali.download/cloud-images/current/kali-linux-2024.1-cloud-genericcloud-amd64.tar.xz 200m
@@ -3104,12 +3139,11 @@ get_cloud_image_part_size() {
             echo 2GiB
         fi
     elif size_bytes=$(get_http_file_size "$img"); then
-        # 额外 +100M 文件系统保留大小 和 qcow2 写入空间
-        size_bytes_mb=$((size_bytes / 1024 / 1024 + 100))
-        # 最少 1g ，因为可能要用作临时 swap
-        echo "$((size_bytes_mb / 1024 + 1))GiB"
+        # 缩小 btrfs 需要写 qcow2 ，实测写入后只多了 1M，因此不用特殊处理
+        echo "$(get_part_size_mb_for_file_size_b $size_bytes)MiB"
     else
         # 如果没获取到文件大小
+        echo "Could not get cloud image size in http response." >&2
         echo 2GiB
     fi
 }
