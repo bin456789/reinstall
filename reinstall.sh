@@ -1316,7 +1316,27 @@ Continue?
         # 注意 windows server 2008 r2 serverdatacenter 不用改
         image_name=${image_name/windows server 2008 server/windows longhorn server}
 
-        test_url "$iso" 'iso raw'
+        iso_filetype='iso raw'
+        iso_tested=false
+
+        # 获取 massgrave.dev 直链
+        if grep -Eiq '\.massgrave\.dev/.*\.(iso|img)' <<<"$iso"; then
+            # 如果已经是 iso 直链则跳过下面的 iso 测试
+            if test_url_grace "$iso" "$iso_filetype"; then
+                iso_tested=true
+            else
+                msg="Could not find direct link for $iso"
+                if ! iso=$(grep -oE 'https?.*\.iso[^"]*' $tmp/img-test | sed 's/&amp;/\&/g' | grep .); then
+                    error_and_exit "$msg"
+                fi
+            fi
+        fi
+
+        # 测试是否是 iso
+        if ! $iso_tested; then
+            test_url "$iso" "$iso_filetype"
+        fi
+
         [ -n "$boot_wim" ] && test_url "$boot_wim" 'wim'
 
         # 判断 iso 架构是否兼容
