@@ -1787,13 +1787,8 @@ EOF
     rm -rf net.cfg
     apk del cloud-init
 
-    # 修复 onlink 网关
-    if is_staticv4 || is_staticv6; then
-        fix_sh=cloud-init-fix-onlink.sh
-        download $confhome/$fix_sh $os_dir/$fix_sh
-        chroot $os_dir bash /$fix_sh
-        rm -f $os_dir/$fix_sh
-    fi
+    # arch gentoo 网络配置是用 alpine cloud-init 生成的
+    # cloud-init 版本够新，因此无需修复 onlink 网关
 
     # ntp 用 systemd 自带的
     # TODO: vm agent + 随机数生成器
@@ -2566,13 +2561,16 @@ modify_linux() {
 
     # 修复 onlink 网关
     add_onlink_script_if_need() {
-        if is_staticv4 || is_staticv6; then
-            fix_sh=cloud-init-fix-onlink.sh
-            download $confhome/$fix_sh $os_dir/$fix_sh
-            insert_into_file $ci_file after '^runcmd:' <<EOF
-  - bash /$fix_sh && rm -f /$fix_sh
+        for ethx in $(get_eths); do
+            if is_staticv4 || is_staticv6; then
+                fix_sh=cloud-init-fix-onlink.sh
+                download "$confhome/$fix_sh" "$os_dir/$fix_sh"
+                insert_into_file "$ci_file" after '^runcmd:' <<EOF
+  - bash "/$fix_sh" && rm -f "/$fix_sh"
 EOF
-        fi
+                break
+            fi
+        done
     }
 
     download_cloud_init_config $os_dir

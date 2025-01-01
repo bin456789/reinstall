@@ -88,8 +88,11 @@ EOF
     sed -i '/gateway[4|6]:/d' $conf
 
     # 重新应用配置
-    netplan apply
-    systemctl restart systemd-networkd
+    if command -v netplan && {
+        systemctl is-enabled systemd-networkd || systemctl is-enabled NetworkManager
+    }; then
+        netplan apply
+    fi
 }
 
 fix_networkd_conf() {
@@ -145,7 +148,9 @@ GatewayOnLink=yes
 
     # 重新应用配置
     # networkctl reload 不起作用
-    systemctl restart systemd-networkd
+    if systemctl is-enabled systemd-networkd; then
+        systemctl restart systemd-networkd
+    fi
 }
 
 fix_wicked_conf() {
@@ -184,16 +189,23 @@ fix_wicked_conf() {
     done
 
     # 重新应用配置
-    systemctl restart wicked
+    if systemctl is-enabled wicked; then
+        systemctl restart wicked
+    fi
 }
 
-# debian 11/12: netplan + networkd/resolved
+# ubuntu 18.04 cloud-init 版本 23.1.2，因此不用处理
+
+# debian 10/11 云镜像原本用 ifupdown + resolvconf，脚本改成用 netplan + networkd/resolved
+# debian 12 云镜像: netplan + networkd/resolved
 # 23.1.1 修复
 fix_netplan_conf
 
 # arch: networkd/resolved
 # gentoo: networkd/resolved
 # 24.2 修复
+# 只需对云镜像处理
+# 因为普通安装用的是 alpine 的 cloud-init，版本够新，不用处理
 fix_networkd_conf
 
 # opensuse 15.5: ifcfg + netconfig (dns) + wicked
