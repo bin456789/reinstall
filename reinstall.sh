@@ -553,8 +553,13 @@ is_virt() {
                 fi
             done
 
+            # 用运行 windows ，肯定够内存运行 alpine lts netboot
+            # 何况还能停止 modloop
+
             # 没有风扇和温度信息，大概是虚拟机
-            if [ -z "$_is_virt" ] &&
+            # 阿里云 倚天710 arm 有温度传感器
+            # ovh KS-LE-3 没有风扇和温度信息？
+            if false && [ -z "$_is_virt" ] &&
                 ! wmic /namespace:'\\root\cimv2' PATH Win32_Fan 2>/dev/null | grep -q ^Name &&
                 ! wmic /namespace:'\\root\wmi' PATH MSAcpi_ThermalZoneTemperature 2>/dev/null | grep -q ^Name; then
                 _is_virt=true
