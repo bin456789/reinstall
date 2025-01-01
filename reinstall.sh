@@ -3375,6 +3375,10 @@ remove_useless_initrd_files() {
 }
 
 # 脚本入口
+if mount | grep -q 'tmpfs on / type tmpfs'; then
+    error_and_exit "Can't run this script in Live OS."
+fi
+
 if is_in_windows; then
     # win系统盘
     c=$(echo $SYSTEMDRIVE | cut -c1)
