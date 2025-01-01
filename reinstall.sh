@@ -591,6 +591,28 @@ is_virt() {
     $_is_virt
 }
 
+assert_cpu_supports_x86_64_v3() {
+    # 用 ld.so/cpuid/coreinfo.exe 更准确
+    # centos 7 /usr/lib64/ld-linux-x86-64.so.2 没有 --help
+    # alpine gcompat /lib/ld-linux-x86-64.so.2 没有 --help
+
+    # https://en.wikipedia.org/wiki/X86-64#Microarchitecture_levels
+    # https://learn.microsoft.com/sysinternals/downloads/coreinfo
+
+    # abm = popcnt + lzcnt
+    # /proc/cpuinfo 不显示 lzcnt, 可用 abm 代替，但 cygwin 也不显示 abm
+    # /proc/cpuinfo 不显示 osxsave, 故用 xsave 代替
+
+    need_flags="avx avx2 bmi1 bmi2 f16c fma movbe xsave"
+    had_flags=$(grep -m 1 ^flags /proc/cpuinfo | awk -F': ' '{print $2}')
+
+    for flag in $need_flags; do
+        if ! grep -qw $flag <<<"$had_flags"; then
+            error_and_exit "Could not install $distro $releasever because the CPU does not support x86-64-v3."
+        fi
+    done
+}
+
 # sr-latn-rs 到 sr-latn
 en_us() {
     echo "$lang" | awk -F- '{print $1"-"$2}'
@@ -1408,6 +1430,13 @@ Continue with DD?
     }
 
     setos_centos_almalinux_rocky_fedora() {
+        # el 10 需要 x86-64-v3
+        if [ "$basearch" = x86_64 ] &&
+            { [ "$distro" = centos ] || [ "$distro" = almalinux ] || [ "$distro" = rocky ]; } &&
+            [ "$releasever" -ge 10 ]; then
+            assert_cpu_supports_x86_64_v3
+        fi
+
         if is_use_cloud_image; then
             # ci
             if is_in_china; then
@@ -1480,6 +1509,11 @@ Continue with DD?
     }
 
     setos_oracle() {
+        # el 10 需要 x86-64-v3
+        if [ "$basearch" = x86_64 ] && [ "$releasever" -ge 10 ]; then
+            assert_cpu_supports_x86_64_v3
+        fi
+
         if is_use_cloud_image; then
             # ci
             install_pkg jq
@@ -1500,6 +1534,11 @@ Continue with DD?
     }
 
     setos_redhat() {
+        # el 10 需要 x86-64-v3
+        if [ "$basearch" = x86_64 ] && [ "$releasever" -ge 10 ]; then
+            assert_cpu_supports_x86_64_v3
+        fi
+
         if is_use_cloud_image; then
             # ci
             eval "${step}_img='$img'"
