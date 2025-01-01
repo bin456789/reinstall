@@ -1621,12 +1621,12 @@ install_pkg() {
     find_pkg_mgr() {
         [ -n "$pkg_mgr" ] && return
 
-        # 查找方法1: 通过 ID_LIKE / ID
+        # 查找方法1: 通过 ID / ID_LIKE
         # 因为可能装了多种包管理器
         if [ -f /etc/os-release ]; then
             # shellcheck source=/dev/null
             . /etc/os-release
-            for id in $ID_LIKE $ID; do
+            for id in $ID $ID_LIKE; do
                 # https://github.com/chef/os_release
                 case "$id" in
                 fedora | centos | rhel) is_have_cmd dnf && pkg_mgr=dnf || pkg_mgr=yum ;;
@@ -1713,10 +1713,20 @@ install_pkg() {
         esac
     }
 
-    # 系统                                   package名称              repo名称
-    # centos/almalinux/rocky/fedora/anolis   epel-release             epel
-    # oracle linux                           oracle-epel-release      ol9_developer_EPEL
-    # opencloudos                            epol-release             EPOL
+    # 系统                       package名称                                    repo名称
+    # centos/alma/rocky/fedora   epel-release                                   epel
+    # oracle linux               oracle-epel-release                            ol9_developer_EPEL
+    # opencloudos                epol-release                                   EPOL
+    # alibaba cloud linux 3      epel-release/epel-aliyuncs-release(qcow2自带)  epel
+    # anolis 23                  anolis-epao-release                            EPAO
+
+    # anolis 8
+    # [root@localhost ~]# yum search *ep*-release | grep -v next
+    # ========================== Name Matched: *ep*-release ==========================
+    # anolis-epao-release.noarch : EPAO Packages for Anolis OS 8 repository configuration
+    # epel-aliyuncs-release.noarch : Extra Packages for Enterprise Linux repository configuration
+    # epel-release.noarch : Extra Packages for Enterprise Linux repository configuration (qcow2自带)
+
     check_is_need_epel() {
         is_need_epel() {
             case "$pkg" in
@@ -1729,11 +1739,13 @@ install_pkg() {
         get_epel_repo_name() {
             # el7 不支持 yum repolist --all，要使用 yum repolist all
             # el7 yum repolist 第一栏有 /x86_64 后缀，因此要去掉。而 el9 没有
-            $pkg_mgr repolist all | awk '{print $1}' | awk -F/ '{print $1}' | grep -Ei '(epel|epol)$'
+            $pkg_mgr repolist all | awk '{print $1}' | awk -F/ '{print $1}' | grep -Ei 'ep(el|ol|ao)$'
         }
 
         get_epel_pkg_name() {
-            $pkg_mgr list | grep -E '(epel|epol)-release' | awk '{print $1}' | cut -d. -f1 | head -1
+            # el7 不支持 yum list --available，要使用 yum list available
+            $pkg_mgr list available | grep -E '(.*-)?ep(el|ol|ao)-(.*-)?release' |
+                awk '{print $1}' | cut -d. -f1 | grep -v next | head -1
         }
 
         if is_need_epel; then
