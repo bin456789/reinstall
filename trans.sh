@@ -4944,6 +4944,43 @@ refind_main_disk() {
     fi
 }
 
+sync_time() {
+    if false; then
+        # arm要手动从硬件同步时间，避免访问https出错
+        # do 机器第二次运行会报错
+        hwclock -s || true
+    fi
+
+    # ntp 时间差太多会无法同步？
+    # http 时间可能不准确，毕竟不是专门的时间服务器
+    #      也有可能没有 date header?
+    method=http
+
+    case "$method" in
+    ntp)
+        if is_in_china; then
+            ntp_server=ntp.aliyun.com
+        else
+            ntp_server=pool.ntp.org
+        fi
+        # -d[d]   Verbose
+        # -n      Run in foreground
+        # -q      Quit after clock is set
+        # -p      PEER
+        ntpd -d -n -q -p "$ntp_server"
+        ;;
+    http)
+        url=$(grep -m1 ^http /etc/apk/repositories)
+        # 可能有多行，取第一行
+        date_header=$(wget -S --no-check-certificate --spider "$url" 2>&1 | grep -m1 '^  Date:')
+        # gnu date 不支持 -D
+        busybox date -u -D "  Date: %a, %d %b %Y %H:%M:%S GMT" -s "$date_header"
+        ;;
+    esac
+
+    hwclock -w
+}
+
 get_ubuntu_kernel_flavor() {
     # 20.04/22.04 kvm 内核 vnc 没显示
     # 24.04 kvm = virtual
@@ -5230,9 +5267,14 @@ fi
 # 允许 ramdisk 使用所有内存，默认是 50%
 mount / -o remount,size=100%
 
-# arm要手动从硬件同步时间，避免访问https出错
-# do 机器第二次运行会报错
-hwclock -s || true
+# 同步时间
+# 1. 可以防止访问 https 出错
+# 2. 可以防止 https://github.com/bin456789/reinstall/issues/223
+#    E: Release file for http://security.ubuntu.com/ubuntu/dists/noble-security/InRelease is not valid yet (invalid for another 5h 37min 18s).
+#    Updates for this repository will not be applied.
+# 3. 不能直接读取 rtc，因为默认情况 windows rtc 是本地时间，linux rtc 是 utc 时间
+# 4. 允许同步失败，因为不是关键步骤
+sync_time || true
 
 # 设置密码，安装并打开 ssh
 echo "root:$(get_password_linux_sha512)" | chpasswd -e
