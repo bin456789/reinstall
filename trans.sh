@@ -2303,24 +2303,11 @@ download_cloud_init_config() {
     # swapfile
     # 如果分区表中已经有swapfile就跳过，例如arch
     if ! grep -w swap $os_dir/etc/fstab; then
-        # btrfs
-        # 目前只有 arch 和 fedora 镜像使用 btrfs
-        # 等 fedora 39 cloud-init 升级到 v23.3 后删除
-        if mount | grep 'on /os type btrfs'; then
-            insert_into_file $ci_file after '^runcmd:' <<EOF
-  - btrfs filesystem mkswapfile --size 1G /swapfile
-  - swapon /swapfile
-  - echo "/swapfile none swap defaults 0 0" >> /etc/fstab
-  - systemctl daemon-reload
-EOF
-        else
-            # ext4 xfs
-            cat <<EOF >>$ci_file
+        cat <<EOF >>$ci_file
 swap:
   filename: /swapfile
   size: auto
 EOF
-        fi
     fi
 
     create_cloud_init_network_config "$ci_file" "$recognize_static6" "$recognize_ipv6_types"

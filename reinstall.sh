@@ -47,21 +47,21 @@ usage_and_exit() {
 Usage: $reinstall_____ anolis      7|8
                        rocky       8|9
                        redhat      8|9 --img='http://xxx.com/xxx.qcow2'
+                       oracle      8|9
                        almalinux   8|9
                        opencloudos 8|9
                        centos      9|10
-                       oracle      7|8|9
                        fedora      40|41
                        nixos       24.11
                        debian      9|10|11|12
+                       opensuse    15.6|tumbleweed
                        openeuler   20.03|22.03|24.03
                        alpine      3.18|3.19|3.20|3.21
-                       opensuse    15.5|15.6|tumbleweed
                        ubuntu      16.04|18.04|20.04|22.04|24.04 [--minimal]
                        kali
                        arch
                        gentoo
-                       dd          --img='http://xxx.com/xxx.raw' (supports raw vhd gzip xz)
+                       dd          --img='http://xxx.com/yyy.zzz' (raw image stores in raw/vhd/tar/gz/xz/zst)
                        windows     --image-name='windows xxx yyy' --lang=xx-yy
                        windows     --image-name='windows xxx yyy' --iso='http://xxx.com/xxx.iso'
                        netboot.xyz
@@ -1643,13 +1643,13 @@ verify_os_name() {
         'rocky       8|9' \
         'redhat      8|9' \
         'opencloudos 8|9' \
-        'oracle      7|8|9' \
+        'oracle      8|9' \
         'fedora      40|41' \
         'nixos       24.11' \
         'debian      9|10|11|12' \
+        'opensuse    15.6|tumbleweed' \
         'openeuler   20.03|22.03|24.03' \
         'alpine      3.18|3.19|3.20|3.21' \
-        'opensuse    15.5|15.6|tumbleweed' \
         'ubuntu      16.04|18.04|20.04|22.04|24.04' \
         'kali' \
         'arch' \
