@@ -1928,6 +1928,7 @@ create_part() {
         # 1. vista/2008 不能删除 boot.wim
         # 2. 下载镜像前不知道是 vista/2008，因为 --image-name 可以随便输入
         # 因此还是要额外添加 200m
+        # 注意这里单位要用 MiB，因为后面的 border 要以 MiB 计算
         part_size="$((size_bytes / 1024 / 1024 + 200))MiB"
 
         apk add ntfs-3g-progs
@@ -1952,11 +1953,17 @@ create_part() {
             mkfs.ntfs -f -F -L installer /dev/$xda*4              #4 installer
         else
             # bios + mbr 启动盘最大可用 2t
-            is_xda_gt_2t && max_usable_size=2TiB || max_usable_size=100%
+            if is_xda_gt_2t; then
+                border=$((2 * 1024 * 1024 - ${part_size%MiB}))MiB
+                max_usable_size=2TiB
+            else
+                border=-${part_size}
+                max_usable_size=100%
+            fi
             parted /dev/$xda -s -- \
                 mklabel msdos \
-                mkpart primary ntfs 1MiB -${part_size} \
-                mkpart primary ntfs -${part_size} ${max_usable_size} \
+                mkpart primary ntfs 1MiB ${border} \
+                mkpart primary ntfs ${border} ${max_usable_size} \
                 set 1 boot on
             update_part
 
