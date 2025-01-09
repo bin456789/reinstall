@@ -4192,6 +4192,11 @@ install_windows() {
         error_and_exit "The machine is $(uname -m), but the iso is $arch_wim."
     fi
 
+    # efi 机器不能安装 32 位 windows
+    if is_efi && [ "$arch_wim" = x86 ]; then
+        error_and_exit "EFI machine can't install 32-bit Windows."
+    fi
+
     if [ -e /iso/sources/install.esd ]; then
         iso_install_wim=/iso/sources/install.esd
         install_wim=/os/installer/sources/install.esd
