@@ -2632,22 +2632,22 @@ EOF
             fi
         fi
 
-        # 检测机器是否能用 cloud 内核
+        # 标记所有内核为自动安装
+        pkgs=$(chroot $os_dir apt-mark showmanual linux-image* linux-headers*)
+        chroot $os_dir apt-mark auto $pkgs
+
+        # 安装合适的内核
+        kernel_package=$kernel
         # shellcheck disable=SC2046
-        if ls $os_dir/boot/vmlinuz-*-cloud-$(get_axx64) 2>/dev/null &&
+        # 检测机器是否能用 cloud 内核
+        if [[ "$kernel_package" = 'linux-image-cloud-*' ]] &&
             ! sh /can_use_cloud_kernel.sh "$xda" $(get_eths); then
-
-            chroot_apt_install $os_dir "linux-image-$(get_axx64)"
-
-            # 标记云内核包
-            # apt-mark showmanual 结果为空，返回值也是 0
-            if pkgs=$(chroot $os_dir apt-mark showmanual "linux-*-cloud-$(get_axx64)" | grep .); then
-                chroot $os_dir apt-mark auto $pkgs
-
-                # 使用 autoremove
-                chroot_apt_autoremove $os_dir
-            fi
+            kernel_package=$(echo "$kernel_package" | sed 's/-cloud//')
         fi
+        chroot_apt_install $os_dir "$kernel_package"
+
+        # 使用 autoremove 删除非最佳内核
+        chroot_apt_autoremove $os_dir
 
         # 微码+固件
         if fw_pkgs=$(get_ucode_firmware_pkgs) && [ -n "$fw_pkgs" ]; then
@@ -3163,6 +3163,23 @@ chroot_apt_install() {
     DEBIAN_FRONTEND=noninteractive chroot $os_dir apt-get install -y "$@"
 }
 
+chroot_apt_remove() {
+    os_dir=$1
+    shift
+
+    # 不能用 apt remove --purge -y xxx yyy
+    # 因为如果索引里没有其中一个，会报错，另一个也不会删除
+    # 因此需要分开删除
+    for package in "$@"; do
+        # apt list 会提示 WARNING: apt does not have a stable CLI interface. Use with caution in scripts.
+        # 但又不能用 apt-get list
+        if chroot $os_dir apt list --installed "$package" | grep -q installed; then
+            # 删除 resolvconf 时会弹出建议重启，因此添加 noninteractive
+            DEBIAN_FRONTEND=noninteractive chroot $os_dir apt-get remove --purge -y "$package"
+        fi
+    done
+}
+
 chroot_apt_autoremove() {
     os_dir=$1
 
@@ -3577,14 +3594,6 @@ configfile \$prefix/grub.cfg
 EOF
         fi
 
-        # 更新包索引
-        chroot $os_dir apt-get update
-
-        # 安装最佳内核
-        flavor=$(get_ubuntu_kernel_flavor)
-        echo "Use kernel flavor: $flavor"
-        chroot_apt_install $os_dir "linux-image-$flavor"
-
         # 自带内核：
         # 常规版本             generic
         # minimal 20.04/22.04 kvm      # 后台 vnc 无显示
@@ -3592,14 +3601,21 @@ EOF
 
         # debian cloud 内核不支持 ahci，ubuntu virtual 支持
 
-        # 标记旧内核包
+        # 标记所有内核为自动安装
         # 注意排除 linux-base
-        if pkgs=$(chroot $os_dir apt-mark showmanual linux-* | grep -E 'generic|virtual|kvm' | grep -v $flavor); then
-            chroot $os_dir apt-mark auto $pkgs
+        # 返回值始终为 0
+        pkgs=$(chroot $os_dir apt-mark showmanual \
+            linux-generic linux-virtual linux-kvm \
+            linux-image* linux-headers*)
+        chroot $os_dir apt-mark auto $pkgs
 
-            # 使用 autoremove
-            chroot_apt_autoremove $os_dir
-        fi
+        # 安装最佳内核
+        flavor=$(get_ubuntu_kernel_flavor)
+        echo "Use kernel flavor: $flavor"
+        chroot_apt_install $os_dir "linux-image-$flavor"
+
+        # 使用 autoremove 删除多余内核
+        chroot_apt_autoremove $os_dir
 
         # 安装固件+微码
         if fw_pkgs=$(get_ucode_firmware_pkgs) && [ -n "$fw_pkgs" ]; then

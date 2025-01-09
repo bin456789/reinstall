@@ -1048,6 +1048,12 @@ setos() {
             # cloud.debian.org 同样在瑞典，不是 cdn
         fi
 
+        is_virt && flavour=-cloud || flavour=
+        # debian 10 云内核 vultr efi vnc 没有显示
+        [ "$releasever" -le 10 ] && flavour=
+        # 甲骨文 arm64 cloud 内核 vnc 没有显示
+        [ "$basearch_alt" = arm64 ] && flavour=
+
         if is_use_cloud_image; then
             # cloud image
             # debian --ci 用此标记要是否要换 elts 源
@@ -1097,10 +1103,6 @@ Continue?
             fi
 
             initrd_dir=debian/dists/$codename/main/installer-$basearch_alt/current/images/netboot/debian-installer/$basearch_alt
-
-            is_virt && flavour=-cloud || flavour=
-            # 甲骨文 arm64 cloud 内核 vnc 没有显示
-            [ "$basearch_alt" = arm64 ] && flavour=
 
             eval ${step}_vmlinuz=https://$initrd_mirror/$initrd_dir/linux
             eval ${step}_initrd=https://$initrd_mirror/$initrd_dir/initrd.gz
