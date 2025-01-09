@@ -2,6 +2,23 @@
 # 修复 cloud-init 没有正确渲染 onlink 网关
 
 set -eE
+os_dir=$1
+
+# 该脚本也会在 alpine live 下调用
+# 防止在 alpine live 下运行 systemctl netplan 报错
+systemctl() {
+    if systemd-detect-virt --chroot; then
+        return
+    fi
+    command systemctl "$@"
+}
+
+netplan() {
+    if systemd-detect-virt --chroot; then
+        return
+    fi
+    command netplan "$@"
+}
 
 insert_into_file() {
     file=$1
@@ -44,24 +61,24 @@ fix_netplan_conf() {
     #   - to: ::/0
     #     via: ::1
     #     on-link: true
-    conf=/etc/netplan/50-cloud-init.yaml
-    if ! [ -f $conf ]; then
+    conf=$os_dir/etc/netplan/50-cloud-init.yaml
+    if ! [ -f "$conf" ]; then
         return
     fi
 
     # 判断 bug 是否已经修复
-    if grep 'on-link:' "$conf"; then
+    if grep -q 'on-link:' "$conf"; then
         return
     fi
 
     # 获取网关
-    gateways=$(grep 'gateway[4|6]:' $conf | awk '{print $2}')
+    gateways=$(grep 'gateway[4|6]:' "$conf" | awk '{print $2}')
     if [ -z "$gateways" ]; then
         return
     fi
 
     # 获取缩进
-    spaces=$(grep 'gateway[4|6]:' $conf | head -1 | grep -o '^[[:space:]]*')
+    spaces=$(grep 'gateway[4|6]:' "$conf" | head -1 | grep -o '^[[:space:]]*')
 
     {
         # 网关头部
@@ -82,14 +99,14 @@ ${spaces}    via: $gateway
 ${spaces}    on-link: true
 EOF
         done
-    } | insert_into_file $conf before 'match:'
+    } | insert_into_file "$conf" before 'match:'
 
     # 删除原来的条目
-    sed -i '/gateway[4|6]:/d' $conf
+    sed -i '/gateway[4|6]:/d' "$conf"
 
     # 重新应用配置
     if command -v netplan && {
-        systemctl is-enabled systemd-networkd || systemctl is-enabled NetworkManager
+        systemctl -q is-enabled systemd-networkd || systemctl -q is-enabled NetworkManager
     }; then
         netplan apply
     fi
@@ -117,13 +134,13 @@ fix_networkd_conf() {
     # Gateway=2602::1
     # GatewayOnLink=yes
 
-    if ! confs=$(ls /etc/systemd/network/10-cloud-init-*.network 2>/dev/null); then
+    if ! confs=$(ls "$os_dir"/etc/systemd/network/10-cloud-init-*.network 2>/dev/null); then
         return
     fi
 
     for conf in $confs; do
         # 判断 bug 是否已经修复
-        if grep '^GatewayOnLink=' "$conf"; then
+        if grep -q '^GatewayOnLink=' "$conf"; then
             return
         fi
 
@@ -148,7 +165,7 @@ GatewayOnLink=yes
 
     # 重新应用配置
     # networkctl reload 不起作用
-    if systemctl is-enabled systemd-networkd; then
+    if systemctl -q is-enabled systemd-networkd; then
         systemctl restart systemd-networkd
     fi
 }
@@ -166,13 +183,13 @@ fix_wicked_conf() {
     # default 1.1.1.1 - -
     # default 2602::1 - -
 
-    if ! confs=$(ls /etc/sysconfig/network/ifroute-* 2>/dev/null); then
+    if ! confs=$(ls "$os_dir/etc/sysconfig/network/ifroute-"* 2>/dev/null); then
         return
     fi
 
     for conf in $confs; do
         # 判断 bug 是否已经修复
-        if grep -v 'default' "$conf" | grep '-'; then
+        if grep -v 'default' "$conf" | grep -q '-'; then
             return
         fi
 
@@ -189,7 +206,7 @@ fix_wicked_conf() {
     done
 
     # 重新应用配置
-    if systemctl is-enabled wicked; then
+    if systemctl -q is-enabled wicked; then
         systemctl restart wicked
     fi
 }

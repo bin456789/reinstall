@@ -1059,8 +1059,17 @@ setos() {
             # debian --ci 用此标记要是否要换 elts 源
             # shellcheck disable=SC2034
             is_debian_elts && elts=1 || elts=0
-            is_virt && ci_type=genericcloud || ci_type=generic
+
+            # https://salsa.debian.org/cloud-team/debian-cloud-images/-/tree/master/config_space/bookworm/files/etc/default/grub.d
+            # cloud 包括各种奇怪的优化，例如不显示 grub 菜单
+            # 因此使用 nocloud
+            if false; then
+                is_virt && ci_type=genericcloud || ci_type=generic
+            else
+                ci_type=nocloud
+            fi
             eval ${step}_img=$cdimage_mirror/cloud/$codename/latest/debian-$releasever-$ci_type-$basearch_alt.qcow2
+            eval ${step}_kernel=linux-image$flavour-$basearch_alt
         else
             # 传统安装
             if is_debian_elts; then
@@ -2975,6 +2984,10 @@ EOF
     # 不用在 windows 判断是哪种硬盘控制器，因为 256M 运行 windows 只可能是 xp，而脚本本来就不支持 xp
     # 在 debian installer 中判断能否用云内核
     create_can_use_cloud_kernel_sh can_use_cloud_kernel.sh
+
+    # 下载 fix-eth-name 脚本
+    curl -LO "$confhome/fix-eth-name.sh"
+    curl -LO "$confhome/fix-eth-name.service"
 
     # 最近 kali initrd 删除了原版 wget
     # 但 initrd 的 busybox wget 又不支持 https

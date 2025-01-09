@@ -1,0 +1,26 @@
+#!/sbin/openrc-run
+
+Description="Fix Eth Name"
+
+# https://gitlab.alpinelinux.org/alpine/aports/-/blob/master/main/openrc/networking.initd
+# https://gitlab.alpinelinux.org/alpine/aports/-/blob/master/main/dhcpcd/dhcpcd.initd
+depend() {
+    need localmount
+    want dev-settle
+
+    after bootmisc hwdrivers modules
+    before net networking dhcpcd
+}
+
+start() {
+    ebegin "Fix Eth Name"
+    ash /fix-eth-name.sh
+    eend $?
+}
+
+start_post() {
+    rc-service fix-eth-name zap
+    rc-update del fix-eth-name boot
+    rm -f /etc/init.d/fix-eth-name
+    rm -f /fix-eth-name.sh
+}

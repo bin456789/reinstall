@@ -879,15 +879,14 @@ EOF
     # ethx
     for ethx in $(get_eths); do
         mode=auto
-        enpx=
         if is_distro_like_debian; then
             if [ -f /etc/network/devhotplug ] && grep -wo "$ethx" /etc/network/devhotplug; then
                 mode=allow-hotplug
             fi
 
-            if is_have_cmd udevadm; then
-                enpx=$(udevadm test-builtin net_id /sys/class/net/$ethx 2>&1 | grep ID_NET_NAME_PATH= | cut -d= -f2)
-            fi
+            # if is_have_cmd udevadm; then
+            #     enpx=$(udevadm test-builtin net_id /sys/class/net/$ethx 2>&1 | grep ID_NET_NAME_PATH= | cut -d= -f2)
+            # fi
         fi
 
         # dmit debian 普通内核和云内核网卡名不一致，因此需要 rename
@@ -897,11 +896,12 @@ EOF
         # https://bugs.debian.org/cgi-bin/bugreport.cgi?bug=928923
 
         # 头部
+        get_netconf_to mac_addr
         {
             echo
-            if [ -n "$enpx" ] && [ "$enpx" != "$ethx" ]; then
-                echo rename $enpx=$ethx
-            fi
+            # 这是标记，fix-eth-name 要用，不要删除
+            # shellcheck disable=SC2154
+            echo "# mac $mac_addr"
             echo $mode $ethx
         } >>$conf_file
 
@@ -1256,6 +1256,12 @@ install_alpine() {
     chroot /os setup-timezone -i Asia/Shanghai
     chroot /os setup-ntp chrony || true
 
+    # 下载 fix-eth-name
+    download "$confhome/fix-eth-name.sh" /os/fix-eth-name.sh
+    download "$confhome/fix-eth-name.initd" /os/etc/init.d/fix-eth-name
+    chmod +x /os/etc/init.d/fix-eth-name
+    chroot /os rc-update add fix-eth-name boot
+
     # 安装固件微码会触发 grub-probe
     # 如果没挂载会报错
     # Executing grub-2.12-r5.trigger
@@ -1540,6 +1546,64 @@ EOF
     show_nixos_config
 }
 
+basic_init() {
+    os_dir=$1
+
+    # 此时不能用
+    # chroot $os_dir timedatectl set-timezone Asia/Shanghai
+    # Failed to create bus connection: No such file or directory
+
+    # debian 11 没有 systemd-firstboot
+    if is_have_cmd_on_disk $os_dir systemd-firstboot; then
+        if chroot $os_dir systemd-firstboot --help | grep -wq '\--force'; then
+            chroot $os_dir systemd-firstboot --timezone=Asia/Shanghai --force
+        else
+            chroot $os_dir systemd-firstboot --timezone=Asia/Shanghai
+        fi
+    fi
+
+    # gentoo 不会自动创建 machine-id
+    clear_machine_id $os_dir
+
+    # sshd
+    chroot $os_dir ssh-keygen -A
+
+    sshd_enabled=false
+    sshs="sshd.service ssh.service sshd.socket ssh.socket"
+    for i in $sshs; do
+        if chroot $os_dir systemctl -q is-enabled $i; then
+            sshd_enabled=true
+            break
+        fi
+    done
+    if ! $sshd_enabled; then
+        for i in $sshs; do
+            if chroot $os_dir systemctl -q enable $i; then
+                break
+            fi
+        done
+    fi
+
+    allow_root_password_login $os_dir
+    allow_password_login $os_dir
+    if is_need_change_ssh_port; then
+        change_ssh_port $os_dir $ssh_port
+    fi
+
+    # 修改密码
+    change_root_password $os_dir
+
+    # 下载 fix-eth-name.service
+    # 即使开了 net.ifnames=0 也需要
+    # 因为 alpine 和目标系统的网卡顺序可能不同
+
+    # 无需执行 systemctl daemon-reload
+    # 因为 chroot 下执行会提示 Running in chroot, ignoring command 'daemon-reload'
+    download "$confhome/fix-eth-name.sh" "$os_dir/fix-eth-name.sh"
+    download "$confhome/fix-eth-name.service" "$os_dir/etc/systemd/system/fix-eth-name.service"
+    chroot "$os_dir" systemctl enable fix-eth-name
+}
+
 install_arch_gentoo() {
     info "install $distro"
 
@@ -1777,15 +1841,24 @@ EOF
     # 第二次运行会报错
     useradd systemd-network || true
     create_cloud_init_network_config net.cfg
+    cat -n net.cfg
     # 正常应该是 -D gentoo，但 alpine 的 cloud-init 包缺少 gentoo 配置
     cloud-init devel net-convert -p net.cfg -k yaml -d out -D alpine -O networkd
     cp out/etc/systemd/network/10-cloud-init-eth*.network $os_dir/etc/systemd/network/
-    rm -rf out
+
+    # 删除 cloud-init
+    rm -rf net.cfg out
+    apk del cloud-init
 
     # 删除网卡名匹配
     sed -i '/^Name=/d' $os_dir/etc/systemd/network/10-cloud-init-eth*.network
-    rm -rf net.cfg
-    apk del cloud-init
+
+    # 下载 fix-eth-name.service
+    # chroot 下执行 systemctl daemon-reload
+    # 会提示 Running in chroot, ignoring command 'daemon-reload'
+    download "$confhome/fix-eth-name.sh" "$os_dir/fix-eth-name.sh"
+    download "$confhome/fix-eth-name.service" "$os_dir/etc/systemd/system/fix-eth-name.service"
+    chroot "$os_dir" systemctl enable fix-eth-name
 
     # arch gentoo 网络配置是用 alpine cloud-init 生成的
     # cloud-init 版本够新，因此无需修复 onlink 网关
@@ -2270,6 +2343,10 @@ create_cloud_init_network_config() {
     fi
 
     apk del "$(get_yq_name)"
+
+    # 查看文件
+    info "Cloud-init network config"
+    cat -n $ci_file >&2
 }
 
 # 实测没用，生成的 machine-id 是固定的
@@ -2470,6 +2547,11 @@ restore_resolv_conf() {
     fi
 }
 
+keep_now_resolv_conf() {
+    os_dir=$1
+    rm -f $os_dir/etc/resolv.conf.orig
+}
+
 # 抄 https://github.com/alpinelinux/alpine-conf/blob/3.18.1/setup-disk.in#L421
 get_alpine_firmware_pkgs() {
     # 需要有 modloop，不然 modinfo 会报错
@@ -2539,6 +2621,63 @@ get_ucode_firmware_pkgs() {
     esac
 }
 
+chroot_systemctl_disable() {
+    os_dir=$1
+    shift
+
+    for unit in "$@"; do
+        # 如果传进来的是x(没有.) 则改成 x.service
+        if ! [[ "$unit" = "*.*" ]]; then
+            unit=$i.service
+        fi
+
+        # debian 10 返回值始终是 0
+        if ! chroot $os_dir systemctl list-unit-files "$unit" 2>&1 | grep -Eq '^0 unit'; then
+            chroot $os_dir systemctl disable "$unit"
+        fi
+    done
+}
+
+disable_cloud_init() {
+    os_dir=$1
+    info "Disable Cloud-Init"
+
+    # 两种方法都可以
+
+    if [ -d $os_dir/etc/cloud ]; then
+        touch $os_dir/etc/cloud/cloud-init.disabled
+    fi
+
+    for name in cloud-init-local cloud-init cloud-config cloud-final; do
+        for type in service socket; do
+            # 服务不存在时会报错
+            chroot $os_dir systemctl disable "$name.$type" 2>/dev/null || true
+        done
+    done
+}
+
+create_network_manager_config() {
+    source_cfg=$1
+    os_dir=$2
+    info "Create Network-Manager config"
+
+    # 可以直接用 alpine 的 cloud-init 生成 Network Manager 配置
+    apk add cloud-init
+    cloud-init devel net-convert -p "$source_cfg" -k yaml -d /out -D alpine -O network-manager
+    sed -i -e '/^may-fail=/d' -e 's/^method=dhcp/method=auto/' \
+        /out/etc/NetworkManager/system-connections/cloud-init-eth*.nmconnection
+
+    cp /out/etc/NetworkManager/system-connections/cloud-init-eth*.nmconnection $os_dir/etc/NetworkManager/system-connections/
+
+    rm -rf /out
+    apk del cloud-init
+
+    # 最终显示文件
+    for file in "$os_dir"/etc/NetworkManager/system-connections/cloud-init-eth*.nmconnection; do
+        cat -n "$file" >&2
+    done
+}
+
 modify_linux() {
     os_dir=$1
     info "Modify Linux"
@@ -2565,11 +2704,10 @@ EOF
         done
     }
 
-    download_cloud_init_config $os_dir
+    # 部分镜像有默认配置，例如 centos
+    del_exist_sysconfig_NetworkManager_config $os_dir
 
-    clear_machine_id $os_dir
-
-    # el/ol/fedora/国产fork
+    # 仅 fedora (el/ol/国产fork 用的是复制文件方法)
     # 1. 禁用 selinux kdump
     # 2. 添加微码+固件
     if [ -f $os_dir/etc/redhat-release ]; then
@@ -2578,7 +2716,15 @@ EOF
         mount_pseudo_fs $os_dir
         cp_resolv_conf $os_dir
 
+        disable_cloud_init $os_dir
+
+        # 可以直接用 alpine 的 cloud-init 生成 Network Manager 配置
+        create_cloud_init_network_config /net.cfg
+        create_network_manager_config /net.cfg "$os_dir"
+        rm /net.cfg
+
         disable_selinux_kdump $os_dir
+
         if fw_pkgs=$(get_ucode_firmware_pkgs) && [ -n "$fw_pkgs" ]; then
             is_have_cmd_on_disk $os_dir dnf && mgr=dnf || mgr=yum
             chroot $os_dir $mgr install -y $fw_pkgs
@@ -2594,12 +2740,14 @@ EOF
     # 注意 ubuntu 也有 /etc/debian_version
     if [ "$distro" = debian ]; then
         # 修复 onlink 网关
-        add_onlink_script_if_need
+        # add_onlink_script_if_need
 
         mount_pseudo_fs $os_dir
         cp_resolv_conf $os_dir
         find_and_mount /boot
         find_and_mount /boot/efi
+
+        disable_cloud_init $os_dir
 
         # 获取当前开启的 Components, 后面要用
         if [ -f $os_dir/etc/apt/sources.list.d/debian.sources ]; then
@@ -2674,32 +2822,73 @@ EOF
             chroot_apt_install $os_dir $fw_pkgs
         fi
 
-        if [ "$releasever" -le 11 ]; then
-            chroot $os_dir apt-get update
+        # genericcloud 删除以下文件开机时才会显示 grub 菜单
+        # https://salsa.debian.org/cloud-team/debian-cloud-images/-/tree/master/config_space/bookworm/files/etc/default/grub.d
+        rm -f $os_dir/etc/default/grub.d/10_cloud.cfg
+        rm -f $os_dir/etc/default/grub.d/15_timeout.cfg
+        chroot $os_dir update-grub
 
-            if true; then
-                # 将 debian 11 设置为 12 一样的网络管理器
-                # 可解决 ifupdown dhcp 不支持 24位掩码+不规则网关的问题
-                chroot_apt_install $os_dir netplan.io
-                chroot $os_dir systemctl disable networking resolvconf
-                chroot $os_dir systemctl enable systemd-networkd systemd-resolved
-                rm_resolv_conf $os_dir
-                ln -sf ../run/systemd/resolve/stub-resolv.conf $os_dir/etc/resolv.conf
+        if true; then
+            # 如果使用 nocloud 镜像
+            chroot_apt_install $os_dir openssh-server
+        else
+            # 如果使用 genericcloud 镜像
+
+            # 还原默认配置并创建 key
+            # cat $os_dir/usr/share/openssh/sshd_config $os_dir/etc/ssh/sshd_config
+            # chroot $os_dir ssh-keygen -A
+            rm -rf $os_dir/etc/ssh/sshd_config
+            UCF_FORCE_CONFFMISS=1 chroot $os_dir dpkg-reconfigure openssh-server
+        fi
+
+        # 镜像自带的网络管理器
+        # debian 11 ifupdown
+        # debian 12 netplan + networkd + resolved
+        # ifupdown dhcp 不支持 24位掩码+不规则网关?
+
+        # 强制使用 netplan
+        if false && is_have_cmd_on_disk $os_dir netplan; then
+            chroot_apt_install $os_dir netplan.io
+            # 服务不存在时会报错
+            chroot $os_dir systemctl disable networking resolvconf 2>/dev/null || true
+            chroot $os_dir systemctl enable systemd-networkd systemd-resolved
+            rm_resolv_conf $os_dir
+            ln -sf ../run/systemd/resolve/stub-resolv.conf $os_dir/etc/resolv.conf
+            if [ -f "$os_dir/etc/cloud/cloud.cfg.d/99_fallback.cfg" ]; then
                 insert_into_file $os_dir/etc/cloud/cloud.cfg.d/99_fallback.cfg after '#cloud-config' <<EOF
 system_info:
   network:
     renderers: [netplan]
     activators: [netplan]
 EOF
-
-            else
-                # debian 11 默认不支持 rdnss，要安装 rdnssd 或者 nm
-                chroot_apt_install $os_dir rdnssd
             fi
         fi
 
-        # 不会自动建立链接，因此不能删除
-        restore_resolv_conf $os_dir
+        create_ifupdown_config $os_dir/etc/network/interfaces
+
+        # ifupdown 不支持 rdnss
+        # 但 iso 安装不会安装 rdnssd，而是在安装时读取 rdnss 并写入 resolv.conf
+        if false; then
+            chroot_apt_install $os_dir rdnssd
+        fi
+
+        # debian 10 11 云镜像安装了 resolvconf
+        # debian 12 云镜像安装了 netplan systemd-resolved
+        # 云镜像用了 cloud-init 自动配置网络，用户是无感的，因此官方云镜像可以随便选择网络管理器
+        # 但我们的系统安装后用户可能有手动配置网络的需求，因此用回 iso 安装时的网络管理器 ifupdown
+
+        # 服务不存在时会报错
+        chroot $os_dir systemctl disable resolvconf systemd-networkd systemd-resolved 2>/dev/null || true
+
+        chroot_apt_install $os_dir ifupdown
+        chroot_apt_remove $os_dir resolvconf netplan.io systemd-resolved
+        chroot_apt_autoremove $os_dir
+        chroot $os_dir systemctl enable networking
+
+        # 静态时 networking 服务不会根据 /etc/network/interfaces 更新 resolv.conf
+        # 动态时使用了 isc-dhcp-client 支持自动更新 resolv.conf
+        # 另外 debian iso 不会安装 rdnssd
+        keep_now_resolv_conf $os_dir
     fi
 
     # opensuse
@@ -2713,16 +2902,53 @@ EOF
         find_and_mount /boot
         find_and_mount /boot/efi
 
+        disable_cloud_init $os_dir
+
         # opensuse leap
         if grep opensuse-leap $os_dir/etc/os-release; then
-            # 修复 onlink 网关
-            add_onlink_script_if_need
+
+            # sysconfig ifcfg
+            create_cloud_init_network_config $os_dir/net.cfg
+            chroot $os_dir cloud-init devel net-convert \
+                -p /net.cfg -k yaml -d out -D opensuse -O sysconfig
+
+            # sysconfig ifroute
+            # 包括了修复 onlink 网关
+            for ethx in $(get_eths); do
+                for prefix in '' 'default '; do
+                    if is_staticv4; then
+                        get_netconf_to ipv4_gateway
+                        echo "${prefix}${ipv4_gateway} - -" >>$os_dir/out/etc/sysconfig/network/ifroute-$ethx
+                    fi
+                    if is_staticv6; then
+                        get_netconf_to ipv6_gateway
+                        echo "${prefix}${ipv6_gateway} - -" >>$os_dir/out/etc/sysconfig/network/ifroute-$ethx
+                    fi
+                done
+            done
+
+            for file in \
+                "$os_dir/out/etc/sysconfig/network/ifcfg-eth"* \
+                "$os_dir/out/etc/sysconfig/network/ifroute-eth"*; do
+                # 动态 ip 没有 ifroute-eth*
+                if [ -f $file ]; then
+                    cp $file $os_dir/etc/sysconfig/network/
+                fi
+            done
+            rm -rf $os_dir/net.cfg $os_dir/out
         fi
 
         # opensuse tumbleweed
-        # 更新到 cloud-init 24.1 后删除
+        # network-manager
         if grep opensuse-tumbleweed $os_dir/etc/os-release; then
-            touch $os_dir/etc/NetworkManager/NetworkManager.conf
+            # 如果使用 cloud-init 则需要 touch NetworkManager.conf
+            # 更新到 cloud-init 24.1 后删除
+            # touch $os_dir/etc/NetworkManager/NetworkManager.conf
+
+            # 可以直接用 alpine 的 cloud-init 生成 Network Manager 配置
+            create_cloud_init_network_config /net.cfg
+            create_network_manager_config /net.cfg "$os_dir"
+            rm /net.cfg
         fi
 
         # 不能同时装 kernel-default-base 和 kernel-default
@@ -2810,10 +3036,10 @@ EOF
         add_onlink_script_if_need
     fi
 
-    # 修复 cloud-init + sysconfig / NetworkManager 的各种网络问题
-    if [ -d "$os_dir/etc/sysconfig" ] || [ -d "$os_dir/etc/NetworkManager" ]; then
-        fix_sysconfig_NetworkManager $os_dir
-    fi
+    basic_init $os_dir
+
+    # 应该在这里是否运行了 basic_init 和创建了网络配置文件
+    # 如果没有，则使用 cloud-init
 
     # 查看 cloud-init 最终配置
     if [ -f "$ci_file" ]; then
@@ -3226,9 +3452,8 @@ is_el7_family() {
         ! is_have_cmd_on_disk "$1" dnf
 }
 
-fix_sysconfig_NetworkManager() {
+del_exist_sysconfig_NetworkManager_config() {
     os_dir=$1
-    ci_file=$os_dir/etc/cloud/cloud.cfg.d/99_fallback.cfg
 
     # 删除云镜像自带的 dhcp 配置，防止歧义
     rm -rf $os_dir/etc/NetworkManager/system-connections/*.nmconnection
@@ -3238,14 +3463,17 @@ fix_sysconfig_NetworkManager() {
     #    甲骨文 dhcpv6 获取不到 IP 将视为 fatal，原有的 ipv4 地址也会被删除
     # 2. 修复 dhcpv6 下，ifcfg 添加了 IPV6_AUTOCONF=no 导致无法获取网关
     # 3. 修复 dhcpv6 下，NM method=dhcp 导致无法获取网关
+    if false; then
+        ci_file=$os_dir/etc/cloud/cloud.cfg.d/99_fallback.cfg
 
-    insert_into_file $ci_file after '^runcmd:' <<EOF
+        insert_into_file $ci_file after '^runcmd:' <<EOF
   - sed -i '/^IPV[46]_FAILURE_FATAL=/d' /etc/sysconfig/network-scripts/ifcfg-* || true
   - sed -i '/^may-fail=/d' /etc/NetworkManager/system-connections/*.nmconnection || true
   - for f in /etc/sysconfig/network-scripts/ifcfg-*; do grep -q '^DHCPV6C=yes' "\$f" && sed -i '/^IPV6_AUTOCONF=no/d' "\$f"; done
   - sed -i 's/^method=dhcp/method=auto/' /etc/NetworkManager/system-connections/*.nmconnection || true
   - systemctl is-enabled NetworkManager && systemctl restart NetworkManager || true
 EOF
+    fi
 }
 
 install_qcow_by_copy() {
@@ -3255,6 +3483,14 @@ install_qcow_by_copy() {
         case "$distro" in
         ubuntu) echo "umask=0077" ;;
         *) echo "defaults,uid=0,gid=0,umask=077,shortname=winnt" ;;
+        esac
+    )
+
+    # yum/apt 安装软件时需要的内存总大小
+    need_ram=$(
+        case "$distro" in
+        ubuntu) echo 1024 ;;
+        *) echo 2048 ;;
         esac
     )
 
@@ -3371,39 +3607,64 @@ install_qcow_by_copy() {
         umount /nbd-efi/
     fi
 
-    # 断开 qcow
+    # 断开 qcow 并删除 qemu-img
+    info "Disconnecting qcow2"
     if is_have_cmd vgchange; then
         vgchange -an
+        apk del lvm2
     fi
     disconnect_qcow
-
-    # 已复制并断开连接 qcow，可删除 qemu-img
     apk del qemu-img
+
+    # 取消挂载硬盘
+    info "Unmounting disk"
+    if is_efi; then
+        umount /os/boot/efi/
+    fi
+    umount /os/
+    umount /installer/
 
     # 如果镜像有efi分区，复制其uuid
     # 如果有相同uuid的fat分区，则无法挂载
     # 所以要先复制efi分区，断开nbd再复制uuid
+    # 复制uuid前要取消挂载硬盘 efi 分区
     if is_efi && [ -n "$efi_part_uuid" ]; then
-        umount /os/boot/efi/
+        info "Copy efi partition uuid"
         apk add mtools
         mlabel -N "$(echo $efi_part_uuid | sed 's/-//')" -i /dev/$xda*1 ::$efi_part_label
+        apk del mtools
         update_part
+    fi
+
+    # 删除 installer 分区并扩容
+    info "Delete installer partition"
+    apk add parted
+    parted /dev/$xda -s -- rm 3
+    update_part
+    resize_after_install_cloud_image
+
+    # 重新挂载 /os /boot/efi
+    info "Re-mount disk"
+    mount -o noatime /dev/$xda*2 /os/
+    if is_efi; then
         mount -o $efi_mount_opts /dev/$xda*1 /os/boot/efi/
     fi
+
+    # 创建 swap
+    create_swap_if_ram_less_than $need_ram /os/swapfile
 
     # 挂载伪文件系统
     mount_pseudo_fs /os/
 
-    # 创建 swap
-    umount /installer/
-    mkswap /dev/$xda*3
-    swapon /dev/$xda*3
-
     modify_el_ol() {
         info "Modify el ol"
+        os_dir=/os
 
         # resolv.conf
         cp_resolv_conf /os
+
+        # 部分镜像有默认配置，例如 centos
+        del_exist_sysconfig_NetworkManager_config /os
 
         # 删除镜像的默认账户，防止使用默认账户密码登录 ssh
         del_default_user /os
@@ -3444,9 +3705,6 @@ install_qcow_by_copy() {
         if fw_pkgs=$(get_ucode_firmware_pkgs) && [ -n "$fw_pkgs" ]; then
             chroot_dnf install $fw_pkgs
         fi
-
-        # 修复 cloud-init + dhcp 的各种网络问题
-        fix_sysconfig_NetworkManager /os
 
         # fstab 删除多余分区
         # almalinux/rocky 镜像有 boot 分区
@@ -3554,6 +3812,81 @@ EOF
         # --update-bls-cmdline
         chroot /os/ grub2-mkconfig -o "$grub_o_cfg"
 
+        # 网络配置
+        # el7/8 sysconfig
+        # el9 network-manager
+        if [ -f $os_dir/etc/sysconfig/network-scripts/ifup-eth ]; then
+            # sysconfig
+            info 'sysconfig'
+
+            # anolis/openeuler/opencloudos 可能要安装 cloud-init
+            # opencloudos 无法使用 chroot $os_dir command -v xxx
+            # chroot: failed to run command ‘command’: No such file or directory
+            # 注意还要禁用 cloud-init 服务
+            if ! is_have_cmd_on_disk $os_dir cloud-init; then
+                chroot_dnf install cloud-init
+            fi
+
+            # cloud-init 路径
+            # /usr/lib/python2.7/site-packages/cloudinit/net/
+            # /usr/lib/python3/dist-packages/cloudinit/net/
+            # /usr/lib/python3.9/site-packages/cloudinit/net/
+
+            # el7 不认识 static6，但可改成 static，作用相同
+            recognize_static6=true
+            if ls $os_dir/usr/lib/python*/*-packages/cloudinit/net/sysconfig.py 2>/dev/null &&
+                ! grep -q static6 $os_dir/usr/lib/python*/*-packages/cloudinit/net/sysconfig.py; then
+                recognize_static6=false
+            fi
+
+            # cloud-init 20.1 才支持以下配置
+            # https://cloudinit.readthedocs.io/en/20.4/topics/network-config-format-v1.html#subnet-ip
+            # https://cloudinit.readthedocs.io/en/21.1/topics/network-config-format-v1.html#subnet-ip
+            # ipv6_dhcpv6-stateful: Configure this interface with dhcp6
+            # ipv6_dhcpv6-stateless: Configure this interface with SLAAC and DHCP
+            # ipv6_slaac: Configure address with SLAAC
+
+            # el7 最新 cloud-init 版本
+            # centos 7         19.4-7.0.5.el7_9.6  backport 了 ipv6_xxx
+            # openeuler 20.03  19.4-15.oe2003sp4   backport 了 ipv6_xxx
+            # anolis 7         19.1.17-1.0.1.an7   没有更新到 centos7 相同版本,也没 backport ipv6_xxx，坑
+
+            # 最好还修改 ifcfg-eth* 的 IPV6_AUTOCONF
+            # 但实测 anolis7 cloud-init dhcp6 不会生成 IPV6_AUTOCONF，因此暂时不管
+            # https://www.redhat.com/zh/blog/configuring-ipv6-rhel-7-8
+            recognize_ipv6_types=true
+            if ls -d $os_dir/usr/lib/python*/*-packages/cloudinit/net/ 2>/dev/null &&
+                ! grep -qr ipv6_slaac $os_dir/usr/lib/python*/*-packages/cloudinit/net/; then
+                recognize_ipv6_types=false
+            fi
+
+            # 生成 cloud-init 网络配置
+            create_cloud_init_network_config $os_dir/net.cfg "$recognize_static6" "$recognize_ipv6_types"
+
+            # 转换成目标系统的网络配置
+            chroot $os_dir cloud-init devel net-convert \
+                -p /net.cfg -k yaml -d out -D rhel -O sysconfig
+            cp $os_dir/out/etc/sysconfig/network-scripts/ifcfg-eth* $os_dir/etc/sysconfig/network-scripts/
+            rm -rf $os_dir/net.cfg $os_dir/out
+
+            # 修正网络配置问题并显示文件
+            sed -i '/^IPV[46]_FAILURE_FATAL=/d' $os_dir/etc/sysconfig/network-scripts/ifcfg-*
+            for file in "$os_dir/etc/sysconfig/network-scripts/ifcfg-"*; do
+                if grep -q '^DHCPV6C=yes' "$file"; then
+                    sed -i '/^IPV6_AUTOCONF=no/d' "$file"
+                fi
+
+                cat -n "$file"
+            done
+        else
+            # Network Manager
+            info 'Network Manager'
+
+            create_cloud_init_network_config /net.cfg
+            create_network_manager_config /net.cfg "$os_dir"
+            rm /net.cfg
+        fi
+
         # 不删除可能网络管理器不会写入dns
         rm_resolv_conf /os
     }
@@ -3622,11 +3955,44 @@ EOF
             chroot_apt_install $os_dir $fw_pkgs
         fi
 
-        # 16.04 镜像用 ifupdown/networking 管理网络
-        # 要安装 resolveconf，不然 /etc/resolv.conf 为空
-        if [ "$releasever" = 16.04 ]; then
+        # 网络配置
+        # 18.04+ netplan
+        if is_have_cmd_on_disk $os_dir netplan; then
+            # 生成 cloud-init 网络配置
+            create_cloud_init_network_config $os_dir/net.cfg
+
+            # ubuntu 18.04 cloud-init 版本 23.1.2，因此不用处理 onlink
+
+            # 如果不是输出到 / 则不会生成 50-cloud-init.yaml
+            # 注意比较多了什么东西
+            if false; then
+                chroot $os_dir cloud-init devel net-convert \
+                    -p /net.cfg -k yaml -d /out -D ubuntu -O netplan
+                sed -Ei "/^[[:space:]]+set-name:/d" $os_dir/out/etc/netplan/50-cloud-init.yaml
+                cp $os_dir/out/etc/netplan/50-cloud-init.yaml $os_dir/etc/netplan/
+                rm -rf $os_dir/net.cfg $os_dir/out
+            else
+                chroot $os_dir cloud-init devel net-convert \
+                    -p /net.cfg -k yaml -d / -D ubuntu -O netplan
+                sed -Ei "/^[[:space:]]+set-name:/d" $os_dir/etc/netplan/50-cloud-init.yaml
+                rm -rf $os_dir/net.cfg
+            fi
+        else
+            # 16.04 镜像用 ifupdown/networking 管理网络
+            # 要安装 resolveconf，不然 /etc/resolv.conf 为空
             chroot_apt_install $os_dir resolvconf
             ln -sf /run/resolvconf/resolv.conf $os_dir/etc/resolv.conf.orig
+
+            create_ifupdown_config $os_dir/etc/network/interfaces
+        fi
+
+        # 自带的 60-cloudimg-settings.conf 禁止了 PasswordAuthentication
+        file=$os_dir/etc/ssh/sshd_config.d/60-cloudimg-settings.conf
+        if [ -f $file ]; then
+            sed -i '/^PasswordAuthentication/d' $file
+            if [ -z "$(cat $file)" ]; then
+                rm -f $file
+            fi
         fi
 
         # 安装 bios 引导
@@ -3679,64 +4045,18 @@ EOF
         restore_resolv_conf $os_dir
     }
 
-    # anolis/openeuler/opencloudos 可能要安装 cloud-init
-    # opencloudos 无法使用 chroot $os_dir command -v xxx
-    # chroot: failed to run command ‘command’: No such file or directory
-    if is_have_cmd_on_disk $os_dir rpm &&
-        ! is_have_cmd_on_disk $os_dir cloud-init; then
-
-        cp_resolv_conf $os_dir
-        chroot_dnf install cloud-init
-        restore_resolv_conf $os_dir
-    fi
-
-    # cloud-init 路径
-    # /usr/lib/python2.7/site-packages/cloudinit/net/
-    # /usr/lib/python3/dist-packages/cloudinit/net/
-    # /usr/lib/python3.9/site-packages/cloudinit/net/
-
-    # el7 不认识 static6，但可改成 static，作用相同
-    recognize_static6=true
-    if ls $os_dir/usr/lib/python*/*-packages/cloudinit/net/sysconfig.py 2>/dev/null &&
-        ! grep -q static6 $os_dir/usr/lib/python*/*-packages/cloudinit/net/sysconfig.py; then
-        recognize_static6=false
-    fi
-
-    # cloud-init 20.1 才支持以下配置
-    # https://cloudinit.readthedocs.io/en/20.4/topics/network-config-format-v1.html#subnet-ip
-    # https://cloudinit.readthedocs.io/en/21.1/topics/network-config-format-v1.html#subnet-ip
-    # ipv6_dhcpv6-stateful: Configure this interface with dhcp6
-    # ipv6_dhcpv6-stateless: Configure this interface with SLAAC and DHCP
-    # ipv6_slaac: Configure address with SLAAC
-
-    # el7 最新 cloud-init 版本
-    # centos 7         19.4-7.0.5.el7_9.6  backport 了 ipv6_xxx
-    # openeuler 20.03  19.4-15.oe2003sp4   backport 了 ipv6_xxx
-    # anolis 7         19.1.17-1.0.1.an7   没有更新到 centos7 相同版本,也没 backport ipv6_xxx，坑
-
-    # 最好还修改 ifcfg-eth* 的 IPV6_AUTOCONF
-    # 但实测 anolis7 cloud-init dhcp6 不会生成 IPV6_AUTOCONF，因此暂时不管
-    # https://www.redhat.com/zh/blog/configuring-ipv6-rhel-7-8
-    recognize_ipv6_types=true
-    if ls -d $os_dir/usr/lib/python*/*-packages/cloudinit/net/ 2>/dev/null &&
-        ! grep -qr ipv6_slaac $os_dir/usr/lib/python*/*-packages/cloudinit/net/; then
-        recognize_ipv6_types=false
-    fi
-
-    # cloud-init
-    download_cloud_init_config "$os_dir" "$recognize_static6" "$recognize_ipv6_types"
-
     case "$distro" in
     ubuntu) modify_ubuntu ;;
     *) modify_el_ol ;;
     esac
 
-    # 查看最终的 cloud-init 配置
-    cat /os/etc/cloud/cloud.cfg.d/99_*.cfg
+    # 基本配置
+    disable_cloud_init /os
+    basic_init /os
 
-    # 删除installer分区，重启后cloud init会自动扩容
+    # 删除 swapfile
     swapoff -a
-    parted /dev/$xda -s rm 3
+    rm -f /os/swapfile
 }
 
 get_partition_table_format() {
