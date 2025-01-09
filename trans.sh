@@ -2,6 +2,8 @@
 # shellcheck shell=dash
 # shellcheck disable=SC2086,SC3047,SC3036,SC3010,SC3001,SC3060
 # alpine 默认使用 busybox ash
+# 注意 bash 和 ash 以下语句结果不同
+# [[ a = '*a' ]] && echo 1
 
 # 出错后停止运行，将进入到登录界面，防止失联
 set -eE
@@ -2223,7 +2225,7 @@ create_cloud_init_network_config() {
     recognize_static6=${2:-true}
     recognize_ipv6_types=${3:-true}
 
-    info "Create Cloud Init network config"
+    info "Create Cloud-init network config"
 
     # 防止文件未创建
     mkdir -p "$(dirname "$ci_file")"
@@ -2362,6 +2364,8 @@ clear_machine_id() {
     rm -f $os_dir/var/lib/systemd/random-seed
 }
 
+# 注意 anolis 7 有这个文件，可能干扰我们的配置?
+# /etc/cloud/cloud.cfg.d/aliyun_cloud.cfg -> /sys/firmware/qemu_fw_cfg/by_name/etc/cloud-init/vendor-data/raw
 download_cloud_init_config() {
     os_dir=$1
     recognize_static6=$2
@@ -2971,17 +2975,21 @@ EOF
         # Failed to get root password hash
         # Failed to import /etc/uefi/certs/76B6A6A0.crt
         # warning: %post(kernel-default-5.14.21-150500.55.83.1.x86_64) scriptlet failed, exit status 255
-        echo "root:$(mkpasswd '')" | chroot $os_dir chpasswd -e
-        chroot $os_dir zypper install -y $kernel
-        chroot $os_dir passwd -d root
+        if grep -q ^root:: $os_dir/etc/shadow; then
+            echo "root:$(mkpasswd '')" | chroot $os_dir chpasswd -e
+            chroot $os_dir zypper install -y $kernel
+            chroot $os_dir passwd -d root
+        else
+            chroot $os_dir zypper install -y $kernel
+        fi
 
         restore_resolv_conf $os_dir
         swapoff $os_dir/swapfile
         rm -f $os_dir/swapfile
     fi
 
-    # arch
-    if [ -f $os_dir/etc/arch-release ]; then
+    # arch 云镜像
+    if false && [ -f $os_dir/etc/arch-release ]; then
         # 修复 onlink 网关
         add_onlink_script_if_need
 
@@ -2993,8 +3001,8 @@ EOF
         rm_resolv_conf $os_dir
     fi
 
-    # gentoo
-    if [ -f $os_dir/etc/gentoo-release ]; then
+    # gentoo 云镜像
+    if false && [ -f $os_dir/etc/gentoo-release ]; then
         # 挂载伪文件系统
         mount_pseudo_fs $os_dir
         cp_resolv_conf $os_dir
@@ -3126,7 +3134,7 @@ create_swap() {
     fi
 }
 
-# arch gentoo 常规安装用
+# 除了 alpine 都会用到
 change_ssh_conf() {
     os_dir=$1
     key=$2
@@ -3134,21 +3142,28 @@ change_ssh_conf() {
     sub_conf=$4
 
     # arch 没有 /etc/ssh/sshd_config.d/ 文件夹
-    # opensuse tumbleweed 有 /etc/ssh/sshd_config.d/ 文件夹，但没有 /etc/ssh/sshd_config，有/usr/etc/ssh/sshd_config
-    if grep -q 'Include.*/etc/ssh/sshd_config.d' $os_dir/etc/ssh/sshd_config ||
-        grep -q '^Include.*/etc/ssh/sshd_config.d/' $os_dir/usr/etc/ssh/sshd_config; then
+    # opensuse tumbleweed 没有 /etc/ssh/sshd_config
+    #                       有 /etc/ssh/sshd_config.d/ 文件夹
+    #                       有 /usr/etc/ssh/sshd_config
+    if { grep -q 'Include.*/etc/ssh/sshd_config.d' $os_dir/etc/ssh/sshd_config ||
+        grep -q '^Include.*/etc/ssh/sshd_config.d/' $os_dir/usr/etc/ssh/sshd_config; } 2>/dev/null; then
         mkdir -p $os_dir/etc/ssh/sshd_config.d/
         echo "$key $value" >"$os_dir/etc/ssh/sshd_config.d/$sub_conf"
     else
         # 如果 sshd_config 存在此 key，则替换
         # 否则追加
         line="^#?$key .*"
-        if grep -x "$line" $os_dir/etc/ssh/sshd_config; then
-            sed -Ei "s/$line/$key $value/" $os_dir/etc/ssh/sshd_config
+        if grep -Exq "$line" $os_dir/etc/ssh/sshd_config; then
+            sed -Eiq "s/$line/$key $value/" $os_dir/etc/ssh/sshd_config
         else
             echo "$key $value" >>$os_dir/etc/ssh/sshd_config
         fi
     fi
+}
+
+allow_password_login() {
+    os_dir=$1
+    change_ssh_conf "$os_dir" PasswordAuthentication yes 02-PasswordAuthenticaton.conf
 }
 
 # arch gentoo 常规安装用
@@ -3241,7 +3256,7 @@ disable_selinux_kdump() {
     chroot $os_dir grubby --update-kernel ALL --args crashkernel=no
     # el7 上面那条 grubby 命令不能设置 /etc/default/grub
     sed -i 's/crashkernel=[^ "]*/crashkernel=no/' $os_dir/etc/default/grub
-    if chroot $os_dir systemctl is-enabled kdump; then
+    if chroot $os_dir systemctl -q is-enabled kdump; then
         chroot $os_dir systemctl disable kdump
     fi
 }
@@ -3479,183 +3494,6 @@ EOF
 install_qcow_by_copy() {
     info "Install qcow2 by copy"
 
-    efi_mount_opts=$(
-        case "$distro" in
-        ubuntu) echo "umask=0077" ;;
-        *) echo "defaults,uid=0,gid=0,umask=077,shortname=winnt" ;;
-        esac
-    )
-
-    # yum/apt 安装软件时需要的内存总大小
-    need_ram=$(
-        case "$distro" in
-        ubuntu) echo 1024 ;;
-        *) echo 2048 ;;
-        esac
-    )
-
-    connect_qcow
-
-    # 镜像分区格式
-    # centos/rocky/almalinux/rhel: xfs
-    # oracle x86_64:          lvm + xfs
-    # oracle aarch64 cloud:   xfs
-    # alibaba cloud linux 3:  ext4
-
-    is_lvm_image=false
-    if lsblk -f /dev/nbd0p* | grep LVM2_member; then
-        is_lvm_image=true
-        apk add lvm2
-        lvscan
-        vg=$(pvs | grep /dev/nbd0p | awk '{print $2}')
-        lvchange -ay "$vg"
-    fi
-
-    # TODO: 系统分区应该是最后一个分区
-    # 选择最大分区
-    os_part=$(lsblk /dev/nbd0p* --sort SIZE -no NAME,FSTYPE | grep -E 'ext4|xfs' | tail -1 | awk '{print $1}')
-    efi_part=$(lsblk /dev/nbd0p* --sort SIZE -no NAME,PARTTYPE | grep -i "$EFI_UUID" | awk '{print $1}')
-    # 排除前两个，再选择最大分区
-    # almalinux9 boot 分区的类型不是规定的 uuid
-    # openeuler boot 分区是 fat 格式
-    boot_part=$(lsblk /dev/nbd0p* --sort SIZE -no NAME,FSTYPE | grep -E 'ext4|xfs|fat' | awk '{print $1}' |
-        grep -vx "$os_part" | grep -vx "$efi_part" | tail -1 | awk '{print $1}')
-
-    if $is_lvm_image; then
-        os_part="mapper/$os_part"
-    fi
-
-    info "qcow2 Partitions"
-    lsblk -f /dev/nbd0 -o +PARTTYPE
-    echo "Part OS:   $os_part"
-    echo "Part EFI:  $efi_part"
-    echo "Part Boot: $boot_part"
-
-    # 分区寻找方式
-    # 系统/分区          cmdline:root  fstab:efi
-    # rocky             LABEL=rocky   LABEL=EFI
-    # ubuntu            PARTUUID      LABEL=UEFI
-    # 其他el/ol         UUID           UUID
-
-    # read -r os_part_uuid os_part_label < <(lsblk /dev/$os_part -no UUID,LABEL)
-    os_part_uuid=$(lsblk /dev/$os_part -no UUID)
-    os_part_label=$(lsblk /dev/$os_part -no LABEL)
-    os_part_fstype=$(lsblk /dev/$os_part -no FSTYPE)
-
-    if [ -n "$efi_part" ]; then
-        efi_part_uuid=$(lsblk /dev/$efi_part -no UUID)
-        efi_part_label=$(lsblk /dev/$efi_part -no LABEL)
-    fi
-
-    mkdir -p /nbd /nbd-boot /nbd-efi
-
-    mount_nouuid() {
-        case "$os_part_fstype" in
-        ext4) mount "$@" ;;
-        xfs) mount -o nouuid "$@" ;;
-        esac
-    }
-
-    # 使用目标系统的格式化程序
-    # centos8 如果用alpine格式化xfs，grub2-mkconfig和grub2里面都无法识别xfs分区
-    mount_nouuid /dev/$os_part /nbd/
-    mount_pseudo_fs /nbd/
-    case "$os_part_fstype" in
-    ext4) chroot /nbd mkfs.ext4 -F -L "$os_part_label" -U "$os_part_uuid" /dev/$xda*2 ;;
-    xfs) chroot /nbd mkfs.xfs -f -L "$os_part_label" -m uuid=$os_part_uuid /dev/$xda*2 ;;
-    esac
-    umount -R /nbd/
-
-    # TODO: ubuntu 镜像缺少 mkfs.fat/vfat/dosfstools? initrd 不需要检查fs完整性？
-
-    # 创建并挂载 /os
-    mkdir -p /os
-    mount -o noatime /dev/$xda*2 /os/
-
-    # 如果是 efi 则创建 /os/boot/efi
-    # 如果镜像有 efi 分区也创建 /os/boot/efi，用于复制 efi 分区的文件
-    if is_efi || [ -n "$efi_part" ]; then
-        mkdir -p /os/boot/efi/
-
-        # 挂载 /os/boot/efi
-        # 预先挂载 /os/boot/efi 因为可能 boot 和 efi 在同一个分区（openeuler 24.03 arm）
-        # 复制 boot 时可以会复制 efi 的文件
-        if is_efi; then
-            mount -o $efi_mount_opts /dev/$xda*1 /os/boot/efi/
-        fi
-    fi
-
-    # 复制系统分区
-    echo Copying os partition...
-    mount_nouuid -o ro /dev/$os_part /nbd/
-    cp -a /nbd/* /os/
-    umount /nbd/
-
-    # 复制boot分区，如果有
-    if [ -n "$boot_part" ]; then
-        echo Copying boot partition...
-        mount_nouuid -o ro /dev/$boot_part /nbd-boot/
-        cp -a /nbd-boot/* /os/boot/
-        umount /nbd-boot/
-    fi
-
-    # 复制efi分区，如果有
-    if [ -n "$efi_part" ]; then
-        echo Copying efi partition...
-        mount -o ro /dev/$efi_part /nbd-efi/
-        cp -a /nbd-efi/* /os/boot/efi/
-        umount /nbd-efi/
-    fi
-
-    # 断开 qcow 并删除 qemu-img
-    info "Disconnecting qcow2"
-    if is_have_cmd vgchange; then
-        vgchange -an
-        apk del lvm2
-    fi
-    disconnect_qcow
-    apk del qemu-img
-
-    # 取消挂载硬盘
-    info "Unmounting disk"
-    if is_efi; then
-        umount /os/boot/efi/
-    fi
-    umount /os/
-    umount /installer/
-
-    # 如果镜像有efi分区，复制其uuid
-    # 如果有相同uuid的fat分区，则无法挂载
-    # 所以要先复制efi分区，断开nbd再复制uuid
-    # 复制uuid前要取消挂载硬盘 efi 分区
-    if is_efi && [ -n "$efi_part_uuid" ]; then
-        info "Copy efi partition uuid"
-        apk add mtools
-        mlabel -N "$(echo $efi_part_uuid | sed 's/-//')" -i /dev/$xda*1 ::$efi_part_label
-        apk del mtools
-        update_part
-    fi
-
-    # 删除 installer 分区并扩容
-    info "Delete installer partition"
-    apk add parted
-    parted /dev/$xda -s -- rm 3
-    update_part
-    resize_after_install_cloud_image
-
-    # 重新挂载 /os /boot/efi
-    info "Re-mount disk"
-    mount -o noatime /dev/$xda*2 /os/
-    if is_efi; then
-        mount -o $efi_mount_opts /dev/$xda*1 /os/boot/efi/
-    fi
-
-    # 创建 swap
-    create_swap_if_ram_less_than $need_ram /os/swapfile
-
-    # 挂载伪文件系统
-    mount_pseudo_fs /os/
-
     modify_el_ol() {
         info "Modify el ol"
         os_dir=/os
@@ -3696,8 +3534,11 @@ install_qcow_by_copy() {
 
             # el7 安装 NetworkManager
             # anolis 7 镜像自带 NetworkManager
-            chroot_dnf install NetworkManager
-            chroot /os systemctl disable network
+            if ! [ -f /os/usr/lib/systemd/system/NetworkManager.service ]; then
+                chroot_dnf install NetworkManager
+            fi
+            # 服务不存在时会报错
+            chroot /os systemctl disable network 2>/dev/null || true
             chroot /os systemctl enable NetworkManager
         fi
 
@@ -3917,8 +3758,9 @@ EOF
 
         # 16.04 arm64 镜像没有 grub 引导文件
         if is_efi && ! [ -d $os_dir/boot/efi/EFI/ubuntu ]; then
-            DEBIAN_FRONTEND=noninteractive chroot $os_dir \
-                apt-get upgrade --reinstall -y efibootmgr shim "grub-efi-$(get_axx64)"
+            chroot_apt_install $os_dir efibootmgr shim "grub-efi-$(get_axx64)"
+            # 创建 ubuntu 文件夹和 grubaa64.efi
+            DEBIAN_FRONTEND=noninteractive chroot $os_dir dpkg-reconfigure "grub-efi-$(get_axx64)"
 
             cat <<EOF >"$os_dir/boot/efi/EFI/ubuntu/grub.cfg"
 search.fs_uuid $os_part_uuid root
@@ -4044,6 +3886,183 @@ EOF
 
         restore_resolv_conf $os_dir
     }
+
+    efi_mount_opts=$(
+        case "$distro" in
+        ubuntu) echo "umask=0077" ;;
+        *) echo "defaults,uid=0,gid=0,umask=077,shortname=winnt" ;;
+        esac
+    )
+
+    # yum/apt 安装软件时需要的内存总大小
+    need_ram=$(
+        case "$distro" in
+        ubuntu) echo 1024 ;;
+        *) echo 2048 ;;
+        esac
+    )
+
+    connect_qcow
+
+    # 镜像分区格式
+    # centos/rocky/almalinux/rhel: xfs
+    # oracle x86_64:          lvm + xfs
+    # oracle aarch64 cloud:   xfs
+    # alibaba cloud linux 3:  ext4
+
+    is_lvm_image=false
+    if lsblk -f /dev/nbd0p* | grep LVM2_member; then
+        is_lvm_image=true
+        apk add lvm2
+        lvscan
+        vg=$(pvs | grep /dev/nbd0p | awk '{print $2}')
+        lvchange -ay "$vg"
+    fi
+
+    # TODO: 系统分区应该是最后一个分区
+    # 选择最大分区
+    os_part=$(lsblk /dev/nbd0p* --sort SIZE -no NAME,FSTYPE | grep -E 'ext4|xfs' | tail -1 | awk '{print $1}')
+    efi_part=$(lsblk /dev/nbd0p* --sort SIZE -no NAME,PARTTYPE | grep -i "$EFI_UUID" | awk '{print $1}')
+    # 排除前两个，再选择最大分区
+    # almalinux9 boot 分区的类型不是规定的 uuid
+    # openeuler boot 分区是 fat 格式
+    boot_part=$(lsblk /dev/nbd0p* --sort SIZE -no NAME,FSTYPE | grep -E 'ext4|xfs|fat' | awk '{print $1}' |
+        grep -vx "$os_part" | grep -vx "$efi_part" | tail -1 | awk '{print $1}')
+
+    if $is_lvm_image; then
+        os_part="mapper/$os_part"
+    fi
+
+    info "qcow2 Partitions"
+    lsblk -f /dev/nbd0 -o +PARTTYPE
+    echo "Part OS:   $os_part"
+    echo "Part EFI:  $efi_part"
+    echo "Part Boot: $boot_part"
+
+    # 分区寻找方式
+    # 系统/分区          cmdline:root  fstab:efi
+    # rocky             LABEL=rocky   LABEL=EFI
+    # ubuntu            PARTUUID      LABEL=UEFI
+    # 其他el/ol         UUID           UUID
+
+    # read -r os_part_uuid os_part_label < <(lsblk /dev/$os_part -no UUID,LABEL)
+    os_part_uuid=$(lsblk /dev/$os_part -no UUID)
+    os_part_label=$(lsblk /dev/$os_part -no LABEL)
+    os_part_fstype=$(lsblk /dev/$os_part -no FSTYPE)
+
+    if [ -n "$efi_part" ]; then
+        efi_part_uuid=$(lsblk /dev/$efi_part -no UUID)
+        efi_part_label=$(lsblk /dev/$efi_part -no LABEL)
+    fi
+
+    mkdir -p /nbd /nbd-boot /nbd-efi
+
+    mount_nouuid() {
+        case "$os_part_fstype" in
+        ext4) mount "$@" ;;
+        xfs) mount -o nouuid "$@" ;;
+        esac
+    }
+
+    # 使用目标系统的格式化程序
+    # centos8 如果用alpine格式化xfs，grub2-mkconfig和grub2里面都无法识别xfs分区
+    mount_nouuid /dev/$os_part /nbd/
+    mount_pseudo_fs /nbd/
+    case "$os_part_fstype" in
+    ext4) chroot /nbd mkfs.ext4 -F -L "$os_part_label" -U "$os_part_uuid" /dev/$xda*2 ;;
+    xfs) chroot /nbd mkfs.xfs -f -L "$os_part_label" -m uuid=$os_part_uuid /dev/$xda*2 ;;
+    esac
+    umount -R /nbd/
+
+    # TODO: ubuntu 镜像缺少 mkfs.fat/vfat/dosfstools? initrd 不需要检查fs完整性？
+
+    # 创建并挂载 /os
+    mkdir -p /os
+    mount -o noatime /dev/$xda*2 /os/
+
+    # 如果是 efi 则创建 /os/boot/efi
+    # 如果镜像有 efi 分区也创建 /os/boot/efi，用于复制 efi 分区的文件
+    if is_efi || [ -n "$efi_part" ]; then
+        mkdir -p /os/boot/efi/
+
+        # 挂载 /os/boot/efi
+        # 预先挂载 /os/boot/efi 因为可能 boot 和 efi 在同一个分区（openeuler 24.03 arm）
+        # 复制 boot 时可以会复制 efi 的文件
+        if is_efi; then
+            mount -o $efi_mount_opts /dev/$xda*1 /os/boot/efi/
+        fi
+    fi
+
+    # 复制系统分区
+    echo Copying os partition...
+    mount_nouuid -o ro /dev/$os_part /nbd/
+    cp -a /nbd/* /os/
+    umount /nbd/
+
+    # 复制boot分区，如果有
+    if [ -n "$boot_part" ]; then
+        echo Copying boot partition...
+        mount_nouuid -o ro /dev/$boot_part /nbd-boot/
+        cp -a /nbd-boot/* /os/boot/
+        umount /nbd-boot/
+    fi
+
+    # 复制efi分区，如果有
+    if [ -n "$efi_part" ]; then
+        echo Copying efi partition...
+        mount -o ro /dev/$efi_part /nbd-efi/
+        cp -a /nbd-efi/* /os/boot/efi/
+        umount /nbd-efi/
+    fi
+
+    # 断开 qcow 并删除 qemu-img
+    info "Disconnecting qcow2"
+    if is_have_cmd vgchange; then
+        vgchange -an
+        apk del lvm2
+    fi
+    disconnect_qcow
+    apk del qemu-img
+
+    # 取消挂载硬盘
+    info "Unmounting disk"
+    if is_efi; then
+        umount /os/boot/efi/
+    fi
+    umount /os/
+    umount /installer/
+
+    # 如果镜像有efi分区，复制其uuid
+    # 如果有相同uuid的fat分区，则无法挂载
+    # 所以要先复制efi分区，断开nbd再复制uuid
+    # 复制uuid前要取消挂载硬盘 efi 分区
+    if is_efi && [ -n "$efi_part_uuid" ]; then
+        info "Copy efi partition uuid"
+        apk add mtools
+        mlabel -N "$(echo $efi_part_uuid | sed 's/-//')" -i /dev/$xda*1 ::$efi_part_label
+        apk del mtools
+        update_part
+    fi
+
+    # 删除 installer 分区并扩容
+    info "Delete installer partition"
+    apk add parted
+    parted /dev/$xda -s -- rm 3
+    update_part
+    resize_after_install_cloud_image
+
+    # 重新挂载 /os /boot/efi
+    info "Re-mount disk"
+    mount -o noatime /dev/$xda*2 /os/
+    if is_efi; then
+        mount -o $efi_mount_opts /dev/$xda*1 /os/boot/efi/
+    fi
+
+    # 创建 swap
+    create_swap_if_ram_less_than $need_ram /os/swapfile
+
+    # 挂载伪文件系统
+    mount_pseudo_fs /os/
 
     case "$distro" in
     ubuntu) modify_ubuntu ;;
@@ -4239,8 +4258,7 @@ resize_after_install_cloud_image() {
         < <(parted -msf /dev/$xda 'unit b print' | tail -1)
     last_part_end=$(echo $last_part_end | sed 's/B//')
 
-    # 大于 100M 才扩容
-    if [ $((disk_end - last_part_end)) -ge $((100 * 1024 * 1024)) ]; then
+    if [ $((disk_end - last_part_end)) -ge 0 ]; then
         printf "yes" | parted /dev/$xda resizepart $last_part_num 100% ---pretend-input-tty
         update_part
 
@@ -5142,7 +5160,7 @@ install_windows() {
     # 评估版 iso ei.cfg 有 EVAL 字样，填空白 key 报错 Windows Cannot find Microsoft software license terms
 
     # key
-    if [[ "$image_name" = 'Windows Vista'* ]]; then
+    if [[ "$image_name" = 'Windows Vista*' ]]; then
         # vista 需密钥，密钥可与 edition 不一致
         # TODO: 改成从网页获取？
         # https://learn.microsoft.com/en-us/windows-server/get-started/kms-client-activation-keys
@@ -5350,6 +5368,11 @@ sync_time() {
     hwclock -w
 }
 
+is_ubuntu_lts() {
+    IFS=. read -r major minor < <(echo "$releasever")
+    [ $((major % 2)) = 0 ] && [ $minor = 04 ]
+}
+
 get_ubuntu_kernel_flavor() {
     # 20.04/22.04 kvm 内核 vnc 没显示
     # 24.04 kvm = virtual
@@ -5378,10 +5401,11 @@ get_ubuntu_kernel_flavor() {
         case "$vendor" in
         aws | gcp | oracle | azure | ibm) echo $vendor ;;
         *)
+            is_ubuntu_lts && suffix=-hwe-$releasever || suffix=
             if is_virt; then
-                echo virtual-hwe-$releasever
+                echo virtual$suffix
             else
-                echo generic-hwe-$releasever
+                echo generic$suffix
             fi
             ;;
         esac
@@ -5405,7 +5429,7 @@ install_redhat_ubuntu() {
     # 重新整理 extra，因为grub会处理掉引号，要重新添加引号
     extra_cmdline=''
     for var in $(grep -o '\bextra_[^ ]*' /proc/cmdline | xargs); do
-        if [[ "$var" = "extra_main_disk="* ]]; then
+        if [[ "$var" = "extra_main_disk=*" ]]; then
             # 重新记录主硬盘
             refind_main_disk
             extra_cmdline="$extra_cmdline extra_main_disk=$main_disk"
