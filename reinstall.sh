@@ -2373,14 +2373,17 @@ collect_netconf() {
         # ip -6 route show default
         # default via 2602:1111:0:80::1 dev eth0 metric 1024 onlink pref medium
 
+        # arch + vultr
+        # ip -6 route show default
+        # default nhid 4011550343 via fe80::fc00:5ff:fe3d:2714 dev enp1s0 proto ra metric 1024 expires 1504sec pref medium
+
         for v in 4 6; do
-            if ethx=$(ip -$v route show default | awk '$4=="dev"' | head -1 | awk '{print $5}' | grep .); then
-                if ip -$v route show default | awk '$5=="'$ethx'"' | head -1 | grep -q .; then
-                    eval ipv${v}_ethx="$ethx" # can_use_cloud_kernel 要用
-                    eval ipv${v}_mac="$(ip link show dev $ethx | grep link/ether | head -1 | awk '{print $2}')"
-                    eval ipv${v}_gateway="$(ip -$v route show default | awk '$5=="'$ethx'"' | head -1 | awk '{print $3}')"
-                    eval ipv${v}_addr="$(ip -$v -o addr show scope global dev $ethx | grep -v temporary | head -1 | awk '{print $4}')"
-                fi
+            if via_gateway_dev_ethx=$(ip -$v route show default | grep -Ewo 'via [^ ]+ dev [^ ]+' | head -1 | grep .); then
+                read -r _ gateway _ ethx <<<"$via_gateway_dev_ethx"
+                eval ipv${v}_ethx="$ethx" # can_use_cloud_kernel 要用
+                eval ipv${v}_mac="$(ip link show dev $ethx | grep link/ether | head -1 | awk '{print $2}')"
+                eval ipv${v}_gateway="$gateway"
+                eval ipv${v}_addr="$(ip -$v -o addr show scope global dev $ethx | grep -v temporary | head -1 | awk '{print $4}')"
             fi
         done
     fi
