@@ -99,9 +99,20 @@ is_have_cmd_on_disk() {
     return 1
 }
 
+is_num() {
+    echo "$1" | grep -Exq '[0-9]*\.?[0-9]*'
+}
+
 retry() {
-    max_try=$1
+    local max_try=$1
     shift
+
+    if is_num "$1"; then
+        local interval=$1
+        shift
+    else
+        local interval=5
+    fi
 
     for i in $(seq $max_try); do
         if "$@"; then
@@ -111,7 +122,7 @@ retry() {
             if [ $i -ge $max_try ]; then
                 return $ret
             fi
-            sleep 1
+            sleep $interval
         fi
     done
 }
@@ -166,7 +177,7 @@ download() {
     # --user-agent=Wget/1.21.1 \
 
     echo "$url"
-    retry 5 stdbuf -oL -eL aria2c -x4 \
+    retry 5 5 stdbuf -oL -eL aria2c -x4 \
         --allow-overwrite=true \
         --summary-interval=0 \
         --max-tries 1 \
