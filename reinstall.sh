@@ -44,20 +44,20 @@ usage_and_exit() {
         reinstall_____=' ./reinstall.sh'
     fi
     cat <<EOF
-Usage: $reinstall_____ anolis      7|8
+Usage: $reinstall_____ anolis      7|8|23
+                       opencloudos 8|9|23
                        rocky       8|9
                        redhat      8|9 --img='http://xxx.com/xxx.qcow2'
                        oracle      8|9
                        almalinux   8|9
-                       opencloudos 8|9
                        centos      9|10
                        fedora      40|41
                        nixos       24.11
                        debian      9|10|11|12
                        opensuse    15.6|tumbleweed
-                       openeuler   20.03|22.03|24.03
                        alpine      3.18|3.19|3.20|3.21
-                       ubuntu      16.04|18.04|20.04|22.04|24.04 [--minimal]
+                       openeuler   20.03|22.03|24.03|24.09
+                       ubuntu      16.04|18.04|20.04|22.04|24.04|24.10 [--minimal]
                        kali
                        arch
                        gentoo
@@ -1159,6 +1159,7 @@ Continue?
         20.04) codename=focal ;;
         22.04) codename=jammy ;;
         24.04) codename=noble ;;
+        24.10) codename=oracular ;; # non-lts
         esac
 
         if is_use_cloud_image; then
@@ -1295,7 +1296,7 @@ Continue?
             eval ${step}_img=$mirror/experimental/$basearch_alt/openstack/gentoo-openstack-$basearch_alt-systemd-latest.qcow2
         else
             prefix=stage3-$basearch_alt-systemd
-            dir=releases/$basearch_alt/autobuilds/current-$prefix
+            dir=releases/$basearch_alt/autobuilds
             file=$(curl -L $mirror/$dir/latest-$prefix.txt | grep '.tar.xz' | awk '{print $1}')
             stage3=$mirror/$dir/$file
             test_url $stage3 'tar.xz'
@@ -1473,7 +1474,14 @@ Continue with DD?
                     ver=-2211
                     ci_image=$ci_mirror/$releasever/images/CentOS-$releasever-$basearch-GenericCloud$ver.qcow2c
                     ;;
-                *) ci_image=$ci_mirror/$releasever-stream/$basearch/images/CentOS-Stream-GenericCloud-$releasever-latest.$basearch.qcow2 ;;
+                *)
+                    # 有 bios 和 efi 镜像
+                    # https://cloud.centos.org/centos/10-stream/x86_64/images/CentOS-Stream-GenericCloud-10-latest.x86_64.qcow2
+                    # https://cloud.centos.org/centos/10-stream/x86_64/images/CentOS-Stream-GenericCloud-x86_64-10-latest.x86_64.qcow2
+                    [ "$basearch" = x86_64 ] &&
+                        ci_image=$ci_mirror/$releasever-stream/$basearch/images/CentOS-Stream-GenericCloud-x86_64-$releasever-latest.$basearch.qcow2 ||
+                        ci_image=$ci_mirror/$releasever-stream/$basearch/images/CentOS-Stream-GenericCloud-$releasever-latest.$basearch.qcow2
+                    ;;
                 esac
                 ;;
             almalinux) ci_image=$ci_mirror/AlmaLinux-$releasever-GenericCloud-latest.$basearch.qcow2 ;;
@@ -1560,7 +1568,13 @@ Continue with DD?
 
     setos_opencloudos() {
         # https://mirrors.opencloudos.tech 不支持 ipv6
-        mirror=https://mirrors.cloud.tencent.com/opencloudos
+        # https://mirrors.cloud.tencent.com 没有 stream
+        if [ "$releasever" -ge 23 ]; then
+            mirror=https://mirrors.opencloudos.tech/opencloudos-stream/releases
+        else
+            mirror=https://mirrors.cloud.tencent.com/opencloudos
+        fi
+
         if is_use_cloud_image; then
             # ci
             dir=$releasever/images/$basearch
@@ -1572,13 +1586,15 @@ Continue with DD?
         fi
     }
 
-    # anolis 23 不是 lts，而且 cloud-init 好像有问题
     setos_anolis() {
         mirror=https://mirrors.openanolis.cn/anolis
         if is_use_cloud_image; then
             # ci
             dir=$releasever/isos/GA/$basearch
-            file=$(curl -L $mirror/$dir/ | grep -oP 'AnolisOS.*?-ANCK\.qcow2' |
+            [ "$releasever" -ge 23 ] &&
+                filename='AnolisOS.*?\.qcow2' ||
+                filename='AnolisOS.*?-ANCK\.qcow2'
+            file=$(curl -L $mirror/$dir/ | grep -oP "$filename" |
                 sort -uV | tail -1 | grep .)
             eval ${step}_img=$mirror/$dir/$file
         else
@@ -1594,7 +1610,7 @@ Continue with DD?
         fi
         if is_use_cloud_image; then
             # ci
-            name=$(curl -L "$mirror/" | grep -oE "openEuler-$releasever-LTS(-SP[0-9])?" |
+            name=$(curl -L "$mirror/" | grep -oE "openEuler-$releasever(-LTS)?(-SP[0-9])?" |
                 sort -uV | tail -1 | grep .)
             eval ${step}_img=$mirror/$name/virtual_machine_img/$basearch/$name-$basearch.qcow2.xz
         else
@@ -1649,19 +1665,19 @@ verify_os_name() {
     # 不要删除 centos 7
     for os in \
         'centos      7|9|10' \
-        'anolis      7|8' \
+        'anolis      7|8|23' \
+        'opencloudos 8|9|23' \
         'almalinux   8|9' \
         'rocky       8|9' \
         'redhat      8|9' \
-        'opencloudos 8|9' \
         'oracle      8|9' \
         'fedora      40|41' \
         'nixos       24.11' \
         'debian      9|10|11|12' \
         'opensuse    15.6|tumbleweed' \
-        'openeuler   20.03|22.03|24.03' \
         'alpine      3.18|3.19|3.20|3.21' \
-        'ubuntu      16.04|18.04|20.04|22.04|24.04' \
+        'openeuler   20.03|22.03|24.03|24.09' \
+        'ubuntu      16.04|18.04|20.04|22.04|24.04|24.10' \
         'kali' \
         'arch' \
         'gentoo' \

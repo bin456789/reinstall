@@ -5368,7 +5368,7 @@ sync_time() {
         ntpd -d -n -q -p "$ntp_server"
         ;;
     http)
-        url=$(grep -m1 ^http /etc/apk/repositories)
+        url="$(grep -m1 ^http /etc/apk/repositories)/$(uname -m)/APKINDEX.tar.gz"
         # 可能有多行，取第一行
         date_header=$(wget -S --no-check-certificate --spider "$url" 2>&1 | grep -m1 '^  Date:')
         # gnu date 不支持 -D

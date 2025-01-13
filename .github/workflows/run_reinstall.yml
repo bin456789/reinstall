@@ -37,7 +37,7 @@ jobs:
 
           ${{ matrix.command }} netboot.xyz
           ${{ matrix.command }} dd --img=https://download.opensuse.org/tumbleweed/appliances/openSUSE-MicroOS.x86_64-SelfInstall.raw.xz
-          ${{ matrix.command }} windows --image-name='Windows 11 Pro'
+          ${{ matrix.command }} windows --image-name='Windows Server blah' --iso https://aka.ms/HCIReleaseImage
 
           # 测试失败例子
           # ${{ matrix.command }} wrong-os
