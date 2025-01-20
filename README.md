@@ -116,7 +116,7 @@ certutil -urlcache -f -split https://jihulab.com/bin456789/reinstall/-/raw/main/
 
 ### 功能 1: 安装 <img width="16" height="16" src="https://www.kernel.org/theme/images/logos/favicon.png" /> Linux
 
-- 用户名 `root` 默认密码 `123@@@`，首次开机可能要等几分钟才能成功登录
+- 用户名 `root` 默认密码 `123@@@`
 - 安装最新版可不输入版本号
 - 最大化利用磁盘空间：不含 boot 分区（Fedora 例外），不含 swap 分区
 - 自动根据机器类型选择不同的优化内核，例如 `Cloud`、`HWE` 内核

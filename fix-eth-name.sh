@@ -5,6 +5,9 @@
 
 set -eE
 
+# openeuler 需等待 udev 将网卡名从 eth0 改为 enp3s0
+sleep 10
+
 # 本脚本在首次进入新系统后运行
 # 将 trans 阶段生成的网络配置中的网卡名(eth0) 改为正确的网卡名，也适用于以下情况
 # 1. alpine 要运行此脚本，因为安装后的内核可能有 netboot 没有的驱动
@@ -19,8 +22,7 @@ to_lower() {
 
 retry() {
     local max_try=$1
-    local interval=$2
-    shift 2
+    shift
 
     for i in $(seq "$max_try"); do
         if "$@"; then
@@ -30,7 +32,7 @@ retry() {
             if [ "$i" -ge "$max_try" ]; then
                 return $ret
             fi
-            sleep "$interval"
+            sleep 1
         fi
     done
 }
@@ -40,7 +42,7 @@ retry() {
 # 因此需要等待网卡出现
 get_ethx_by_mac() {
     mac=$(echo "$1" | to_lower)
-    retry 10 0.5 _get_ethx_by_mac "$mac"
+    retry 10 _get_ethx_by_mac "$mac"
 }
 
 _get_ethx_by_mac() {
@@ -218,7 +220,7 @@ fix_netplan() {
 fix_systemd_networkd() {
     for file in /etc/systemd/network/10-cloud-init-eth*.network; do
         [ -f "$file" ] || continue
-        mac=$(grep ^MACAddress= $file | cut -d= -f2 | grep .) || continue
+        mac=$(grep ^MACAddress= "$file" | cut -d= -f2 | grep .) || continue
         ethx=$(get_ethx_by_mac "$mac") || continue
 
         proper_file=/etc/systemd/network/10-$ethx.network

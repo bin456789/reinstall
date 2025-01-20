@@ -116,7 +116,7 @@ certutil -urlcache -f -split https://jihulab.com/bin456789/reinstall/-/raw/main/
 
 ### Feature 1: Install <img width="16" height="16" src="https://www.kernel.org/theme/images/logos/favicon.png" /> Linux
 
-- The username is `root` with a default password of `123@@@`. It may take a few minutes after the first boot to successfully log in.
+- The username is `root` with a default password of `123@@@`.
 - When installing the latest version, the version number does not need to be specified.
 - Maximizes disk space usage: no boot partition (except for Fedora) and no swap partition.
 - Automatically selects different optimized kernels based on machine type, such as `Cloud` or `HWE` kernels.
