@@ -2255,7 +2255,7 @@ create_cloud_init_network_config() {
         yq -i ".network.version=1 |
            .network.config[$config_id].type=\"physical\" |
            .network.config[$config_id].name=\"$ethx\" |
-           .network.config[$config_id].mac_address=\"$mac_addr\"
+           .network.config[$config_id].mac_address=(\"$mac_addr\" | . style=\"single\")
            " $ci_file
 
         subnet_id=0
