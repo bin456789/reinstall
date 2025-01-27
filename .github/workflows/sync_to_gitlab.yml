@@ -1,0 +1,18 @@
+name: 同步到 Gitlab
+on:
+  workflow_dispatch:
+  push:
+jobs:
+  run:
+    name: 同步到 Gitlab
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - uses: yesolutions/mirror-action@master
+        with:
+          REMOTE: https://gitlab.com/bin456789/reinstall.git
+          GIT_USERNAME: username
+          GIT_PASSWORD: ${{ secrets.GITLAB_TOKEN }}
+          PUSH_ALL_REFS: false

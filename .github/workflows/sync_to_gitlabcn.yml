@@ -1,10 +1,10 @@
-name: 同步到极狐
+name: 同步到 Gitlab CN
 on:
   workflow_dispatch:
   push:
 jobs:
   run:
-    name: 同步到极狐
+    name: 同步到 Gitlab CN
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -15,3 +15,4 @@ jobs:
           REMOTE: https://jihulab.com/bin456789/reinstall.git
           GIT_USERNAME: username
           GIT_PASSWORD: ${{ secrets.JIHULAB_TOKEN }}
+          PUSH_ALL_REFS: false

@@ -71,7 +71,7 @@ curl -O https://raw.githubusercontent.com/bin456789/reinstall/main/reinstall.sh 
 For server inside China:
 
 ```bash
-curl -O https://jihulab.com/bin456789/reinstall/-/raw/main/reinstall.sh || wget -O reinstall.sh $_
+curl -O https://gitlab.com/bin456789/reinstall/-/raw/main/reinstall.sh || wget -O reinstall.sh $_
 ```
 
 ## Download (Current system is <img width="20" height="20" src="https://blogs.windows.com/wp-content/uploads/prod/2022/09/cropped-Windows11IconTransparent512-32x32.png" /> Windows)
@@ -104,7 +104,7 @@ certutil -urlcache -f -split https://raw.githubusercontent.com/bin456789/reinsta
 For server inside China:
 
 ```batch
-certutil -urlcache -f -split https://jihulab.com/bin456789/reinstall/-/raw/main/reinstall.bat
+certutil -urlcache -f -split https://gitlab.com/bin456789/reinstall/-/raw/main/reinstall.bat
 ```
 
 ## Usage
@@ -254,7 +254,7 @@ bash reinstall.sh netboot.xyz
   - Hyper-V Server \*
   - Azure Stack HCI \*
 
-#### ~~Method 1: Let the Script Automatically Search for ISO (Recommended)~~
+#### ~~Method 1: Let the Script Automatically Search for ISO~~
 
 > [!CAUTION]
 > The ISO repository currently prohibits direct link downloads, so this method is no longer effective.
