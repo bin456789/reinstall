@@ -210,7 +210,7 @@ bash reinstall.sh dd --img https://example.com/xxx.xz
 > 可通过多种方式（SSH、HTTP 80 端口、后台 VNC、串行控制台）查看安装进度。
 > <br />即使安装过程出错，也能通过 SSH 运行 `/trans.sh alpine` 安装到 Alpine。
 
-### 功能 3: 重启到 <img width="16" height="16" src="https://www.alpinelinux.org/alpine-logo.ico" /> Alpine Live OS（救援系统）
+### 功能 3: 重启到 <img width="16" height="16" src="https://www.alpinelinux.org/alpine-logo.ico" /> Alpine Live OS（内存系统）
 
 - 可用 ssh 连接，进行备份/恢复硬盘、手动 DD、修改分区、手动安装 Alpine/Arch/Gentoo 等操作
 - 用户名 `root` 默认密码 `123@@@`
@@ -254,7 +254,10 @@ bash reinstall.sh netboot.xyz
   - Hyper-V Server \*
   - Azure Stack HCI \*
 
-#### 方法 1: 让脚本自动查找 ISO （推荐）
+#### ~~方法 1: 让脚本自动查找 ISO~~
+
+> [!CAUTION]
+> 目前该 ISO 仓库禁止了直链下载，因此该方法已失效
 
 - 通常情况下 Windows 每个月都会发布新的官方 ISO，集成了最新的系统补丁，避免了刚安装好系统就要下载一堆补丁
 - 脚本会从 <https://massgrave.dev/genuine-installation-media> 查找 ISO，该网站收录了每月发布的 ISO，因此脚本查找到的 ISO 都是官方最新版

@@ -210,7 +210,7 @@ bash reinstall.sh dd --img https://example.com/xxx.xz
 > Can monitor the progress through various methods (SSH, HTTP 80 port, VNC in the background, serial console).
 > <br />Even if errors occur during the installation process, you can still install to Alpine via SSH by running `/trans.sh alpine`
 
-### Feature 3: Reboot to <img width="16" height="16" src="https://www.alpinelinux.org/alpine-logo.ico" /> Alpine Rescue System (Live OS)
+### Feature 3: Reboot to <img width="16" height="16" src="https://www.alpinelinux.org/alpine-logo.ico" /> Alpine Live OS (RAM OS)
 
 - You can use SSH to backup/restore disk, manually perform DD operations, modify partitions, and manually install Alpine, Arch, Gentoo, and other systems.
 - Username `root`, Default password `123@@@`
@@ -254,7 +254,10 @@ bash reinstall.sh netboot.xyz
   - Hyper-V Server \*
   - Azure Stack HCI \*
 
-#### Method 1: Let the Script Automatically Search for ISO (Recommended)
+#### ~~Method 1: Let the Script Automatically Search for ISO (Recommended)~~
+
+> [!CAUTION]
+> The ISO repository currently prohibits direct link downloads, so this method is no longer effective.
 
 - Typically, Windows releases new official ISOs every month, which integrate the latest system patches, avoiding the need to download a bunch of updates right after installation.
 - The script will search for ISOs from <https://massgrave.dev/genuine-installation-media>, a site that collects monthly released ISOs, ensuring that the ISOs found by the script are the official latest versions.

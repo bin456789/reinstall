@@ -6,6 +6,9 @@ set confhome=https://raw.githubusercontent.com/bin456789/reinstall/main
 set confhome_cn=https://jihulab.com/bin456789/reinstall/-/raw/main
 rem set confhome_cn=https://www.ghproxy.cc/https://raw.githubusercontent.com/bin456789/reinstall/main
 
+set pkgs=curl,cpio,p7zip,ipcalc,dos2unix,jq,xz,gzip,zstd,openssl,bind-utils,libiconv,binutils
+set cmds=curl,cpio,p7zip,ipcalc,dos2unix,jq,xz,gzip,zstd,openssl,nslookup,iconv,ar
+
 rem 65001 代码页会乱码
 
 rem 不要用 :: 注释
@@ -54,10 +57,7 @@ if not errorlevel 1 (
     set mirror=http://mirrors.kernel.org
 )
 
-rem pkgs 改动了才重新运行 Cygwin 安装程序
-set pkgs=curl,cpio,p7zip,bind-utils,ipcalc,dos2unix,binutils,jq,xz,gzip,zstd,openssl,libiconv
-set tags=%tmp%\cygwin-installed-%pkgs%
-if not exist "%tags%" (
+call :check_cygwin_installed || (
     rem win10 arm 支持运行 x86 软件
     rem win11 arm 支持运行 x86 和 x86_64 软件
     rem wmic os get osarchitecture 显示中文
@@ -122,14 +122,15 @@ if not exist "%tags%" (
         --only-site ^
         --site !site! ^
         --root %SystemDrive%\cygwin ^
-        --local-package-dir %tmp%\cygwin-local-package-dir ^
-        --packages %pkgs% ^
-        && type nul >"%tags%"
+        --local-package-dir %~dp0cygwin-local-package-dir ^
+        --packages %pkgs%
 
-        if errorlevel 1 (
-            echo "Failed to install Cygwin."
-            exit /b 1
-        )
+    rem 检查 Cygwin 是否成功安装
+    if errorlevel 1 (
+        goto :install_cygwin_failed
+    ) else (
+        call :check_cygwin_installed || goto :install_cygwin_failed
+    )
 )
 
 rem 在c盘根目录下执行 cygpath -ua . 会得到 /cygdrive/c，因此末尾要有 /
@@ -189,3 +190,17 @@ exit /b
 :download_failed
 echo Download failed.
 exit /b 1
+
+:install_cygwin_failed
+echo Failed to install Cygwin.
+exit /b 1
+
+:check_cygwin_installed
+set "cmds_space=%cmds:,= %"
+for %%c in (%cmds_space%) do (
+    if not exist "%SystemDrive%\cygwin\bin\%%c" if not exist "%SystemDrive%\cygwin\bin\%%c.exe" (
+        echo %%c not found.
+        exit /b 1
+    )
+)
+exit /b 0
