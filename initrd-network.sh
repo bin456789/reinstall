@@ -8,6 +8,7 @@ ipv4_gateway=$3
 ipv6_addr=$4
 ipv6_gateway=$5
 is_in_china=$6
+static=$7
 
 DHCP_TIMEOUT=15
 DNS_FILE_TIMEOUT=5
@@ -443,6 +444,7 @@ netconf="/dev/netconf/$ethx"
 mkdir -p "$netconf"
 $dhcpv4 && echo 1 >"$netconf/dhcpv4" || echo 0 >"$netconf/dhcpv4"
 $should_disable_ra_slaac && echo 1 >"$netconf/should_disable_ra_slaac" || echo 0 >"$netconf/should_disable_ra_slaac"
+[ "$static" = 1 ] && echo 1 >"$netconf/force_static" || echo 0 >"$netconf/force_static"
 $is_in_china && echo 1 >"$netconf/is_in_china" || echo 0 >"$netconf/is_in_china"
 echo "$ethx" >"$netconf/ethx"
 echo "$mac_addr" >"$netconf/mac_addr"
