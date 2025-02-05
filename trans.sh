@@ -646,6 +646,10 @@ is_dhcpv6() {
     [ "$dhcpv6" = 1 ]
 }
 
+force_static() {
+    grep -q 0 /dev/netconf/*/force_static
+}
+
 is_have_ipv6() {
     is_slaac || is_dhcpv6 || is_staticv6
 }
@@ -919,7 +923,7 @@ EOF
         } >>$conf_file
 
         # ipv4
-        if is_dhcpv4; then
+        if is_dhcpv4 && ! force_static; then
             echo "iface $ethx inet dhcp" >>$conf_file
 
         elif is_staticv4; then
@@ -930,21 +934,13 @@ iface $ethx inet static
     address $ipv4_addr
     gateway $ipv4_gateway
 EOF
-            # dns
-            if list=$(get_current_dns 4); then
-                for dns in $list; do
-                    cat <<EOF >>$conf_file
-    dns-nameservers $dns
-EOF
-                done
-            fi
         fi
 
         # ipv6
-        if is_slaac; then
+        if is_slaac && ! force_static; then
             echo "iface $ethx inet6 auto" >>$conf_file
 
-        elif is_dhcpv6; then
+        elif is_dhcpv6 && ! force_static; then
             echo "iface $ethx inet6 dhcp" >>$conf_file
 
         elif is_staticv6; then
@@ -957,18 +953,8 @@ iface $ethx inet6 static
 EOF
         fi
 
-        # dns
-        # 有 ipv6 但需设置 dns 的情况
-        if is_need_manual_set_dnsv6; then
-            for dns in $(get_current_dns 6); do
-                cat <<EOF >>$conf_file
-    dns-nameserver $dns
-EOF
-            done
-        fi
-
         # 禁用 ra
-        if should_disable_ra_slaac; then
+        if should_disable_ra_slaac && ! force_static; then
             if [ "$distro" = alpine ]; then
                 cat <<EOF >>$conf_file
     pre-up echo 0 >/proc/sys/net/ipv6/conf/$ethx/accept_ra
