@@ -2767,8 +2767,14 @@ EOF
         # 获取当前开启的 Components, 后面要用
         if [ -f $os_dir/etc/apt/sources.list.d/debian.sources ]; then
             comps=$(grep ^Components: $os_dir/etc/apt/sources.list.d/debian.sources | head -1 | cut -d' ' -f2-)
+            if is_in_china; then
+                sed -i 's|[a-zA-Z.-]*\.debian\.org|mirror.nju.edu.cn|g' $os_dir/etc/apt/mirrors/debian.list $os_dir/etc/apt/mirrors/debian-security.list
+            fi
         else
             comps=$(grep '^deb ' $os_dir/etc/apt/sources.list | head -1 | cut -d' ' -f4-)
+            if is_in_china; then
+                sed -i 's|[a-zA-Z.-]*\.debian\.org|mirror.nju.edu.cn|g' $os_dir/etc/apt/sources.list
+            fi
         fi
 
         # EOL 处理
