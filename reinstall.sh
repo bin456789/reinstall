@@ -3227,13 +3227,13 @@ get_ip_conf_cmd() {
 
     sh=/initrd-network.sh
     if is_found_ipv4_netconf && is_found_ipv6_netconf && [ "$ipv4_mac" = "$ipv6_mac" ]; then
-        echo "'$sh' '$ipv4_mac' '$ipv4_addr' '$ipv4_gateway' '$ipv6_addr' '$ipv6_gateway' '$is_in_china'"
+        echo "'$sh' '$ipv4_mac' '$ipv4_addr' '$ipv4_gateway' '$ipv6_addr' '$ipv6_gateway' '$is_in_china' '$static'"
     else
         if is_found_ipv4_netconf; then
-            echo "'$sh' '$ipv4_mac' '$ipv4_addr' '$ipv4_gateway' '' '' '$is_in_china'"
+            echo "'$sh' '$ipv4_mac' '$ipv4_addr' '$ipv4_gateway' '' '' '$is_in_china' '$static'"
         fi
         if is_found_ipv6_netconf; then
-            echo "'$sh' '$ipv6_mac' '' '' '$ipv6_addr' '$ipv6_gateway' '$is_in_china'"
+            echo "'$sh' '$ipv6_mac' '' '' '$ipv6_addr' '$ipv6_gateway' '$is_in_china' '$static'"
         fi
     fi
 }
@@ -3484,6 +3484,8 @@ else
     fi
 fi
 
+static=1
+
 long_opts=
 for o in ci installer debug minimal allow-ping \
     hold: sleep: \
@@ -3494,6 +3496,7 @@ for o in ci installer debug minimal allow-ping \
     lang: \
     passwd: password: \
     ssh-port: \
+    static: \
     rdp-port: \
     web-port: http-port: \
     allow-ping: \
@@ -3597,6 +3600,9 @@ while true; do
         lang=$(echo "$2" | to_lower)
         shift 2
         ;;
+    --static)
+        static=0
+        shift 2
     --)
         shift
         break
