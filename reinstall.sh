@@ -11,7 +11,7 @@ confhome_cn=https://gitlab.com/bin456789/reinstall/-/raw/main
 DEFAULT_PASSWORD=123@@@
 
 # 用于判断 reinstall.sh 和 trans.sh 是否兼容
-SCRIPT_VERSION=4BACD833-A585-23BA-6CBB-9AA4E08E0002
+SCRIPT_VERSION=4BACD833-A585-23BA-6CBB-9AA4E08E0003
 
 # 记录要用到的 windows 程序，运行时输出删除 \r
 WINDOWS_EXES='cmd powershell wmic reg diskpart netsh bcdedit mountvol'
@@ -124,6 +124,8 @@ curl() {
 }
 
 is_in_china() {
+    [ "$force_cn" = 1 ] && return 0
+
     if [ -z "$_loc" ]; then
         # 部分地区 www.cloudflare.com 被墙
         _loc=$(curl -L http://dash.cloudflare.com/cdn-cgi/trace | grep '^loc=' | cut -d= -f2)
@@ -1034,6 +1036,10 @@ setos() {
             [ "$releasever" -le 10 ]
         }
 
+        # 用此标记要是否 elts, 用于安装后修改 elts/etls-cn 源
+        # shellcheck disable=SC2034
+        is_debian_elts && elts=1 || elts=0
+
         case "$releasever" in
         9) codename=stretch ;;
         10) codename=buster ;;
@@ -1041,6 +1047,49 @@ setos() {
         12) codename=bookworm ;;
         esac
 
+        if ! is_use_cloud_image && is_debian_elts && is_in_china; then
+            warn "
+Due to the lack of Debian Freexian ELTS instaler mirrors in China, the installation time may be longer.
+Continue?
+
+由于没有 Debian Freexian ELTS 国内安装源，安装时间可能会比较长。
+继续安装?
+"
+            read -r -p '[y/N]: '
+            if ! [[ "$REPLY" = [Yy] ]]; then
+                exit
+            fi
+        fi
+
+        # udeb_mirror 安装时的源
+        # deb_mirror 安装后要修改成的源
+        if is_debian_elts; then
+            if is_in_china; then
+                # https://github.com/tuna/issues/issues/1999
+                # nju 也没同步
+                udeb_mirror=deb.freexian.com/extended-lts
+                deb_mirror=mirror.nju.edu.cn/debian-elts
+                initrd_mirror=mirror.nju.edu.cn/debian-archive/debian
+            else
+                # 按道理不应该用官方源，但找不到其他源
+                udeb_mirror=deb.freexian.com/extended-lts
+                deb_mirror=deb.freexian.com/extended-lts
+                initrd_mirror=archive.debian.org/debian
+            fi
+        else
+            if is_in_china; then
+                # ftp.cn.debian.org 不在国内还严重丢包
+                # https://www.itdog.cn/ping/ftp.cn.debian.org
+                mirror=mirror.nju.edu.cn/debian
+            else
+                mirror=deb.debian.org/debian # fastly
+            fi
+            udeb_mirror=$mirror
+            deb_mirror=$mirror
+            initrd_mirror=$mirror
+        fi
+
+        # 云镜像和 firmware 下载源
         if is_in_china; then
             cdimage_mirror=https://mirror.nju.edu.cn/debian-cdimage
         else
@@ -1056,10 +1105,6 @@ setos() {
 
         if is_use_cloud_image; then
             # cloud image
-            # debian --ci 用此标记要是否要换 elts 源
-            # shellcheck disable=SC2034
-            is_debian_elts && elts=1 || elts=0
-
             # https://salsa.debian.org/cloud-team/debian-cloud-images/-/tree/master/config_space/bookworm/files/etc/default/grub.d
             # cloud 包括各种奇怪的优化，例如不显示 grub 菜单
             # 因此使用 nocloud
@@ -1069,59 +1114,21 @@ setos() {
                 ci_type=nocloud
             fi
             eval ${step}_img=$cdimage_mirror/cloud/$codename/latest/debian-$releasever-$ci_type-$basearch_alt.qcow2
-            eval ${step}_kernel=linux-image$flavour-$basearch_alt
         else
             # 传统安装
-            if is_debian_elts; then
-                # https://github.com/tuna/issues/issues/1999
-                # nju 也没同步
-                if false && is_in_china; then
-                    hostname=mirrors.tuna.tsinghua.edu.cn
-                    hostname=mirror.nju.edu.cn
-                    directory=debian-elts
-                    initrd_mirror=mirrors.nju.edu.cn/debian-archive
-                else
-                    # 按道理不应该用官方源，但找不到其他源
-                    hostname=deb.freexian.com
-                    directory=extended-lts
-                    initrd_mirror=archive.debian.org
-                fi
-                if is_in_china; then
-                    warn "
-Due to the lack of Debian Freexian ELTS instaler mirrors in China, the installation time may be longer.
-Continue?
+            initrd_dir=dists/$codename/main/installer-$basearch_alt/current/images/netboot/debian-installer/$basearch_alt
 
-由于没有 Debian Freexian ELTS 国内安装源，安装时间可能会比较长。
-继续安装?
-"
-                    read -r -p '[y/N]: '
-                    if ! [[ "$REPLY" = [Yy] ]]; then
-                        exit
-                    fi
-                fi
-            else
-                if is_in_china; then
-                    # ftp.cn.debian.org 不在国内还严重丢包
-                    # https://www.itdog.cn/ping/ftp.cn.debian.org
-                    hostname=mirror.nju.edu.cn
-                else
-                    hostname=deb.debian.org # fastly
-                fi
-                directory=debian
-                initrd_mirror=$hostname
-            fi
-
-            initrd_dir=debian/dists/$codename/main/installer-$basearch_alt/current/images/netboot/debian-installer/$basearch_alt
-
+            eval ${step}_udeb_mirror=$udeb_mirror
             eval ${step}_vmlinuz=https://$initrd_mirror/$initrd_dir/linux
             eval ${step}_initrd=https://$initrd_mirror/$initrd_dir/initrd.gz
             eval ${step}_ks=$confhome/debian.cfg
             eval ${step}_firmware=$cdimage_mirror/unofficial/non-free/firmware/$codename/current/firmware.cpio.gz
-            eval ${step}_hostname=$hostname
-            eval ${step}_directory=$directory
             eval ${step}_codename=$codename
-            eval ${step}_kernel=linux-image$flavour-$basearch_alt
         fi
+
+        # 官方安装和云镜像都会用到的
+        eval ${step}_deb_mirror=$deb_mirror
+        eval ${step}_kernel=linux-image$flavour-$basearch_alt
     }
 
     setos_kali() {
@@ -1144,9 +1151,8 @@ Continue?
             eval ${step}_vmlinuz=$mirror/linux
             eval ${step}_initrd=$mirror/initrd.gz
             eval ${step}_ks=$confhome/debian.cfg
-            eval ${step}_hostname=$hostname
+            eval ${step}_udeb_mirror=$hostname/kali
             eval ${step}_codename=$codename
-            eval ${step}_directory=kali
             eval ${step}_kernel=linux-image$flavour-$basearch_alt
             # 缺少 firmware 下载
         fi
@@ -2743,7 +2749,8 @@ build_extra_cmdline() {
     # 会将 extra.xxx=yyy 写入新系统的 /etc/modprobe.d/local.conf
     # https://answers.launchpad.net/ubuntu/+question/249456
     # https://salsa.debian.org/installer-team/rootskel/-/blob/master/src/lib/debian-installer-startup.d/S02module-params?ref_type=heads
-    for key in confhome hold force force_old_windows_setup cloud_image main_disk elts \
+    for key in confhome hold force force_cn force_old_windows_setup cloud_image main_disk \
+        elts deb_mirror \
         ssh_port rdp_port web_port allow_ping; do
         value=${!key}
         if [ -n "$value" ]; then
@@ -2792,8 +2799,8 @@ build_nextos_cmdline() {
     elif is_distro_like_debian $nextos_distro; then
         nextos_cmdline="lowmem/low=1 auto=true priority=critical"
         nextos_cmdline+=" url=$nextos_ks"
-        nextos_cmdline+=" mirror/http/hostname=$nextos_hostname"
-        nextos_cmdline+=" mirror/http/directory=/$nextos_directory"
+        nextos_cmdline+=" mirror/http/hostname=${nextos_udeb_mirror%/*}"
+        nextos_cmdline+=" mirror/http/directory=/${nextos_udeb_mirror##*/}"
         nextos_cmdline+=" base-installer/kernel/image=$nextos_kernel"
         # elts 的 debian 不能用 security 源，否则安装过程会提示无法访问
         if [ "$nextos_distro" = debian ] && is_debian_elts; then
@@ -2978,12 +2985,12 @@ EOF
         udeb_list=$tmp/udeb_list
         if ! [ -f $udeb_list ]; then
             # shellcheck disable=SC2154
-            curl -L http://$nextos_hostname/$nextos_directory/dists/$nextos_codename/main/debian-installer/binary-$basearch_alt/Packages.gz |
+            curl -L http://$nextos_udeb_mirror/dists/$nextos_codename/main/debian-installer/binary-$basearch_alt/Packages.gz |
                 zcat | grep 'Filename:' | awk '{print $2}' >$udeb_list
         fi
 
         # 下载 udeb
-        curl -Lo $tmp/tmp.udeb http://$nextos_hostname/$nextos_directory/"$(grep /$package $udeb_list)"
+        curl -Lo $tmp/tmp.udeb http://$nextos_udeb_mirror/"$(grep /$package $udeb_list)"
 
         if false; then
             # 使用 dpkg
@@ -3485,7 +3492,7 @@ else
 fi
 
 long_opts=
-for o in ci installer debug minimal allow-ping \
+for o in ci installer debug minimal allow-ping force-cn \
     hold: sleep: \
     iso: \
     image-name: \
@@ -3537,6 +3544,11 @@ while true; do
         ;;
     --allow-ping)
         allow_ping=1
+        shift
+        ;;
+    --force-cn)
+        # 仅为了方便测试
+        force_cn=1
         shift
         ;;
     --hold | --sleep)

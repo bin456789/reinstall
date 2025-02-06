@@ -10,7 +10,7 @@ set -eE
 
 # 用于判断 reinstall.sh 和 trans.sh 是否兼容
 # shellcheck disable=SC2034
-SCRIPT_VERSION=4BACD833-A585-23BA-6CBB-9AA4E08E0002
+SCRIPT_VERSION=4BACD833-A585-23BA-6CBB-9AA4E08E0003
 
 TRUE=0
 FALSE=1
@@ -2767,37 +2767,38 @@ EOF
         # 获取当前开启的 Components, 后面要用
         if [ -f $os_dir/etc/apt/sources.list.d/debian.sources ]; then
             comps=$(grep ^Components: $os_dir/etc/apt/sources.list.d/debian.sources | head -1 | cut -d' ' -f2-)
-            if is_in_china; then
-                sed -i 's|[a-zA-Z.-]*\.debian\.org|mirror.nju.edu.cn|g' $os_dir/etc/apt/mirrors/debian.list $os_dir/etc/apt/mirrors/debian-security.list
-            fi
         else
             comps=$(grep '^deb ' $os_dir/etc/apt/sources.list | head -1 | cut -d' ' -f4-)
-            if is_in_china; then
-                sed -i 's|[a-zA-Z.-]*\.debian\.org|mirror.nju.edu.cn|g' $os_dir/etc/apt/sources.list
-            fi
         fi
 
-        # EOL 处理
+        # ELTS/CN 源处理
         if is_elts; then
+            # ELTS
             wget https://deb.freexian.com/extended-lts/archive-key.gpg \
                 -O $os_dir/etc/apt/trusted.gpg.d/freexian-archive-extended-lts.gpg
 
-            is_in_china &&
-                mirror=http://mirror.nju.edu.cn/debian-elts ||
-                mirror=http://deb.freexian.com/extended-lts
-
             codename=$(grep '^VERSION_CODENAME=' $os_dir/etc/os-release | cut -d= -f2)
-
+            # shellcheck disable=SC2154
             if [ -f $os_dir/etc/apt/sources.list.d/debian.sources ]; then
                 cat <<EOF >$os_dir/etc/apt/sources.list.d/debian.sources
 Types: deb
-URIs: $mirror
+URIs: http://$deb_mirror
 Suites: $codename
 Components: $comps
 Signed-By: /etc/apt/trusted.gpg.d/freexian-archive-extended-lts.gpg
 EOF
             else
-                echo "deb $mirror $codename $comps" >$os_dir/etc/apt/sources.list
+                echo "deb http://$deb_mirror $codename $comps" >$os_dir/etc/apt/sources.list
+            fi
+        else
+            # non-ELTS
+            if is_in_china; then
+                # 不处理 security 源 security.debian.org/debian-security 和 /etc/apt/mirrors/debian-security.list
+                for file in $os_dir/etc/apt/mirrors/debian.list $os_dir/etc/apt/sources.list; do
+                    if [ -f "$file" ]; then
+                        sed -i "s|deb\.debian\.org/debian|$deb_mirror|" "$file"
+                    fi
+                done
             fi
         fi
 
