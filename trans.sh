@@ -892,9 +892,21 @@ EOF
     # ethx
     for ethx in $(get_eths); do
         mode=auto
-        if is_distro_like_debian; then
-            if [ -f /etc/network/devhotplug ] && grep -wo "$ethx" /etc/network/devhotplug; then
-                mode=allow-hotplug
+        # shellcheck disable=SC2154
+        if false; then
+            if { [ "$distro" = debian ] && [ "$releasever" -ge 12 ]; } ||
+                [ "$distro" = kali ]; then
+                # alice + allow-hotplug 会有问题
+                # 问题 1 debian 9/10/11/12:
+                # 如果首次启动时，/etc/networking/interfaces 的 ethx 跟安装时不同
+                # 即使启动 networking 服务前成功执行了 fix-eth-name.sh ，网卡也不会启动
+                # 测试方法: 安装时手动修改 /etc/networking/interfaces enp3s0 为其他名字
+                # 问题 2 debian 9/10/11:
+                # 重启系统后会自动启动网卡，但运行 systemctl restart networking 会关闭网卡
+                # 可能的原因: /lib/systemd/system/networking.service 没有 hotplug 相关内容，而 debian 12+ 有
+                if [ -f /etc/network/devhotplug ] && grep -wo "$ethx" /etc/network/devhotplug; then
+                    mode=allow-hotplug
+                fi
             fi
 
             # if is_have_cmd udevadm; then
