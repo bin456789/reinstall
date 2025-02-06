@@ -581,9 +581,16 @@ is_in_china() {
     grep -q 1 /dev/netconf/*/is_in_china
 }
 
+force_static() {
+    grep -q 1 /dev/netconf/*/force_static
+}
+
 # 有 dhcpv4 不等于有网关，例如 vultr 纯 ipv6
 # 没有 dhcpv4 不等于是静态ip，可能是没有 ip
 is_dhcpv4() {
+    if force_static; then
+        return 1
+    fi
     get_netconf_to dhcpv4
     # shellcheck disable=SC2154
     [ "$dhcpv4" = 1 ]
@@ -612,12 +619,18 @@ is_staticv6() {
 }
 
 should_disable_ra_slaac() {
+    if force_static; then
+        return 1
+    fi
     get_netconf_to should_disable_ra_slaac
     # shellcheck disable=SC2154
     [ "$should_disable_ra_slaac" = 1 ]
 }
 
 is_slaac() {
+    if force_static; then
+        return 1
+    fi
     # 防止部分机器slaac/dhcpv6获取的ip/网关无法上网
     if should_disable_ra_slaac; then
         return 1
@@ -628,6 +641,9 @@ is_slaac() {
 }
 
 is_dhcpv6() {
+    if force_static; then
+        return 1
+    fi
     # 防止部分机器slaac/dhcpv6获取的ip/网关无法上网
     if should_disable_ra_slaac; then
         return 1
