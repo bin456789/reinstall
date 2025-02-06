@@ -1293,20 +1293,21 @@ Continue?
             mirror=https://distfiles.gentoo.org # cdn77
         fi
 
-        if is_use_cloud_image; then
-            if [ "$basearch_alt" = arm64 ]; then
-                error_and_exit 'Not support arm64 for gentoo cloud image.'
-            fi
+        dir=releases/$basearch_alt/autobuilds
 
-            # openrc 镜像没有附带兼容 cloud-init 的网络管理器
-            eval ${step}_img=$mirror/experimental/$basearch_alt/openstack/gentoo-openstack-$basearch_alt-systemd-latest.qcow2
+        if is_use_cloud_image; then
+            # 使用 systemd 且没有 cloud-init
+            prefix=di-$basearch_alt-console
+            filename=$(curl -L $mirror/$dir/latest-$prefix.txt | grep '.qcow2' | awk '{print $1}' | grep .)
+            file=$mirror/$dir/$filename
+            test_url "$file" 'qemu'
+            eval ${step}_img=$file
         else
             prefix=stage3-$basearch_alt-systemd
-            dir=releases/$basearch_alt/autobuilds
-            file=$(curl -L $mirror/$dir/latest-$prefix.txt | grep '.tar.xz' | awk '{print $1}')
-            stage3=$mirror/$dir/$file
-            test_url $stage3 'tar.xz'
-            eval ${step}_img=$stage3
+            filename=$(curl -L $mirror/$dir/latest-$prefix.txt | grep '.tar.xz' | awk '{print $1}' | grep .)
+            file=$mirror/$dir/$filename
+            test_url "$file" 'tar.xz'
+            eval ${step}_img=$file
         fi
     }
 
