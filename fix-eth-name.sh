@@ -134,6 +134,8 @@ fix_network_manager() {
     done
 }
 
+# debian 9 IPV6 onlink 路由需要 post-up
+
 # auto lo
 # iface lo inet loopback
 
@@ -147,6 +149,8 @@ fix_network_manager() {
 # iface eth0 inet6 static
 #     address 2602:1:0:80::100/64
 #     gateway 2602:1:0:80::1
+#     post-up ip route add 2602:1:0:80::1 dev eth0
+#     post-up ip route add default via 2602:1:0:80::1 dev eth0
 #     dns-nameserver 2606:4700:4700::1111
 #     dns-nameserver 2001:4860:4860::8888
 
@@ -170,6 +174,11 @@ fix_ifupdown() {
                 [[ "$line" = "allow-hotplug e"* ]]; then
                 if [ -n "$ethx" ]; then
                     line=$(echo "$line" | awk "{\$2=\"$ethx\"; print \$0}")
+                fi
+            elif [[ "$line" = *" dev e"* ]]; then
+                if [ -n "$ethx" ]; then
+                    # awk 会去除前面的空格
+                    line=$(echo "$line" | sed -E "s/[^ ]*$/$ethx/")
                 fi
             fi
             if ! $del_this_line; then

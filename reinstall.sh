@@ -3113,8 +3113,10 @@ EOF
     # hack 3
     # 修改 trans.sh
     # 1. 直接调用 create_ifupdown_config
+    # shellcheck disable=SC2154
     insert_into_file $initrd_dir/trans.sh after '^: main' <<EOF
         distro=$nextos_distro
+        releasever=$nextos_releasever
         create_ifupdown_config /etc/network/interfaces
         exit
 EOF

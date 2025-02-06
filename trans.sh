@@ -955,6 +955,21 @@ iface $ethx inet6 static
     address $ipv6_addr
     gateway $ipv6_gateway
 EOF
+            # debian 9
+            # ipv4 支持静态 onlink 网关
+            # ipv6 不支持静态 onlink 网关，需使用 post-up 添加，未测试动态
+            # ipv6 也不支持直接 ip route add default via xxx onlink
+            if [ "$distro" = debian ] && [ "$releasever" -le 9 ]; then
+                # debian 添加 gateway 失败时不会执行 post-up
+                # 因此 gateway post-up 只能二选一
+
+                # 注释最后一行，也就是 gateway
+                sed -Ei '$s/^( *)/\1# /' "$conf_file"
+                cat <<EOF >>$conf_file
+    post-up ip route add $ipv6_gateway dev $ethx
+    post-up ip route add default via $ipv6_gateway dev $ethx
+EOF
+            fi
         fi
 
         # dns
