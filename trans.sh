@@ -205,7 +205,8 @@ update_part() {
     # 因此要先停止 mdev 服务
     # 还要删除 /dev/$xda*?
     ensure_service_stopped mdev
-    rm -rf /dev/disk/*
+    # 即使停止了 mdev，有时也会报 Directory not empty，因此添加 retry
+    retry 5 rm -rf /dev/disk/*
 
     # 没挂载 modloop 时会提示
     # modprobe: can't change directory to '/lib/modules': No such file or directory
