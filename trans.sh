@@ -2699,6 +2699,21 @@ disable_cloud_init() {
     done
 }
 
+disable_jeos_firstboot() {
+    os_dir=$1
+    info "Disable JeOS Firstboot"
+
+    # 两种方法都可以
+    # https://github.com/openSUSE/jeos-firstboot?tab=readme-ov-file#usage
+
+    rm -rf $os_dir/var/lib/YaST2/reconfig_system
+
+    for name in jeos-firstboot jeos-firstboot-snapshot; do
+        # 服务不存在时会报错
+        chroot $os_dir systemctl disable "$name.service" 2>/dev/null || true
+    done
+}
+
 create_network_manager_config() {
     source_cfg=$1
     os_dir=$2
@@ -2953,6 +2968,7 @@ EOF
         find_and_mount /boot/efi
 
         disable_cloud_init $os_dir
+        disable_jeos_firstboot $os_dir
 
         # opensuse leap
         if grep opensuse-leap $os_dir/etc/os-release; then
