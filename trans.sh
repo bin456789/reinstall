@@ -3030,7 +3030,9 @@ EOF
         fi
 
         restore_resolv_conf $os_dir
-        swapoff $os_dir/swapfile
+
+        # 删除 swap
+        swapoff -a
         rm -f $os_dir/swapfile
     fi
 
