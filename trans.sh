@@ -3033,11 +3033,11 @@ EOF
             kernel='kernel-default'
         fi
 
-        # 必须设置一个密码，否则报错
+        # x86 必须设置一个密码，否则报错，arm 没有这个问题
         # Failed to get root password hash
         # Failed to import /etc/uefi/certs/76B6A6A0.crt
         # warning: %post(kernel-default-5.14.21-150500.55.83.1.x86_64) scriptlet failed, exit status 255
-        if grep -q ^root:: $os_dir/etc/shadow; then
+        if grep -q '^root:[:!*]' $os_dir/etc/shadow; then
             echo "root:$(mkpasswd '')" | chroot $os_dir chpasswd -e
             chroot $os_dir zypper install -y $kernel
             chroot $os_dir passwd -d root
