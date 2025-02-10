@@ -1887,7 +1887,7 @@ EOF
     cloud-init devel net-convert -p net.cfg -k yaml -d out -D alpine -O networkd
     cp out/etc/systemd/network/10-cloud-init-eth*.network $os_dir/etc/systemd/network/
 
-    # 删除 cloud-init
+    # 清理
     rm -rf net.cfg out
     apk del cloud-init
 
@@ -2722,11 +2722,15 @@ create_network_manager_config() {
     # 可以直接用 alpine 的 cloud-init 生成 Network Manager 配置
     apk add cloud-init
     cloud-init devel net-convert -p "$source_cfg" -k yaml -d /out -D alpine -O network-manager
+
+    # 文档明确写了 ipv6.method=dhcp 无法获取网关
+    # https://networkmanager.dev/docs/api/latest/nm-settings-nmcli.html#:~:text=false/no/off-,ipv6,-.method
     sed -i -e '/^may-fail=/d' -e 's/^method=dhcp/method=auto/' \
         /out/etc/NetworkManager/system-connections/cloud-init-eth*.nmconnection
 
     cp /out/etc/NetworkManager/system-connections/cloud-init-eth*.nmconnection $os_dir/etc/NetworkManager/system-connections/
 
+    # 清理
     rm -rf /out
     apk del cloud-init
 
@@ -2978,9 +2982,13 @@ EOF
             chroot $os_dir cloud-init devel net-convert \
                 -p /net.cfg -k yaml -d out -D opensuse -O sysconfig
 
-            # sysconfig ifroute
-            # 包括了修复 onlink 网关
             for ethx in $(get_eths); do
+                # 1. 修复甲骨文云重启后 ipv6 丢失
+                # https://github.com/openSUSE/wicked/issues/1058
+                # 还要注意 wicked dhcpv6 获取到的 ipv6 是 /64，其他 DHCPv6 程序获取到的是 /128
+                echo DHCLIENT6_USE_LAST_LEASE=no >>$os_dir/out/etc/sysconfig/network/ifcfg-$ethx
+
+                # 2. 修复 onlink 网关
                 for prefix in '' 'default '; do
                     if is_staticv4; then
                         get_netconf_to ipv4_gateway
@@ -2993,6 +3001,7 @@ EOF
                 done
             done
 
+            # 复制配置
             for file in \
                 "$os_dir/out/etc/sysconfig/network/ifcfg-eth"* \
                 "$os_dir/out/etc/sysconfig/network/ifroute-eth"*; do
@@ -3001,6 +3010,8 @@ EOF
                     cp $file $os_dir/etc/sysconfig/network/
                 fi
             done
+
+            # 清理
             rm -rf $os_dir/net.cfg $os_dir/out
         fi
 
@@ -3772,6 +3783,8 @@ EOF
             chroot $os_dir cloud-init devel net-convert \
                 -p /net.cfg -k yaml -d out -D rhel -O sysconfig
             cp $os_dir/out/etc/sysconfig/network-scripts/ifcfg-eth* $os_dir/etc/sysconfig/network-scripts/
+
+            # 清理
             rm -rf $os_dir/net.cfg $os_dir/out
 
             # 修正网络配置问题并显示文件
@@ -3789,6 +3802,8 @@ EOF
 
             create_cloud_init_network_config /net.cfg
             create_network_manager_config /net.cfg "$os_dir"
+
+            # 清理
             rm /net.cfg
         fi
 
@@ -3876,11 +3891,15 @@ EOF
                     -p /net.cfg -k yaml -d /out -D ubuntu -O netplan
                 sed -Ei "/^[[:space:]]+set-name:/d" $os_dir/out/etc/netplan/50-cloud-init.yaml
                 cp $os_dir/out/etc/netplan/50-cloud-init.yaml $os_dir/etc/netplan/
+
+                # 清理
                 rm -rf $os_dir/net.cfg $os_dir/out
             else
                 chroot $os_dir cloud-init devel net-convert \
                     -p /net.cfg -k yaml -d / -D ubuntu -O netplan
                 sed -Ei "/^[[:space:]]+set-name:/d" $os_dir/etc/netplan/50-cloud-init.yaml
+
+                # 清理
                 rm -rf $os_dir/net.cfg
             fi
         else
