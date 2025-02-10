@@ -1431,7 +1431,7 @@ The current machine is $basearch, but it seems the ISO is for $iso_arch. Continu
             else
                 echo 'DD: Image is not EFI.'
                 warn '
-The current machine uses EFI boot, but the DD image is not an EFI image.
+The current machine uses EFI boot, but the DD image seems not an EFI image.
 Continue with DD?
 当前机器使用 EFI 引导，但 DD 镜像可能不是 EFI 镜像。
 继续 DD?'
@@ -3418,7 +3418,20 @@ remove_useless_initrd_files() {
         cd lib/modules/*/kernel/drivers/net/ethernet/
         for item in *; do
             case "$item" in
-            intel | amazon | google) ;;
+            # 甲骨文 arm 用自定义镜像支持设为 mlx5 vf 网卡，且不是 azure 那样显示两个网卡
+            amazon | google | mellanox) ;;
+            intel)
+                (
+                    cd "$item"
+                    for sub_item in *; do
+                        case "$sub_item" in
+                        # 有 e100.ko e1000文件夹 e1000e文件夹
+                        e100* | lib* | *vf) ;;
+                        *) rm -rf $sub_item ;;
+                        esac
+                    done
+                )
+                ;;
             *) rm -rf $item ;;
             esac
         done
