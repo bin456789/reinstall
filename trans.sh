@@ -4950,6 +4950,18 @@ install_windows() {
         cp_drivers $drv/xen -ipath "*/$arch_xdd/*"
     }
 
+    # citrix xen
+    # https://pvupdates.vmd.citrix.com/updates.json 7.2.0.1555
+    # https://pvupdates.vmd.citrix.com/updates.v9.json 9.3.3.125
+    # https://pvupdates.vmd.citrix.com/autoupdate.v1.json 9.3.3.125
+    # https://pvupdates.vmd.citrix.com/autoupdate.v2.json 9.4.0.146
+    # https://support.citrix.com/s/article/CTX235403-updates-to-xenserver-vm-tools-for-windows-for-xenserver-and-citrix-hypervisor
+
+    # 最高版本
+    # 2012 r2   9.3.1
+    # 2012      9.3.0
+    # 2008 (r2) 7.2.0.1555
+
     # xen
     # 没签名，暂时用aws的驱动代替
     # https://lore.kernel.org/xen-devel/E1qKMmq-00035B-SS@xenbits.xenproject.org/
@@ -4991,11 +5003,21 @@ install_windows() {
             esac
         )
 
+        # https://fedorapeople.org/groups/virt/virtio-win/repo/stable/
+        # 171-1        是稳定版
+        # 173-9        不是稳定版?
+        # 185 ~ 187    win7 vioscsi 是 sha256 签名
+        # 189 ~ 215    win7 vultr 气球驱动死机
+        # 217 ~ 266    win7 甲骨文 vioscsi 用不了，即使是红帽的 virtio-win-1.9.44 也用不了
+        # 217 ~ 266    2k12 证书有问题
+
+        # 2008 安装的气球驱动不能用，需要到硬件管理器重新安装设备才能用，无需更新驱动
+
         # https://github.com/virtio-win/virtio-win-pkg-scripts/issues/40
         # https://github.com/virtio-win/virtio-win-pkg-scripts/issues/61
         case "$nt_ver" in
         6.0 | 6.1) dir=archive-virtio/virtio-win-0.1.173-9 ;; # vista|w7|2k8|2k8R2
-        6.2 | 6.3) dir=archive-virtio/virtio-win-0.1.215-1 ;; # w8|w8.1|2k12|2k12R2
+        6.2 | 6.3) dir=archive-virtio/virtio-win-0.1.215-2 ;; # w8|w8.1|2k12|2k12R2
         *) dir=stable-virtio ;;
         esac
 
@@ -5013,12 +5035,8 @@ install_windows() {
             mkdir -p $drv/virtio
             mount -o ro $drv/virtio.iso $drv/virtio
 
-            if [ "$nt_ver" = 6.0 ] || [ "$nt_ver" = 6.1 ]; then
-                # vista/7 气球驱动有问题
-                cp_drivers $drv/virtio -ipath "*/$virtio_sys/$arch/*" -not -ipath "*/balloon/*"
-            else
-                cp_drivers $drv/virtio -ipath "*/$virtio_sys/$arch/*"
-            fi
+            # -not -ipath "*/balloon/*"
+            cp_drivers $drv/virtio -ipath "*/$virtio_sys/$arch/*"
         else
             # coreutils 的 cp mv rm 才有 -v 参数
             apk add 7zip file coreutils
