@@ -21,6 +21,7 @@ WINDOWS_EXES='cmd powershell wmic reg diskpart netsh bcdedit mountvol'
 export LC_ALL=C
 
 # 处理部分用户用 su 切换成 root 导致环境变量没 sbin 目录
+# 也能处理 cygwin bash 没有添加 -l 运行 reinstall.sh
 # 不要漏了最后的 $PATH，否则会找不到 windows 系统程序例如 diskpart
 export PATH=/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin:$PATH
 

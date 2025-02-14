@@ -142,18 +142,21 @@ if not exist reinstall.sh (
     call :chmod a+x %thisdir%reinstall.sh
 )
 
+rem %* 无法处理 --iso https://x.com/?yyy=123
 rem 为每个参数添加引号，使参数正确传递到 bash
-for %%a in (%*) do (
-    set "param=!param! "%%~a""
-)
+rem for %%a in (%*) do (
+rem     set "param=!param! "%%~a""
+rem )
 
-rem 方法1
+rem 转成 unix 格式，避免用户用 windows 记事本编辑后换行符不对
 %SystemDrive%\cygwin\bin\dos2unix -q '%thisdir%reinstall.sh'
-%SystemDrive%\cygwin\bin\bash -l -c '%thisdir%reinstall.sh !param!'
 
-rem 方法2
-rem %SystemDrive%\cygwin\bin\bash reinstall.sh %*
-rem 再在 reinstall.sh 里运行 source /etc/profile
+rem 用 bash 运行
+rem %SystemDrive%\cygwin\bin\bash -l %thisdir%reinstall.sh %* 运行后会清屏
+rem 因此不能用 -l
+rem 这就需要在 reinstall.sh 里运行 source /etc/profile
+rem 或者添加 export PATH=/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin:$PATH
+%SystemDrive%\cygwin\bin\bash %thisdir%reinstall.sh %*
 exit /b
 
 
