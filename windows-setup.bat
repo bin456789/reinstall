@@ -23,10 +23,15 @@ call powercfg /s 8c5e7fda-e8bf-4a96-9a85-a6e23a8c635c 2>nul
 
 rem 安装 SCSI 驱动
 for %%F in ("X:\drivers\*.inf") do (
-    rem 不要查找 Class=SCSIAdapter 因为有些驱动等号两边有空格
-    find /i "SCSIAdapter" "%%~F" >nul
-    if not errorlevel 1 (
-        drvload "%%~F"
+    call :drvload_if_scsi "%%~F"
+)
+
+rem 安装自定义 SCSI 驱动
+rem 可以用 forfiles /p X:\custom_drivers /m *.inf /c "cmd /c echo @path"
+rem 不可以用 for %%F in ("X:\custom_drivers\*\*.inf")
+if exist X:\custom_drivers\ (
+    for /f "delims=" %%F in ('dir /s /b "X:\custom_drivers\*.inf"') do (
+        call :drvload_if_scsi "%%~F"
     )
 )
 
@@ -154,6 +159,7 @@ set EnableUnattended=1
 rem 运行 ramdisk X:\setup.exe 的话
 rem vista 会找不到安装源
 rem server 23h2 会无法运行
+rem 使用 /installfrom 可以解决?
 if "%ForceOldSetup%"=="1" (
     set setup=Y:\sources\setup.exe
 ) else (
@@ -213,4 +219,12 @@ exit /b
 
 :createPageFileOnZ
 wpeutil CreatePageFile /path=Z:\pagefile.sys /size=512
+exit /b
+
+:drvload_if_scsi
+rem 不要查找 Class=SCSIAdapter 因为有些驱动等号两边有空格
+find /i "SCSIAdapter" "%~1" >nul
+if not errorlevel 1 (
+    drvload "%~1"
+)
 exit /b

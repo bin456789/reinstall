@@ -4851,8 +4851,7 @@ install_windows() {
         info "Add drivers"
 
         drv=/os/drivers
-        mkdir -p "$drv"         # 驱动下载临时文件夹
-        mkdir -p "/wim/drivers" # boot.wim 驱动文件夹
+        mkdir -p "$drv" # 驱动下载临时文件夹
 
         # 这里有坑
         # $(get_cloud_vendor) 调用了 cache_dmi_and_virt
@@ -4912,6 +4911,9 @@ install_windows() {
             add_driver_gcp
             ;;
         esac
+
+        # 自定义驱动
+        add_driver_custom
     }
 
     # aws nitro
@@ -5273,6 +5275,23 @@ install_windows() {
         cp_drivers $drv/vmd
     }
 
+    # 脚本自动检测驱动可能有问题
+    # 假设是 win7 时代的网卡，官网没有 win10 驱动，系统也不自带
+    # 但实际上 win10 可以用 win7 的驱动
+    # 这种情况即使脚本自动下载 win10 的驱动包，也不会包含这个驱动
+    # 应该下载 win7 的驱动
+    # 因此只能交给用户自己添加驱动
+
+    add_driver_custom() {
+        for dir in /custom_drivers/*; do
+            if [ -d "$dir" ]; then
+                info "Add custom drivers: $dir"
+                cp_drivers custom "$dir"
+                # 复制后不删除，因为脚本可能再次运行
+            fi
+        done
+    }
+
     # 修改应答文件
     download $confhome/windows.xml /tmp/autounattend.xml
     locale=$(get_selected_image_prop 'Default Language')
@@ -5327,6 +5346,14 @@ install_windows() {
     wimmountrw /os/boot.wim "$boot_index" /wim/
 
     cp_drivers() {
+        if [ "$1" = custom ]; then
+            shift
+            dst="/wim/custom_drivers/$(basename "$1")"
+        else
+            dst=/wim/drivers
+        fi
+        mkdir -p "$dst"
+
         src=$1
         shift
 
@@ -5335,7 +5362,7 @@ install_windows() {
             -not -iname "*.pdb" \
             -not -iname "dpinst.exe" \
             "$@" \
-            -exec cp -rfv {} /wim/drivers \;
+            -exec cp -rfv {} "$dst" \;
     }
 
     # 添加驱动

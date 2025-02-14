@@ -36,13 +36,13 @@
 | <img width="16" height="16" src="https://www.alpinelinux.org/alpine-logo.ico" /> Alpine                                                                                                                                                                                                                                                                                | 3.18, 3.19, 3.20, 3.21                | 256 MB    | 1 GB         |
 | <img width="16" height="16" src="https://www.debian.org/favicon.ico" /> Debian                                                                                                                                                                                                                                                                                         | 9, 10, 11, 12                         | 256 MB    | 1 ~ 1.5 GB ^ |
 | <img width="16" height="16" src="https://github.com/bin456789/reinstall/assets/7548515/f74b3d5b-085f-4df3-bcc9-8a9bd80bb16d" /> Kali                                                                                                                                                                                                                                   | 滚动                                  | 256 MB    | 1 ~ 1.5 GB ^ |
-| <img width="16" height="16" src="https://canonical-subiquity.readthedocs-hosted.com/en/latest/_static/favicon.png" /> Ubuntu                                                                                                                                                                                                                                           | 16.04 - 24.04, 24.10                  | 512 MB \* | 2 GB         |
+| <img width="16" height="16" src="https://canonical-subiquity.readthedocs-hosted.com/en/latest/_static/favicon.png" /> Ubuntu                                                                                                                                                                                                                                           | 16.04 LTS - 24.04 LTS, 24.10          | 512 MB \* | 2 GB         |
 | <img width="16" height="16" src="https://img.alicdn.com/imgextra/i1/O1CN01oJnJZg1yK4RzI4Rx2_!!6000000006559-2-tps-118-118.png" /> Anolis                                                                                                                                                                                                                               | 7, 8, 23                              | 512 MB \* | 5 GB         |
 | <img width="16" height="16" src="https://www.redhat.com/favicon.ico" /> RHEL &nbsp;<img width="16" height="16" src="https://almalinux.org/fav/favicon.ico" /> AlmaLinux &nbsp;<img width="16" height="16" src="https://rockylinux.org/favicon.png" /> Rocky &nbsp;<img width="16" height="16" src="https://www.oracle.com/asset/web/favicons/favicon-32.png" /> Oracle | 8, 9                                  | 512 MB \* | 5 GB         |
 | <img width="16" height="16" src="https://opencloudos.org/qq.ico" /> OpenCloudOS                                                                                                                                                                                                                                                                                        | 8, 9, Stream 23                       | 512 MB \* | 5 GB         |
 | <img width="16" height="16" src="https://www.centos.org/assets/icons/favicon.svg" /> CentOS                                                                                                                                                                                                                                                                            | 9, 10                                 | 512 MB \* | 5 GB         |
 | <img width="16" height="16" src="https://fedoraproject.org/favicon.ico" /> Fedora                                                                                                                                                                                                                                                                                      | 40, 41                                | 512 MB \* | 5 GB         |
-| <img width="16" height="16" src="https://www.openeuler.org/favicon.ico" /> openEuler                                                                                                                                                                                                                                                                                   | 20.03 - 24.03, 24.09                  | 512 MB \* | 5 GB         |
+| <img width="16" height="16" src="https://www.openeuler.org/favicon.ico" /> openEuler                                                                                                                                                                                                                                                                                   | 20.03 LTS - 24.03 LTS, 24.09          | 512 MB \* | 5 GB         |
 | <img width="16" height="16" src="https://static.opensuse.org/favicon.ico" /> openSUSE                                                                                                                                                                                                                                                                                  | 15.6, Tumbleweed (滚动)               | 512 MB \* | 5 GB         |
 | <img width="16" height="16" src="https://github.com/user-attachments/assets/99a542b6-6482-4086-addf-f192c06fef73" /> NixOS                                                                                                                                                                                                                                             | 24.11                                 | 512 MB    | 5 GB         |
 | <img width="16" height="16" src="https://archlinux.org/static/favicon.png" /> Arch                                                                                                                                                                                                                                                                                     | 滚动                                  | 512 MB    | 5 GB         |
@@ -259,8 +259,7 @@ bash reinstall.sh netboot.xyz
 > [!CAUTION]
 > 目前该 ISO 仓库禁止了直链下载，因此该方法已失效
 
-- 通常情况下 Windows 每个月都会发布新的官方 ISO，集成了最新的系统补丁，避免了刚安装好系统就要下载一堆补丁
-- 脚本会从 <https://massgrave.dev/genuine-installation-media> 查找 ISO，该网站收录了每月发布的 ISO，因此脚本查找到的 ISO 都是官方最新版
+- 脚本会从 <https://massgrave.dev/genuine-installation-media> 查找 ISO，该网站专门提供官方 ISO 下载
 - 上面带 \* 的系统不支持自动查找 ISO
 
 ```bash
@@ -323,38 +322,55 @@ zh-tw
 ```bash
 bash reinstall.sh windows \
      --image-name 'Windows 11 Enterprise LTSC 2024' \
-     --iso 'https://drive.massgrave.dev/zh-cn_windows_11_enterprise_ltsc_2024_x64_dvd_cff9cd2d.iso'
+     --iso 'https://go.microsoft.com/fwlink/?linkid=2289029'
 ```
 
 <details>
 
 <summary>以下网站可找到 ISO 链接</summary>
 
-- <https://massgrave.dev/genuine-installation-media> (推荐，iso 来自官方，每月更新，包含最新补丁)
-- <https://www.microsoft.com/software-download/windows10> (需用非 Windows User-Agent 打开)
-- <https://www.microsoft.com/software-download/windows11>
-- <https://www.microsoft.com/software-download/windows11arm64>
-- <https://www.microsoft.com/software-download/windowsinsiderpreviewiso> (预览版)
-- <https://www.microsoft.com/software-download/windowsinsiderpreviewserver> (预览版)
-- <https://www.microsoft.com/evalcenter/download-windows-10-enterprise>
-- <https://www.microsoft.com/evalcenter/download-windows-11-enterprise>
-- <https://www.microsoft.com/evalcenter/download-windows-11-iot-enterprise-ltsc-eval>
-- <https://www.microsoft.com/evalcenter/download-windows-server-2012-r2>
-- <https://www.microsoft.com/evalcenter/download-windows-server-2016>
-- <https://www.microsoft.com/evalcenter/download-windows-server-2019>
-- <https://www.microsoft.com/evalcenter/download-windows-server-2022>
-- <https://www.microsoft.com/evalcenter/download-windows-server-2025>
+- 正式版
+  - <https://msdl.gravesoft.dev>
+  - <https://massgrave.dev/genuine-installation-media>
+  - <https://www.microsoft.com/software-download/windows10> (需用非 Windows User-Agent 打开)
+  - <https://www.microsoft.com/software-download/windows11>
+  - <https://www.microsoft.com/software-download/windows11arm64>
+- 评估版
+  - <https://www.microsoft.com/evalcenter/download-windows-10-enterprise>
+  - <https://www.microsoft.com/evalcenter/download-windows-11-enterprise>
+  - <https://www.microsoft.com/evalcenter/download-windows-11-iot-enterprise-ltsc-eval>
+  - <https://www.microsoft.com/evalcenter/download-windows-server-2012-r2>
+  - <https://www.microsoft.com/evalcenter/download-windows-server-2016>
+  - <https://www.microsoft.com/evalcenter/download-windows-server-2019>
+  - <https://www.microsoft.com/evalcenter/download-windows-server-2022>
+  - <https://www.microsoft.com/evalcenter/download-windows-server-2025>
+- Insider 预览版
+  - <https://www.microsoft.com/software-download/windowsinsiderpreviewiso>
+  - <https://www.microsoft.com/software-download/windowsinsiderpreviewserver>
 
 </details>
 
 #### 可选参数
 
 - `--password PASSWORD` 设置密码
-- `--allow-ping` 允许被 Ping
+- `--allow-ping` 设置 Windows 防火墙允许被 Ping
 - `--rdp-port PORT` 更改 RDP 端口
 - `--ssh-port PORT` 修改 SSH 端口（安装期间观察日志用）
 - `--web-port PORT` 修改 Web 端口（安装期间观察日志用）
+- `--add-driver-dir DIR` 添加额外驱动文件夹，填写 .inf 所在的文件夹
+  - 需先下载驱动到本地
+  - 可多次设置该参数以添加不同的驱动文件夹
+  - 脚本将复制整个文件夹，因此文件夹内不要放置其他文件
 - `--hold 2` 在进入 Windows 官方安装程序之前，可以 SSH 登录修改硬盘内容，硬盘挂载在 `/os`
+
+#### 脚本会自动按需下载安装以下驱动，无需手动添加
+
+- Virtio ([Virtio](https://fedorapeople.org/groups/virt/virtio-win/direct-downloads/)、[阿里云](https://www.alibabacloud.com/help/ecs/user-guide/update-red-hat-virtio-drivers-of-windows-instances))
+- XEN ([XEN](https://xenproject.org/resources/downloads/)、[Citrix](https://docs.aws.amazon.com/AWSEC2/latest/UserGuide/Upgrading_PV_drivers.html#win2008-citrix-upgrade)、[AWS](https://docs.aws.amazon.com/AWSEC2/latest/UserGuide/xen-drivers-overview.html))
+- AWS ([ENA 网卡](https://docs.aws.amazon.com/AWSEC2/latest/UserGuide/ena-driver-releases-windows.html)、[NVME 存储控制器](https://docs.aws.amazon.com/AWSEC2/latest/UserGuide/nvme-driver-version-history.html))
+- GCP ([gVNIC 网卡](https://cloud.google.com/compute/docs/networking/using-gvnic)、[GGA 显卡](https://cloud.google.com/compute/docs/instances/enable-instance-virtual-display))
+- Azure ([MANA 网卡](https://learn.microsoft.com/azure/virtual-network/accelerated-networking-mana-windows))
+- Intel ([VMD 存储控制器](https://www.intel.com/content/www/us/en/download/720755/intel-rapid-storage-technology-driver-installation-software-with-intel-optane-memory-11th-up-to-13th-gen-platforms.html))
 
 #### 如何填写映像名称 `--image-name`
 
@@ -376,15 +392,6 @@ Windows Server 2025 SERVERDATACENTER
 打开文件菜单 > 打开映像文件，选择要安装的 iso，即可得到映像名称，所有映像名称都可以安装
 
 ![image-name](https://github.com/bin456789/reinstall/assets/7548515/5aae0a9b-61e2-4f66-bb98-d470a6beaac2)
-
-#### 脚本会按需安装以下驱动
-
-- Virtio ([Virtio](https://fedorapeople.org/groups/virt/virtio-win/direct-downloads/)、[阿里云](https://www.alibabacloud.com/help/ecs/user-guide/update-red-hat-virtio-drivers-of-windows-instances))
-- XEN ([XEN](https://xenproject.org/resources/downloads/)、[Citrix](https://docs.aws.amazon.com/AWSEC2/latest/UserGuide/Upgrading_PV_drivers.html#win2008-citrix-upgrade)、[AWS](https://docs.aws.amazon.com/AWSEC2/latest/UserGuide/xen-drivers-overview.html))
-- AWS ([ENA 网卡](https://docs.aws.amazon.com/AWSEC2/latest/UserGuide/ena-driver-releases-windows.html)、[NVME 存储控制器](https://docs.aws.amazon.com/AWSEC2/latest/UserGuide/nvme-driver-version-history.html))
-- GCP ([gVNIC 网卡](https://cloud.google.com/compute/docs/networking/using-gvnic)、[GGA 显卡](https://cloud.google.com/compute/docs/instances/enable-instance-virtual-display))
-- Azure ([MANA 网卡](https://learn.microsoft.com/azure/virtual-network/accelerated-networking-mana-windows))
-- Intel ([VMD 存储控制器](https://www.intel.com/content/www/us/en/download/720755/intel-rapid-storage-technology-driver-installation-software-with-intel-optane-memory-11th-up-to-13th-gen-platforms.html))
 
 > [!WARNING]
 > Vista (Server 2008) 和 32 位系统可能会缺少驱动

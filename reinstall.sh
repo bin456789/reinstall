@@ -3330,8 +3330,13 @@ EOF
         chmod a+x \$sysroot/etc/local.d/trans.start
         ln -s /etc/init.d/local \$sysroot/etc/runlevels/default/
 
-        # 配置文件夹
-        cp -r  /configs \$sysroot/configs
+        # 配置 + 自定义驱动
+        for dir in /configs /custom_drivers; do
+            if [ -d \$dir ]; then
+                cp -r \$dir \$sysroot/
+                rm -rf \$dir
+            fi
+        done
 EOF
 
     # 判断云镜像 debain 能否用云内核
@@ -3389,6 +3394,19 @@ This script is outdated, please download reinstall.sh again.
         mod_initrd_$nextos_distro
     fi
 
+    # 添加自定义 windows 驱动
+    if [ "$distro" = windows ]; then
+        mkdir -p $initrd_dir/custom_drivers
+        i=0
+        while IFS= read -r dir; do
+            if [ -d "$dir" ]; then
+                ((i += 1))
+                info "add custom driver: $dir"
+                cp -r "$dir" "$initrd_dir/custom_drivers/$i"
+            fi
+        done < <(echo "$custom_driver_dirs")
+    fi
+
     # alpine live 不精简 initrd
     # 因为不知道用户想干什么，可能会用到精简的文件
     if is_virt && ! is_alpine_live; then
@@ -3406,6 +3424,8 @@ This script is outdated, please download reinstall.sh again.
 }
 
 remove_useless_initrd_files() {
+    info "slim initrd"
+
     # 显示精简前的大小
     du -sh .
 
@@ -3510,6 +3530,7 @@ fi
 
 long_opts=
 for o in ci installer debug minimal allow-ping force-cn \
+    add-driver-dir: \
     hold: sleep: \
     iso: \
     image-name: \
@@ -3600,6 +3621,28 @@ while true; do
     --web-port | --http-port)
         is_port_valid $2 || error_and_exit "Invalid $1 value: $2"
         web_port=$2
+        shift 2
+        ;;
+    --add-driver-dir)
+        # 指定 dir 而不是指定 inf
+        # 防止用户将 inf 放在 / 而复制整个 /
+
+        # 路径转换
+        if is_in_windows; then
+            # 输入的路径是 / 开头也没问题
+            dir="$(cygpath -u "$2")"
+        else
+            dir=$2
+        fi
+
+        # 防止重复添加
+        if ! grep -Fqx "$dir" <<<"$custom_driver_dirs"; then
+            # shellcheck disable=SC2010
+            { [ -d "$dir" ] && ls "$dir" | grep -Eiq '\.inf$'; } || error_and_exit "Invalid Driver Directory: $2"
+            # 一行一个驱动文件夹
+            custom_driver_dirs+="$dir
+"
+        fi
         shift 2
         ;;
     --force-old-windows-setup)

@@ -31,25 +31,25 @@ The original system can be any system listed in the table.
 
 The system requirements for the target system are as follows:
 
-| Target System                                                                                                                                                                                                                                                                                                                                                          | Version                               | Memory    | Disk                   |
-| ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------- | --------- | ---------------------- |
-| <img width="16" height="16" src="https://www.alpinelinux.org/alpine-logo.ico" /> Alpine                                                                                                                                                                                                                                                                                | 3.18, 3.19, 3.20, 3.21                | 256 MB    | 1 GB                   |
-| <img width="16" height="16" src="https://www.debian.org/favicon.ico" /> Debian                                                                                                                                                                                                                                                                                         | 9, 10, 11, 12                         | 256 MB    | 1 ~ 1.5 GB ^           |
-| <img width="16" height="16" src="https://github.com/bin456789/reinstall/assets/7548515/f74b3d5b-085f-4df3-bcc9-8a9bd80bb16d" /> Kali                                                                                                                                                                                                                                   | Rolling                               | 256 MB    | 1 ~ 1.5 GB ^           |
-| <img width="16" height="16" src="https://canonical-subiquity.readthedocs-hosted.com/en/latest/_static/favicon.png" /> Ubuntu                                                                                                                                                                                                                                           | 16.04 - 24.04, 24.10                  | 512 MB \* | 2 GB                   |
-| <img width="16" height="16" src="https://img.alicdn.com/imgextra/i1/O1CN01oJnJZg1yK4RzI4Rx2_!!6000000006559-2-tps-118-118.png" /> Anolis                                                                                                                                                                                                                               | 7, 8, 23                              | 512 MB \* | 5 GB                   |
-| <img width="16" height="16" src="https://www.redhat.com/favicon.ico" /> RHEL &nbsp;<img width="16" height="16" src="https://almalinux.org/fav/favicon.ico" /> AlmaLinux &nbsp;<img width="16" height="16" src="https://rockylinux.org/favicon.png" /> Rocky &nbsp;<img width="16" height="16" src="https://www.oracle.com/asset/web/favicons/favicon-32.png" /> Oracle | 8, 9                                  | 512 MB \* | 5 GB                   |
-| <img width="16" height="16" src="https://opencloudos.org/qq.ico" /> OpenCloudOS                                                                                                                                                                                                                                                                                        | 8, 9, Stream 23                       | 512 MB \* | 5 GB                   |
-| <img width="16" height="16" src="https://www.centos.org/assets/icons/favicon.svg" /> CentOS                                                                                                                                                                                                                                                                            | 9, 10                                 | 512 MB \* | 5 GB                   |
-| <img width="16" height="16" src="https://fedoraproject.org/favicon.ico" /> Fedora                                                                                                                                                                                                                                                                                      | 40, 41                                | 512 MB \* | 5 GB                   |
-| <img width="16" height="16" src="https://www.openeuler.org/favicon.ico" /> openEuler                                                                                                                                                                                                                                                                                   | 20.03 - 24.03, 24.09                  | 512 MB \* | 5 GB                   |
-| <img width="16" height="16" src="https://static.opensuse.org/favicon.ico" /> openSUSE                                                                                                                                                                                                                                                                                  | 15.6, Tumbleweed (Rolling)            | 512 MB \* | 5 GB                   |
-| <img width="16" height="16" src="https://github.com/user-attachments/assets/99a542b6-6482-4086-addf-f192c06fef73" /> NixOS                                                                                                                                                                                                                                             | 24.11                                 | 512 MB    | 5 GB                   |
-| <img width="16" height="16" src="https://archlinux.org/static/favicon.png" /> Arch                                                                                                                                                                                                                                                                                     | Rolling                               | 512 MB    | 5 GB                   |
-| <img width="16" height="16" src="https://www.gentoo.org/assets/img/logo/gentoo-g.png" /> Gentoo                                                                                                                                                                                                                                                                        | Rolling                               | 512 MB    | 5 GB                   |
-| <img width="16" height="16" src="https://blogs.windows.com/wp-content/uploads/prod/2022/09/cropped-Windows11IconTransparent512-32x32.png" /> Windows (DD)                                                                                                                                                                                                              | Any                                   | 512 MB    | Depending on the image |
-| <img width="16" height="16" src="https://blogs.windows.com/wp-content/uploads/prod/2022/09/cropped-Windows11IconTransparent512-32x32.png" /> Windows (ISO)                                                                                                                                                                                                             | Vista, 7, 8.x (Server 2008 - 2012 R2) | 512 MB    | 25 GB                  |
-| <img width="16" height="16" src="https://blogs.windows.com/wp-content/uploads/prod/2022/09/cropped-Windows11IconTransparent512-32x32.png" /> Windows (ISO)                                                                                                                                                                                                             | 10, 11 (Server 2016 - 2025)           | 1 GB      | 25 GB                  |
+| Target System                                                                                                                                                                                                                                                                                                                                                          | Version                               | Memory    | Disk             |
+| ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------- | --------- | -----------------|
+| <img width="16" height="16" src="https://www.alpinelinux.org/alpine-logo.ico" /> Alpine                                                                                                                                                                                                                                                                                | 3.18, 3.19, 3.20, 3.21                | 256 MB    | 1 GB             |
+| <img width="16" height="16" src="https://www.debian.org/favicon.ico" /> Debian                                                                                                                                                                                                                                                                                         | 9, 10, 11, 12                         | 256 MB    | 1 ~ 1.5 GB ^     |
+| <img width="16" height="16" src="https://github.com/bin456789/reinstall/assets/7548515/f74b3d5b-085f-4df3-bcc9-8a9bd80bb16d" /> Kali                                                                                                                                                                                                                                   | Rolling                               | 256 MB    | 1 ~ 1.5 GB ^     |
+| <img width="16" height="16" src="https://canonical-subiquity.readthedocs-hosted.com/en/latest/_static/favicon.png" /> Ubuntu                                                                                                                                                                                                                                           | 16.04 LTS - 24.04 LTS, 24.10          | 512 MB \* | 2 GB             |
+| <img width="16" height="16" src="https://img.alicdn.com/imgextra/i1/O1CN01oJnJZg1yK4RzI4Rx2_!!6000000006559-2-tps-118-118.png" /> Anolis                                                                                                                                                                                                                               | 7, 8, 23                              | 512 MB \* | 5 GB             |
+| <img width="16" height="16" src="https://www.redhat.com/favicon.ico" /> RHEL &nbsp;<img width="16" height="16" src="https://almalinux.org/fav/favicon.ico" /> AlmaLinux &nbsp;<img width="16" height="16" src="https://rockylinux.org/favicon.png" /> Rocky &nbsp;<img width="16" height="16" src="https://www.oracle.com/asset/web/favicons/favicon-32.png" /> Oracle | 8, 9                                  | 512 MB \* | 5 GB             |
+| <img width="16" height="16" src="https://opencloudos.org/qq.ico" /> OpenCloudOS                                                                                                                                                                                                                                                                                        | 8, 9, Stream 23                       | 512 MB \* | 5 GB             |
+| <img width="16" height="16" src="https://www.centos.org/assets/icons/favicon.svg" /> CentOS                                                                                                                                                                                                                                                                            | 9, 10                                 | 512 MB \* | 5 GB             |
+| <img width="16" height="16" src="https://fedoraproject.org/favicon.ico" /> Fedora                                                                                                                                                                                                                                                                                      | 40, 41                                | 512 MB \* | 5 GB             |
+| <img width="16" height="16" src="https://www.openeuler.org/favicon.ico" /> openEuler                                                                                                                                                                                                                                                                                   | 20.03 LTS - 24.03 LTS, 24.09          | 512 MB \* | 5 GB             |
+| <img width="16" height="16" src="https://static.opensuse.org/favicon.ico" /> openSUSE                                                                                                                                                                                                                                                                                  | 15.6, Tumbleweed (Rolling)            | 512 MB \* | 5 GB             |
+| <img width="16" height="16" src="https://github.com/user-attachments/assets/99a542b6-6482-4086-addf-f192c06fef73" /> NixOS                                                                                                                                                                                                                                             | 24.11                                 | 512 MB    | 5 GB             |
+| <img width="16" height="16" src="https://archlinux.org/static/favicon.png" /> Arch                                                                                                                                                                                                                                                                                     | Rolling                               | 512 MB    | 5 GB             |
+| <img width="16" height="16" src="https://www.gentoo.org/assets/img/logo/gentoo-g.png" /> Gentoo                                                                                                                                                                                                                                                                        | Rolling                               | 512 MB    | 5 GB             |
+| <img width="16" height="16" src="https://blogs.windows.com/wp-content/uploads/prod/2022/09/cropped-Windows11IconTransparent512-32x32.png" /> Windows (DD)                                                                                                                                                                                                              | Any                                   | 512 MB    | Depends on image |
+| <img width="16" height="16" src="https://blogs.windows.com/wp-content/uploads/prod/2022/09/cropped-Windows11IconTransparent512-32x32.png" /> Windows (ISO)                                                                                                                                                                                                             | Vista, 7, 8.x (Server 2008 - 2012 R2) | 512 MB    | 25 GB            |
+| <img width="16" height="16" src="https://blogs.windows.com/wp-content/uploads/prod/2022/09/cropped-Windows11IconTransparent512-32x32.png" /> Windows (ISO)                                                                                                                                                                                                             | 10, 11 (Server 2016 - 2025)           | 1 GB      | 25 GB            |
 
 \* Indicates installation using cloud images, not traditional network installation.
 
@@ -259,8 +259,7 @@ bash reinstall.sh netboot.xyz
 > [!CAUTION]
 > The ISO repository currently prohibits direct link downloads, so this method is no longer effective.
 
-- Typically, Windows releases new official ISOs every month, which integrate the latest system patches, avoiding the need to download a bunch of updates right after installation.
-- The script will search for ISOs from <https://massgrave.dev/genuine-installation-media>, a site that collects monthly released ISOs, ensuring that the ISOs found by the script are the official latest versions.
+- The script will search for ISOs from <https://massgrave.dev/genuine-installation-media>, a site that collects official ISOs.
 - Systems marked with \* do not support automatic ISO searching.
 
 ```bash
@@ -323,38 +322,55 @@ zh-tw
 ```bash
 bash reinstall.sh windows \
      --image-name 'Windows 11 Enterprise LTSC 2024' \
-     --iso 'https://drive.massgrave.dev/zh-cn_windows_11_enterprise_ltsc_2024_x64_dvd_cff9cd2d.iso'
+     --iso 'https://go.microsoft.com/fwlink/?linkid=2289029'
 ```
 
 <details>
 
 <summary>The following website provides ISO links.</summary>
 
-- <https://massgrave.dev/genuine-installation-media> (Recommended, iso sourced from official channels, updated monthly, includes the latest patches)
-- <https://www.microsoft.com/software-download/windows10> (Need to open it with a non-Windows User-Agent)
-- <https://www.microsoft.com/software-download/windows11>
-- <https://www.microsoft.com/software-download/windows11arm64>
-- <https://www.microsoft.com/software-download/windowsinsiderpreviewiso> (Preview)
-- <https://www.microsoft.com/software-download/windowsinsiderpreviewserver> (Preview)
-- <https://www.microsoft.com/evalcenter/download-windows-10-enterprise>
-- <https://www.microsoft.com/evalcenter/download-windows-11-enterprise>
-- <https://www.microsoft.com/evalcenter/download-windows-11-iot-enterprise-ltsc-eval>
-- <https://www.microsoft.com/evalcenter/download-windows-server-2012-r2>
-- <https://www.microsoft.com/evalcenter/download-windows-server-2016>
-- <https://www.microsoft.com/evalcenter/download-windows-server-2019>
-- <https://www.microsoft.com/evalcenter/download-windows-server-2022>
-- <https://www.microsoft.com/evalcenter/download-windows-server-2025>
+- General
+  - <https://msdl.gravesoft.dev>
+  - <https://massgrave.dev/genuine-installation-media>
+  - <https://www.microsoft.com/software-download/windows10> (Need to open it with a non-Windows User-Agent)
+  - <https://www.microsoft.com/software-download/windows11>
+  - <https://www.microsoft.com/software-download/windows11arm64>
+- Evaluation
+  - <https://www.microsoft.com/evalcenter/download-windows-10-enterprise>
+  - <https://www.microsoft.com/evalcenter/download-windows-11-enterprise>
+  - <https://www.microsoft.com/evalcenter/download-windows-11-iot-enterprise-ltsc-eval>
+  - <https://www.microsoft.com/evalcenter/download-windows-server-2012-r2>
+  - <https://www.microsoft.com/evalcenter/download-windows-server-2016>
+  - <https://www.microsoft.com/evalcenter/download-windows-server-2019>
+  - <https://www.microsoft.com/evalcenter/download-windows-server-2022>
+  - <https://www.microsoft.com/evalcenter/download-windows-server-2025>
+- Insider Preview
+  - <https://www.microsoft.com/software-download/windowsinsiderpreviewiso>
+  - <https://www.microsoft.com/software-download/windowsinsiderpreviewserver>
 
 </details>
 
 #### Optional parameters
 
 - `--password PASSWORD` Set Password
-- `--allow-ping` Allow ping responses
+- `--allow-ping` Configures the Windows firewall to allow ping requests
 - `--rdp-port PORT` Change RDP port
 - `--ssh-port PORT` Change SSH port (for log observation during installation)
 - `--web-port PORT` Change Web port (for log observation during installation)
+- `--add-driver-dir DIR` Adds an additional driver folder, specifying the folder where the .inf file is located.
+  - The driver must be downloaded locally first.
+  - This parameter can be set multiple times to add different driver folders.
+  - The script will copy the entire folder, so no other files should be placed inside the folder.
 - `--hold 2` Allow SSH connections for modifying the disk content before rebooting into the official Windows installation program, with the disk mounted at `/os`.
+
+#### The script will automatic download and install the following drivers as needed, without the need for manual addition
+
+- Virtio ([Virtio](https://fedorapeople.org/groups/virt/virtio-win/direct-downloads/), [Alibaba Cloud](https://www.alibabacloud.com/help/ecs/user-guide/update-red-hat-virtio-drivers-of-windows-instances))
+- XEN ([XEN](https://xenproject.org/resources/downloads/), [Citrix](https://docs.aws.amazon.com/AWSEC2/latest/UserGuide/Upgrading_PV_drivers.html#win2008-citrix-upgrade), [AWS](https://docs.aws.amazon.com/AWSEC2/latest/UserGuide/xen-drivers-overview.html))
+- AWS ([ENA Network Adapter](https://docs.aws.amazon.com/AWSEC2/latest/UserGuide/ena-driver-releases-windows.html), [NVMe Storage Controller](https://docs.aws.amazon.com/AWSEC2/latest/UserGuide/nvme-driver-version-history.html))
+- GCP ([gVNIC Network Adapter](https://cloud.google.com/compute/docs/networking/using-gvnic), [GGA Display Adapter](https://cloud.google.com/compute/docs/instances/enable-instance-virtual-display))
+- Azure ([MANA Network Adapter](https://learn.microsoft.com/azure/virtual-network/accelerated-networking-mana-windows))
+- Intel ([VMD Storage Controller](https://www.intel.com/content/www/us/en/download/720755/intel-rapid-storage-technology-driver-installation-software-with-intel-optane-memory-11th-up-to-13th-gen-platforms.html))
 
 #### How to Specify the Image Name `--image-name`
 
@@ -376,15 +392,6 @@ Windows Server 2025 SERVERDATACENTER
 Open File menu > Open Image File, select the iso to be installed to get the image name (full system name), and all available image names are installable.
 
 ![image-name](https://github.com/bin456789/reinstall/assets/7548515/5aae0a9b-61e2-4f66-bb98-d470a6beaac2)
-
-#### The script will install the following drivers as needed
-
-- Virtio ([Virtio](https://fedorapeople.org/groups/virt/virtio-win/direct-downloads/), [Alibaba Cloud](https://www.alibabacloud.com/help/ecs/user-guide/update-red-hat-virtio-drivers-of-windows-instances))
-- XEN ([XEN](https://xenproject.org/resources/downloads/), [Citrix](https://docs.aws.amazon.com/AWSEC2/latest/UserGuide/Upgrading_PV_drivers.html#win2008-citrix-upgrade), [AWS](https://docs.aws.amazon.com/AWSEC2/latest/UserGuide/xen-drivers-overview.html))
-- AWS ([ENA Network Adapter](https://docs.aws.amazon.com/AWSEC2/latest/UserGuide/ena-driver-releases-windows.html), [NVMe Storage Controller](https://docs.aws.amazon.com/AWSEC2/latest/UserGuide/nvme-driver-version-history.html))
-- GCP ([gVNIC Network Adapter](https://cloud.google.com/compute/docs/networking/using-gvnic), [GGA Display Adapter](https://cloud.google.com/compute/docs/instances/enable-instance-virtual-display))
-- Azure ([MANA Network Adapter](https://learn.microsoft.com/azure/virtual-network/accelerated-networking-mana-windows))
-- Intel ([VMD Storage Controller](https://www.intel.com/content/www/us/en/download/720755/intel-rapid-storage-technology-driver-installation-software-with-intel-optane-memory-11th-up-to-13th-gen-platforms.html))
 
 > [!WARNING]
 > Vista (Server 2008) and 32-bit systems may lack drivers.
