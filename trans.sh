@@ -5390,6 +5390,7 @@ install_windows() {
 
     # 复制安装脚本
     # https://slightlyovercomplicated.com/2016/11/07/windows-pe-startup-sequence-explained/
+    # https://learn.microsoft.com/previous-versions/windows/it-pro/windows-vista/cc721977(v=ws.10)
     mv /wim/setup.exe /wim/setup.exe.disabled
 
     # 如果有重复的 Windows/System32 文件夹，会提示找不到 winload.exe 无法引导
@@ -5398,6 +5399,26 @@ install_windows() {
     # shellcheck disable=SC2010
     system32_dir=$(ls -d /wim/*/*32 | grep -i windows/system32)
     download $confhome/windows-setup.bat $system32_dir/startnet.cmd
+    # dism 手动释放镜像时用
+    # sed -i "s|@image_name@|$image_name|" $system32_dir/startnet.cmd
+
+    # shellcheck disable=SC2154
+    if [ "$force_old_windows_setup" = 1 ]; then
+        sed -i 's/ForceOldSetup=0/ForceOldSetup=1/i' $system32_dir/startnet.cmd
+    fi
+
+    # Windows Thin PC 有 Windows\System32\winpeshl.ini
+    # [LaunchApps]
+    # %SYSTEMDRIVE%\windows\system32\drvload.exe, %SYSTEMDRIVE%\windows\inf\sdbus.inf
+    # %SYSTEMDRIVE%\setup.exe
+    if [ -f $system32_dir/winpeshl.ini ]; then
+        info "mod winpeshl.ini"
+        # https://learn.microsoft.com/previous-versions/windows/it-pro/windows-vista/cc721977(v=ws.10)
+        # 两种方法都可以，第一种是原版命令
+        sed -i 's|setup.exe|windows\\system32\\cmd.exe, "/k %SYSTEMROOT%\\system32\\startnet.cmd"|i' $system32_dir/winpeshl.ini
+        # sed -i 's|setup.exe|windows\\system32\\startnet.cmd|i' $system32_dir/winpeshl.ini
+        cat -n $system32_dir/winpeshl.ini
+    fi
 
     # 提交修改 boot.wim
     info "Unmount boot.wim"
