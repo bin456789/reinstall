@@ -221,12 +221,12 @@ test_by_nc() {
         "$dst" 443
 }
 
-is_debian() {
-    [ -f /etc/lsb-release ] && grep -iq Debian /etc/lsb-release
+is_debian_kali() {
+    [ -f /etc/lsb-release ] && grep -Eiq 'Debian|Kali' /etc/lsb-release
 }
 
 test_connect() {
-    if is_debian; then
+    if is_debian_kali; then
         test_by_wget "$1" "$2"
     else
         test_by_nc "$1" "$2"
@@ -329,7 +329,7 @@ else
     dhcpcd)
         # https://gitlab.alpinelinux.org/alpine/aports/-/blob/master/main/dhcpcd/dhcpcd.pre-install
         grep -q dhcpcd /etc/group || addgroup -S dhcpcd
-        grep -q dhcpcd /etc/passwd || adduser -S -D \
+        grep -q dhcpcd /etc/passwd || adduser -S -D -H \
             -h /var/lib/dhcpcd \
             -s /sbin/nologin \
             -G dhcpcd \
@@ -367,18 +367,19 @@ is_have_ipv4_addr && dhcpv4=true || dhcpv4=false
 is_have_ipv6_addr && dhcpv6_or_slaac=true || dhcpv6_or_slaac=false
 should_disable_ra_slaac=false
 
-# 如果自动获取的 IPv4 地址不是重装前的，则使用之前的
+# 如果自动获取的 IP 不是重装前的，则使用之前的
+# 只比较 IP，不比较掩码/网关，因为
+# 1. 假设掩码/网关导致网络不可用，后面也会检测到并改成静态
+# 2. openSUSE wicked dhcpv6 是 64 位掩码，aws lightsail 模板上的也是，而其它 dhcpv6 软件都是 128 位掩码
 if $dhcpv4 && [ -n "$ipv4_addr" ] && [ -n "$ipv4_gateway" ] &&
-    ! [ "$ipv4_addr" = "$(get_first_ipv4_addr)" ]; then
-    echo "IPv4 address auto obtained is different from old system."
+    ! [ "$(echo "$ipv4_addr" | cut -d/ -f1)" = "$(get_first_ipv4_addr | cut -d/ -f1)" ]; then
+    echo "IPv4 address obtained from DHCP is different from old system."
     dhcpv4=false
     flush_ipv4_config
 fi
-
-# 如果自动获取的 IPv6 地址不是重装前的，则使用之前的
 if $dhcpv6_or_slaac && [ -n "$ipv6_addr" ] && [ -n "$ipv6_gateway" ] &&
-    ! [ "$ipv6_addr" = "$(get_first_ipv6_addr)" ]; then
-    echo "IPv6 address auto obtained is different from old system."
+    ! [ "$(echo "$ipv6_addr" | cut -d/ -f1)" = "$(get_first_ipv6_addr | cut -d/ -f1)" ]; then
+    echo "IPv6 address obtained from SLAAC/DHCPv6 is different from old system."
     dhcpv6_or_slaac=false
     should_disable_ra_slaac=true
     flush_ipv6_config
@@ -393,22 +394,21 @@ ipv4_has_internet=false
 ipv6_has_internet=false
 test_internet
 
-# 如果 IPv4 无法上网，并且自动获取的网关不是重装前的网关，则改成静态
+# 如果无法上网，并且自动获取的 掩码/网关 不是重装前的，则改成静态
+# IP 不同的情况在前面已经改成静态了
 if ! $ipv4_has_internet &&
     $dhcpv4 && [ -n "$ipv4_addr" ] && [ -n "$ipv4_gateway" ] &&
-    ! [ "$ipv4_gateway" = "$(get_first_ipv4_gateway)" ]; then
-    echo "IPv4 gateway auto obtained is different from old system."
+    ! { [ "$ipv4_addr" = "$(get_first_ipv4_addr)" ] || [ "$ipv4_gateway" = "$(get_first_ipv4_gateway)" ]; }; then
+    echo "IPv4 netmask/gateway obtained from DHCP is different from old system."
     dhcpv4=false
     flush_ipv4_config
     add_missing_ipv4_config
     test_internet
 fi
-
-# 如果 IPv6 无法上网，并且自动获取的网关不是重装前的网关，则改成静态
 if ! $ipv6_has_internet &&
     $dhcpv6_or_slaac && [ -n "$ipv6_addr" ] && [ -n "$ipv6_gateway" ] &&
-    ! [ "$ipv6_gateway" = "$(get_first_ipv6_gateway)" ]; then
-    echo "IPv6 gateway auto obtained is different from old system."
+    ! { [ "$ipv6_addr" = "$(get_first_ipv6_addr)" ] || [ "$ipv6_gateway" = "$(get_first_ipv6_gateway)" ]; }; then
+    echo "IPv6 netmask/gateway obtained from SLAAC/DHCPv6 is different from old system."
     dhcpv6_or_slaac=false
     should_disable_ra_slaac=true
     flush_ipv6_config true
