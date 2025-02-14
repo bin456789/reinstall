@@ -612,6 +612,12 @@ is_staticv6() {
     return 1
 }
 
+is_dhcpv6_or_slaac() {
+    get_netconf_to dhcpv6_or_slaac
+    # shellcheck disable=SC2154
+    [ "$dhcpv6_or_slaac" = 1 ]
+}
+
 should_disable_ra_slaac() {
     get_netconf_to should_disable_ra_slaac
     # shellcheck disable=SC2154
@@ -619,8 +625,9 @@ should_disable_ra_slaac() {
 }
 
 is_slaac() {
+    # 如果是静态（包括自动获取到 IP 但无法联网而切换成静态）直接返回 1，不考虑 ra
     # 防止部分机器slaac/dhcpv6获取的ip/网关无法上网
-    if should_disable_ra_slaac; then
+    if ! is_dhcpv6_or_slaac; then
         return 1
     fi
     get_netconf_to slaac
@@ -629,8 +636,9 @@ is_slaac() {
 }
 
 is_dhcpv6() {
+    # 如果是静态（包括自动获取到 IP 但无法联网而切换成静态）直接返回 1，不考虑 ra
     # 防止部分机器slaac/dhcpv6获取的ip/网关无法上网
-    if should_disable_ra_slaac; then
+    if ! is_dhcpv6_or_slaac; then
         return 1
     fi
     get_netconf_to dhcpv6
