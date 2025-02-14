@@ -618,10 +618,16 @@ is_dhcpv6_or_slaac() {
     [ "$dhcpv6_or_slaac" = 1 ]
 }
 
-should_disable_ra_slaac() {
-    get_netconf_to should_disable_ra_slaac
+should_disable_accept_ra() {
+    get_netconf_to should_disable_accept_ra
     # shellcheck disable=SC2154
-    [ "$should_disable_ra_slaac" = 1 ]
+    [ "$should_disable_accept_ra" = 1 ]
+}
+
+should_disable_autoconf() {
+    get_netconf_to should_disable_autoconf
+    # shellcheck disable=SC2154
+    [ "$should_disable_autoconf" = 1 ]
 }
 
 is_slaac() {
@@ -1004,7 +1010,7 @@ EOF
         fi
 
         # 禁用 ra
-        if should_disable_ra_slaac; then
+        if should_disable_accept_ra; then
             if [ "$distro" = alpine ]; then
                 cat <<EOF >>$conf_file
     pre-up echo 0 >/proc/sys/net/ipv6/conf/$ethx/accept_ra
@@ -1012,6 +1018,19 @@ EOF
             else
                 cat <<EOF >>$conf_file
     accept_ra 0
+EOF
+            fi
+        fi
+
+        # 禁用 autoconf
+        if should_disable_autoconf; then
+            if [ "$distro" = alpine ]; then
+                cat <<EOF >>$conf_file
+    pre-up echo 0 >/proc/sys/net/ipv6/conf/$ethx/autoconf
+EOF
+            else
+                cat <<EOF >>$conf_file
+    autoconf 0
 EOF
             fi
         fi
@@ -1142,15 +1161,17 @@ EOF
     # fi
     # ...
 
-    # 禁用 ra
+    # 禁用 ra/autoconf
+    local mode=1
     for ethx in $(get_eths); do
-        if should_disable_ra_slaac; then
-            mode=1
-            if [ "$mode" = 1 ]; then
+        if should_disable_accept_ra; then
+            case "$mode" in
+            1)
                 cat <<EOF >>$conf_file
 boot.kernel.sysctl."net.ipv6.conf.$ethx.accept_ra" = false;
 EOF
-            elif [ "$mode" = 2 ]; then
+                ;;
+            2)
                 # nixos 配置静态 ip 时用的是脚本
                 # 好像因此不起作用
                 cat <<EOF >>$conf_file
@@ -1160,7 +1181,8 @@ networking.dhcpcd.extraConfig =
       ipv6ra_noautoconf
   '';
 EOF
-            elif [ "$mode" = 3 ]; then
+                ;;
+            3)
                 # 暂时没用到 networkd
                 cat <<EOF >>$conf_file
 systemd.network.networks.$ethx = {
@@ -1170,10 +1192,22 @@ systemd.network.networks.$ethx = {
    };
  };
 EOF
-            fi
+                ;;
+            esac
+        fi
+
+        if should_disable_autoconf; then
+            case "$mode" in
+            1)
+                cat <<EOF >>$conf_file
+boot.kernel.sysctl."net.ipv6.conf.$ethx.autoconf" = false;
+EOF
+                ;;
+            2) ;;
+            3) ;;
+            esac
         fi
     done
-
 }
 
 install_alpine() {
@@ -2359,7 +2393,8 @@ create_cloud_init_network_config() {
                     \"address\": \"$ipv6_addr\",
                     \"gateway\": \"$ipv6_gateway\" }
                     " $ci_file
-            if should_disable_ra_slaac; then
+            # 无法设置 autoconf = false ?
+            if should_disable_accept_ra; then
                 yq -i ".network.config[$config_id].accept-ra = false" $ci_file
             fi
         fi

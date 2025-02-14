@@ -2,6 +2,9 @@
 # shellcheck shell=dash
 # alpine / debian initrd 共用此脚本
 
+# accept_ra 接收 RA + 自动配置网关
+# autoconf  自动配置地址，依赖 accept_ra
+
 mac_addr=$1
 ipv4_addr=$2
 ipv4_gateway=$3
@@ -256,12 +259,16 @@ flush_ipv4_config() {
     ip -4 route flush dev "$ethx"
 }
 
+should_disable_accept_ra=false
+should_disable_autoconf=false
+
 flush_ipv6_config() {
-    # 是否临时禁用 ra / slaac
-    if [ "$1" = true ]; then
+    if $should_disable_accept_ra; then
+        echo 0 >"/proc/sys/net/ipv6/conf/$ethx/accept_ra"
+    fi
+    if $should_disable_autoconf; then
         echo 0 >"/proc/sys/net/ipv6/conf/$ethx/autoconf"
     fi
-
     ip -6 addr flush scope global dev "$ethx"
     ip -6 route flush dev "$ethx"
 }
@@ -365,11 +372,16 @@ done
 # 由于还没设置静态ip，所以有条目表示有动态地址
 is_have_ipv4_addr && dhcpv4=true || dhcpv4=false
 is_have_ipv6_addr && dhcpv6_or_slaac=true || dhcpv6_or_slaac=false
-should_disable_ra_slaac=false
+if is_have_ipv6_gateway; then
+    ra_has_gateway=true
+    ipv6_gateway_from_ra=$(get_ipv6_gateway)
+else
+    ra_has_gateway=false
+fi
 
-# 如果自动获取的 IP 不是重装前的，则使用之前的
+# 如果自动获取的 IP 不是重装前的，则改成静态，使用之前的 IP
 # 只比较 IP，不比较掩码/网关，因为
-# 1. 假设掩码/网关导致网络不可用，后面也会检测到并改成静态
+# 1. 假设掩码/网关导致无法上网，后面也会检测到并改成静态
 # 2. openSUSE wicked dhcpv6 是 64 位掩码，aws lightsail 模板上的也是，而其它 dhcpv6 软件都是 128 位掩码
 if $dhcpv4 && [ -n "$ipv4_addr" ] && [ -n "$ipv4_gateway" ] &&
     ! [ "$(echo "$ipv4_addr" | cut -d/ -f1)" = "$(get_first_ipv4_addr | cut -d/ -f1)" ]; then
@@ -381,7 +393,8 @@ if $dhcpv6_or_slaac && [ -n "$ipv6_addr" ] && [ -n "$ipv6_gateway" ] &&
     ! [ "$(echo "$ipv6_addr" | cut -d/ -f1)" = "$(get_first_ipv6_addr | cut -d/ -f1)" ]; then
     echo "IPv6 address obtained from SLAAC/DHCPv6 is different from old system."
     dhcpv6_or_slaac=false
-    should_disable_ra_slaac=true
+    should_disable_accept_ra=true
+    should_disable_autoconf=true
     flush_ipv6_config
 fi
 
@@ -395,6 +408,7 @@ ipv6_has_internet=false
 test_internet
 
 # 如果无法上网，并且自动获取的 掩码/网关 不是重装前的，则改成静态
+# ip_addr 包括 IP/掩码，所以可以用来判断掩码是否不同
 # IP 不同的情况在前面已经改成静态了
 if ! $ipv4_has_internet &&
     $dhcpv4 && [ -n "$ipv4_addr" ] && [ -n "$ipv4_gateway" ] &&
@@ -410,10 +424,19 @@ if ! $ipv6_has_internet &&
     ! { [ "$ipv6_addr" = "$(get_first_ipv6_addr)" ] || [ "$ipv6_gateway" = "$(get_first_ipv6_gateway)" ]; }; then
     echo "IPv6 netmask/gateway obtained from SLAAC/DHCPv6 is different from old system."
     dhcpv6_or_slaac=false
-    should_disable_ra_slaac=true
-    flush_ipv6_config true
+    should_disable_accept_ra=true
+    should_disable_autoconf=true
+    flush_ipv6_config
     add_missing_ipv6_config
     test_internet
+fi
+
+# 如果是静态地址（包括动态无法上网而改成静态的），但是 RA 有网关且和正确的网关不同，要关闭 RA，避免自动设置网关
+# TODO: 测试 RA 给的网关和静态设置的网关的优先级
+if $ipv6_has_internet && ! $dhcpv6_or_slaac && $ra_has_gateway &&
+    ! [ "$(get_first_ipv6_gateway)" = "$ipv6_gateway_from_ra" ]; then
+    echo "Ignore IPv6 gateway from RA."
+    should_disable_accept_ra=true
 fi
 
 # 要删除不联网协议的ip，因为
@@ -422,10 +445,9 @@ fi
 #   此时alpine只会用ipv6下载apk，而不用会ipv4下载
 # 2 有ipv4地址但没有ipv4网关的情况(vultr)，aria2会用ipv4下载
 if $ipv4_has_internet && ! $ipv6_has_internet; then
-    echo 0 >"/proc/sys/net/ipv6/conf/$ethx/accept_ra"
-    ip -6 addr flush scope global dev "$ethx"
+    flush_ipv6_config
 elif ! $ipv4_has_internet && $ipv6_has_internet; then
-    ip -4 addr flush scope global dev "$ethx"
+    flush_ipv4_config
 fi
 
 # 如果联网了，但没获取到默认 DNS，则添加我们的 DNS
@@ -443,7 +465,8 @@ netconf="/dev/netconf/$ethx"
 mkdir -p "$netconf"
 $dhcpv4 && echo 1 >"$netconf/dhcpv4" || echo 0 >"$netconf/dhcpv4"
 $dhcpv6_or_slaac && echo 1 >"$netconf/dhcpv6_or_slaac" || echo 0 >"$netconf/dhcpv6_or_slaac"
-$should_disable_ra_slaac && echo 1 >"$netconf/should_disable_ra_slaac" || echo 0 >"$netconf/should_disable_ra_slaac"
+$should_disable_accept_ra && echo 1 >"$netconf/should_disable_accept_ra" || echo 0 >"$netconf/should_disable_accept_ra"
+$should_disable_autoconf && echo 1 >"$netconf/should_disable_autoconf" || echo 0 >"$netconf/should_disable_autoconf"
 $is_in_china && echo 1 >"$netconf/is_in_china" || echo 0 >"$netconf/is_in_china"
 echo "$ethx" >"$netconf/ethx"
 echo "$mac_addr" >"$netconf/mac_addr"
