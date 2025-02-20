@@ -48,7 +48,7 @@ usage_and_exit() {
 Usage: $reinstall_____ anolis      7|8|23
                        opencloudos 8|9|23
                        rocky       8|9
-                       redhat      8|9 --img='http://xxx.com/xxx.qcow2'
+                       redhat      8|9 --img="http://xxx.com/xxx.qcow2"
                        oracle      8|9
                        almalinux   8|9
                        centos      9|10
@@ -63,9 +63,9 @@ Usage: $reinstall_____ anolis      7|8|23
                        arch
                        gentoo
                        fnos
-                       dd          --img='http://xxx.com/yyy.zzz' (raw image stores in raw/vhd/tar/gz/xz/zst)
-                       windows     --image-name='windows xxx yyy' --lang=xx-yy
-                       windows     --image-name='windows xxx yyy' --iso='http://xxx.com/xxx.iso'
+                       dd          --img="http://xxx.com/yyy.zzz" (raw image stores in raw/vhd/tar/gz/xz/zst)
+                       windows     --image-name="windows xxx yyy" --lang=xx-yy
+                       windows     --image-name="windows xxx yyy" --iso="http://xxx.com/xxx.iso"
                        netboot.xyz
 
        Options:        [--ssh-port PORT]

@@ -198,8 +198,9 @@ update_part() {
     sync
 
     # partprobe
+    # 有分区挂载中会报 Resource busy 错误
     if is_have_cmd partprobe; then
-        partprobe /dev/$xda 2>/dev/null
+        partprobe /dev/$xda 2>/dev/null || true
     fi
 
     # partx
@@ -422,7 +423,7 @@ EOF
 umount_all() {
     dirs="/mnt /os /iso /wim /installer /nbd /nbd-boot /nbd-efi /root /nix"
     regex=$(echo "$dirs" | sed 's, ,|,g')
-    if mounts=$(mount | grep -Ew "$regex" | awk '{print $3}' | tac); then
+    if mounts=$(mount | grep -Ew "on $regex" | awk '{print $3}' | tac); then
         for mount in $mounts; do
             echo "umount $mount"
             umount $mount
@@ -1642,6 +1643,16 @@ EOF
     show_nixos_config
 }
 
+add_fix_eth_name_systemd_service() {
+    os_dir=$1
+
+    # 无需执行 systemctl daemon-reload
+    # 因为 chroot 下执行会提示 Running in chroot, ignoring command 'daemon-reload'
+    download "$confhome/fix-eth-name.sh" "$os_dir/fix-eth-name.sh"
+    download "$confhome/fix-eth-name.service" "$os_dir/etc/systemd/system/fix-eth-name.service"
+    chroot "$os_dir" systemctl enable fix-eth-name
+}
+
 basic_init() {
     os_dir=$1
 
@@ -1691,13 +1702,8 @@ basic_init() {
 
     # 下载 fix-eth-name.service
     # 即使开了 net.ifnames=0 也需要
-    # 因为 alpine 和目标系统的网卡顺序可能不同
-
-    # 无需执行 systemctl daemon-reload
-    # 因为 chroot 下执行会提示 Running in chroot, ignoring command 'daemon-reload'
-    download "$confhome/fix-eth-name.sh" "$os_dir/fix-eth-name.sh"
-    download "$confhome/fix-eth-name.service" "$os_dir/etc/systemd/system/fix-eth-name.service"
-    chroot "$os_dir" systemctl enable fix-eth-name
+    # 因为 alpine live 和目标系统的网卡顺序可能不同
+    add_fix_eth_name_systemd_service $os_dir
 }
 
 install_arch_gentoo() {
@@ -1949,12 +1955,8 @@ EOF
     # 删除网卡名匹配
     sed -i '/^Name=/d' $os_dir/etc/systemd/network/10-cloud-init-eth*.network
 
-    # 下载 fix-eth-name.service
-    # chroot 下执行 systemctl daemon-reload
-    # 会提示 Running in chroot, ignoring command 'daemon-reload'
-    download "$confhome/fix-eth-name.sh" "$os_dir/fix-eth-name.sh"
-    download "$confhome/fix-eth-name.service" "$os_dir/etc/systemd/system/fix-eth-name.service"
-    chroot "$os_dir" systemctl enable fix-eth-name
+    # 修正网卡名
+    add_fix_eth_name_systemd_service $os_dir
 
     # arch gentoo 网络配置是用 alpine cloud-init 生成的
     # cloud-init 版本够新，因此无需修复 onlink 网关
@@ -1973,12 +1975,12 @@ EOF
 
     # cmdline + 生成 grub.cfg
     if [ -d $os_dir/etc/default/grub.d ]; then
-        file=$os_dir/etc/default/grub.d/cmdline.conf
+        file=$os_dir/etc/default/grub.d/tty.cfg
     else
         file=$os_dir/etc/default/grub
     fi
     ttys_cmdline=$(get_ttys console=)
-    echo GRUB_CMDLINE_LINUX=\"$ttys_cmdline\" >>$file
+    echo GRUB_CMDLINE_LINUX=\"\$GRUB_CMDLINE_LINUX $ttys_cmdline\" >>$file
     chroot $os_dir grub-mkconfig -o /boot/grub/grub.cfg
 
     # fstab
@@ -3359,8 +3361,11 @@ modify_os_on_disk() {
                 if ls -d /os/*/ | grep -i '/windows/' 2>/dev/null; then
                     # 重新挂载为读写、忽略大小写
                     umount /os
-                    apk add ntfs-3g
-                    mount.lowntfs-3g /dev/$part /os -o ignore_case
+                    mount -t ntfs3 -o nocase /dev/$part /os
+                    # 有休眠文件时无法挂载成读写，提醒用户并退出脚本
+                    if mount | grep ' /os ' | grep -wq ro; then
+                        error_and_exit "Can't mount windows partition /dev/$part as rw."
+                    fi
                     modify_windows /os
                     return
                 fi
@@ -4724,7 +4729,7 @@ mount_part_for_iso_installer() {
     info "Mount part for iso installer"
 
     if [ "$distro" = windows ]; then
-        mount_args="-t ntfs3"
+        mount_args="-t ntfs3 -o nocase"
     else
         mount_args=
     fi

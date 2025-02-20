@@ -112,8 +112,9 @@ certutil -urlcache -f -split https://gitlab.com/bin456789/reinstall/-/raw/main/r
 
 **所有功能** 都可在 Linux / Windows 下运行
 
-- Linux 下运行 `bash reinstall.sh`
-- Windows 下运行 `.\reinstall.bat`
+- Linux 下运行 `bash reinstall.sh ...`
+- Windows 下先运行 `cmd`，再运行 `reinstall.bat ...`
+  - 如果参数中的链接包含特殊字符，要用 `""` 将链接包起来，不能用 `''`
 
 ### 功能 1: 安装 <img width="16" height="16" src="https://www.kernel.org/theme/images/logos/favicon.png" /> Linux
 
@@ -128,7 +129,7 @@ certutil -urlcache -f -split https://gitlab.com/bin456789/reinstall/-/raw/main/r
 bash reinstall.sh anolis      7|8|23
                   opencloudos 8|9|23
                   rocky       8|9
-                  redhat      8|9   --img='http://xxx.com/xxx.qcow2'
+                  redhat      8|9   --img="http://xxx.com/xxx.qcow2"
                   oracle      8|9
                   almalinux   8|9
                   centos      9|10
@@ -197,7 +198,7 @@ bash reinstall.sh ubuntu --installer
 - DD Linux 镜像时，**不会**修改镜像的任何内容
 
 ```bash
-bash reinstall.sh dd --img https://example.com/xxx.xz
+bash reinstall.sh dd --img "https://example.com/xxx.xz"
 ```
 
 #### 可选参数
@@ -266,7 +267,7 @@ bash reinstall.sh netboot.xyz
 
 ```bash
 bash reinstall.sh windows \
-     --image-name 'Windows 11 Enterprise LTSC 2024' \
+     --image-name "Windows 11 Enterprise LTSC 2024" \
      --lang zh-cn
 ```
 
@@ -323,8 +324,8 @@ zh-tw
 
 ```bash
 bash reinstall.sh windows \
-     --image-name 'Windows 11 Enterprise LTSC 2024' \
-     --iso 'https://go.microsoft.com/fwlink/?linkid=2289029'
+     --image-name "Windows 11 Enterprise LTSC 2024" \
+     --iso "https://go.microsoft.com/fwlink/?linkid=2289029"
 ```
 
 <details>
@@ -359,13 +360,13 @@ bash reinstall.sh windows \
 - `--rdp-port PORT` 更改 RDP 端口
 - `--ssh-port PORT` 修改 SSH 端口（安装期间观察日志用）
 - `--web-port PORT` 修改 Web 端口（安装期间观察日志用）
-- `--add-driver-dir DIR` 添加额外驱动文件夹，填写 .inf 所在的文件夹
+- `--add-driver-dir DIR` 添加额外驱动，填写 .inf 所在的文件夹
   - 需先下载驱动到本地
   - 可多次设置该参数以添加不同的驱动文件夹
   - 脚本将复制整个文件夹，因此文件夹内不要放置其他文件
 - `--hold 2` 在进入 Windows 官方安装程序之前，可以 SSH 登录修改硬盘内容，硬盘挂载在 `/os`
 
-#### 脚本会自动按需下载安装以下驱动，无需手动添加
+#### 以下驱动会自动按需下载安装，无需手动添加
 
 - Virtio ([Virtio](https://fedorapeople.org/groups/virt/virtio-win/direct-downloads/)、[阿里云](https://www.alibabacloud.com/help/ecs/user-guide/update-red-hat-virtio-drivers-of-windows-instances))
 - XEN ([XEN](https://xenproject.org/resources/downloads/)、[Citrix](https://docs.aws.amazon.com/AWSEC2/latest/UserGuide/Upgrading_PV_drivers.html#win2008-citrix-upgrade)、[AWS](https://docs.aws.amazon.com/AWSEC2/latest/UserGuide/xen-drivers-overview.html))

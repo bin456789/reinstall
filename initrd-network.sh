@@ -204,13 +204,14 @@ test_by_wget() {
     fi
 
     # tcp 443 通了就算成功，不管 http 是不是 404
+    # grep -m1 快速返回
     wget -T "$TEST_TIMEOUT" \
         --bind-address="$src" \
         --no-check-certificate \
         --max-redirect 0 \
         --tries 1 \
         -O /dev/null \
-        "$url" 2>&1 | grep -iq connected
+        "$url" 2>&1 | grep -iq -m1 connected
 }
 
 test_by_nc() {
