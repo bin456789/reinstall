@@ -2904,6 +2904,10 @@ EOF
             ! sh /can_use_cloud_kernel.sh "$xda" $(get_eths); then
             kernel_package=$(echo "$kernel_package" | sed 's/-cloud//')
         fi
+        # 如果镜像自带内核跟最佳内核是同一种且有更新
+        # 则 apt install 只会进行更新，不会将包设置成 manual
+        # 需要再运行 apt install 才会将包设置成 manual
+        chroot_apt_install $os_dir "$kernel_package"
         chroot_apt_install $os_dir "$kernel_package"
 
         # 使用 autoremove 删除非最佳内核
@@ -3909,6 +3913,10 @@ EOF
         # 安装最佳内核
         flavor=$(get_ubuntu_kernel_flavor)
         echo "Use kernel flavor: $flavor"
+        # 如果镜像自带内核跟最佳内核是同一种且有更新
+        # 则 apt install 只会进行更新，不会将包设置成 manual
+        # 需要再运行 apt install 才会将包设置成 manual
+        chroot_apt_install $os_dir "linux-image-$flavor"
         chroot_apt_install $os_dir "linux-image-$flavor"
 
         # 使用 autoremove 删除多余内核
