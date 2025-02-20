@@ -5629,9 +5629,15 @@ install_windows() {
         fi
     fi
 
+    mkdir -p /wim
+
+    # 挂载 install.wim，检查是否有 sac 组件
+    wimmount "$install_wim" "$image_name" /wim/
+    [ -f /wim/Windows/System32/sacsess.exe ] && has_sac=true || has_sac=false
+    wimunmount /wim/
+
     # 挂载 boot.wim
     info "mount boot.wim"
-    mkdir -p /wim
     wimmountrw /os/boot.wim "$boot_index" /wim/
 
     cp_drivers() {
@@ -5695,6 +5701,11 @@ install_windows() {
     # shellcheck disable=SC2154
     if [ "$force_old_windows_setup" = 1 ]; then
         sed -i 's/ForceOldSetup=0/ForceOldSetup=1/i' $system32_dir/startnet.cmd
+    fi
+
+    # 有 SAC 组件时，启用 EMS
+    if $has_sac; then
+        sed -i 's/EnableEMS=0/EnableEMS=1/i' $system32_dir/startnet.cmd
     fi
 
     # Windows Thin PC 有 Windows\System32\winpeshl.ini
