@@ -84,12 +84,13 @@ wget() {
 }
 
 is_have_cmd() {
-    command -v "$1" >/dev/null
+    # command -v 包括脚本里面的方法
+    is_have_cmd_on_disk / "$1"
 }
 
 is_have_cmd_on_disk() {
-    os_dir=$1
-    cmd=$2
+    local os_dir=$1
+    local cmd=$2
 
     for bin_dir in /bin /sbin /usr/bin /usr/sbin; do
         if [ -f "$os_dir$bin_dir/$cmd" ]; then
@@ -127,6 +128,18 @@ retry() {
     done
 }
 
+get_url_type() {
+    if [[ "$1" = magnet:* ]]; then
+        echo bt
+    else
+        echo http
+    fi
+}
+
+is_magnet_link() {
+    [[ "$1" = magnet:* ]]
+}
+
 download() {
     url=$1
     path=$2
@@ -138,26 +151,17 @@ download() {
     # https://aria2.github.io/manual/en/html/aria2c.html#cmdoption-o
 
     # 构造 aria2 参数
-    # 没有指定文件名的情况
-    if [ -z "$path" ]; then
-        save=""
-    else
-        # 文件名是绝对路径
-        if [[ "$path" = '/*' ]]; then
-            save="-d / -o $path"
-        else
-            # 文件名是相对路径
-            save="-o $path"
-        fi
+    save=
+    # 文件夹
+    if [[ "$path" = '/*' ]]; then
+        save="$save -d /"
     fi
-
-    if ! is_have_cmd aria2c; then
-        apk add aria2
-    fi
-
-    # stdbuf 在 coreutils 包里面
-    if ! is_have_cmd stdbuf; then
-        apk add coreutils
+    # 文件名
+    if [ -n "$path" ]; then
+        case "$(get_url_type "$url")" in
+        http) save="$save -o $path" ;;
+        bt) save="$save -O 1=$path" ;;
+        esac
     fi
 
     # 阿里云源限速，而且检测 user-agent 禁止 axel/aria2 下载
@@ -175,13 +179,18 @@ download() {
     # fi
 
     # --user-agent=Wget/1.21.1 \
+    # --retry-wait 5
 
-    echo "$url"
-    retry 5 5 stdbuf -oL -eL aria2c -x4 \
-        --allow-overwrite=true \
-        --summary-interval=0 \
-        --max-tries 1 \
-        $save "$url"
+    # 检测大小时已经下载了种子
+    if [ "$(get_url_type "$url")" = bt ]; then
+        torrent="$(get_torrent_path_by_magnet $url)"
+        if ! [ -f "$torrent" ]; then
+            download_torrent_by_magnet "$url" "$torrent"
+        fi
+        url=$torrent
+    fi
+
+    aria2c $save "$url"
 }
 
 update_part() {
@@ -1035,6 +1044,10 @@ EOF
             fi
         fi
     done
+}
+
+newline_to_comma() {
+    tr '\n' ','
 }
 
 space_to_newline() {
@@ -1990,6 +2003,96 @@ get_http_file_size() {
         tail -1 | awk '{print $2}' | grep .
 }
 
+get_url_hash() {
+    url=$1
+
+    echo "$url" | md5sum | awk '{print $1}'
+}
+
+aria2c() {
+    if ! is_have_cmd aria2c; then
+        apk add aria2
+    fi
+
+    # stdbuf 在 coreutils 包里面
+    if ! is_have_cmd stdbuf; then
+        apk add coreutils
+    fi
+
+    # 指定 bt 种子时没有链接，因此忽略错误
+    echo "$@" | grep -o '(http|https|magnet):[^ ]*' || true
+
+    # 下载 tracker
+    # 在 sub shell 里面无法保存变量，因此写入到文件
+    if echo "$@" | grep -Eq 'magnet:|\.torrent' && ! [ -f "/tmp/trackers" ]; then
+        # 独自一行下载，不然下载失败不会报错
+        # 里面有空行
+        # txt=$(wget -O- https://raw.githubusercontent.com/ngosang/trackerslist/master/trackers_best.txt | grep .)
+        # txt=$(wget -O- https://raw.githubusercontent.com/ngosang/trackerslist/master/trackers_all.txt | grep .)
+        txt=$(wget -O- https://cf.trackerslist.com/best.txt | grep .)
+        # sed 删除最后一个逗号
+        echo "$txt" | newline_to_comma | sed 's/,$//' >/tmp/trackers
+    fi
+
+    # --dht-entry-point=router.bittorrent.com:6881 \
+    # --dht-entry-point=dht.transmissionbt.com:6881 \
+    # --dht-entry-point=router.utorrent.com:6881 \
+    retry 5 5 stdbuf -oL -eL aria2c \
+        -x4 \
+        --seed-time=0 \
+        --allow-overwrite=true \
+        --summary-interval=0 \
+        --max-tries 1 \
+        --bt-tracker="$([ -f "/tmp/trackers" ] && cat /tmp/trackers)" \
+        "$@"
+}
+
+download_torrent_by_magnet() {
+    url=$1
+    dst=$2
+
+    url_hash=$(get_url_hash "$url")
+
+    mkdir -p /tmp/bt/$url_hash
+
+    # 不支持 -o bt.torrent 指定文件名
+    aria2c "$url" \
+        --bt-metadata-only=true \
+        --bt-save-metadata=true \
+        -d /tmp/bt/$url_hash
+
+    mv /tmp/bt/$url_hash/*.torrent "$dst"
+    rm -rf /tmp/bt/$url_hash
+}
+
+get_torrent_path_by_magnet() {
+    echo "/tmp/bt/$(get_url_hash "$1").torrent"
+}
+
+get_bt_file_size() {
+    url=$1
+
+    torrent="$(get_torrent_path_by_magnet $url)"
+    download_torrent_by_magnet "$url" "$torrent" >&2
+
+    # 列出第一个文件的大小
+    # idx|path/length
+    # ===+===========================================================================
+    #   1|./zh-cn_windows_11_consumer_editions_version_24h2_updated_jan_2025_x64_dvd_7a8e5a29.iso
+    #    |6.1GiB (6,557,558,784)
+
+    aria2c --show-files=true "$torrent" |
+        grep -F -A1 '  1|./' | tail -1 | grep -o '(.*)' | sed -E 's/[(),]//g' | grep .
+}
+
+get_link_file_size() {
+    if is_magnet_link "$1" >&2; then
+        get_bt_file_size "$1"
+    else
+        get_http_file_size "$1"
+    fi
+}
+
 pipe_extract() {
     # alpine busybox 自带 gzip，但官方版也许性能更好
     case "$img_type_warp" in
@@ -2073,7 +2176,7 @@ create_part() {
     # xda*1 星号用于 nvme0n1p1 的字母 p
     # shellcheck disable=SC2154
     if [ "$distro" = windows ]; then
-        if ! size_bytes=$(get_http_file_size "$iso"); then
+        if ! size_bytes=$(get_link_file_size "$iso"); then
             # 默认值，最大的iso 23h2 假设 7g
             size_bytes=$((7 * 1024 * 1024 * 1024))
         fi
