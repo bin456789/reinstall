@@ -62,6 +62,7 @@ Usage: $reinstall_____ anolis      7|8|23
                        kali
                        arch
                        gentoo
+                       fnos
                        dd          --img='http://xxx.com/yyy.zzz' (raw image stores in raw/vhd/tar/gz/xz/zst)
                        windows     --image-name='windows xxx yyy' --lang=xx-yy
                        windows     --image-name='windows xxx yyy' --iso='http://xxx.com/xxx.iso'
@@ -1454,6 +1455,30 @@ Continue with DD?
         eval "${step}_img_type_warp='$img_type_warp'"
     }
 
+    setos_fnos() {
+        if [ "$basearch" = aarch64 ]; then
+            error_and_exit "FNOS not supports ARM."
+        fi
+
+        # 系统盘大小
+        min=8
+        default=8
+        while true; do
+            IFS= read -r -p "Type System Partition Size in GB. Minimal $min GB. [$default]: " input
+            input=${input:-$default}
+            if ! { is_digit "$input" && [ "$input" -ge "$min" ]; }; then
+                error "Invalid Size. Please Try again."
+            else
+                eval "${step}_fnos_part_size=${input}G"
+                break
+            fi
+        done
+
+        iso=$(curl -L https://fnnas.com | grep -o 'https://[^"]*\.iso' | head -1)
+        test_url "$iso" 'iso'
+        eval "${step}_iso='$iso'"
+    }
+
     setos_centos_almalinux_rocky_fedora() {
         # el 10 需要 x86-64-v3
         if [ "$basearch" = x86_64 ] &&
@@ -1694,6 +1719,7 @@ verify_os_name() {
         'kali' \
         'arch' \
         'gentoo' \
+        'fnos' \
         'windows' \
         'dd' \
         'netboot.xyz'; do
@@ -1952,7 +1978,7 @@ check_ram() {
         alpine | debian | kali | dd) echo 256 ;;
         arch | gentoo | nixos | windows) echo 512 ;;
         redhat | centos | almalinux | rocky | fedora | oracle | ubuntu | anolis | opencloudos | openeuler) echo 1024 ;;
-        opensuse) echo -1 ;; # 没有安装模式
+        opensuse | fnos) echo -1 ;; # 没有安装模式
         esac
     )
 
@@ -3701,15 +3727,14 @@ fi
 
 # 密码
 if ! is_netboot_xyz && [ -z "$password" ]; then
-    if is_use_dd; then
+    if is_use_dd || [ "$distro" = fnos ]; then
         echo "
-This password is only used for SSH access to view logs during the DD process.
+This password is only used for SSH access to view logs during the installation.
 Password of the image will NOT modify.
 
-密码仅用于 DD 过程中通过 SSH 查看日志。
+密码仅用于安装过程中通过 SSH 查看日志。
 镜像的密码不会被修改。
 "
-
     fi
     prompt_password
 fi
@@ -4140,7 +4165,7 @@ fi
 info 'info'
 echo "$distro $releasever"
 
-if ! { is_netboot_xyz || is_use_dd; }; then
+if ! { is_netboot_xyz || is_use_dd || [ "$distro" = fnos ]; }; then
     if [ "$distro" = windows ]; then
         username="administrator"
     else
@@ -4156,6 +4181,9 @@ elif is_alpine_live; then
     echo 'Reboot to start Alpine Live OS.'
 elif is_use_dd; then
     echo 'Reboot to start DD.'
+elif [ "$distro" = fnos ]; then
+    echo "Reboot to start the installation."
+    echo "After install, you need to config the system on http://SERVER_IP:5666 as soon as possible."
 else
     echo "Reboot to start the installation."
 fi

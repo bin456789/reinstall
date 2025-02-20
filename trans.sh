@@ -2229,6 +2229,36 @@ create_part() {
             mkfs.ntfs -f -F -L os /dev/$xda*1        #1 os
             mkfs.ntfs -f -F -L installer /dev/$xda*2 #2 installer
         fi
+    elif [ "$distro" = fnos ]; then
+        # 1. 官方安装器对系统盘大小的定义包含引导分区大小
+        # 2. 官方用的是 100M 而不是 100MiB
+        if is_efi; then
+            parted /dev/$xda -s -- \
+                mklabel gpt \
+                mkpart BOOT fat32 1MiB 100M \
+                mkpart SYSTEM ext4 100M ${fnos_part_size}iB \
+                mkpart TRIM ext4 ${fnos_part_size}iB 100% \
+                set 1 esp on
+            update_part
+
+            mkfs.fat /dev/$xda*1     #1 efi
+            echo                     #2 os 用目标系统的格式化工具
+            mkfs.ext4 -F /dev/$xda*3 #3 installer
+        else
+            # bios
+            # 官方安装器不支持 bios + >2t
+            parted /dev/$xda -s -- \
+                mklabel msdos \
+                mkpart primary 1MiB 100M \
+                mkpart primary 100M ${fnos_part_size}iB \
+                mkpart primary ${fnos_part_size}iB 100% \
+                set 2 boot on
+            update_part
+
+            echo                     #1 官方安装有这个分区
+            echo                     #2 os 用目标系统的格式化工具
+            mkfs.ext4 -F /dev/$xda*3 #3 installer
+        fi
     elif is_use_cloud_image; then
         installer_part_size="$(get_cloud_image_part_size)"
         # 这几个系统不使用dd，而是复制文件
@@ -2383,8 +2413,23 @@ create_part() {
     fi
 }
 
+umount_pseudo_fs() {
+    os_dir=$(realpath "$1")
+
+    dirs="/proc /sys /dev /run /sys/firmware/efi/efivars"
+    regex=$(echo "$dirs" | sed 's, ,|,g')
+    if mounts=$(mount | grep -Ew "on $os_dir($regex)" | awk '{print $3}' | tac); then
+        for mount in $mounts; do
+            echo "umount $mount"
+            umount $mount
+        done
+    fi
+}
+
 mount_pseudo_fs() {
     os_dir=$1
+
+    mkdir -p $os_dir/proc/ $os_dir/sys/ $os_dir/dev/ $os_dir/run/
 
     # https://wiki.archlinux.org/title/Chroot#Using_chroot
     mount -t proc /proc $os_dir/proc/
@@ -3714,6 +3759,120 @@ del_exist_sysconfig_NetworkManager_config() {
   - systemctl is-enabled NetworkManager && systemctl restart NetworkManager || true
 EOF
     fi
+}
+
+install_fnos() {
+    info "Install fnos"
+    os_dir=/os
+
+    # 官方安装调用流程
+    # /etc/init.d/run_install.sh > trim-install > trim-grub
+
+    # 挂载 installer iso
+    mkdir -p /installer /iso
+    mount /dev/$xda*3 /installer
+    download "$iso" /installer/fnos.iso
+    mount /installer/fnos.iso /iso
+
+    # 解压 initrd
+    apk add cpio
+    initrd_dir=/installer/initrd_dir
+    mkdir -p $initrd_dir
+    (
+        cd $initrd_dir
+        zcat /iso/install.amd/initrd.gz | cpio -idm
+    )
+    apk del cpio
+
+    # 格式化系统盘
+    mount_pseudo_fs $initrd_dir
+    chroot $initrd_dir mkfs.ext4 /dev/$xda*2
+    umount_pseudo_fs $initrd_dir
+
+    # 获取挂载参数
+    fstab_line_os=$(strings $initrd_dir/trim-install | grep -m1 '^UUID=%s / ')
+    fstab_line_efi=$(strings $initrd_dir/trim-install | grep -m1 '^UUID=%s /boot/efi ')
+    fstab_line_swapfile=$(strings $initrd_dir/trim-install | grep -m1 '^/swapfile none swap ')
+
+    # 挂载 /os
+    mkdir -p /os
+    mount /dev/$xda*2 /os
+
+    # 复制系统
+    info "Extract fnos"
+    apk add tar gzip pv
+    pv -f /iso/trimfs.tgz | tar zx -C /os --numeric-owner
+    apk del tar gzip pv
+
+    # 挂载 /os/boot/efi
+    if is_efi; then
+        mkdir -p /os/boot/efi
+        mount -o "$(echo "$fstab_line_efi" | awk '{print $4}')" /dev/$xda*1 /os/boot/efi
+    fi
+
+    # 挂载 proc sys dev
+    mount_pseudo_fs /os
+
+    # 卸载 iso installer
+    umount /iso
+    umount /installer
+
+    # 删除 installer 分区
+    apk add parted
+    parted -s /dev/$xda rm 3
+    apk del parted
+    update_part
+
+    # 更新 initrd
+    # chroot $os_dir update-initramfs -u
+
+    # 删除自带的 root 密码
+    # chroot $os_dir passwd -d root
+
+    # ssh root 登录，测试用
+    if false; then
+        echo "root:$(get_password_linux_sha512)" | chroot $os_dir chpasswd -e
+        allow_root_password_login $os_dir
+        chroot $os_dir systemctl enable ssh
+    fi
+
+    # grub
+    if is_efi; then
+        chroot $os_dir grub-install --efi-directory=/boot/efi
+        chroot $os_dir grub-install --efi-directory=/boot/efi --removable
+    else
+        chroot $os_dir grub-install /dev/$xda
+    fi
+
+    # grub tty
+    ttys_cmdline=$(get_ttys console=)
+    echo GRUB_CMDLINE_LINUX=\"\$GRUB_CMDLINE_LINUX $ttys_cmdline\" \
+        >>$os_dir/etc/default/grub.d/tty.cfg
+    chroot $os_dir update-grub
+
+    # fstab
+    {
+        # /
+        uuid=$(lsblk /dev/$xda*2 -no UUID)
+        echo "$fstab_line_os" | sed "s/%s/$uuid/"
+
+        # 官方安装器即使 swapfile 设为 0 也会有这行
+        echo "$fstab_line_swapfile" | sed "s/%s/$uuid/"
+
+        # /boot/efi
+        if is_efi; then
+            uuid=$(lsblk /dev/$xda*1 -no UUID)
+            echo "$fstab_line_efi" | sed "s/%s/$uuid/"
+        fi
+    } >$os_dir/etc/fstab
+
+    # 网卡配置
+    create_cloud_init_network_config /net.cfg
+    create_network_manager_config /net.cfg $os_dir
+    rm /net.cfg
+
+    # 修正网卡名
+    add_fix_eth_name_systemd_service $os_dir
 }
 
 install_qcow_by_copy() {
@@ -5899,6 +6058,10 @@ trans() {
         nixos)
             create_part
             install_nixos
+            ;;
+        fnos)
+            create_part
+            install_fnos
             ;;
         *)
             create_part
