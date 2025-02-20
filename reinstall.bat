@@ -36,8 +36,8 @@ if not exist %tmp% (
 
 rem 检查是否国内
 if not exist geoip (
-    rem 部分地区 www.cloudflare.com 被墙
-    call :download http://dash.cloudflare.com/cdn-cgi/trace %~dp0geoip || goto :download_failed
+    rem www.cloudflare.com/dash.cloudflare.com 国内访问的是美国服务器，而且部分地区被墙
+    call :download http://www.visa.cn/cdn-cgi/trace %~dp0geoip || goto :download_failed
 )
 findstr /c:"loc=CN" geoip >nul
 if not errorlevel 1 (
