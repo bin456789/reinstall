@@ -4995,32 +4995,53 @@ install_windows() {
         get_image_prop "$iso_install_wim" "$image_name" "$1"
     }
 
-    # PRODUCTTYPE:
-    # - WinNT    (普通 windows)
-    # - ServerNT (windows server)
+    # 多会话的信息来自注册表，因为没有官方 iso
 
-    # INSTALLATIONTYPE:
+    # Installation Type:
     # - Client      (普通 windows)
     # - Server      (windows server 带桌面体验)
     # - Server Core (windows server 不带桌面体验)
+    # - Embedded    (WES7 / Thin PC)
+    # - Client      (windows 10/11 enterprise 多会话)
+
+    # Product Type:
+    # https://cloud.tencent.com/developer/article/2465206
+    # https://learn.microsoft.com/en-us/azure/virtual-desktop/windows-multisession-faq#why-does-my-application-report-windows-enterprise-multi-session-as-a-server-operating-system
+    # - WinNT    (普通 windows)
+    # - ServerNT (windows server 带桌面体验)
+    # - ServerNT (windows server 不带桌面体验)
+    # - WinNT    (WES7 / Thin PC)
+    # - ServerNT (windows 10/11 enterprise 多会话)
+
+    # Product Suite:
+    # https://www.geoffchappell.com/studies/windows/km/ntoskrnl/api/ex/exinit/productsuite.htm
+    # - Terminal Server  (普通 windows)
+    # - Enterprise      (windows server 带桌面体验)
+    # - Enterprise      (windows server 不带桌面体验)
+    # - Terminal Server  (WES7 / Thin PC)
+    # - ?                (windows 10/11 enterprise 多会话)
 
     # 用内核版本号筛选驱动
     # 使得可以安装 Hyper-V Server / Azure Stack HCI 等 Windows Server 变种
     nt_ver=$(get_selected_image_prop "Major Version").$(get_selected_image_prop "Minor Version")
     build_ver=$(get_selected_image_prop "Build")
-    product_type=$(get_selected_image_prop "Product Type")
+    product_suite=$(get_selected_image_prop "Product Suite")
 
-    product_ver=$(
-        case $product_type in
-        WinNT) get_client_name_by_build_ver "$build_ver" ;;
-        ServerNT) get_server_name_by_build_ver "$build_ver" ;;
-        esac
-    )
+    case "$product_suite" in
+    'Terminal Server')
+        windows_type=client
+        product_ver=$(get_client_name_by_build_ver "$build_ver")
+        ;;
+    *)
+        windows_type=server
+        product_ver=$(get_server_name_by_build_ver "$build_ver")
+        ;;
+    esac
 
     info "Selected image info"
     echo "Image Name: $image_name"
     echo "Product Version: $product_ver"
-    echo "Product Type: $product_type"
+    echo "Windows Type: $windows_type"
     echo "NT Version: $nt_ver"
     echo "Build Version: $build_ver"
     echo
@@ -5310,9 +5331,9 @@ install_windows() {
             case "$(echo "$product_ver" | to_lower)" in
             'vista') echo 2k8 ;; # 没有 vista 文件夹
             *)
-                case "$product_type" in
-                WinNT) echo "w$product_ver" ;;
-                ServerNT) echo "$product_ver" | sed -E -e 's/ //' -e 's/^200?/2k/' -e 's/r2/R2/' ;;
+                case "$windows_type" in
+                client) echo "w$product_ver" ;;
+                server) echo "$product_ver" | sed -E -e 's/ //' -e 's/^200?/2k/' -e 's/r2/R2/' ;;
                 esac
                 ;;
             esac
@@ -5397,8 +5418,6 @@ install_windows() {
                     mv -v "$file" "$new_file"
                 done
             )
-            # 虽然 vista/7 气球驱动有问题，但 msi 里面没有 vista/7 驱动
-            # 因此不用额外处理
             cp_drivers $drv/virtio
         fi
     }
@@ -5664,8 +5683,9 @@ install_windows() {
     mv /wim/setup.exe /wim/setup.exe.disabled
 
     # 如果有重复的 Windows/System32 文件夹，会提示找不到 winload.exe 无法引导
-    # win7 win10 是 Windows/System32
-    # win2016    是 windows/system32
+    # win7 win10  boot.wim 是 Windows/System32，install.wim 是 Windows/System32
+    # win2016     boot.wim 是 windows/system32，install.wim 是 Windows/System32
+    # wimmount 无法挂载成忽略大小写
     # shellcheck disable=SC2010
     system32_dir=$(ls -d /wim/*/*32 | grep -i windows/system32)
     download $confhome/windows-setup.bat $system32_dir/startnet.cmd
