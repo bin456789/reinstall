@@ -6,8 +6,8 @@ set confhome=https://raw.githubusercontent.com/bin456789/reinstall/main
 set confhome_cn=https://gitlab.com/bin456789/reinstall/-/raw/main
 rem set confhome_cn=https://www.ghproxy.cc/https://raw.githubusercontent.com/bin456789/reinstall/main
 
-set pkgs=curl,cpio,p7zip,ipcalc,dos2unix,jq,xz,gzip,zstd,openssl,bind-utils,libiconv,binutils
-set cmds=curl,cpio,p7zip,ipcalc,dos2unix,jq,xz,gzip,zstd,openssl,nslookup,iconv,ar
+set pkgs=curl,cpio,p7zip,dos2unix,jq,xz,gzip,zstd,openssl,bind-utils,libiconv,binutils
+set cmds=curl,cpio,p7zip,dos2unix,jq,xz,gzip,zstd,openssl,nslookup,iconv,ar
 
 rem 65001 代码页会乱码
 
@@ -202,7 +202,6 @@ exit /b 1
 set "cmds_space=%cmds:,= %"
 for %%c in (%cmds_space%) do (
     if not exist "%SystemDrive%\cygwin\bin\%%c" if not exist "%SystemDrive%\cygwin\bin\%%c.exe" (
-        echo %%c not found.
         exit /b 1
     )
 )

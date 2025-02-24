@@ -126,11 +126,24 @@ curl() {
     done
 }
 
+mask2cidr() {
+    local x=${1##*255.}
+    set -- 0^^^128^192^224^240^248^252^254^ $(((${#1} - ${#x}) * 2)) ${x%%.*}
+    x=${1%%"$3"*}
+    echo $(($2 + (${#x} / 4)))
+}
+
 is_in_china() {
     [ "$force_cn" = 1 ] && return 0
 
     if [ -z "$_loc" ]; then
         # www.cloudflare.com/dash.cloudflare.com 国内访问的是美国服务器，而且部分地区被墙
+        # 备用 www.bose.cn
+        # 备用 www.qualcomm.cn
+        # 备用 www.prologis.cn
+        # 备用 www.garmin.com.cn
+        # 备用 www.autodesk.com.cn
+        # 备用 www.keysight.com.cn
         _loc=$(curl -L http://www.visa.cn/cdn-cgi/trace | grep '^loc=' | cut -d= -f2)
         if [ -z "$_loc" ]; then
             error_and_exit "Can not get location."
@@ -1475,7 +1488,7 @@ Continue with DD?
             fi
         done
 
-        iso=$(curl -L https://fnnas.com | grep -o 'https://[^"]*\.iso' | head -1)
+        iso=$(curl -L https://fnnas.com/ | grep -o 'https://[^"]*\.iso' | head -1)
         test_url "$iso" 'iso'
         eval "${step}_iso='$iso'"
     }
@@ -2380,7 +2393,9 @@ collect_netconf() {
                         ip=${ips[i]}
                         subnet=${subnets[i]}
                         if [[ "$ip" = *.* ]]; then
-                            cidr=$(ipcalc -b "$ip/$subnet" | grep Netmask: | awk '{print $NF}')
+                            # ipcalc 依赖 perl，会使 cygwin 增加 ~50M
+                            # cidr=$(ipcalc -b "$ip/$subnet" | grep Netmask: | awk '{print $NF}')
+                            cidr=$(mask2cidr "$subnet")
                             ipv4_addr="$ip/$cidr"
                             ipv4_gateway="$gateway"
                             ipv4_mac="$mac_addr"

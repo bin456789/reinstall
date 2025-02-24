@@ -16,7 +16,7 @@ One-Click Script to Reinstall System [中文](README.md)
 ## Highlights
 
 - One-click Linux installation: Supports 19 common distributions.
-- One-click Windows installation: Uses the official ISO for installation instead of custom images. The script automatically retrieves the ISO link and installs `Virtio` and other drivers.
+- One-click Windows installation: Uses the official ISO for installation instead of custom images. The script can automatically ~~retrieves the ISO link~~ and installs common drivers like `Virtio`.
 - Supports installation in any direction, i.e., `Linux to Linux`, `Linux to Windows`, `Windows to Windows`, `Windows to Linux`
 - No need to input IP parameters; automatically recognizes dynamic and static IPs, supports `/32`, `/128`, `gateway outside subnet`, `IPv6 only`, `dual NIC` and other special network configurations
 - Specially optimized for low-spec servers, requires less memory than the official netboot
