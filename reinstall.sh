@@ -62,6 +62,7 @@ Usage: $reinstall_____ anolis      7|8|23
                        kali
                        arch
                        gentoo
+                       aosc
                        fnos
                        dd          --img="http://xxx.com/yyy.zzz" (raw image stores in raw/vhd/tar/gz/xz/zst)
                        windows     --image-name="windows xxx yyy" --lang=xx-yy
@@ -1479,6 +1480,22 @@ Continue with DD?
         eval "${step}_iso='$iso'"
     }
 
+    setos_aosc() {
+        if is_in_china; then
+            mirror=https://mirror.nju.edu.cn/anthon/aosc-os
+        else
+            # 服务器在香港
+            mirror=https://releases.aosc.io
+        fi
+
+        dir=os-$basearch_alt/base
+        file=$(curl -L $mirror/$dir/ | grep -oP 'aosc-os_base_.*?\.tar.xz' |
+            sort -uV | tail -1 | grep .)
+        img=$mirror/$dir/$file
+        test_url $img 'tar.xz'
+        eval ${step}_img=$img
+    }
+
     setos_centos_almalinux_rocky_fedora() {
         # el 10 需要 x86-64-v3
         if [ "$basearch" = x86_64 ] &&
@@ -1719,6 +1736,7 @@ verify_os_name() {
         'kali' \
         'arch' \
         'gentoo' \
+        'aosc' \
         'fnos' \
         'windows' \
         'dd' \
@@ -1976,7 +1994,7 @@ check_ram() {
         case "$distro" in
         netboot.xyz) echo 0 ;;
         alpine | debian | kali | dd) echo 256 ;;
-        arch | gentoo | nixos | windows) echo 512 ;;
+        arch | gentoo | aosc | nixos | windows) echo 512 ;;
         redhat | centos | almalinux | rocky | fedora | oracle | ubuntu | anolis | opencloudos | openeuler) echo 1024 ;;
         opensuse | fnos) echo -1 ;; # 没有安装模式
         esac
@@ -3749,7 +3767,7 @@ mkdir_clear "$tmp"
 # 强制忽略/强制添加 --ci 参数
 # debian 不强制忽略 ci 留作测试
 case "$distro" in
-dd | windows | netboot.xyz | kali | alpine | arch | gentoo | nixos)
+dd | windows | netboot.xyz | kali | alpine | arch | gentoo | aosc | nixos | fnos)
     if is_use_cloud_image; then
         echo "ignored --ci"
         unset cloud_image

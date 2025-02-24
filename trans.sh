@@ -1651,6 +1651,12 @@ add_fix_eth_name_systemd_service() {
     download "$confhome/fix-eth-name.sh" "$os_dir/fix-eth-name.sh"
     download "$confhome/fix-eth-name.service" "$os_dir/etc/systemd/system/fix-eth-name.service"
     chroot "$os_dir" systemctl enable fix-eth-name
+
+    # aosc 首次开机会执行 preset-all
+    # 因此需要设置 fix-eth-name 的 preset 状态
+    # 不然首次开机 /etc/systemd/system/multi-user.target.wants/fix-eth-name.service 会被删除
+    # 通常 /etc/systemd/system-preset/ 文件夹要新建，因此不放在这里
+    echo 'enable fix-eth-name.service' >"$os_dir/usr/lib/systemd/system-preset/01-fix-eth-name.preset"
 }
 
 basic_init() {
@@ -1706,8 +1712,15 @@ basic_init() {
     add_fix_eth_name_systemd_service $os_dir
 }
 
-install_arch_gentoo() {
+install_arch_gentoo_aosc() {
     info "install $distro"
+
+    network_app=$(
+        case "$distro" in
+        arch | gentoo) echo systemd-networkd ;;
+        aosc) echo network-manager ;;
+        esac
+    )
 
     set_locale() {
         echo "C.UTF-8 UTF-8" >>$os_dir/etc/locale.gen
@@ -1906,6 +1919,22 @@ EOF
         chroot $os_dir emerge sys-kernel/gentoo-kernel-bin
     }
 
+    install_aosc() {
+        # 解压系统
+        apk add wget tar xz
+        wget "$img" -O- | tar xpJ --numeric-owner --xattrs-include='*.*' -C $os_dir
+        apk del wget tar xz
+
+        # 添加 swap
+        create_swap_if_ram_less_than 1024 $os_dir/swapfile
+
+        # 挂载伪文件系统
+        mount_pseudo_fs $os_dir
+
+        # 生成 initramfs
+        chroot $os_dir update-initramfs
+    }
+
     os_dir=/os
 
     # 挂载分区
@@ -1927,8 +1956,49 @@ EOF
     chroot $os_dir systemd-firstboot --force --timezone=Asia/Shanghai
     # gentoo 不会自动创建 machine-id
     clear_machine_id $os_dir
-    chroot $os_dir systemctl enable systemd-networkd
-    chroot $os_dir systemctl enable systemd-resolved
+
+    # 网络配置
+    case "$network_app" in
+    systemd-networkd)
+        chroot $os_dir systemctl enable systemd-networkd
+        chroot $os_dir systemctl enable systemd-resolved
+
+        apk add cloud-init
+        # 第二次运行会报错
+        useradd systemd-network || true
+        create_cloud_init_network_config net.cfg
+        cat -n net.cfg
+        # 正常应该是 -D gentoo，但 alpine 的 cloud-init 包缺少 gentoo 配置
+        cloud-init devel net-convert -p net.cfg -k yaml -d out -D alpine -O networkd
+        cp out/etc/systemd/network/10-cloud-init-eth*.network $os_dir/etc/systemd/network/
+
+        # 删除网卡名匹配
+        sed -i '/^Name=/d' $os_dir/etc/systemd/network/10-cloud-init-eth*.network
+
+        # 清理
+        rm -rf net.cfg out
+        apk del cloud-init
+
+        # 显示网络配置
+        cat -n $os_dir/etc/systemd/network/10-cloud-init-eth*.network
+        ;;
+    network-manager)
+        chroot $os_dir systemctl enable NetworkManager
+
+        # 可以直接用 alpine 的 cloud-init 生成 Network Manager 配置
+        create_cloud_init_network_config /net.cfg
+        create_network_manager_config /net.cfg "$os_dir"
+        rm /net.cfg
+        ;;
+    esac
+
+    # 修正网卡名
+    add_fix_eth_name_systemd_service $os_dir
+
+    # arch gentoo 网络配置是用 alpine cloud-init 生成的
+    # cloud-init 版本够新，因此无需修复 onlink 网关
+
+    # ssh
     chroot $os_dir systemctl enable sshd
     allow_root_password_login $os_dir
     if is_need_change_ssh_port; then
@@ -1937,29 +2007,6 @@ EOF
 
     # 修改密码
     change_root_password $os_dir
-
-    # 网络配置
-    apk add cloud-init
-    # 第二次运行会报错
-    useradd systemd-network || true
-    create_cloud_init_network_config net.cfg
-    cat -n net.cfg
-    # 正常应该是 -D gentoo，但 alpine 的 cloud-init 包缺少 gentoo 配置
-    cloud-init devel net-convert -p net.cfg -k yaml -d out -D alpine -O networkd
-    cp out/etc/systemd/network/10-cloud-init-eth*.network $os_dir/etc/systemd/network/
-
-    # 清理
-    rm -rf net.cfg out
-    apk del cloud-init
-
-    # 删除网卡名匹配
-    sed -i '/^Name=/d' $os_dir/etc/systemd/network/10-cloud-init-eth*.network
-
-    # 修正网卡名
-    add_fix_eth_name_systemd_service $os_dir
-
-    # arch gentoo 网络配置是用 alpine cloud-init 生成的
-    # cloud-init 版本够新，因此无需修复 onlink 网关
 
     # ntp 用 systemd 自带的
     # TODO: vm agent + 随机数生成器
@@ -1985,8 +2032,9 @@ EOF
 
     # fstab
     # fstab 可不写 efi 条目， systemd automount 会自动挂载
+    # fstab 头部有使用说明，因此用 >>
     apk add arch-install-scripts
-    genfstab -U $os_dir | sed '/swap/d' >$os_dir/etc/fstab
+    genfstab -U $os_dir | sed '/swap/d' >>$os_dir/etc/fstab
     apk del arch-install-scripts
 
     # 删除 resolv.conf，不然 systemd-resolved 无法创建软链接
@@ -2307,7 +2355,8 @@ create_part() {
             mkfs.ext4 -F -L os /dev/$xda*1        #1 os
             mkfs.ext4 -F -L installer /dev/$xda*2 #2 installer
         fi
-    elif [ "$distro" = alpine ] || [ "$distro" = arch ] || [ "$distro" = gentoo ] || [ "$distro" = nixos ]; then
+    elif [ "$distro" = alpine ] || [ "$distro" = arch ] || [ "$distro" = gentoo ] ||
+        [ "$distro" = nixos ] || [ "$distro" = aosc ]; then
         # alpine 本身关闭了 64bit ext4
         # https://gitlab.alpinelinux.org/alpine/alpine-conf/-/blob/3.18.1/setup-disk.in?ref_type=tags#L908
         # 而且 alpine 的 extlinux 不兼容 64bit ext4
@@ -6087,9 +6136,9 @@ trans() {
         alpine)
             install_alpine
             ;;
-        arch | gentoo)
+        arch | gentoo | aosc)
             create_part
-            install_arch_gentoo
+            install_arch_gentoo_aosc
             ;;
         nixos)
             create_part
