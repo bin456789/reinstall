@@ -3794,7 +3794,7 @@ fi
 
 # 密码
 if ! is_netboot_xyz && [ -z "$password" ]; then
-    if is_use_dd || [ "$distro" = fnos ]; then
+    if is_use_dd; then
         echo "
 This password is only used for SSH access to view logs during the installation.
 Password of the image will NOT modify.
@@ -4249,8 +4249,15 @@ elif is_alpine_live; then
 elif is_use_dd; then
     echo 'Reboot to start DD.'
 elif [ "$distro" = fnos ]; then
+    echo "Special note for FNOS:"
     echo "Reboot to start the installation."
-    echo "After install, you need to config the system on http://SERVER_IP:5666 as soon as possible."
+    echo "SSH login is disabled when installation completed."
+    echo "You need to config the account and password on http://SERVER_IP:5666 as soon as possible."
+    echo
+    echo "飞牛 OS 注意事项："
+    echo "重启后开始安装。"
+    echo "安装完成后不支持 SSH 登录。"
+    echo "你需要尽快在 http://SERVER_IP:5666 配置账号密码。"
 else
     echo "Reboot to start the installation."
 fi

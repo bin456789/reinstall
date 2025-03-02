@@ -3920,12 +3920,12 @@ install_fnos() {
     # 更新 initrd
     # chroot $os_dir update-initramfs -u
 
-    # 删除自带的 root 密码
+    # 更改密码
     # chroot $os_dir passwd -d root
+    echo "root:$(get_password_linux_sha512)" | chroot $os_dir chpasswd -e
 
     # ssh root 登录，测试用
     if false; then
-        echo "root:$(get_password_linux_sha512)" | chroot $os_dir chpasswd -e
         allow_root_password_login $os_dir
         chroot $os_dir systemctl enable ssh
     fi
