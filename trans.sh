@@ -2310,6 +2310,9 @@ create_part() {
             mkfs.ntfs -f -F -L installer /dev/$xda*2 #2 installer
         fi
     elif [ "$distro" = fnos ]; then
+        # 先用 100% 分区安装后再缩小没意义，因为小硬盘用 100% 还是装不了
+        # 因此直接用用户输入的分区大小
+
         # 1. 官方安装器对系统盘大小的定义包含引导分区大小
         # 2. 官方用的是 100M 而不是 100MiB
         if is_efi; then
@@ -2317,13 +2320,11 @@ create_part() {
                 mklabel gpt \
                 mkpart BOOT fat32 1MiB 100M \
                 mkpart SYSTEM ext4 100M ${fnos_part_size}iB \
-                mkpart TRIM ext4 ${fnos_part_size}iB 100% \
                 set 1 esp on
             update_part
 
             mkfs.fat /dev/$xda*1     #1 efi
-            echo                     #2 os 用目标系统的格式化工具
-            mkfs.ext4 -F /dev/$xda*3 #3 installer
+            mkfs.ext4 -F /dev/$xda*2 #2 os + installer
         else
             # bios
             # 官方安装器不支持 bios + >2t
@@ -2331,13 +2332,11 @@ create_part() {
                 mklabel msdos \
                 mkpart primary 1MiB 100M \
                 mkpart primary 100M ${fnos_part_size}iB \
-                mkpart primary ${fnos_part_size}iB 100% \
                 set 2 boot on
             update_part
 
             echo                     #1 官方安装有这个分区
-            echo                     #2 os 用目标系统的格式化工具
-            mkfs.ext4 -F /dev/$xda*3 #3 installer
+            mkfs.ext4 -F /dev/$xda*2 #2 os + installer
         fi
     elif is_use_cloud_image; then
         installer_part_size="$(get_cloud_image_part_size)"
@@ -3862,15 +3861,18 @@ install_fnos() {
     # 官方安装调用流程
     # /etc/init.d/run_install.sh > trim-install > trim-grub
 
-    # 挂载 installer iso
-    mkdir -p /installer /iso
-    mount /dev/$xda*3 /installer
-    download "$iso" /installer/fnos.iso
-    mount /installer/fnos.iso /iso
+    # 挂载 /os
+    mkdir -p /os
+    mount /dev/$xda*2 /os
+
+    # 下载并挂载 iso
+    mkdir -p /os/installer /iso
+    download "$iso" /os/installer/fnos.iso
+    mount -o ro /os/installer/fnos.iso /iso
 
     # 解压 initrd
     apk add cpio
-    initrd_dir=/installer/initrd_dir
+    initrd_dir=/os/installer/initrd_dir
     mkdir -p $initrd_dir
     (
         cd $initrd_dir
@@ -3878,25 +3880,18 @@ install_fnos() {
     )
     apk del cpio
 
-    # 格式化系统盘
-    mount_pseudo_fs $initrd_dir
-    chroot $initrd_dir mkfs.ext4 /dev/$xda*2
-    umount_pseudo_fs $initrd_dir
-
     # 获取挂载参数
     fstab_line_os=$(strings $initrd_dir/trim-install | grep -m1 '^UUID=%s / ')
     fstab_line_efi=$(strings $initrd_dir/trim-install | grep -m1 '^UUID=%s /boot/efi ')
     fstab_line_swapfile=$(strings $initrd_dir/trim-install | grep -m1 '^/swapfile none swap ')
 
-    # 挂载 /os
-    mkdir -p /os
-    mount /dev/$xda*2 /os
+    # 删除 initrd
+    rm -rf $initrd_dir
 
-    # 复制系统
-    info "Extract fnos"
-    apk add tar gzip pv
-    pv -f /iso/trimfs.tgz | tar zxp --numeric-owner --xattrs-include='*.*' -C /os
-    apk del tar gzip pv
+    # 复制 trimfs.tgz 并删除 ISO 以获得更多空间
+    cp /iso/trimfs.tgz /os/installer
+    umount /iso
+    rm /os/installer/fnos.iso
 
     # 挂载 /os/boot/efi
     if is_efi; then
@@ -3904,18 +3899,17 @@ install_fnos() {
         mount -o "$(echo "$fstab_line_efi" | awk '{print $4}')" /dev/$xda*1 /os/boot/efi
     fi
 
+    # 复制系统
+    info "Extract fnos"
+    apk add tar gzip pv
+    pv -f /os/installer/trimfs.tgz | tar zxp --numeric-owner --xattrs-include='*.*' -C /os
+    apk del tar gzip pv
+
+    # 删除 installer (trimfs.tgz)
+    rm -rf /os/installer
+
     # 挂载 proc sys dev
     mount_pseudo_fs /os
-
-    # 卸载 iso installer
-    umount /iso
-    umount /installer
-
-    # 删除 installer 分区
-    apk add parted
-    parted -s /dev/$xda rm 3
-    apk del parted
-    update_part
 
     # 更新 initrd
     # chroot $os_dir update-initramfs -u

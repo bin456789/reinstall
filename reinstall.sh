@@ -1502,7 +1502,8 @@ Continue with DD?
         done
 
         iso=$(curl -L https://fnnas.com/ | grep -o 'https://[^"]*\.iso' | head -1)
-        test_url "$iso" 'iso'
+        # debian 9 下 iso 会被识别为 raw
+        test_url "$iso" 'iso raw'
         eval "${step}_iso='$iso'"
     }
 
