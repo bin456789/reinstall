@@ -81,8 +81,15 @@ EOF
 }
 
 info() {
-    upper=$(to_upper <<<"$@")
-    echo_color_text '\e[32m' "***** $upper *****" >&2
+    local msg
+    if [ "$1" = false ]; then
+        shift
+        msg=$*
+    else
+        msg=$(to_upper <<<"$@")
+    fi
+
+    echo_color_text '\e[32m' "***** $msg *****" >&2
 }
 
 warn() {
@@ -91,7 +98,7 @@ warn() {
 
 error() {
     echo_color_text '\e[31m' "***** ERROR *****" >&2
-    echo_color_text '\e[31m' "Error: $*" >&2
+    echo_color_text '\e[31m' "$*" >&2
 }
 
 echo_color_text() {
@@ -607,6 +614,12 @@ is_virt() {
         echo "VM: $_is_virt"
     fi
     $_is_virt
+}
+
+is_absolute_path() {
+    # 检查路径是否以/开头
+    # 注意语法和 ash 不同
+    [[ "$1" = /* ]]
 }
 
 assert_cpu_supports_x86_64_v3() {
@@ -2150,7 +2163,13 @@ del_empty_lines() {
     sed '/^[[:space:]]*$/d'
 }
 
+trim() {
+    # sed -E -e 's/^[[:space:]]+//' -e 's/[[:space:]]+$//'
+    sed -e 's/^[[:space:]]*//' -e 's/[[:space:]]*$//'
+}
+
 prompt_password() {
+    info "prompt password"
     while true; do
         IFS= read -r -p "Password [$DEFAULT_PASSWORD]: " password
         IFS= read -r -p "Retype password [$DEFAULT_PASSWORD]: " password_confirm
@@ -3459,16 +3478,12 @@ This script is outdated, please download reinstall.sh again.
     fi
 
     # 添加自定义 windows 驱动
-    if [ "$distro" = windows ]; then
-        mkdir -p $initrd_dir/custom_drivers
-        i=0
-        while IFS= read -r dir; do
-            if [ -d "$dir" ]; then
-                ((i += 1))
-                info "add custom driver: $dir"
-                cp -r "$dir" "$initrd_dir/custom_drivers/$i"
-            fi
-        done < <(echo "$custom_driver_dirs")
+    if [ "$distro" = windows ] && [ -n "$custom_infs" ]; then
+        # shellcheck disable=SC1090
+        . <(curl -L $confhome/windows-driver-utils.sh)
+        echo "$custom_infs" | while read -r inf; do
+            parse_inf_and_cp_driever "$inf" "$initrd_dir/custom_drivers" "$basearch_alt" true
+        done
     fi
 
     # alpine live 不精简 initrd
@@ -3594,7 +3609,7 @@ fi
 
 long_opts=
 for o in ci installer debug minimal allow-ping force-cn \
-    add-driver-dir: \
+    add-driver: \
     hold: sleep: \
     iso: \
     image-name: \
@@ -3687,26 +3702,45 @@ while true; do
         web_port=$2
         shift 2
         ;;
-    --add-driver-dir)
-        # 指定 dir 而不是指定 inf
-        # 防止用户将 inf 放在 / 而复制整个 /
-
+    --add-driver)
         # 路径转换
         if is_in_windows; then
             # 输入的路径是 / 开头也没问题
-            dir="$(cygpath -u "$2")"
+            inf_or_dir="$(cygpath -u "$2")"
         else
-            dir=$2
+            inf_or_dir=$2
         fi
 
-        # 防止重复添加
-        if ! grep -Fqx "$dir" <<<"$custom_driver_dirs"; then
-            # shellcheck disable=SC2010
-            { [ -d "$dir" ] && ls "$dir" | grep -Eiq '\.inf$'; } || error_and_exit "Invalid Driver Directory: $2"
-            # 一行一个驱动文件夹
-            custom_driver_dirs+="$dir
-"
+        # alpine busybox 不支持 readlink -m
+        # readlink -m /asfsafasfsaf/fasf
+        # 因此需要先判断路径是否存在
+
+        if ! [ -d "$inf_or_dir" ] &&
+            ! { [ -f "$inf_or_dir" ] && [[ "$inf_or_dir" =~ \.[iI][nN][fF]$ ]]; }; then
+            error_and_exit "Not a inf or dir: $2"
         fi
+
+        # 转为绝对路径
+        inf_or_dir=$(readlink -f "$inf_or_dir")
+
+        info "finding inf in $inf_or_dir"
+        # find /tmp -type f -iname '*.inf' 只要 /tmp 存在就会返回 0
+        if infs=$(find "$inf_or_dir" -type f -iname '*.inf' | grep .); then
+            while IFS= read -r inf; do
+                # 防止重复添加
+                if ! grep -Fqx "$inf" <<<"$custom_infs"; then
+                    echo "inf found: $inf"
+                    # 一行一个 inf
+                    if [ -n "$custom_infs" ]; then
+                        custom_infs+=$'\n'
+                    fi
+                    custom_infs+=$inf
+                fi
+            done <<<"$infs"
+        else
+            error_and_exit "Can't find inf files in $2"
+        fi
+
         shift 2
         ;;
     --force-old-windows-setup)

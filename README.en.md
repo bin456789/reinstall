@@ -11,19 +11,18 @@
 
 One-Click Script to Reinstall System [中文](README.md)
 
-![Sponsors](https://raw.githubusercontent.com/bin456789/sponsors/refs/heads/master/sponsors.svg)
+[![Sponsors](https://raw.githubusercontent.com/bin456789/sponsors/refs/heads/master/sponsors.svg)](https://github.com/sponsors/bin456789)
 
 ## Highlights
 
 - One-click Linux installation: Supports 19 common distributions.
 - One-click Windows installation: Uses the official ISO for installation instead of custom images. The script can automatically ~~retrieves the ISO link~~ and installs common drivers like `Virtio`.
 - Supports installation in any direction, i.e., `Linux to Linux`, `Linux to Windows`, `Windows to Windows`, `Windows to Linux`
-- No need to input IP parameters; automatically recognizes dynamic and static IPs, supports `/32`, `/128`, `gateway outside subnet`, `IPv6 only`, `dual NIC` and other special network configurations
+- No need to input IP parameters; automatically recognizes dynamic and static IPs, supports `/32`, `/128`, `gateway outside subnet`, `IPv6 only`, `dual NIC`
 - Specially optimized for low-spec servers, requires less memory than the official netboot
 - Uses partition table ID to identify hard drives throughout the process, ensuring no wrong disk is written
 - Supports BIOS and EFI boot, and ARM Server
 - No homemades image included, all resources are obtained in real-time from mirror sites
-- Includes many comments.
 
 ## System Requirements
 
@@ -32,7 +31,7 @@ The original system can be any system listed in the table.
 The system requirements for the target system are as follows:
 
 | System                                                                                                                                                                                                                                                                                                                                                                 | Version                               | Memory    | Disk             |
-| ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------- | --------- | -----------------|
+| ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------- | --------- | ---------------- |
 | <img width="16" height="16" src="https://www.alpinelinux.org/alpine-logo.ico" /> Alpine                                                                                                                                                                                                                                                                                | 3.18, 3.19, 3.20, 3.21                | 256 MB    | 1 GB             |
 | <img width="16" height="16" src="https://www.debian.org/favicon.ico" /> Debian                                                                                                                                                                                                                                                                                         | 9, 10, 11, 12                         | 256 MB    | 1 ~ 1.5 GB ^     |
 | <img width="16" height="16" src="https://github.com/bin456789/reinstall/assets/7548515/f74b3d5b-085f-4df3-bcc9-8a9bd80bb16d" /> Kali                                                                                                                                                                                                                                   | Rolling                               | 256 MB    | 1 ~ 1.5 GB ^     |
@@ -144,6 +143,7 @@ bash reinstall.sh anolis      7|8|23
                   kali
                   arch
                   gentoo
+                  aosc
                   fnos
 ```
 
@@ -329,6 +329,14 @@ bash reinstall.sh windows \
      --iso "https://go.microsoft.com/fwlink/?linkid=2289029"
 ```
 
+or Magnet Link
+
+```bash
+bash reinstall.sh windows \
+     --image-name "Windows 11 Enterprise LTSC 2024" \
+     --iso "magnet:?xt=urn:btih:7352bd2db48c3381dffa783763dc75aa4a6f1cff"
+```
+
 <details>
 
 <summary>The following website provides ISO links.</summary>
@@ -336,6 +344,8 @@ bash reinstall.sh windows \
 - General
   - <https://msdl.gravesoft.dev>
   - <https://massgrave.dev/genuine-installation-media>
+  - <https://next.itellyou.cn>
+  - <https://www.xitongku.com>
   - <https://www.microsoft.com/software-download/windows10> (Need to open it with a non-Windows User-Agent)
   - <https://www.microsoft.com/software-download/windows11>
   - <https://www.microsoft.com/software-download/windows11arm64>
@@ -349,8 +359,8 @@ bash reinstall.sh windows \
   - <https://www.microsoft.com/evalcenter/download-windows-server-2022>
   - <https://www.microsoft.com/evalcenter/download-windows-server-2025>
 - Insider Preview
-  - <https://www.microsoft.com/software-download/windowsinsiderpreviewiso>
-  - <https://www.microsoft.com/software-download/windowsinsiderpreviewserver>
+  - <https://www.microsoft.com/en-us/software-download/windowsinsiderpreviewiso>
+  - <https://www.microsoft.com/en-us/software-download/windowsinsiderpreviewserver>
 
 </details>
 
@@ -361,10 +371,9 @@ bash reinstall.sh windows \
 - `--rdp-port PORT` Change RDP port
 - `--ssh-port PORT` Change SSH port (for log observation during installation)
 - `--web-port PORT` Change Web port (for log observation during installation)
-- `--add-driver-dir DIR` Adds additional driver, specifying the folder where the .inf file is located.
+- `--add-driver INF_OR_DIR` Add additional driver, specifying .inf path, or the folder contains .inf file.
   - The driver must be downloaded locally first.
-  - This parameter can be set multiple times to add different driver folders.
-  - The script will copy the entire folder, so no other files should be placed inside the folder.
+  - This parameter can be set multiple times to add different driver.
 - `--hold 2` Allow SSH connections for modifying the disk content before rebooting into the official Windows installation program, with the disk mounted at `/os`.
 
 #### The following drivers will automatic download and install as needed, without the need for manual addition

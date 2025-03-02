@@ -20,13 +20,28 @@ error() {
     color='\e[31m'
     plain='\e[0m'
     echo -e "${color}***** ERROR *****${plain}" >&2
-    echo -e "${color}Error: $*${plain}" >&2
+    echo -e "${color}$*${plain}" >&2
 }
 
 info() {
     color='\e[32m'
     plain='\e[0m'
-    echo -e "${color}***** $(echo "$*" | to_upper) *****${plain}" >&2
+    local msg
+
+    if [ "$1" = false ]; then
+        shift
+        msg=$*
+    else
+        msg=$(echo "$*" | to_upper)
+    fi
+
+    echo -e "${color}***** $msg *****${plain}" >&2
+}
+
+warn() {
+    color='\e[33m'
+    plain='\e[0m'
+    echo -e "${color}Warning: $*${plain}" >&2
 }
 
 error_and_exit() {
@@ -752,6 +767,10 @@ to_upper() {
 
 to_lower() {
     tr '[:upper:]' '[:lower:]'
+}
+
+del_cr() {
+    sed 's/\r//g'
 }
 
 del_empty_lines() {
@@ -4982,6 +5001,12 @@ get_filesize_mb() {
     du -m "$1" | awk '{print $1}'
 }
 
+is_absolute_path() {
+    # 检查路径是否以/开头
+    # 注意语法和 bash 不同
+    [[ "$1" = "/*" ]]
+}
+
 install_windows() {
     get_wim_prop() {
         wim=$1
@@ -5188,11 +5213,11 @@ install_windows() {
     fi
 
     # 变量名     使用场景
-    # arch_uname arch命令 / uname -m             x86_64  aarch64
-    # arch_wim   wiminfo                    x86  x86_64  ARM64
-    # arch       virtio iso / unattend.xml  x86  amd64   arm64
-    # arch_xdd   virtio msi / xen驱动       x86  x64
-    # arch_dd    华为云驱动                   32   64
+    # arch_uname arch命令 / uname -m                      x86_64   aarch64
+    # arch_wim   wiminfo                             x86  x86_64   ARM64
+    # arch       virtio iso / unattend.xml / .inf    x86  amd64    arm64
+    # arch_xdd   virtio msi / xen驱动                x86   x64
+    # arch_dd    华为云驱动                           32    64
 
     # 将 wim 的 arch 转为驱动和应答文件的 arch
     case "$arch_wim" in
@@ -5218,6 +5243,10 @@ install_windows() {
 
         drv=/os/drivers
         mkdir -p "$drv" # 驱动下载临时文件夹
+
+        # 下载脚本
+        # shellcheck disable=SC1090
+        . <(wget -O- $confhome/windows-driver-utils.sh)
 
         # 这里有坑
         # $(get_cloud_vendor) 调用了 cache_dmi_and_virt
@@ -5647,13 +5676,10 @@ install_windows() {
     # 因此只能交给用户自己添加驱动
 
     add_driver_custom() {
-        for dir in /custom_drivers/*; do
-            if [ -d "$dir" ]; then
-                info "Add custom drivers: $dir"
-                cp_drivers custom "$dir"
-                # 复制后不删除，因为脚本可能再次运行
-            fi
-        done
+        if [ -d /custom_drivers/ ]; then
+            cp_drivers custom /custom_drivers/
+            # 复制后不删除，因为脚本可能再次运行
+        fi
     }
 
     # 修改应答文件
@@ -5718,21 +5744,20 @@ install_windows() {
     cp_drivers() {
         if [ "$1" = custom ]; then
             shift
-            dst="/wim/custom_drivers/$(basename "$1")"
+            dst="/wim/custom_drivers"
         else
             dst=/wim/drivers
         fi
-        mkdir -p "$dst"
 
         src=$1
         shift
 
-        find $src \
-            -type f \
-            -not -iname "*.pdb" \
-            -not -iname "dpinst.exe" \
-            "$@" \
-            -exec cp -rfv {} "$dst" \;
+        # -not -iname "*.pdb" \
+        # -not -iname "dpinst.exe" \
+
+        find $src -type f -iname "*.inf" "$@" | while read -r inf; do
+            parse_inf_and_cp_driever "$inf" "$dst" "$arch" false
+        done
     }
 
     # 添加驱动

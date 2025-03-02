@@ -22,15 +22,26 @@ rem win8 pe 没有 powercfg
 call powercfg /s 8c5e7fda-e8bf-4a96-9a85-a6e23a8c635c 2>nul
 
 rem 安装 SCSI 驱动
-for %%F in ("X:\drivers\*.inf") do (
-    call :drvload_if_scsi "%%~F"
+if exist X:\drivers\ (
+    for /f "delims=" %%F in ('dir /s /b "X:\drivers\*.inf" 2^>nul') do (
+        call :drvload_if_scsi "%%~F"
+    )
+
+    rem 官网写了可以安装但仅会加载关键驱动
+    rem Gcore 的 virtio-gpu 在安装时没有显示
+    rem 即使安装时加载了显卡驱动
+    rem 进入系统后才有显示
+    rem find /i "viogpudo" "%%~F" >nul
+    rem if not errorlevel 1 (
+    rem     drvload "%%~F"
+    rem )
 )
 
 rem 安装自定义 SCSI 驱动
 rem 可以用 forfiles /p X:\custom_drivers /m *.inf /c "cmd /c echo @path"
 rem 不可以用 for %%F in ("X:\custom_drivers\*\*.inf")
 if exist X:\custom_drivers\ (
-    for /f "delims=" %%F in ('dir /s /b "X:\custom_drivers\*.inf"') do (
+    for /f "delims=" %%F in ('dir /s /b "X:\custom_drivers\*.inf" 2^>nul') do (
         call :drvload_if_scsi "%%~F"
     )
 )
