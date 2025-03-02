@@ -3211,11 +3211,13 @@ EOF
     # 6. debian 11 initrd 无法识别 set -E
     # 7. debian 11 initrd 无法识别 trap ERR
     # 8. debian 9 initrd 无法识别 ${string//find/replace}
+    # 9. debian 12 initrd 无法识别 . <(
     # 删除或注释，可能会导致空方法而报错，因此改为替换成'\n: #'
     replace='\n: #'
     sed -Ei \
         -e "s/> >/$replace/" \
         -e "s/< </$replace/" \
+        -e "s/\. <\(/$replace/" \
         -e "s/^[[:space:]]*apk[[:space:]]/$replace/" \
         -e "s/^[[:space:]]*trap[[:space:]]/$replace/" \
         -e "s/\\$\{.*\/\/.*\/.*\}/$replace/" \
