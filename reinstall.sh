@@ -339,7 +339,8 @@ test_url_real() {
         real_type=$(file_enhanced $tmp_file)
         echo "File type: $real_type"
 
-        for type in $expect_types; do
+        # debian 9 ubuntu 16.04 可能会将 iso 识别成 raw
+        for type in $expect_types $([ "$expect_types" = iso ] && echo raw); do
             if [[ ."$real_type" = *."$type" ]]; then
                 # 如果要设置变量
                 if [ -n "$var_to_eval" ]; then
@@ -1258,7 +1259,7 @@ Continue?
                 sort -uV | tail -1 | grep .)
             iso=$mirror/$filename
             # 在 ubuntu 20.04 上，file 命令检测 ubuntu 22.04 iso 结果是 DOS/MBR boot sector
-            test_url $iso 'iso raw'
+            test_url "$iso" iso
             eval ${step}_iso=$iso
 
             # ks
@@ -1389,13 +1390,12 @@ Continue?
         if [[ "$iso" = magnet:* ]]; then
             : # 不测试磁力链接
         else
-            iso_filetype='iso raw'
             iso_tested=false
 
             # 获取 massgrave.dev 直链
             if grep -Eiq '\.massgrave\.dev/.*\.(iso|img)' <<<"$iso"; then
                 # 如果已经是 iso 直链则跳过下面的 iso 测试
-                if test_url_grace "$iso" "$iso_filetype"; then
+                if test_url_grace "$iso" iso; then
                     iso_tested=true
                 else
                     msg="Could not find direct link for $iso"
@@ -1407,7 +1407,7 @@ Continue?
 
             # 测试是否是 iso
             if ! $iso_tested; then
-                test_url "$iso" "$iso_filetype"
+                test_url "$iso" iso
             fi
 
             # 判断 iso 架构是否兼容
@@ -1502,8 +1502,7 @@ Continue with DD?
         done
 
         iso=$(curl -L https://fnnas.com/ | grep -o 'https://[^"]*\.iso' | head -1)
-        # debian 9 下 iso 会被识别为 raw
-        test_url "$iso" 'iso raw'
+        test_url "$iso" iso
         eval "${step}_iso='$iso'"
     }
 
