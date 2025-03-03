@@ -2224,13 +2224,17 @@ dd_raw_with_extract() {
     fi
 }
 
-get_dick_sector_count() {
+get_disk_sector_count() {
     # cat /proc/partitions
     blockdev --getsz "$1"
 }
 
 get_disk_size() {
     blockdev --getsize64 "$1"
+}
+
+get_disk_logic_sector_size() {
+    blockdev --getss "$1"
 }
 
 is_xda_gt_2t() {
@@ -2314,15 +2318,46 @@ create_part() {
         # 因此直接用用户输入的分区大小
 
         # 1. 官方安装器对系统盘大小的定义包含引导分区大小
-        # 2. 官方用的是 100M 而不是 100MiB
+        # 2. 官方 efi 用的是 1MiB-100M，但我们用 1MiB-101MiB
+
+        # 预期的系统分区大小，包括引导的 1M + 100M 的引导分区
+        expect_m=$((${fnos_part_size%[Gg]} * 1024))
+
+        sector_size=$(get_disk_logic_sector_size /dev/$xda)
+        total_sector_count=$(get_disk_sector_count /dev/$xda)
+
+        # 截止最后一个分区的总扇区数（也就是总硬盘扇区数 - 备份分区表扇区数）
+        if is_efi; then
+            total_sector_count_except_backup_gpt=$((total_sector_count - 33))
+        else
+            total_sector_count_except_backup_gpt=$total_sector_count
+        fi
+
+        # 向下取整 MiB
+        # gpt 最后 33 个扇区是备份分区表，不可用
+        # parted 会忽略最后不足 1MiB 的部分
+        max_can_use_m=$((total_sector_count_except_backup_gpt * sector_size / 1024 / 1024))
+
+        echo "expect_m: $expect_m"
+        echo "max_can_use_m: $max_can_use_m"
+
+        # 20G 的硬盘，即使用 msdos 分区表，parted 也不接受 part end 为 20480MiB，因此要用 100%
+        # The location 20480MiB is outside of the device /dev/vda.
+        # 但是 100% 分区后 end 就是 20480MiB
+
+        os_part_end=${expect_m}MiB
+        if [ "$expect_m" -ge "$max_can_use_m" ]; then
+            echo "Expect size is equal/greater than max size. Setting to 100%"
+            os_part_end=100%
+        fi
 
         # 需关闭这几个特性，否则 grub 无法识别
         ext4_opts="-O ^metadata_csum_seed,^orphan_file"
         if is_efi; then
             parted /dev/$xda -s -- \
                 mklabel gpt \
-                mkpart BOOT fat32 1MiB 100M \
-                mkpart SYSTEM ext4 100M ${fnos_part_size}iB \
+                mkpart BOOT fat32 1MiB 101MiB \
+                mkpart SYSTEM ext4 101MiB $os_part_end \
                 set 1 esp on
             update_part
 
@@ -2333,8 +2368,8 @@ create_part() {
             # 官方安装器不支持 bios + >2t
             parted /dev/$xda -s -- \
                 mklabel msdos \
-                mkpart primary 1MiB 100M \
-                mkpart primary 100M ${fnos_part_size}iB \
+                mkpart primary 1MiB 101MiB \
+                mkpart primary 101MiB $os_part_end \
                 set 2 boot on
             update_part
 
@@ -3892,6 +3927,7 @@ install_fnos() {
     rm -rf $initrd_dir
 
     # 复制 trimfs.tgz 并删除 ISO 以获得更多空间
+    echo "moving trimfs.tgz..."
     cp /iso/trimfs.tgz /os/installer
     umount /iso
     rm /os/installer/fnos.iso
