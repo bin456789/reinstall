@@ -2315,6 +2315,9 @@ create_part() {
 
         # 1. 官方安装器对系统盘大小的定义包含引导分区大小
         # 2. 官方用的是 100M 而不是 100MiB
+
+        # 需关闭这几个特性，否则 grub 无法识别
+        ext4_opts="-O ^metadata_csum_seed,^orphan_file"
         if is_efi; then
             parted /dev/$xda -s -- \
                 mklabel gpt \
@@ -2323,8 +2326,8 @@ create_part() {
                 set 1 esp on
             update_part
 
-            mkfs.fat /dev/$xda*1     #1 efi
-            mkfs.ext4 -F /dev/$xda*2 #2 os + installer
+            mkfs.fat /dev/$xda*1                #1 efi
+            mkfs.ext4 -F $ext4_opts /dev/$xda*2 #2 os + installer
         else
             # bios
             # 官方安装器不支持 bios + >2t
@@ -2335,8 +2338,8 @@ create_part() {
                 set 2 boot on
             update_part
 
-            echo                     #1 官方安装有这个分区
-            mkfs.ext4 -F /dev/$xda*2 #2 os + installer
+            echo                                #1 官方安装有这个分区
+            mkfs.ext4 -F $ext4_opts /dev/$xda*2 #2 os + installer
         fi
     elif is_use_cloud_image; then
         installer_part_size="$(get_cloud_image_part_size)"
