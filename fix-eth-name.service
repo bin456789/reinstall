@@ -22,6 +22,7 @@ ExecStart=/usr/bin/env bash /fix-eth-name.sh
 ExecStart=/usr/bin/env rm -f /fix-eth-name.sh
 ExecStart=/usr/bin/env rm -f /etc/systemd/system/fix-eth-name.service
 ExecStart=/usr/bin/env rm -f /etc/systemd/system/multi-user.target.wants/fix-eth-name.service
+ExecStart=/usr/bin/env rm -f /lib/systemd/system-preset/01-fix-eth-name.preset
 ExecStart=/usr/bin/env rm -f /usr/lib/systemd/system-preset/01-fix-eth-name.preset
 
 [Install]

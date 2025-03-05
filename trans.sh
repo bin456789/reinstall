@@ -1681,7 +1681,13 @@ add_fix_eth_name_systemd_service() {
     # 因此需要设置 fix-eth-name 的 preset 状态
     # 不然首次开机 /etc/systemd/system/multi-user.target.wants/fix-eth-name.service 会被删除
     # 通常 /etc/systemd/system-preset/ 文件夹要新建，因此不放在这里
-    echo 'enable fix-eth-name.service' >"$os_dir/usr/lib/systemd/system-preset/01-fix-eth-name.preset"
+
+    # 可能是 /usr/lib/systemd/system-preset/ 或者 /lib/systemd/system-preset/
+    if [ -d "$os_dir/usr/lib/systemd/system-preset" ]; then
+        echo 'enable fix-eth-name.service' >"$os_dir/usr/lib/systemd/system-preset/01-fix-eth-name.preset"
+    else
+        echo 'enable fix-eth-name.service' >"$os_dir/lib/systemd/system-preset/01-fix-eth-name.preset"
+    fi
 }
 
 basic_init() {
