@@ -116,6 +116,8 @@ error_and_exit() {
 }
 
 curl() {
+    is_have_cmd curl || install_pkg curl
+
     # 添加 -f, --fail，不然 404 退出码也为0
     # 32位 cygwin 已停止更新，证书可能有问题，先添加 --insecure
     # centos 7 curl 不支持 --retry-connrefused --retry-all-errors
