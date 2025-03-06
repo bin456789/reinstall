@@ -150,6 +150,14 @@ bash reinstall.sh anolis      7|8|23
 #### Optional Parameters
 
 - `--password PASSWORD` Set the password
+- `--ssh-key KEY` Set up SSH public key, supports these formats. When using public key, password is empty.
+  - `--ssh-key "ssh-rsa ..."`
+  - `--ssh-key "ssh-ed25519 ..."`
+  - `--ssh-key "ecdsa-sha2-nistp256/384/521 ..."`
+  - `--ssh-key http://url`
+  - `--ssh-key github:your_username`
+  - `--ssh-key gitlab:your_username`
+  - `--ssh-key /path/to/public_key`
 - `--ssh-port PORT` Change the SSH port (for log observation during installation and for the new system)
 - `--web-port PORT` Change the Web port (for log observation during installation)
 - `--hold 2` Prevent reboot after installation completes, allowing SSH login to modify system content; the system is mounted at `/os` (this feature is not supported on Debian/Kali).
@@ -228,6 +236,14 @@ bash reinstall.sh alpine --hold=1
 
 - `--password PASSWORD` Set password
 - `--ssh-port PORT` Change SSH port
+- `--ssh-key KEY` Set up SSH public key, supports these formats. When using public key, password is empty.
+  - `--ssh-key ssh-rsa ...`
+  - `--ssh-key ssh-ed25519 ...`
+  - `--ssh-key ecdsa-sha2-nistp256/384/521 ...`
+  - `--ssh-key http://url`
+  - `--ssh-key github:your_username`
+  - `--ssh-key gitlab:your_username`
+  - `--ssh-key /path/to/public_key`
 
 ### Feature 4: Reboot to <img width="16" height="16" src="https://netboot.xyz/img/favicon.ico" /> netboot.xyz
 

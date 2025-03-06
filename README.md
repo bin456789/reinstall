@@ -150,7 +150,15 @@ bash reinstall.sh anolis      7|8|23
 #### 可选参数
 
 - `--password PASSWORD` 设置密码
-- `--ssh-port PORT` 修改 SSH 端口（安装期间观察日志用，也用于新系统）
+- `--ssh-key KEY` 设置 SSH 公钥登录，支持以下格式。当使用公钥时，密码为空
+  - `--ssh-key "ssh-rsa ..."`
+  - `--ssh-key "ssh-ed25519 ..."`
+  - `--ssh-key "ecdsa-sha2-nistp256/384/521 ..."`
+  - `--ssh-key http://url`
+  - `--ssh-key github:your_username`
+  - `--ssh-key gitlab:your_username`
+  - `--ssh-key /path/to/public_key`
+- `--ssh-port PORT` 修改 SSH 端口（安装期间观察日志用，也作用于新系统）
 - `--web-port PORT` 修改 Web 端口（安装期间观察日志用）
 - `--hold 2` 安装结束后不重启，此时可以 SSH 登录修改系统内容，系统挂载在 `/os` (此功能不支持 Debian/Kali)
 
@@ -228,6 +236,14 @@ bash reinstall.sh alpine --hold=1
 
 - `--password PASSWORD` 设置密码
 - `--ssh-port PORT` 修改 SSH 端口
+- `--ssh-key KEY` 设置 SSH 公钥登录，支持以下格式。当使用公钥时，密码为空
+  - `--ssh-key ssh-rsa ...`
+  - `--ssh-key ssh-ed25519 ...`
+  - `--ssh-key ecdsa-sha2-nistp256/384/521 ...`
+  - `--ssh-key http://url`
+  - `--ssh-key github:your_username`
+  - `--ssh-key gitlab:your_username`
+  - `--ssh-key /path/to/public_key`
 
 ### 功能 4: 重启到 <img width="16" height="16" src="https://netboot.xyz/img/favicon.ico" /> netboot.xyz
 

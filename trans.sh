@@ -536,6 +536,7 @@ set_config() {
     printf '%s' "$2" >"/configs/$1"
 }
 
+# ubuntu 安装版、el/ol 安装版不使用该密码
 get_password_linux_sha512() {
     get_config password-linux-sha512
 }
@@ -544,7 +545,6 @@ get_password_windows_administrator_base64() {
     get_config password-windows-administrator-base64
 }
 
-# debian 安装版、ubuntu 安装版、el/ol 安装版不使用该密码
 get_password_plaintext() {
     get_config password-plaintext
 }
@@ -726,6 +726,10 @@ is_elts() {
     [ -n "$elts" ] && [ "$elts" = 1 ]
 }
 
+is_need_set_ssh_keys() {
+    [ -s /configs/ssh_keys ]
+}
+
 is_need_change_ssh_port() {
     [ -n "$ssh_port" ] && ! [ "$ssh_port" = 22 ]
 }
@@ -769,6 +773,10 @@ to_lower() {
 
 del_cr() {
     sed 's/\r//g'
+}
+
+del_comment_lines() {
+    sed '/^[[:space:]]*#/d'
 }
 
 del_empty_lines() {
@@ -1376,6 +1384,11 @@ install_alpine() {
     chroot /os setup-timezone -i Asia/Shanghai
     chroot /os setup-ntp chrony || true
 
+    # 设置公钥
+    if is_need_set_ssh_keys; then
+        set_ssh_keys_and_del_password /os
+    fi
+
     # 下载 fix-eth-name
     download "$confhome/fix-eth-name.sh" /os/fix-eth-name.sh
     download "$confhome/fix-eth-name.initd" /os/etc/init.d/fix-eth-name
@@ -1571,6 +1584,17 @@ install_nixos() {
     if [ -e /os/swapfile ] && $keep_swap; then
         nix_swap="swapDevices = [{ device = \"/swapfile\"; size = $swap_size; }];"
     fi
+
+    if is_need_set_ssh_keys; then
+        nix_ssh_keys_or_PermitRootLogin="
+users.users.root.openssh.authorizedKeys.keys = [
+$(del_comment_lines </configs/ssh_keys | del_empty_lines | quote_line | add_space 2)
+];
+"
+    else
+        nix_ssh_keys_or_PermitRootLogin='services.openssh.settings.PermitRootLogin = "yes";'
+    fi
+
     if is_need_change_ssh_port; then
         nix_ssh_ports="services.openssh.ports = [ $ssh_port ];"
     fi
@@ -1585,7 +1609,7 @@ $nix_swap
 $nix_substituters
 boot.kernelParams = [ $(get_ttys console= | quote_word) ];
 services.openssh.enable = true;
-services.openssh.settings.PermitRootLogin = "yes";
+$nix_ssh_keys_or_PermitRootLogin
 $nix_ssh_ports
 $(cat /tmp/nixos_network_config.nix)
 ###################################################
@@ -1632,8 +1656,10 @@ EOF
     nixos-install --root /os --no-root-passwd -j $threads
 
     # 设置密码
-    echo "root:$(get_password_linux_sha512)" | nixos-enter --root /os -- \
-        /run/current-system/sw/bin/chpasswd -e
+    if ! is_need_set_ssh_keys; then
+        echo "root:$(get_password_linux_sha512)" | nixos-enter --root /os -- \
+            /run/current-system/sw/bin/chpasswd -e
+    fi
 
     # 设置 channel
     if is_in_china; then
@@ -1726,14 +1752,18 @@ basic_init() {
         done
     fi
 
-    allow_root_password_login $os_dir
-    allow_password_login $os_dir
     if is_need_change_ssh_port; then
         change_ssh_port $os_dir $ssh_port
     fi
 
-    # 修改密码
-    change_root_password $os_dir
+    # 公钥/密码
+    if is_need_set_ssh_keys; then
+        set_ssh_keys_and_del_password $os_dir
+    else
+        change_root_password $os_dir
+        allow_root_password_login $os_dir
+        allow_password_login $os_dir
+    fi
 
     # 下载 fix-eth-name.service
     # 即使开了 net.ifnames=0 也需要
@@ -3419,7 +3449,7 @@ EOF
 
         # 在这里修改密码，而不是用cloud-init，因为我们的默认密码太弱
         is_password_plaintext && sed -i 's/enforce=everyone/enforce=none/' $os_dir/etc/security/passwdqc.conf
-        echo "root:$(get_password_linux_sha512)" | chroot $os_dir chpasswd -e
+        change_root_password $os_dir
         is_password_plaintext && sed -i 's/enforce=none/enforce=everyone/' $os_dir/etc/security/passwdqc.conf
 
         # 下载仓库，选择 profile
@@ -3555,6 +3585,21 @@ create_swap() {
     fi
 }
 
+set_ssh_keys_and_del_password() {
+    os_dir=$1
+    info 'set ssh keys'
+
+    # 添加公钥
+    (
+        umask 077
+        mkdir -p $os_dir/root/.ssh
+        cat /configs/ssh_keys >$os_dir/root/.ssh/authorized_keys
+    )
+
+    # 删除密码
+    chroot $os_dir passwd -d root
+}
+
 # 除了 alpine 都会用到
 change_ssh_conf() {
     os_dir=$1
@@ -3562,20 +3607,25 @@ change_ssh_conf() {
     value=$3
     sub_conf=$4
 
-    # arch 没有 /etc/ssh/sshd_config.d/ 文件夹
-    # opensuse tumbleweed 没有 /etc/ssh/sshd_config
-    #                       有 /etc/ssh/sshd_config.d/ 文件夹
-    #                       有 /usr/etc/ssh/sshd_config
-    if { grep -q 'Include.*/etc/ssh/sshd_config.d' $os_dir/etc/ssh/sshd_config ||
-        grep -q '^Include.*/etc/ssh/sshd_config.d/' $os_dir/usr/etc/ssh/sshd_config; } 2>/dev/null; then
+    if line="^$key .*" && grep -Exq "$line" $os_dir/etc/ssh/sshd_config; then
+        # 如果 sshd_config 存在此 key（非注释状态），则替换
+        sed -Ei "s/$line/$key $value/" $os_dir/etc/ssh/sshd_config
+    elif {
+        # arch 没有 /etc/ssh/sshd_config.d/ 文件夹
+        # opensuse tumbleweed 没有 /etc/ssh/sshd_config
+        #                       有 /etc/ssh/sshd_config.d/ 文件夹
+        #                       有 /usr/etc/ssh/sshd_config
+        grep -q 'Include.*/etc/ssh/sshd_config.d' $os_dir/etc/ssh/sshd_config ||
+            grep -q '^Include.*/etc/ssh/sshd_config.d/' $os_dir/usr/etc/ssh/sshd_config
+    } 2>/dev/null; then
         mkdir -p $os_dir/etc/ssh/sshd_config.d/
         echo "$key $value" >"$os_dir/etc/ssh/sshd_config.d/$sub_conf"
     else
-        # 如果 sshd_config 存在此 key，则替换
+        # 如果 sshd_config 存在此 key (无论是否已注释)，则替换，包括删除注释
         # 否则追加
         line="^#?$key .*"
         if grep -Exq "$line" $os_dir/etc/ssh/sshd_config; then
-            sed -Eiq "s/$line/$key $value/" $os_dir/etc/ssh/sshd_config
+            sed -Ei "s/$line/$key $value/" $os_dir/etc/ssh/sshd_config
         else
             echo "$key $value" >>$os_dir/etc/ssh/sshd_config
         fi
@@ -3584,17 +3634,15 @@ change_ssh_conf() {
 
 allow_password_login() {
     os_dir=$1
-    change_ssh_conf "$os_dir" PasswordAuthentication yes 02-PasswordAuthenticaton.conf
+    change_ssh_conf "$os_dir" PasswordAuthentication yes 01-PasswordAuthenticaton.conf
 }
 
-# arch gentoo 常规安装用
 allow_root_password_login() {
     os_dir=$1
 
     change_ssh_conf "$os_dir" PermitRootLogin yes 01-permitrootlogin.conf
 }
 
-# arch gentoo 常规安装用
 change_ssh_port() {
     os_dir=$1
     ssh_port=$2
@@ -3974,8 +4022,11 @@ install_fnos() {
     # chroot $os_dir update-initramfs -u
 
     # 更改密码
-    # chroot $os_dir passwd -d root
-    echo "root:$(get_password_linux_sha512)" | chroot $os_dir chpasswd -e
+    if is_need_set_ssh_keys; then
+        set_ssh_keys_and_del_password $os_dir
+    else
+        change_root_password $os_dir
+    fi
 
     # ssh root 登录，测试用
     if false; then
@@ -6328,13 +6379,20 @@ mount / -o remount,size=100%
 # 4. 允许同步失败，因为不是关键步骤
 sync_time || true
 
-# 设置密码，安装并打开 ssh
-echo "root:$(get_password_linux_sha512)" | chpasswd -e
+# 安装 ssh 并更改端口
 apk add openssh
 if is_need_change_ssh_port; then
     change_ssh_port / $ssh_port
 fi
-printf '\nyes' | setup-sshd
+
+# 设置密码，添加开机启动 + 开启 ssh 服务
+if is_need_set_ssh_keys; then
+    set_ssh_keys_and_del_password /
+    printf '\n' | setup-sshd
+else
+    change_root_password /
+    printf '\nyes' | setup-sshd
+fi
 
 # shellcheck disable=SC2154
 if [ "$hold" = 1 ]; then
