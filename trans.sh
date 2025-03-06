@@ -161,23 +161,8 @@ download() {
 
     # 有ipv4地址无ipv4网关的情况下，aria2可能会用ipv4下载，而不是ipv6
     # axel 在 lightsail 上会占用大量cpu
-    # aria2 下载 fedora 官方镜像链接会将meta4文件下载下来，而且占用了指定文件名，造成重命名失效。而且无法指定目录
     # https://download.opensuse.org/distribution/leap/15.5/appliances/openSUSE-Leap-15.5-Minimal-VM.x86_64-kvm-and-xen.qcow2
     # https://aria2.github.io/manual/en/html/aria2c.html#cmdoption-o
-
-    # 构造 aria2 参数
-    save=
-    # 文件夹
-    if [[ "$path" = '/*' ]]; then
-        save="$save -d /"
-    fi
-    # 文件名
-    if [ -n "$path" ]; then
-        case "$(get_url_type "$url")" in
-        http) save="$save -o $path" ;;
-        bt) save="$save -O 1=$path" ;;
-        esac
-    fi
 
     # 阿里云源限速，而且检测 user-agent 禁止 axel/aria2 下载
     # aria2 默认 --max-tries 5
@@ -205,7 +190,20 @@ download() {
         url=$torrent
     fi
 
-    aria2c $save "$url"
+    # -o 设置 http 下载文件名
+    # -O 设置 bt 首个文件的文件名
+    aria2c "$url" \
+        -d "$(dirname "$path")" \
+        -o "$(basename "$path")" \
+        -O "1=$(basename "$path")"
+
+    # opensuse 官方镜像支持 metalink
+    # aira2 无法重命名用 metalink 下载的文件
+    # 需用以下方法重命名
+    if head -c 1024 "$path" | grep -Fq 'urn:ietf:params:xml:ns:metalink'; then
+        real_file=$(tr -d '\n' <"$path" | sed -E 's|.*<file[[:space:]]+name="([^"]*)".*|\1|')
+        mv "$(dirname "$path")/$real_file" "$path"
+    fi
 }
 
 update_part() {
@@ -2106,7 +2104,7 @@ aria2c() {
     fi
 
     # 指定 bt 种子时没有链接，因此忽略错误
-    echo "$@" | grep -o '(http|https|magnet):[^ ]*' || true
+    echo "$@" | grep -oE '(http|https|magnet):[^ ]*' || true
 
     # 下载 tracker
     # 在 sub shell 里面无法保存变量，因此写入到文件
