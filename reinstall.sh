@@ -153,10 +153,10 @@ is_in_china() {
         # 备用 www.garmin.com.cn
         # 备用 www.autodesk.com.cn
         # 备用 www.keysight.com.cn
-        _loc=$(curl -L http://www.visa.cn/cdn-cgi/trace | grep '^loc=' | cut -d= -f2)
-        if [ -z "$_loc" ]; then
+        if ! _loc=$(curl -L http://www.visa.cn/cdn-cgi/trace | grep '^loc=' | cut -d= -f2 | grep .); then
             error_and_exit "Can not get location."
         fi
+        echo "Location: $_loc" >&2
     fi
     [ "$_loc" = CN ]
 }
@@ -341,7 +341,7 @@ test_url_real() {
         real_type=$(file_enhanced $tmp_file)
         echo "File type: $real_type"
 
-        # debian 9 ubuntu 16.04 可能会将 iso 识别成 raw
+        # debian 9 ubuntu 16.04-20.04 可能会将 iso 识别成 raw
         for type in $expect_types $([ "$expect_types" = iso ] && echo raw); do
             if [[ ."$real_type" = *."$type" ]]; then
                 # 如果要设置变量
@@ -1214,17 +1214,11 @@ Continue?
                 ci_mirror=https://cloud-images.ubuntu.com
             fi
 
-            # 22.04 和以下没有 minimal aarch64 镜像
+            # 以下版本有 minimal 镜像
+            # amd64 所有
+            # arm64 24.04 和以上
             is_have_minimal_image() {
-                [ "$basearch_alt" = amd64 ] || [ "$releasever" = 24.04 ]
-            }
-
-            is_should_use_minimal_cloud_image() {
-                if [ "$minimal" = 1 ] && ! is_have_minimal_image; then
-                    echo "Fallback to normal cloud image."
-                    return 1
-                fi
-                [ "$minimal" = 1 ]
+                [ "$basearch_alt" = amd64 ] || [ "${releasever%.*}" -ge 24 ]
             }
 
             get_suffix() {
@@ -1237,7 +1231,10 @@ Continue?
                 fi
             }
 
-            if is_should_use_minimal_cloud_image; then
+            if [ "$minimal" = 1 ]; then
+                if ! is_have_minimal_image; then
+                    error_and_exit "Minimal cloud image is not available for $releasever $basearch_alt."
+                fi
                 eval ${step}_img="$ci_mirror/minimal/releases/$codename/release/ubuntu-$releasever-minimal-cloudimg-$basearch_alt$(get_suffix).img"
             else
                 eval ${step}_img="$ci_mirror/releases/$releasever/release/ubuntu-$releasever-server-cloudimg-$basearch_alt$(get_suffix).img"
@@ -3629,7 +3626,7 @@ else
 fi
 
 long_opts=
-for o in ci installer debug minimal allow-ping force-cn \
+for o in ci installer debug minimal allow-ping force-cn help \
     add-driver: \
     hold: sleep: \
     iso: \
@@ -3651,7 +3648,7 @@ for o in ci installer debug minimal allow-ping force-cn \
 done
 
 # 整理参数
-if ! opts=$(getopt -n $0 -o "" --long "$long_opts" -- "$@"); then
+if ! opts=$(getopt -n $0 -o "h" --long "$long_opts" -- "$@"); then
     exit
 fi
 
@@ -3659,6 +3656,9 @@ eval set -- "$opts"
 # shellcheck disable=SC2034
 while true; do
     case "$1" in
+    -h | --help)
+        usage_and_exit
+        ;;
     --commit)
         commit=$2
         shift 2
