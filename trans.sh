@@ -1980,11 +1980,6 @@ EOF
         # preset-all 后多了很多服务，内存占用多了几十M
         chroot $os_dir systemctl preset-all
     fi
-    # 此时不能用
-    # chroot $os_dir timedatectl set-timezone Asia/Shanghai
-    chroot $os_dir systemd-firstboot --force --timezone=Asia/Shanghai
-    # gentoo 不会自动创建 machine-id
-    clear_machine_id $os_dir
 
     # 网络配置
     case "$network_app" in
@@ -2026,21 +2021,10 @@ EOF
         ;;
     esac
 
-    # 修正网卡名
-    add_fix_eth_name_systemd_service $os_dir
-
     # arch gentoo 网络配置是用 alpine cloud-init 生成的
     # cloud-init 版本够新，因此无需修复 onlink 网关
 
-    # ssh
-    chroot $os_dir systemctl enable sshd
-    allow_root_password_login $os_dir
-    if is_need_change_ssh_port; then
-        change_ssh_port $os_dir $ssh_port
-    fi
-
-    # 修改密码
-    change_root_password $os_dir
+    basic_init $os_dir
 
     # ntp 用 systemd 自带的
     # TODO: vm agent + 随机数生成器
