@@ -2978,21 +2978,43 @@ chroot_systemctl_disable() {
     done
 }
 
-disable_cloud_init() {
+remove_cloud_init() {
     os_dir=$1
-    info "Disable Cloud-Init"
 
-    # 两种方法都可以
-
-    if [ -d $os_dir/etc/cloud ]; then
-        touch $os_dir/etc/cloud/cloud-init.disabled
+    if ! is_have_cmd_on_disk $os_dir cloud-init; then
+        return
     fi
 
+    info "Remove Cloud-Init"
+
+    # 两种方法都可以
+    if false && [ -d $os_dir/etc/cloud ]; then
+        touch $os_dir/etc/cloud/cloud-init.disabled
+    fi
     for name in cloud-init-local cloud-init cloud-config cloud-final; do
         for type in service socket; do
             # 服务不存在时会报错
             chroot $os_dir systemctl disable "$name.$type" 2>/dev/null || true
         done
+    done
+
+    for pkg_mgr in dnf yum zypper apt-get; do
+        if is_have_cmd_on_disk $os_dir $pkg_mgr; then
+            case $pkg_mgr in
+            dnf | yum)
+                chroot $os_dir $pkg_mgr remove -y cloud-init
+                ;;
+            zypper)
+                # 加上 -u 才会删除依赖
+                chroot $os_dir zypper remove -y -u cloud-init
+                ;;
+            apt-get)
+                chroot_apt_remove $os_dir cloud-init
+                chroot_apt_autoremove $os_dir
+                ;;
+            esac
+            break
+        fi
     done
 }
 
@@ -3080,17 +3102,20 @@ EOF
     # 1. 禁用 selinux kdump
     # 2. 添加微码+固件
     if [ -f $os_dir/etc/redhat-release ]; then
+        # 防止删除 cloud-init / 安装 firmware 时不够内存
+        create_swap_if_ram_less_than 2048 $os_dir/swapfile
+
         find_and_mount /boot
         find_and_mount /boot/efi
         mount_pseudo_fs $os_dir
         cp_resolv_conf $os_dir
 
-        disable_cloud_init $os_dir
-
         # 可以直接用 alpine 的 cloud-init 生成 Network Manager 配置
         create_cloud_init_network_config /net.cfg
         create_network_manager_config /net.cfg "$os_dir"
         rm /net.cfg
+
+        remove_cloud_init $os_dir
 
         disable_selinux_kdump $os_dir
 
@@ -3116,7 +3141,7 @@ EOF
         find_and_mount /boot
         find_and_mount /boot/efi
 
-        disable_cloud_init $os_dir
+        remove_cloud_init $os_dir
 
         # 获取当前开启的 Components, 后面要用
         if [ -f $os_dir/etc/apt/sources.list.d/debian.sources ]; then
@@ -3282,7 +3307,6 @@ EOF
         find_and_mount /boot
         find_and_mount /boot/efi
 
-        disable_cloud_init $os_dir
         disable_jeos_firstboot $os_dir
 
         # opensuse leap
@@ -3340,7 +3364,7 @@ EOF
         fi
 
         # 不能同时装 kernel-default-base 和 kernel-default
-        chroot $os_dir zypper remove -y kernel-default-base
+        chroot $os_dir zypper remove -y -u kernel-default-base
 
         # 固件+微码
         if fw_pkgs=$(get_ucode_firmware_pkgs) && [ -n "$fw_pkgs" ]; then
@@ -3367,11 +3391,11 @@ EOF
             chroot $os_dir zypper install -y $kernel
         fi
 
-        restore_resolv_conf $os_dir
+        # 最后才删除 cloud-init
+        # 因为生成 sysconfig 网络配置要用目标系统的 cloud-init
+        remove_cloud_init $os_dir
 
-        # 删除 swap
-        swapoff -a
-        rm -f $os_dir/swapfile
+        restore_resolv_conf $os_dir
     fi
 
     # arch 云镜像
@@ -3439,6 +3463,10 @@ EOF
     if [ -f "$ci_file" ]; then
         cat -n "$ci_file"
     fi
+
+    # 删除 swap
+    swapoff -a
+    rm -f $os_dir/swapfile
 }
 
 modify_os_on_disk() {
@@ -3516,6 +3544,10 @@ create_swap() {
     swapfile=$2
 
     if ! grep $swapfile /proc/swaps; then
+        # 用兼容 btrfs 的方式创建 swapfile
+        truncate -s 0 $swapfile
+        # 如果分区不支持 chattr +C 会显示错误但返回值是 0
+        chattr +C $swapfile 2>/dev/null
         fallocate -l ${swapsize}M $swapfile
         chmod 0600 $swapfile
         mkswap $swapfile
@@ -4211,13 +4243,13 @@ EOF
             # 清理
             rm -rf $os_dir/net.cfg $os_dir/out
 
+            # 删除 # Created by cloud-init on instance boot automatically, do not edit.
             # 修正网络配置问题并显示文件
-            sed -i '/^IPV[46]_FAILURE_FATAL=/d' $os_dir/etc/sysconfig/network-scripts/ifcfg-*
+            sed -i -e '/^IPV[46]_FAILURE_FATAL=/d' -e '/^#/d' $os_dir/etc/sysconfig/network-scripts/ifcfg-*
             for file in "$os_dir/etc/sysconfig/network-scripts/ifcfg-"*; do
                 if grep -q '^DHCPV6C=yes' "$file"; then
                     sed -i '/^IPV6_AUTOCONF=no/d' "$file"
                 fi
-
                 cat -n "$file"
             done
         else
@@ -4307,6 +4339,9 @@ EOF
         # 网络配置
         # 18.04+ netplan
         if is_have_cmd_on_disk $os_dir netplan; then
+            # 避免删除 cloud-init 后，minimal 镜像的 netplan.io 被 autoremove
+            chroot $os_dir apt-mark manual netplan.io
+
             # 生成 cloud-init 网络配置
             create_cloud_init_network_config $os_dir/net.cfg
 
@@ -4331,6 +4366,9 @@ EOF
                 rm -rf $os_dir/net.cfg
             fi
         else
+            # 避免删除 cloud-init 后 ifupdown 被 autoremove
+            chroot $os_dir apt-mark manual ifupdown
+
             # 16.04 镜像用 ifupdown/networking 管理网络
             # 要安装 resolveconf，不然 /etc/resolv.conf 为空
             chroot_apt_install $os_dir resolvconf
@@ -4581,8 +4619,11 @@ EOF
     esac
 
     # 基本配置
-    disable_cloud_init /os
     basic_init /os
+
+    # 最后才删除 cloud-init
+    # 因为生成 netplan/sysconfig 网络配置要用目标系统的 cloud-init
+    remove_cloud_init /os
 
     # 删除 swapfile
     swapoff -a
