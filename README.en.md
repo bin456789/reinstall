@@ -150,14 +150,15 @@ bash reinstall.sh anolis      7|8|23
 #### Optional Parameters
 
 - `--password PASSWORD` Set the password
-- `--ssh-key KEY` Set up SSH public key, supports these formats. When using public key, password is empty.
+- `--ssh-key KEY` Set up SSH login public key, supports these formats. When using public key, password is empty.
   - `--ssh-key "ssh-rsa ..."`
   - `--ssh-key "ssh-ed25519 ..."`
   - `--ssh-key "ecdsa-sha2-nistp256/384/521 ..."`
-  - `--ssh-key http://url`
+  - `--ssh-key http://path/to/public_key`
   - `--ssh-key github:your_username`
   - `--ssh-key gitlab:your_username`
   - `--ssh-key /path/to/public_key`
+  - `--ssh-key C:\path\to\public_key`
 - `--ssh-port PORT` Change the SSH port (for log observation during installation and for the new system)
 - `--web-port PORT` Change the Web port (for log observation during installation)
 - `--hold 2` Prevent reboot after installation completes, allowing SSH login to modify system content; the system is mounted at `/os` (this feature is not supported on Debian/Kali).
@@ -236,14 +237,15 @@ bash reinstall.sh alpine --hold=1
 
 - `--password PASSWORD` Set password
 - `--ssh-port PORT` Change SSH port
-- `--ssh-key KEY` Set up SSH public key, supports these formats. When using public key, password is empty.
-  - `--ssh-key ssh-rsa ...`
-  - `--ssh-key ssh-ed25519 ...`
-  - `--ssh-key ecdsa-sha2-nistp256/384/521 ...`
-  - `--ssh-key http://url`
+- `--ssh-key KEY` Set up SSH login public key, supports these formats. When using public key, password is empty.
+  - `--ssh-key "ssh-rsa ..."`
+  - `--ssh-key "ssh-ed25519 ..."`
+  - `--ssh-key "ecdsa-sha2-nistp256/384/521 ..."`
+  - `--ssh-key http://path/to/public_key`
   - `--ssh-key github:your_username`
   - `--ssh-key gitlab:your_username`
   - `--ssh-key /path/to/public_key`
+  - `--ssh-key C:\path\to\public_key`
 
 ### Feature 4: Reboot to <img width="16" height="16" src="https://netboot.xyz/img/favicon.ico" /> netboot.xyz
 
@@ -395,7 +397,7 @@ bash reinstall.sh windows \
 #### The following drivers will automatic download and install as needed, without the need for manual addition
 
 - Virtio ([Virtio](https://fedorapeople.org/groups/virt/virtio-win/direct-downloads/), [Alibaba Cloud](https://www.alibabacloud.com/help/ecs/user-guide/install-the-virtio-driver-1))
-- XEN ([~~XEN~~(unsigned)](https://xenproject.org/resources/downloads/), [Citrix](https://docs.aws.amazon.com/AWSEC2/latest/UserGuide/Upgrading_PV_drivers.html#win2008-citrix-upgrade), [AWS](https://docs.aws.amazon.com/AWSEC2/latest/UserGuide/xen-drivers-overview.html))
+- XEN ([~~XEN~~ (unsigned)](https://xenproject.org/resources/downloads/), [Citrix](https://docs.aws.amazon.com/AWSEC2/latest/UserGuide/Upgrading_PV_drivers.html#win2008-citrix-upgrade), [AWS](https://docs.aws.amazon.com/AWSEC2/latest/UserGuide/xen-drivers-overview.html))
 - AWS ([ENA Network Adapter](https://docs.aws.amazon.com/AWSEC2/latest/UserGuide/ena-driver-releases-windows.html), [NVMe Storage Controller](https://docs.aws.amazon.com/AWSEC2/latest/UserGuide/nvme-driver-version-history.html))
 - GCP ([gVNIC Network Adapter](https://cloud.google.com/compute/docs/networking/using-gvnic), [GGA Display Adapter](https://cloud.google.com/compute/docs/instances/enable-instance-virtual-display))
 - Azure ([MANA Network Adapter](https://learn.microsoft.com/azure/virtual-network/accelerated-networking-mana-windows))

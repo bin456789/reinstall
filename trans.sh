@@ -5496,11 +5496,10 @@ install_windows() {
         download "$(get_aws_repo)/AWSPV/$aws_pv_ver/AWSPVDriver.zip" $drv/AWSPVDriver.zip
 
         unzip -o -d $drv $drv/AWSPVDriver.zip
-        msiextract $drv/AWSPVDriverSetup.msi -C $drv
-        mkdir -p $drv/aws/
-        cp -rf $drv/.Drivers/* $drv/aws/
+        mkdir -p $drv/xen/
+        msiextract $drv/AWSPVDriverSetup.msi -C $drv/xen/
 
-        cp_drivers $drv/xen -ipath "*/$arch_xdd/*"
+        cp_drivers $drv/xen/.Drivers
     }
 
     # citrix xen
@@ -5531,7 +5530,7 @@ install_windows() {
             tar -xf $drv/$part.tar -C $drv/xen/
         done
 
-        cp_drivers $drv/xen
+        cp_drivers $drv/xen -ipath "*/$arch_xdd/*"
     }
 
     # virtio

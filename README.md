@@ -150,14 +150,15 @@ bash reinstall.sh anolis      7|8|23
 #### 可选参数
 
 - `--password PASSWORD` 设置密码
-- `--ssh-key KEY` 设置 SSH 公钥登录，支持以下格式。当使用公钥时，密码为空
+- `--ssh-key KEY` 设置 SSH 登录公钥，支持以下格式。当使用公钥时，密码为空
   - `--ssh-key "ssh-rsa ..."`
   - `--ssh-key "ssh-ed25519 ..."`
   - `--ssh-key "ecdsa-sha2-nistp256/384/521 ..."`
-  - `--ssh-key http://url`
+  - `--ssh-key http://path/to/public_key`
   - `--ssh-key github:your_username`
   - `--ssh-key gitlab:your_username`
   - `--ssh-key /path/to/public_key`
+  - `--ssh-key C:\path\to\public_key`
 - `--ssh-port PORT` 修改 SSH 端口（安装期间观察日志用，也作用于新系统）
 - `--web-port PORT` 修改 Web 端口（安装期间观察日志用）
 - `--hold 2` 安装结束后不重启，此时可以 SSH 登录修改系统内容，系统挂载在 `/os` (此功能不支持 Debian/Kali)
@@ -236,14 +237,15 @@ bash reinstall.sh alpine --hold=1
 
 - `--password PASSWORD` 设置密码
 - `--ssh-port PORT` 修改 SSH 端口
-- `--ssh-key KEY` 设置 SSH 公钥登录，支持以下格式。当使用公钥时，密码为空
-  - `--ssh-key ssh-rsa ...`
-  - `--ssh-key ssh-ed25519 ...`
-  - `--ssh-key ecdsa-sha2-nistp256/384/521 ...`
-  - `--ssh-key http://url`
+- `--ssh-key KEY` 设置 SSH 登录公钥，支持以下格式。当使用公钥时，密码为空
+  - `--ssh-key "ssh-rsa ..."`
+  - `--ssh-key "ssh-ed25519 ..."`
+  - `--ssh-key "ecdsa-sha2-nistp256/384/521 ..."`
+  - `--ssh-key http://path/to/public_key`
   - `--ssh-key github:your_username`
   - `--ssh-key gitlab:your_username`
   - `--ssh-key /path/to/public_key`
+  - `--ssh-key C:\path\to\public_key`
 
 ### 功能 4: 重启到 <img width="16" height="16" src="https://netboot.xyz/img/favicon.ico" /> netboot.xyz
 
@@ -395,7 +397,7 @@ bash reinstall.sh windows \
 #### 以下驱动会自动按需下载安装，无需手动添加
 
 - Virtio ([Virtio](https://fedorapeople.org/groups/virt/virtio-win/direct-downloads/)、[阿里云](https://www.alibabacloud.com/help/ecs/user-guide/install-the-virtio-driver-1))
-- XEN ([~~XEN~~(未签名)](https://xenproject.org/resources/downloads/)、[Citrix](https://docs.aws.amazon.com/AWSEC2/latest/UserGuide/Upgrading_PV_drivers.html#win2008-citrix-upgrade)、[AWS](https://docs.aws.amazon.com/AWSEC2/latest/UserGuide/xen-drivers-overview.html))
+- XEN ([~~XEN~~ (未签名)](https://xenproject.org/resources/downloads/)、[Citrix](https://docs.aws.amazon.com/AWSEC2/latest/UserGuide/Upgrading_PV_drivers.html#win2008-citrix-upgrade)、[AWS](https://docs.aws.amazon.com/AWSEC2/latest/UserGuide/xen-drivers-overview.html))
 - AWS ([ENA 网卡](https://docs.aws.amazon.com/AWSEC2/latest/UserGuide/ena-driver-releases-windows.html)、[NVME 存储控制器](https://docs.aws.amazon.com/AWSEC2/latest/UserGuide/nvme-driver-version-history.html))
 - GCP ([gVNIC 网卡](https://cloud.google.com/compute/docs/networking/using-gvnic)、[GGA 显卡](https://cloud.google.com/compute/docs/instances/enable-instance-virtual-display))
 - Azure ([MANA 网卡](https://learn.microsoft.com/azure/virtual-network/accelerated-networking-mana-windows))

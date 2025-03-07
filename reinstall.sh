@@ -3721,9 +3721,10 @@ Available options:
   --ssh-key "ecdsa-sha2-nistp256/384/521 ..."
   --ssh-key github:your_username
   --ssh-key gitlab:your_username
-  --ssh-key http://url
-  --ssh-key https://url
+  --ssh-key http://path/to/public_key
+  --ssh-key https://path/to/public_key
   --ssh-key /path/to/public_key
+  --ssh-key C:\path\to\public_key
 EOF
             exit 1
         }
