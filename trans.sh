@@ -3347,6 +3347,11 @@ EOF
             chroot $os_dir cloud-init devel net-convert \
                 -p /net.cfg -k yaml -d out -D opensuse -O sysconfig
 
+            # 删除
+            # Created by cloud-init on instance boot automatically, do not edit.
+            #
+            sed -i '/^#/d' "$os_dir/out/etc/sysconfig/network/ifcfg-eth"*
+
             for ethx in $(get_eths); do
                 # 1. 修复甲骨文云重启后 ipv6 丢失
                 # https://github.com/openSUSE/wicked/issues/1058
@@ -5641,6 +5646,14 @@ EOF
     # 2012 r2   9.3.1
     # 2012      9.3.0
     # 2008 (r2) 7.2.0.1555
+
+    # 9.3.1
+    # https://downloads.xenserver.com/vm-tools-windows/9.3.1/managementagentx64.msi
+    # http://downloadns.citrix.com.edgesuite.net/17461/managementagentx64.msi
+
+    # 7.2.0.1555
+    # http://downloadns.citrix.com.edgesuite.net/14656/managementagentx64.msi
+    # http://downloadns.citrix.com.edgesuite.net/14655/managementagentx86.msi
 
     # xen
     # 没签名，暂时用aws的驱动代替

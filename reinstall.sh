@@ -488,15 +488,14 @@ run_with_del_cr() {
 }
 
 run_with_del_cr_template() {
-    # 调用链：wmic() -> run_with_del_cr(wmic) -> _wmic() -> command wmic
-    if command -v _$exe >/dev/null; then
+    if get_function _$exe >/dev/null; then
         run_with_del_cr _$exe "$@"
     else
         run_with_del_cr command $exe "$@"
     fi
 }
 
-_wmic() {
+wmic() {
     if is_have_cmd wmic; then
         # 如果参数没有 GET，添加 GET，防止以下报错
         # wmic memorychip /format:list
@@ -1343,8 +1342,12 @@ Continue?
     }
 
     setos_opensuse() {
-        # aria2 有 mata4 问题
         # https://download.opensuse.org/
+        # curl 会跳转到最近的镜像源，但可能会被镜像源 block
+        # aria2 会跳转使用 metalink
+
+        # https://downloadcontent.opensuse.org    # 德国
+        # https://downloadcontentcdn.opensuse.org # fastly cdn
 
         # 很多国内源缺少 aarch64 tumbleweed appliances
         #                 https://download.opensuse.org/ports/aarch64/tumbleweed/appliances/
@@ -1354,7 +1357,7 @@ Continue?
         if is_in_china; then
             mirror=https://mirror.nju.edu.cn/opensuse
         else
-            mirror=https://ftp.gwdg.de/pub/opensuse
+            mirror=https://downloadcontentcdn.opensuse.org
         fi
 
         if [ "$releasever" = tumbleweed ]; then
@@ -2667,7 +2670,7 @@ install_grub_linux_efi() {
         if is_in_china; then
             mirror=https://mirror.nju.edu.cn/opensuse
         else
-            mirror=https://ftp.gwdg.de/pub/opensuse
+            mirror=https://downloadcontentcdn.opensuse.org
         fi
 
         [ "$basearch" = x86_64 ] && ports='' || ports=/ports/$basearch
@@ -3611,6 +3614,12 @@ if is_in_windows; then
 
     # 为 windows 程序输出删除 cr
     for exe in $WINDOWS_EXES; do
+        # 如果我们覆写了 wmic()，则先将 wmic() 重命名为 _wmic()
+        if get_function $exe >/dev/null 2>&1; then
+            eval "_$(get_function $exe)"
+        fi
+        # 使用以下方法重新生成 wmic()
+        # 调用链：wmic() -> run_with_del_cr(wmic) -> _wmic() -> command wmic
         eval "$exe(){ $(get_function_content run_with_del_cr_template | sed "s/\$exe/$exe/g") }"
     done
 fi
