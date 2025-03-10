@@ -3,6 +3,8 @@
 # shellcheck disable=SC3001,SC3010
 # reinstall.sh / trans.sh 共用此文件
 
+# inf 是 utf-16-le 编码会有问题？要用 rg 或者 grep -a a.b.c.d ?
+
 del_inf_comment() {
     sed 's/;.*//'
 }
@@ -78,6 +80,16 @@ list_files_from_inf() {
 
     # 0. 检测 inf 是否适合当前架构
     # 目前没有对比版本号
+
+    ##############################################
+    # 注意这种情况, NTamd64.6.0 为空，表示不支持 6.0
+
+    # [Manufacturer]
+    # %V_INTEL%   = Intel, NTamd64.6.0, NTamd64.6.1.1
+
+    # [Intel.NTamd64.6.0]
+    # ; Empty section.
+    ##############################################
 
     # 例子1
     # [Manufacturer]
@@ -163,6 +175,7 @@ list_files_from_inf() {
         # 注意可能有空格和引号
 
         if $in_section; then
+            local num dir
             num=$(echo "$line" | awk -F= '{print $1}' | simply_inf_word)
             dir=$(echo "$line" | awk -F, '{print $4}' | simply_inf_word)
             # 每行一条记录
@@ -275,4 +288,23 @@ parse_inf_and_cp_driever() {
             error_and_exit "Unknown error while parse $inf."
         fi
     fi
+}
+
+get_sys_dir_for_eth() {
+    (
+        cd "$(readlink -f "/sys/class/net/$1")" || error_and_exit "Can't cd to $1"
+        while ! [ "$(pwd)" = / ]; do
+            # DRIVER=virtio-pci
+            # PCI_CLASS=20000            # 2 开头表示网络设备
+            # PCI_ID=1AF4:1041
+            # PCI_SUBSYS_ID=1AF4:1100
+            # PCI_SLOT_NAME=0000:03:00.0
+            if [ -f uevent ] && grep -q 'PCI_CLASS=2' uevent && grep -q 'PCI_ID' uevent; then
+                pwd
+                return
+            fi
+            cd ..
+        done
+        return 1
+    )
 }

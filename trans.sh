@@ -5120,6 +5120,22 @@ is_absolute_path() {
     [[ "$1" = "/*" ]]
 }
 
+# 注意使用方法是 list=$(list_add "$list" "$item_to_add")
+list_add() {
+    local list=$1
+    local item_to_add=$2
+    if [ -n "$list" ]; then
+        echo "$list"
+    fi
+    echo "$item_to_add"
+}
+
+is_list_has() {
+    local list=$1
+    local item=$2
+    echo "$list" | grep -qFx "$item"
+}
+
 install_windows() {
     get_wim_prop() {
         wim=$1
@@ -5420,8 +5436,120 @@ install_windows() {
             ;;
         esac
 
+        # intel 网卡驱动
+        # 官网没有提供 vista/2008 驱动
+        # win7 驱动 inf/ndis 不支持 vista/2008
+        if is_nt_ver_ge 6.1 && { [ "$arch_wim" = x86 ] || [ "$arch_wim" = x86_64 ]; } &&
+            grep -iq 8086 /sys/class/net/e*/device/vendor; then
+            add_driver_intel_nic
+        fi
+
         # 自定义驱动
         add_driver_custom
+    }
+
+    add_driver_intel_nic() {
+        info "Add drivers: Intel NIC"
+
+        arch_intel=$(
+            case "$arch_wim" in
+            x86) echo 32 ;;
+            x86_64) echo x64 ;;
+            esac
+        )
+
+        file=$(
+            case "$product_ver" in
+            '7' | '2008 r2') echo 29323/eng/prowin${arch_intel}legacy.exe ;; # 24.3 sha1 签名
+            # '7' | '2008 r2') echo 18713/eng/prowin${arch_intel}legacy.exe ;; # 25.0 有部分文件是 sha256 签名
+            '8') echo 21642/eng/prowin${arch_intel}.exe ;;
+            '8.1') echo 764813/Wired_driver_27.8_${arch_intel}.zip ;;
+            '2012' | '2012 r2') echo 785805/Wired_driver_28.2_${arch_intel}.zip ;;
+            *) echo 845886/Wired_driver_30.0_${arch_intel}.zip ;;
+            esac
+        )
+
+        # intel 禁止了 aria2 下载
+        # download https://downloadmirror.intel.com/$file $drv/intel.zip
+        wget https://downloadmirror.intel.com/$file -O $drv/intel.zip
+
+        # inf 可能是 UTF-16 LE？因此用 rg 搜索
+        # 用 busybox unzip 解压 win10 驱动时，路径和文件名会粘在一起
+        apk add unzip ripgrep
+
+        # win7 驱动是 .exe 解压不会报错
+        # win10 驱动是 .zip 解压反而会报错，目测 zip 文件有问题
+        # 在 windows 下解压 win8 的驱动会提示 checksum 错误
+        unzip -o -d $drv/intel/ $drv/intel.zip || true
+
+        # Vista RTM 版本号是 6000    NDIS 6.0
+        # 2008  RTM 版本号是 6001    NDIS 6.1
+
+        # 找出驱动文件夹对应的最低系统版本
+        # 1. 驱动可能限制 windows client/server，但我们不区分
+        #    如果装不了也没关系。如果能装但不加载，用户也可以在硬件管理器强制加载驱动
+        # 2. 官网写着 win10 驱动要求 RS5 1809，但是驱动包里有 NDIS65 文件夹，也就是支持 10240
+        # 3. 有可能 NDIS65 文件夹实际要求 NDIS 6.51？但是先不管
+        # https://learn.microsoft.com/en-us/windows-hardware/drivers/network/overview-of-ndis-versions
+        min_support_map=$(cat <<EOF |
+6000  NDIS60
+6001  NDIS61
+7600  NDIS62
+9200  NDIS63
+9600  NDIS64
+10240 NDIS65
+14393 NDIS66
+15063 NDIS67
+16299 NDIS68
+20348 WS2022
+22000 W11
+26100 WS2025
+EOF
+            case "$windows_type" in
+            client) grep -E 'NDIS|^WS' ;;
+            server) grep -E 'NDIS|WS' ;;
+            esac)
+
+        for ethx in $(get_eths); do
+            sys_dir=$(get_sys_dir_for_eth $ethx)
+            ven=$(cat $sys_dir/vendor | sed 's/^0x//')
+            dev=$(cat $sys_dir/device | sed 's/^0x//')
+            subsys=$(cat $sys_dir/subsystem_device $sys_dir/subsystem_vendor | sed 's/^0x//' | tr -d '\n')
+            rev=$(cat $sys_dir/revision | sed 's/^0x//')
+
+            info "intel nic"
+            echo "Ethernet: $ethx"
+            echo "Vendor: $ven"
+            echo "Device: $dev"
+            echo "Subsystem: $subsys"
+            echo "Revision: $rev"
+
+            compatible_ids="VEN_$ven&DEV_$dev&SUBSYS_$subsys&REV_$rev"
+            compatible_ids="$compatible_ids|VEN_$ven&DEV_$dev&SUBSYS_$subsys"
+            compatible_ids="$compatible_ids|VEN_$ven&DEV_$dev&REV_$rev"
+            compatible_ids="$compatible_ids|VEN_$ven&DEV_$dev"
+
+            while read -r min_ver ndis; do
+                if [ "$build_ver" -ge "$min_ver" ]; then
+                    # 只支持 PE?
+                    # 有   intel\Release_30.0.zip\PROXGB\Win32\NDIS68\WinPE\*.inf
+                    # 没有 intel\Release_30.0.zip\PROXGB\Win32\NDIS68\*.inf
+
+                    # find 只要 $drv/intel 存在返回码就是 0
+                    # rg 无需 -E
+                    # 非 WinPE 优先
+                    if infs=$(find $drv/intel -ipath "*/Win$arch_intel/$ndis/*.inf" -exec rg -iwl "$compatible_ids" {} \; | grep . ||
+                        find $drv/intel -ipath "*/Win$arch_intel/$ndis/WinPE/*.inf" -exec rg -iwl "$compatible_ids" {} \; | grep .); then
+                        for inf in $infs; do
+                            cp_drivers $inf
+                        done
+                        break
+                    fi
+                fi
+            done < <(echo "$min_support_map" | tac) # 倒序
+        done
+
+        apk del unzip ripgrep
     }
 
     # aws nitro
@@ -5853,6 +5981,8 @@ install_windows() {
     info "mount boot.wim"
     wimmountrw /os/boot.wim "$boot_index" /wim/
 
+    # 防止重复
+    copyed_infs=
     cp_drivers() {
         if [ "$1" = custom ]; then
             shift
@@ -5867,9 +5997,13 @@ install_windows() {
         # -not -iname "*.pdb" \
         # -not -iname "dpinst.exe" \
 
-        find $src -type f -iname "*.inf" "$@" | while read -r inf; do
-            parse_inf_and_cp_driever "$inf" "$dst" "$arch" false
-        done
+        # 这里需要在 while 里面变更 $copyed_infs，因此不能用 find | while
+        while read -r inf; do
+            if ! is_list_has "$copyed_infs" "$inf"; then
+                parse_inf_and_cp_driever "$inf" "$dst" "$arch" false
+                copyed_infs=$(list_add "$copyed_infs" "$inf")
+            fi
+        done < <(find $src -type f -iname "*.inf" "$@")
     }
 
     # 添加驱动
