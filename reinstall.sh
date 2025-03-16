@@ -4,7 +4,7 @@
 
 set -eE
 confhome=https://raw.githubusercontent.com/chrimast/reinstall/main
-confhome_cn=https://gitlab.com/bin456789/reinstall/-/raw/main
+confhome_cn=https://raw.githubusercontent.com/chrimast/reinstall/main
 # confhome_cn=https://www.ghproxy.cc/https://raw.githubusercontent.com/bin456789/reinstall/main
 
 # 默认密码
