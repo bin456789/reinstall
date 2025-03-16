@@ -76,7 +76,7 @@ Usage: $reinstall_____ anolis      7|8|23
                        [--web-port PORT]
                        [--allow-ping]
 
-Manual: https://github.com/bin456789/reinstall
+Manual: https://github.com/chrimast/reinstall
 
 EOF
     exit 1
