@@ -2645,7 +2645,7 @@ install_grub_linux_efi() {
     info 'download grub efi'
 
     # fedora 39 的 efi 无法识别 opensuse tumbleweed 的 xfs
-    efi_distro=opensuse
+    efi_distro=fedora
     grub_efi=$(get_grub_efi_filename)
 
     # 不要用 download.opensuse.org 和 download.fedoraproject.org
@@ -2657,7 +2657,7 @@ install_grub_linux_efi() {
     # https://mirror.fcix.net/opensuse/tumbleweed/repo/oss/EFI/BOOT/bootx64.efi
     # https://mirror.fcix.net/opensuse/tumbleweed/appliances/openSUSE-Tumbleweed-Minimal-VM.x86_64-Cloud.qcow2
     if [ "$efi_distro" = fedora ]; then
-        fedora_ver=40
+        fedora_ver=41
 
         if is_in_china; then
             mirror=https://mirror.nju.edu.cn/fedora
