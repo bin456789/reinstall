@@ -4239,8 +4239,12 @@ EOF
         fi
 
         # 主 grub.cfg
-        # --update-bls-cmdline
-        chroot /os/ grub2-mkconfig -o "$grub_o_cfg"
+        if ls /os/boot/loader/entries/*.conf >/dev/null 2>&1 &&
+            chroot /os/ grub2-mkconfig --help | grep -q update-bls-cmdline; then
+            chroot /os/ grub2-mkconfig -o "$grub_o_cfg" --update-bls-cmdline
+        else
+            chroot /os/ grub2-mkconfig -o "$grub_o_cfg"
+        fi
 
         # 网络配置
         # el7/8 sysconfig
