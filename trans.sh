@@ -46,6 +46,8 @@ warn() {
 
 error_and_exit() {
     error "$@"
+    echo "Run '/trans.sh' to retry." >&2
+    echo "Run '/trans.sh alpine' to install Alpine Linux instead." >&2
     exit 1
 }
 
@@ -53,10 +55,12 @@ trap_err() {
     line_no=$1
     ret_no=$2
 
-    error "Line $line_no return $ret_no"
-    if [ -f "/trans.sh" ]; then
-        sed -n "$line_no"p /trans.sh
-    fi
+    error_and_exit "$(
+        echo "Line $line_no return $ret_no"
+        if [ -f "/trans.sh" ]; then
+            sed -n "$line_no"p /trans.sh
+        fi
+    )"
 }
 
 is_run_from_locald() {
