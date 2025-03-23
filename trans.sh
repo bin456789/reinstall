@@ -822,8 +822,9 @@ del_invalid_efi_entry() {
     done < <(efibootmgr | grep 'HD(.*,GPT,')
 }
 
+# reinstall.sh 有同名方法
 grep_efi_index() {
-    awk -F '*' '{print $1}' | sed 's/Boot//'
+    awk '{print $1}' | sed -e 's/Boot//' -e 's/\*//'
 }
 
 # 某些机器可能不会回落到 bootx64.efi

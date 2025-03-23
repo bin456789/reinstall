@@ -2588,6 +2588,7 @@ grep_efi_entry() {
     grep -E '^Boot[0-9a-fA-F]{4}'
 }
 
+# trans.sh 有同名方法
 grep_efi_index() {
     awk '{print $1}' | sed -e 's/Boot//' -e 's/\*//'
 }
