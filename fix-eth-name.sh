@@ -7,6 +7,13 @@ set -eE
 
 # openeuler 需等待 udev 将网卡名从 eth0 改为 enp3s0
 sleep 10
+# 不知道有没有用
+if command -v udevadm >/dev/null; then
+    # udevadm trigger
+    udevadm settle
+elif command -v mdev >/dev/null; then
+    mdev -sf
+fi
 
 # 本脚本在首次进入新系统后运行
 # 将 trans 阶段生成的网络配置中的网卡名(eth0) 改为正确的网卡名，也适用于以下情况
