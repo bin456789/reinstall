@@ -395,7 +395,7 @@ bash reinstall.sh windows \
 
 #### 以下驱动会自动按需下载安装，无需手动添加
 
-- Virtio ([Virtio][virtio-virtio]，[阿里云][virtio-aliyun])
+- Virtio ([Virtio][virtio-virtio], [阿里云][virtio-aliyun], [腾讯云][virtio-qcloud], [GCP][virtio-gcp])
 - XEN ([~~XEN~~][xen-xen] (未签名), [Citrix][xen-citrix], [AWS][xen-aws])
 - AWS ([ENA 网卡][aws-ena], [NVME 存储控制器][aws-nvme])
 - GCP ([gVNIC 网卡][gcp-gvnic], [GGA 显卡][gcp-gga])
@@ -404,6 +404,8 @@ bash reinstall.sh windows \
 
 [virtio-virtio]: https://fedorapeople.org/groups/virt/virtio-win/direct-downloads/
 [virtio-aliyun]: https://www.alibabacloud.com/help/ecs/user-guide/install-the-virtio-driver-1
+[virtio-qcloud]: https://cloud.tencent.com/document/product/213/17815#b84b2032-752c-43c4-a509-73530b8f82ff
+[virtio-gcp]: https://console.cloud.google.com/storage/browser/gce-windows-drivers-public
 [xen-xen]: https://xenproject.org/resources/downloads/
 [xen-aws]: https://docs.aws.amazon.com/AWSEC2/latest/UserGuide/xen-drivers-overview.html
 [xen-citrix]: https://docs.aws.amazon.com/AWSEC2/latest/UserGuide/Upgrading_PV_drivers.html#win2008-citrix-upgrade

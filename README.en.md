@@ -395,7 +395,7 @@ bash reinstall.sh windows \
 
 #### The following drivers will automatic download and install as needed, without the need for manual addition
 
-- Virtio ([Virtio][virtio-virtio]，[Alibaba Cloud][virtio-aliyun])
+- Virtio ([Virtio][virtio-virtio], [Alibaba Cloud][virtio-aliyun], [Tencent Cloud][virtio-qcloud], [GCP][virtio-gcp])
 - XEN ([~~XEN~~][xen-xen] (unsigned), [Citrix][xen-citrix], [AWS][xen-aws])
 - AWS ([ENA Network Adapter][aws-ena], [NVME Storage Controller][aws-nvme])
 - GCP ([gVNIC Network Adapter][gcp-gvnic], [GGA Display Adapter][gcp-gga])
@@ -404,6 +404,8 @@ bash reinstall.sh windows \
 
 [virtio-virtio]: https://fedorapeople.org/groups/virt/virtio-win/direct-downloads/
 [virtio-aliyun]: https://www.alibabacloud.com/help/ecs/user-guide/install-the-virtio-driver-1
+[virtio-qcloud]: https://cloud.tencent.com/document/product/213/17815#b84b2032-752c-43c4-a509-73530b8f82ff
+[virtio-gcp]: https://console.cloud.google.com/storage/browser/gce-windows-drivers-public
 [xen-xen]: https://xenproject.org/resources/downloads/
 [xen-aws]: https://docs.aws.amazon.com/AWSEC2/latest/UserGuide/xen-drivers-overview.html
 [xen-citrix]: https://docs.aws.amazon.com/AWSEC2/latest/UserGuide/Upgrading_PV_drivers.html#win2008-citrix-upgrade
