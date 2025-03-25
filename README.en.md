@@ -414,7 +414,7 @@ bash reinstall.sh windows \
 [gcp-gvnic]: https://cloud.google.com/compute/docs/networking/using-gvnic
 [gcp-gga]: https://cloud.google.com/compute/docs/instances/enable-instance-virtual-display
 [azure-mana]: https://learn.microsoft.com/azure/virtual-network/accelerated-networking-mana-windows
-[intel-vmd]: https://www.intel.com/content/www/us/en/download/720755/intel-rapid-storage-technology-driver-installation-software-with-intel-optane-memory-11th-up-to-13th-gen-platforms.html
+[intel-vmd]: https://www.intel.com/content/www/us/en/download/849936/intel-rapid-storage-technology-driver-installation-software-with-intel-optane-memory-12th-to-15th-gen-platforms.html
 [intel-nic-7-sha1]: https://www.intel.com/content/www/us/en/download/15590/29323/intel-network-adapter-driver-for-windows-7-final-release.html
 [intel-nic-7-sha256]: https://www.intel.com/content/www/us/en/download/15590/intel-network-adapter-driver-for-windows-7-final-release.html
 [intel-nic-8]: https://www.intel.com/content/www/us/en/download/16765/intel-network-adapter-driver-for-windows-8-final-release.html

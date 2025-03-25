@@ -2164,7 +2164,7 @@ to_lower() {
 }
 
 del_cr() {
-    sed 's/\r//g'
+    sed 's/\r$//'
 }
 
 del_empty_lines() {

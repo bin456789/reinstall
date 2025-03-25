@@ -776,7 +776,7 @@ to_lower() {
 }
 
 del_cr() {
-    sed 's/\r//g'
+    sed 's/\r$//'
 }
 
 del_comment_lines() {
@@ -5456,10 +5456,11 @@ install_windows() {
         fi
 
         # vmd
-        # 改进: 像检测 virtio 那样直接从 /sys 检测设备
-        # inf 有要求 19041 或以上
-        if [ "$build_ver" -ge 19041 ] && [ "$arch_wim" = x86_64 ] &&
-            is_lspci_contains 'Volume Management Device'; then
+        # RST v17 不支持 vmd
+        # RST v18 inf 要求 15063 或以上
+        # RST v19 inf 要求 15063 或以上
+        # RST v20 inf 要求 19041 或以上
+        if [ -d /sys/module/vmd ] && [ "$build_ver" -ge 15063 ] && [ "$arch_wim" = x86_64 ]; then
             add_driver_vmd
         fi
 
@@ -6049,7 +6050,12 @@ EOF
 
     add_driver_vmd() {
         apk add 7zip
-        download https://downloadmirror.intel.com/820815/SetupRST.exe $drv/SetupRST.exe
+        if [ "$build_ver" -ge 19041 ]; then
+            url=https://downloadmirror.intel.com/849939/SetupRST.exe # RST v20
+        elif [ "$build_ver" -ge 15063 ]; then
+            url=https://downloadmirror.intel.com/849934/SetupRST.exe # RST v19
+        fi
+        download $url $drv/SetupRST.exe
         7z x $drv/SetupRST.exe -o$drv/SetupRST -i!.text
         7z x $drv/SetupRST/.text -o$drv/vmd
         cp_drivers $drv/vmd
