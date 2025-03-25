@@ -1,16 +1,42 @@
 #!/bin/ash
 # shellcheck shell=dash
-# shellcheck disable=SC3001,SC3010
+# shellcheck disable=SC3001,SC3003,SC3010
 # reinstall.sh / trans.sh 共用此文件
 
-# inf 是 utf-16-le 编码会有问题？要用 rg 或者 grep -a a.b.c.d ?
+# grep 无法处理 UTF-16LE 编码的 inf，有以下几种解决方法
+# 1. 使用 ripgrep (rg) 或者 ugrep，但 cygwin 没有
+# 2. grep -a a.b.c.d
+# 3. iconv -f UTF-16 -t UTF-8
 
 del_inf_comment() {
     sed 's/;.*//'
 }
 
 simply_inf() {
-    del_cr | del_inf_comment | trim | del_empty_lines
+    convert_file_to_utf8 "$1" | del_cr | del_inf_comment | trim | del_empty_lines
+}
+
+convert_file_to_utf8() {
+    # ash 用 * 比较字符串有问题
+    # [[ $'\xEF\xBB' = $'\xEF\xBB*' ]] && echo 1
+
+    # UTF-16LE without BOM 要处理吗？ windows 支持这种编码的 inf?
+
+    # UTF-16LE with BOM
+    if [ "$(head -c2 "$1")" = $'\xFF\xFE' ]; then
+        # -f UTF-16LE -t UTF-8 会添加 UTF-8 BOM
+        iconv -f UTF-16 -t UTF-8 "$1"
+
+    # UTF-8 with BOM
+    elif [ "$(head -c3 "$1")" = $'\xEF\xBB\xBF' ]; then
+        # busybox sed 不支持
+        # sed '1s/^\xEF\xBB\xBF//' "$1"
+        tail -c +4 "$1"
+
+    # 其它
+    else
+        cat "$1"
+    fi
 }
 
 simply_inf_word() {
@@ -35,7 +61,7 @@ list_files_from_inf() {
     local mix_x86_x86_64=$3
 
     # 所有字段不区分大小写
-    inf_txts=$(simply_inf <"$inf" | to_lower)
+    inf_txts=$(simply_inf "$inf" | to_lower)
 
     is_match_section() {
         local section=$1
