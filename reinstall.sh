@@ -2164,7 +2164,9 @@ to_lower() {
 }
 
 del_cr() {
-    sed 's/\r$//'
+    # wmic/reg 换行符是 \r\r\n
+    # wmic nicconfig where InterfaceIndex=$id get MACAddress,IPAddress,IPSubnet,DefaultIPGateway | hexdump -c
+    sed -E 's/\r+$//'
 }
 
 del_empty_lines() {
