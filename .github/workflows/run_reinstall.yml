@@ -8,7 +8,6 @@ jobs:
   run:
     name: 运行主程序
     strategy:
-      fail-fast: false
       matrix:
         os: [ubuntu-latest, windows-latest]
         include:
