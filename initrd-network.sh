@@ -426,8 +426,10 @@ if ! $ipv4_has_internet &&
     add_missing_ipv4_config
     test_internet
 fi
+# 有可能是静态 IPv6 但能从 RA 获取到网关，因此加上 || $ra_has_gateway
 if ! $ipv6_has_internet &&
-    $dhcpv6_or_slaac && [ -n "$ipv6_addr" ] && [ -n "$ipv6_gateway" ] &&
+    { $dhcpv6_or_slaac || $ra_has_gateway; } &&
+    [ -n "$ipv6_addr" ] && [ -n "$ipv6_gateway" ] &&
     ! { [ "$ipv6_addr" = "$(get_first_ipv6_addr)" ] || [ "$ipv6_gateway" = "$(get_first_ipv6_gateway)" ]; }; then
     echo "IPv6 netmask/gateway obtained from SLAAC/DHCPv6 is different from old system."
     dhcpv6_or_slaac=false
