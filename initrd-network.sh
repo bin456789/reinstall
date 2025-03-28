@@ -419,7 +419,7 @@ test_internet
 # IP 不同的情况在前面已经改成静态了
 if ! $ipv4_has_internet &&
     $dhcpv4 && [ -n "$ipv4_addr" ] && [ -n "$ipv4_gateway" ] &&
-    ! { [ "$ipv4_addr" = "$(get_first_ipv4_addr)" ] || [ "$ipv4_gateway" = "$(get_first_ipv4_gateway)" ]; }; then
+    ! { [ "$ipv4_addr" = "$(get_first_ipv4_addr)" ] && [ "$ipv4_gateway" = "$(get_first_ipv4_gateway)" ]; }; then
     echo "IPv4 netmask/gateway obtained from DHCP is different from old system."
     dhcpv4=false
     flush_ipv4_config
@@ -430,7 +430,7 @@ fi
 if ! $ipv6_has_internet &&
     { $dhcpv6_or_slaac || $ra_has_gateway; } &&
     [ -n "$ipv6_addr" ] && [ -n "$ipv6_gateway" ] &&
-    ! { [ "$ipv6_addr" = "$(get_first_ipv6_addr)" ] || [ "$ipv6_gateway" = "$(get_first_ipv6_gateway)" ]; }; then
+    ! { [ "$ipv6_addr" = "$(get_first_ipv6_addr)" ] && [ "$ipv6_gateway" = "$(get_first_ipv6_gateway)" ]; }; then
     echo "IPv6 netmask/gateway obtained from SLAAC/DHCPv6 is different from old system."
     dhcpv6_or_slaac=false
     should_disable_accept_ra=true
