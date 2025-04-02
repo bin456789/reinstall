@@ -3870,22 +3870,31 @@ chroot_dnf() {
     fi
 }
 
-chroot_apt_install() {
+chroot_apt_update() {
     os_dir=$1
-    shift
 
     current_hash=$(cat $os_dir/etc/apt/sources.list $os_dir/etc/apt/sources.list.d/*.sources 2>/dev/null | md5sum)
     if ! [ "$saved_hash" = "$current_hash" ]; then
         chroot $os_dir apt-get update
         saved_hash="$current_hash"
     fi
+}
 
+chroot_apt_install() {
+    os_dir=$1
+    shift
+
+    chroot_apt_update $os_dir
     DEBIAN_FRONTEND=noninteractive chroot $os_dir apt-get install -y "$@"
 }
 
 chroot_apt_remove() {
     os_dir=$1
     shift
+
+    # minimal 镜像 删除 grub-pc 时会安装 grub-efi-amd64
+    # 因此需要先更新索引
+    chroot_apt_update $os_dir
 
     # 不能用 apt remove --purge -y xxx yyy
     # 因为如果索引里没有其中一个，会报错，另一个也不会删除
