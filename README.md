@@ -38,10 +38,10 @@
 | <img width="16" height="16" src="https://img.alicdn.com/imgextra/i1/O1CN01oJnJZg1yK4RzI4Rx2_!!6000000006559-2-tps-118-118.png" /> Anolis                                                                                                                                                                                                                               | 7, 8, 23                              | 512 MB \* | 5 GB         |
 | <img width="16" height="16" src="https://www.redhat.com/favicon.ico" /> RHEL &nbsp;<img width="16" height="16" src="https://almalinux.org/fav/favicon.ico" /> AlmaLinux &nbsp;<img width="16" height="16" src="https://rockylinux.org/favicon.png" /> Rocky &nbsp;<img width="16" height="16" src="https://www.oracle.com/asset/web/favicons/favicon-32.png" /> Oracle | 8, 9                                  | 512 MB \* | 5 GB         |
 | <img width="16" height="16" src="https://opencloudos.org/qq.ico" /> OpenCloudOS                                                                                                                                                                                                                                                                                        | 8, 9, Stream 23                       | 512 MB \* | 5 GB         |
-| <img width="16" height="16" src="https://www.centos.org/assets/icons/favicon.svg" /> CentOS                                                                                                                                                                                                                                                                            | 9, 10                                 | 512 MB \* | 5 GB         |
+| <img width="16" height="16" src="https://www.centos.org/assets/icons/favicon.svg" /> CentOS Stream                                                                                                                                                                                                                                                                     | 9, 10                                 | 512 MB \* | 5 GB         |
 | <img width="16" height="16" src="https://fedoraproject.org/favicon.ico" /> Fedora                                                                                                                                                                                                                                                                                      | 40, 41                                | 512 MB \* | 5 GB         |
-| <img width="16" height="16" src="https://www.openeuler.org/favicon.ico" /> openEuler                                                                                                                                                                                                                                                                                   | 20.03 LTS - 24.03 LTS, 24.09          | 512 MB \* | 5 GB         |
-| <img width="16" height="16" src="https://static.opensuse.org/favicon.ico" /> openSUSE                                                                                                                                                                                                                                                                                  | 15.6, Tumbleweed (滚动)               | 512 MB \* | 5 GB         |
+| <img width="16" height="16" src="https://www.openeuler.org/favicon.ico" /> openEuler                                                                                                                                                                                                                                                                                   | 20.03 LTS - 24.03 LTS, 25.03          | 512 MB \* | 5 GB         |
+| <img width="16" height="16" src="https://static.opensuse.org/favicon.ico" /> openSUSE                                                                                                                                                                                                                                                                                  | Leap 15.6, Tumbleweed (滚动)          | 512 MB \* | 5 GB         |
 | <img width="16" height="16" src="https://github.com/user-attachments/assets/99a542b6-6482-4086-addf-f192c06fef73" /> NixOS                                                                                                                                                                                                                                             | 24.11                                 | 512 MB    | 5 GB         |
 | <img width="16" height="16" src="https://archlinux.org/static/favicon.png" /> Arch                                                                                                                                                                                                                                                                                     | 滚动                                  | 512 MB    | 5 GB         |
 | <img width="16" height="16" src="https://www.gentoo.org/assets/img/logo/gentoo-g.png" /> Gentoo                                                                                                                                                                                                                                                                        | 滚动                                  | 512 MB    | 5 GB         |
@@ -137,7 +137,7 @@ bash reinstall.sh anolis      7|8|23
                   debian      9|10|11|12
                   opensuse    15.6|tumbleweed
                   alpine      3.18|3.19|3.20|3.21
-                  openeuler   20.03|22.03|24.03|24.09
+                  openeuler   20.03|22.03|24.03|25.03
                   ubuntu      16.04|18.04|20.04|22.04|24.04|24.10 [--minimal]
                   kali
                   arch
@@ -465,7 +465,7 @@ Windows Server 2025 SERVERDATACENTER
 
 #### ARM 安装 Windows 的注意事项
 
-大部分 ARM 机器都支持安装 Windows 11 24H2
+大部分 ARM 机器都支持安装最新版 Windows 11
 
 安装过程可能会黑屏，串行控制台可能会显示 `ConvertPages: failed to find range`，均不影响正常安装
 

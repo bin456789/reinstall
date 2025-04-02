@@ -57,7 +57,7 @@ Usage: $reinstall_____ anolis      7|8|23
                        debian      9|10|11|12
                        opensuse    15.6|tumbleweed
                        alpine      3.18|3.19|3.20|3.21
-                       openeuler   20.03|22.03|24.03|24.09
+                       openeuler   20.03|22.03|24.03|25.03
                        ubuntu      16.04|18.04|20.04|22.04|24.04|24.10 [--minimal]
                        kali
                        arch
@@ -1046,12 +1046,6 @@ setos() {
     setos_alpine() {
         is_virt && flavour=virt || flavour=lts
 
-        # alpine aarch64 3.16/3.17 virt 没有直连链接
-        if [ "$basearch" = aarch64 ] &&
-            { [ "$releasever" = 3.16 ] || [ "$releasever" = 3.17 ]; }; then
-            flavour=lts
-        fi
-
         # 不要用https 因为甲骨文云arm initramfs阶段不会从硬件同步时钟，导致访问https出错
         if is_in_china; then
             mirror=http://mirror.nju.edu.cn/alpine/v$releasever
@@ -1761,7 +1755,7 @@ verify_os_name() {
         'debian      9|10|11|12' \
         'opensuse    15.6|tumbleweed' \
         'alpine      3.18|3.19|3.20|3.21' \
-        'openeuler   20.03|22.03|24.03|24.09' \
+        'openeuler   20.03|22.03|24.03|25.03' \
         'ubuntu      16.04|18.04|20.04|22.04|24.04|24.10' \
         'kali' \
         'arch' \
@@ -3410,15 +3404,13 @@ EOF
     # grep -E -A5 'configure_ip\(\)' init
 
     # hack 4 运行 trans.start
-    # exec /bin/busybox switch_root $switch_root_opts $sysroot $chart_init "$KOPT_init" $KOPT_init_args # 3.17
-    # exec              switch_root $switch_root_opts $sysroot $chart_init "$KOPT_init" $KOPT_init_args # 3.18
     # 1. alpine arm initramfs 时间问题 要添加 --no-check-certificate
     # 2. aws t4g arm 如果没设置console=ttyx，在initramfs里面wget https会出现bad header错误，chroot后正常
     # Connecting to raw.githubusercontent.com (185.199.108.133:443)
     # 60C0BB2FFAFF0000:error:0A00009C:SSL routines:ssl3_get_record:http request:ssl/record/ssl3_record.c:345:
     # ssl_client: SSL_connect
     # wget: bad header line: �
-    insert_into_file init before '^exec (/bin/busybox )?switch_root' <<EOF
+    insert_into_file init before '^exec switch_root' <<EOF
         # trans
         # echo "wget --no-check-certificate -O- $confhome/trans.sh | /bin/ash" >\$sysroot/etc/local.d/trans.start
         # wget --no-check-certificate -O \$sysroot/etc/local.d/trans.start $confhome/trans.sh
