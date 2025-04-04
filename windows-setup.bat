@@ -19,7 +19,7 @@ rem echo a | find "a"
 rem 使用高性能模式
 rem https://learn.microsoft.com/windows-hardware/manufacture/desktop/capture-and-apply-windows-using-a-single-wim
 rem win8 pe 没有 powercfg
-call powercfg /s 8c5e7fda-e8bf-4a96-9a85-a6e23a8c635c 2>nul
+powercfg /s SCHEME_MIN 2>nul
 
 rem 安装 SCSI 驱动
 if exist X:\drivers\ (
