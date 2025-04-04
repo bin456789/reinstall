@@ -1,15 +1,21 @@
-name: 同步到 Gitlab CN
+name: 删除 Gitlab CN
 on:
   workflow_dispatch:
   push:
 jobs:
   run:
-    name: 同步到 Gitlab CN
+    name: 删除 Gitlab CN
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
-        with:
-          fetch-depth: 0
+      - run: |
+          rm -rf *
+          git config --global user.email "you@example.com"
+          git config --global user.name "Your Name"
+          git init .
+          git add .
+          git branch -m main
+          git commit -m "null" --allow-empty
+
       - uses: yesolutions/mirror-action@master
         with:
           REMOTE: https://jihulab.com/bin456789/reinstall.git
