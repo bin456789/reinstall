@@ -761,9 +761,9 @@ get_current_dns() {
     # debian 11 initrd 没有 xargs awk
     # debian 12 initrd 没有 xargs
     if false; then
-        grep '^nameserver' /etc/resolv.conf | awk '{print $2}' | grep -F "$mark"
+        grep '^nameserver' /etc/resolv.conf | awk '{print $2}' | grep -F "$mark" | cut -d '%' -f1
     else
-        grep '^nameserver' /etc/resolv.conf | cut -d' ' -f2 | grep -F "$mark"
+        grep '^nameserver' /etc/resolv.conf | cut -d' ' -f2 | grep -F "$mark" | cut -d '%' -f1
     fi
 }
 
