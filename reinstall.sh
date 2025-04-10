@@ -1363,12 +1363,29 @@ Continue?
             fi
             file=openSUSE-Tumbleweed-Minimal-VM.$basearch-Cloud.qcow2
         else
-            # 常规版本
+            # leap
             dir=distribution/leap/$releasever/appliances
-            file=openSUSE-Leap-$releasever-Minimal-VM.$basearch-Cloud.qcow2
-        fi
+            if [ "$releasever" = 15.6 ]; then
+                file=openSUSE-Leap-$releasever-Minimal-VM.$basearch-Cloud.qcow2
+                # https://build.opensuse.org/projects/Virtualization:Appliances:Images:openSUSE-Leap-15.6/packages/kiwi-templates-Minimal/files/Minimal.kiwi
+                # https://build.opensuse.org/projects/Virtualization:Appliances:Images:openSUSE-Tumbleweed/packages/kiwi-templates-Minimal/files/Minimal.kiwi
+                # 有专门的kvm镜像，openSUSE-Leap-15.5-Minimal-VM.x86_64-kvm-and-xen.qcow2，里面没有cloud-init
+                # file=openSUSE-Leap-15.5-Minimal-VM.x86_64-kvm-and-xen.qcow2
+            else
+                # https://src.opensuse.org/openSUSE/Leap/raw/branch/16.0/Leap/Leap.kiwi
+                # Default 比 Base 多了以下组件
+                # <namedCollection name="salt_minion" />
+                # <package name="patterns-base-salt_minion" />
+                # <namedCollection name="kvm_host" />
+                # <package name="patterns-base-kvm_host" />
+                # <package name="lzop" />
+                # <package name="wpa_supplicant" arch="x86_64,aarch64" />
+                # <package name="k3s-install" />
 
-        # 有专门的kvm镜像，openSUSE-Leap-15.5-Minimal-VM.x86_64-kvm-and-xen.qcow2，但里面没有cloud-init
+                # file=Leap.x86_64-Default.raw.xz
+                file=Leap.x86_64-Base.raw.xz
+            fi
+        fi
         eval ${step}_img=$mirror/$dir/$file
     }
 
@@ -1713,7 +1730,7 @@ Continue with DD?
     # 集中测试云镜像格式
     if is_use_cloud_image && [ "$step" = finalos ]; then
         # shellcheck disable=SC2154
-        test_url $finalos_img 'qemu qemu.gzip qemu.xz qemu.zstd' finalos_img_type
+        test_url $finalos_img 'qemu qemu.gzip qemu.xz qemu.zstd raw.xz' finalos_img_type
     fi
 }
 
@@ -1753,7 +1770,7 @@ verify_os_name() {
         'fedora      40|41' \
         'nixos       24.11' \
         'debian      9|10|11|12' \
-        'opensuse    15.6|tumbleweed' \
+        'opensuse    15.6|16.0|tumbleweed' \
         'alpine      3.18|3.19|3.20|3.21' \
         'openeuler   20.03|22.03|24.03|25.03' \
         'ubuntu      16.04|18.04|20.04|22.04|24.04|24.10' \

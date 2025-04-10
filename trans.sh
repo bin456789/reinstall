@@ -3152,7 +3152,8 @@ EOF
 
         remove_cloud_init $os_dir
 
-        disable_selinux_kdump $os_dir
+        disable_selinux $os_dir
+        disable_kdump $os_dir
 
         if fw_pkgs=$(get_ucode_firmware_pkgs) && [ -n "$fw_pkgs" ]; then
             is_have_cmd_on_disk $os_dir dnf && mgr=dnf || mgr=yum
@@ -3344,9 +3345,17 @@ EOF
 
         disable_jeos_firstboot $os_dir
 
-        # opensuse leap
-        if grep opensuse-leap $os_dir/etc/os-release; then
+        # 16.0 需要安装 openssh
+        if ! chroot $os_dir rpm -qi openssh-server; then
+            chroot $os_dir zypper install -y openssh-server
+        fi
 
+        # 禁用 selinux
+        disable_selinux $os_dir
+
+        # opensuse leap 15.6 用 wicked
+        # opensuse leap 16.0 / tumbleweed 用 NetworkManager
+        if chroot $os_dir rpm -qi wicked; then
             # sysconfig ifcfg
             create_cloud_init_network_config $os_dir/net.cfg
             chroot $os_dir cloud-init devel net-convert \
@@ -3388,11 +3397,8 @@ EOF
 
             # 清理
             rm -rf $os_dir/net.cfg $os_dir/out
-        fi
 
-        # opensuse tumbleweed
-        # network-manager
-        if grep opensuse-tumbleweed $os_dir/etc/os-release; then
+        else
             # 如果使用 cloud-init 则需要 touch NetworkManager.conf
             # 更新到 cloud-init 24.1 后删除
             # touch $os_dir/etc/NetworkManager/NetworkManager.conf
@@ -3403,32 +3409,43 @@ EOF
             rm /net.cfg
         fi
 
+        # 选择新内核
+        # 只有 leap 有 kernel-azure
+        if grep -iq leap $os_dir/etc/os-release && [ "$(get_cloud_vendor)" = azure ]; then
+            target_kernel='kernel-azure'
+        else
+            target_kernel='kernel-default'
+        fi
+
+        # rpm -qi 不支持通配符
+        installed_kernel=$(chroot $os_dir rpm -qa 'kernel-*' --qf '%{NAME}\n' | grep -v firmware)
+        if ! [ "$(echo "$installed_kernel" | wc -l)" -eq 1 ]; then
+            error_and_exit "Unexpected kernel installed: $installed_kernel"
+        fi
+
+        # 15.6 / tumbleweed 自带的是 kernel-default-base
+        # 16.0 自带的是 kernel-default
         # 不能同时装 kernel-default-base 和 kernel-default
-        chroot $os_dir zypper remove -y -u kernel-default-base
+
+        if ! [ "$installed_kernel" = "$target_kernel" ]; then
+            chroot $os_dir zypper remove -y -u $installed_kernel
+
+            # x86 必须设置一个密码，否则报错，arm 没有这个问题
+            # Failed to get root password hash
+            # Failed to import /etc/uefi/certs/76B6A6A0.crt
+            # warning: %post(kernel-default-5.14.21-150500.55.83.1.x86_64) scriptlet failed, exit status 255
+            if grep -q '^root:[:!*]' $os_dir/etc/shadow; then
+                echo "root:$(mkpasswd '')" | chroot $os_dir chpasswd -e
+                chroot $os_dir zypper install -y $target_kernel
+                chroot $os_dir passwd -d root
+            else
+                chroot $os_dir zypper install -y $target_kernel
+            fi
+        fi
 
         # 固件+微码
         if fw_pkgs=$(get_ucode_firmware_pkgs) && [ -n "$fw_pkgs" ]; then
             chroot $os_dir zypper install -y $fw_pkgs
-        fi
-
-        # 选择新内核
-        # 只有 leap 有 kernel-azure
-        if grep -q opensuse-leap $os_dir/etc/os-release && [ "$(get_cloud_vendor)" = azure ]; then
-            kernel='kernel-azure'
-        else
-            kernel='kernel-default'
-        fi
-
-        # x86 必须设置一个密码，否则报错，arm 没有这个问题
-        # Failed to get root password hash
-        # Failed to import /etc/uefi/certs/76B6A6A0.crt
-        # warning: %post(kernel-default-5.14.21-150500.55.83.1.x86_64) scriptlet failed, exit status 255
-        if grep -q '^root:[:!*]' $os_dir/etc/shadow; then
-            echo "root:$(mkpasswd '')" | chroot $os_dir chpasswd -e
-            chroot $os_dir zypper install -y $kernel
-            chroot $os_dir passwd -d root
-        else
-            chroot $os_dir zypper install -y $kernel
         fi
 
         # 最后才删除 cloud-init
@@ -3707,10 +3724,9 @@ change_root_password() {
     fi
 }
 
-disable_selinux_kdump() {
+disable_selinux() {
     os_dir=$1
 
-    # selinux
     # https://access.redhat.com/solutions/3176
     # centos7 也建议将 selinux 开关写在 cmdline
     # grep selinux=0 /usr/lib/dracut/modules.d/98selinux/selinux-loadpolicy.sh
@@ -3718,9 +3734,28 @@ disable_selinux_kdump() {
     if [ -f $os_dir/etc/selinux/config ]; then
         sed -i 's/^SELINUX=enforcing/SELINUX=disabled/g' $os_dir/etc/selinux/config
     fi
-    chroot $os_dir grubby --update-kernel ALL --args selinux=0
 
-    # kdump
+    # opensuse 没有安装 grubby
+    if is_have_cmd_on_disk $os_dir grubby; then
+        # grubby 只处理 GRUB_CMDLINE_LINUX，不会处理 GRUB_CMDLINE_LINUX_DEFAULT
+        # rocky 的 GRUB_CMDLINE_LINUX_DEFAULT 有 crashkernel=auto
+        chroot $os_dir grubby --update-kernel ALL --args selinux=0
+
+        # el7 上面那条 grubby 命令不能设置 /etc/default/grub
+        sed -i 's/selinux=1/selinux=0/' $os_dir/etc/default/grub
+    else
+        # 有可能没有 selinux 参数，但现在的镜像没有这个问题
+        # sed -Ei 's/[[:space:]]?(security|selinux|enforcing)=[^ ]*//g' $os_dir/etc/default/grub
+        sed -i 's/selinux=1/selinux=0/' $os_dir/etc/default/grub
+
+        # 如果需要用 snapshot 可以用 transactional-update grub.cfg
+        chroot $os_dir grub2-mkconfig -o /boot/grub2/grub.cfg
+    fi
+}
+
+disable_kdump() {
+    os_dir=$1
+
     # grubby 只处理 GRUB_CMDLINE_LINUX，不会处理 GRUB_CMDLINE_LINUX_DEFAULT
     # rocky 的 GRUB_CMDLINE_LINUX_DEFAULT 有 crashkernel=auto
 
@@ -4111,7 +4146,8 @@ install_qcow_by_copy() {
         del_default_user /os
 
         # selinux kdump
-        disable_selinux_kdump /os
+        disable_selinux /os
+        disable_kdump /os
 
         # el7 删除 machine-id 后不会自动重建
         clear_machine_id /os
@@ -4877,6 +4913,7 @@ fix_gpt_backup_partition_table_by_sgdisk() {
 
 # 适用于 DD 后修复 gpt 备份分区表
 fix_gpt_backup_partition_table_by_parted() {
+    apk add parted
     parted /dev/$xda -f -s print
     update_part
 }
