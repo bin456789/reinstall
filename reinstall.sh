@@ -1249,7 +1249,7 @@ Continue?
             fi
 
             # iso
-            filename=$(curl -L $mirror | grep -oP "ubuntu-$releasever.*?-live-server-$basearch_alt.iso" |
+            filename=$(curl -L $mirror/ | grep -oP "ubuntu-$releasever.*?-live-server-$basearch_alt.iso" |
                 sort -uV | tail -1 | grep .)
             iso=$mirror/$filename
             # 在 ubuntu 20.04 上，file 命令检测 ubuntu 22.04 iso 结果是 DOS/MBR boot sector
@@ -1559,7 +1559,7 @@ Continue with DD?
                 centos) ci_mirror="https://cloud.centos.org/centos" ;;
                 almalinux) ci_mirror="https://repo.almalinux.org/almalinux/$releasever/cloud/$basearch/images" ;;
                 rocky) ci_mirror="https://download.rockylinux.org/pub/rocky/$releasever/images/$basearch" ;;
-                fedora) ci_mirror="https://dl.fedoraproject.org/pub/fedora/linux/releases/$releasever/Cloud/$basearch/images" ;;
+                fedora) ci_mirror="https://d2lzkl7pfhq30w.cloudfront.net/pub/fedora/linux/releases/$releasever/Cloud/$basearch/images" ;;
                 esac
             fi
             case $distro in
@@ -1583,7 +1583,10 @@ Continue with DD?
             almalinux) ci_image=$ci_mirror/AlmaLinux-$releasever-GenericCloud-latest.$basearch.qcow2 ;;
             rocky) ci_image=$ci_mirror/Rocky-$releasever-GenericCloud-Base.latest.$basearch.qcow2 ;;
             fedora)
-                filename=$(curl -L $ci_mirror | grep -oP "Fedora-Cloud-Base-Generic.*?.qcow2" |
+                # 不加 / 会跳转到 https://dl.fedoraproject.org，纯 ipv6 无法访问
+                # curl -L -6 https://d2lzkl7pfhq30w.cloudfront.net/pub/fedora/linux/releases/41/Cloud/x86_64/images
+                # curl -L -6 https://d2lzkl7pfhq30w.cloudfront.net/pub/fedora/linux/releases/41/Cloud/x86_64/images/
+                filename=$(curl -L $ci_mirror/ | grep -oP "Fedora-Cloud-Base-Generic.*?.qcow2" |
                     sort -uV | tail -1 | grep .)
                 ci_image=$ci_mirror/$filename
                 ;;
@@ -1750,6 +1753,11 @@ is_distro_like_debian() {
         _distro=$distro
     fi
     [ "$_distro" = debian ] || [ "$_distro" = kali ]
+}
+
+get_latest_distro_releasever() {
+    get_function_content verify_os_name |
+        grep -wo "$1 [^'\"]*" | awk -F'|' '{print $NF}'
 }
 
 # 检查是否为正确的系统名
@@ -2670,13 +2678,16 @@ install_grub_linux_efi() {
     # fcix 经常 404
     # https://mirror.fcix.net/opensuse/tumbleweed/repo/oss/EFI/BOOT/bootx64.efi
     # https://mirror.fcix.net/opensuse/tumbleweed/appliances/openSUSE-Tumbleweed-Minimal-VM.x86_64-Cloud.qcow2
+
+    # dl.fedoraproject.org 不支持 ipv6
+
     if [ "$efi_distro" = fedora ]; then
-        fedora_ver=41
+        fedora_ver=$(get_latest_distro_releasever fedora)
 
         if is_in_china; then
             mirror=https://mirror.nju.edu.cn/fedora
         else
-            mirror=https://dl.fedoraproject.org/pub/fedora/linux
+            mirror=https://d2lzkl7pfhq30w.cloudfront.net/pub/fedora/linux
         fi
 
         curl -Lo $tmp/$grub_efi $mirror/releases/$fedora_ver/Everything/$basearch/os/EFI/BOOT/$grub_efi
@@ -4015,8 +4026,7 @@ if is_netboot_xyz ||
     setos nextos $distro $releasever
 else
     # alpine 作为中间系统时，使用最新版
-    alpine_ver_for_trans=$(get_function_content verify_os_name |
-        grep -o 'alpine[ 0-9\.\|]*' | awk -F'|' '{print $NF}')
+    alpine_ver_for_trans=$(get_latest_distro_releasever alpine)
     setos finalos $distro $releasever
     setos nextos alpine $alpine_ver_for_trans
 fi
