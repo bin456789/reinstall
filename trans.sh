@@ -5600,8 +5600,8 @@ install_windows() {
 26100 WS2025
 EOF
             case "$windows_type" in
-            client) grep -E 'NDIS|^WS' ;;
-            server) grep -E 'NDIS|WS' ;;
+            client) grep -E ' (NDIS|W)[0-9]' ;;
+            server) grep -E ' (NDIS|WS)[0-9]' ;;
             esac)
 
         for ethx in $(get_eths); do
