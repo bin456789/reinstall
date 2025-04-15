@@ -52,7 +52,7 @@ Usage: $reinstall_____ anolis      7|8|23
                        oracle      8|9
                        almalinux   8|9
                        centos      9|10
-                       fedora      40|41
+                       fedora      41|42
                        nixos       24.11
                        debian      9|10|11|12
                        opensuse    15.6|tumbleweed
@@ -200,13 +200,25 @@ get_os_part() {
     awk '($2=="/") { print $1 }' /proc/mounts
 }
 
+umount_all() {
+    # windows defender 打开时，cygwin 运行 mount 很慢，但 cat /proc/mounts 很快
+    if mount_lists=$(mount | grep -w "on $1" | awk '{print $3}' | grep .); then
+        # alpine 没有 -R
+        if umount --help 2>&1 | grep -wq -- '-R'; then
+            umount -R "$1"
+        else
+            echo "$mount_lists" | tac | xargs -n1 umount
+        fi
+    fi
+}
+
 cp_to_btrfs_root() {
     mount_dir=$tmp/reinstall-btrfs-root
     if ! grep -q $mount_dir /proc/mounts; then
         mkdir -p $mount_dir
         mount "$(get_os_part)" $mount_dir -t btrfs -o subvol=/
     fi
-    cp -rf "$@" $tmp/reinstall-btrfs-root
+    cp -rf "$@" "$mount_dir"
 }
 
 is_host_has_ipv4_and_ipv6() {
@@ -1584,8 +1596,8 @@ Continue with DD?
             rocky) ci_image=$ci_mirror/Rocky-$releasever-GenericCloud-Base.latest.$basearch.qcow2 ;;
             fedora)
                 # 不加 / 会跳转到 https://dl.fedoraproject.org，纯 ipv6 无法访问
-                # curl -L -6 https://d2lzkl7pfhq30w.cloudfront.net/pub/fedora/linux/releases/41/Cloud/x86_64/images
-                # curl -L -6 https://d2lzkl7pfhq30w.cloudfront.net/pub/fedora/linux/releases/41/Cloud/x86_64/images/
+                # curl -L -6 https://d2lzkl7pfhq30w.cloudfront.net/pub/fedora/linux/releases/42/Cloud/x86_64/images
+                # curl -L -6 https://d2lzkl7pfhq30w.cloudfront.net/pub/fedora/linux/releases/42/Cloud/x86_64/images/
                 filename=$(curl -L $ci_mirror/ | grep -oP "Fedora-Cloud-Base-Generic.*?.qcow2" |
                     sort -uV | tail -1 | grep .)
                 ci_image=$ci_mirror/$filename
@@ -1775,7 +1787,7 @@ verify_os_name() {
         'rocky       8|9' \
         'redhat      8|9' \
         'oracle      8|9' \
-        'fedora      40|41' \
+        'fedora      41|42' \
         'nixos       24.11' \
         'debian      9|10|11|12' \
         'opensuse    15.6|16.0|tumbleweed' \
@@ -2979,8 +2991,9 @@ mkdir_clear() {
         return
     fi
 
-    # alpine 没有 -R
-    # { umount $dir || umount -R $dir || true; } 2>/dev/null
+    # 再次运行时，有可能 mount 了 btrfs root，因此先要 umount_all
+    # 但目前不需要 mount ，因此用不到
+    # umount_all $dir
     rm -rf $dir
     mkdir -p $dir
 }

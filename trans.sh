@@ -2030,6 +2030,8 @@ EOF
         cat -n net.cfg
         # 正常应该是 -D gentoo，但 alpine 的 cloud-init 包缺少 gentoo 配置
         cloud-init devel net-convert -p net.cfg -k yaml -d out -D alpine -O networkd
+
+        # 注意名字是 10-cloud-init-eth*.network，fix-eth-name.sh 会此文件名查找配置文件
         cp out/etc/systemd/network/10-cloud-init-eth*.network $os_dir/etc/systemd/network/
 
         # 删除网卡名匹配
@@ -2359,7 +2361,7 @@ create_part() {
 
         # 向下取整 MiB
         # gpt 最后 33 个扇区是备份分区表，不可用
-        # parted 会忽略最后不足 1MiB 的部分
+        # parted 结束位置填 100% 时也会忽略最后不足 1MiB 的部分，我们模仿它
         max_can_use_m=$((total_sector_count_except_backup_gpt * sector_size / 1024 / 1024))
 
         echo "expect_m: $expect_m"
@@ -6726,6 +6728,8 @@ elif [ "$1" = "alpine" ]; then
     distro=alpine
     # 后面的步骤很多都会用到这个，例如分区布局
     cloud_image=0
+elif [ -n "$1" ]; then
+    error_and_exit "unknown option $1"
 fi
 
 # 无参数运行部分
