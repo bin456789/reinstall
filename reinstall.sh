@@ -2093,9 +2093,10 @@ check_ram() {
     fi
 
     # 用于兜底，不太准确
+    # cygwin 要装 procps-ng 才有 free 命令
     if [ -z $ram_size ]; then
-        ram_size=$(free -m | grep ^Mem: | awk '{print $2}')
-        ram_size=$((ram_size + 64 + 4))
+        ram_size_k=$(grep '^MemTotal:' /proc/meminfo | awk '{print $2}')
+        ram_size=$((ram_size_k / 1024 + 64 + 4))
     fi
 
     if [ -z $ram_size ] || [ $ram_size -le 0 ]; then
