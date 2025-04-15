@@ -704,26 +704,27 @@ is_have_rdnss() {
     [ -n "$rdnss" ]
 }
 
+# dd 完检测到镜像是 windows 时会改写此方法
 is_windows() {
-    for dir in /os /wim; do
-        [ -d $dir/Windows/System32 ] && return 0
-    done
-    return 1
+    [ "$distro" = windows ]
 }
 
 # 15063 或之后才支持 rdnss
 is_windows_support_rdnss() {
+    [ "$build_ver" -ge 15063 ]
+}
+
+get_windows_version_from_dll() {
+    local dll=$1
+    [ -f "$dll" ] || error_and_exit "File not found: $dll"
+
     apk add pev
-    for dir in /os /wim; do
-        dll=$dir/Windows/System32/kernel32.dll
-        if [ -f $dll ]; then
-            build_ver="$(peres -v $dll | grep 'Product Version:' | cut -d. -f3)"
-            echo "Windows Build Version: $build_ver"
-            apk del pev
-            [ "$build_ver" -ge 15063 ] && return 0 || return 1
-        fi
-    done
-    error_and_exit "Not found kernel32.dll"
+    local ver
+    ver="$(peres -v "$dll" | grep 'Product Version:' | awk '{print $NF}')"
+    echo "Version: $ver" >&2
+    IFS=. read -r nt_ver_major nt_ver_minor build_ver rev_ver _ < <(echo "$ver")
+    nt_ver="$nt_ver_major.$nt_ver_minor"
+    apk del pev
 }
 
 is_elts() {
@@ -2781,9 +2782,15 @@ modify_windows() {
     # https://learn.microsoft.com/windows-hardware/manufacture/desktop/add-a-custom-script-to-windows-setup
 
     # 判断用 SetupComplete 还是组策略
-    state_ini=$os_dir/Windows/Setup/State/State.ini
-    cat $state_ini
-    if grep -q IMAGE_STATE_COMPLETE $state_ini; then
+    # 默认视为 IMAGE_STATE_COMPLETE，除非有 State.ini，因为 dd 镜像可能精简了 State.ini
+    # 但最好还是从注册表获取
+    image_state=IMAGE_STATE_COMPLETE
+    if state_ini=$(find_file_ignore_case $os_dir/Windows/Setup/State/State.ini); then
+        cat -n $state_ini
+        image_state=$(grep -i '^ImageState=' $state_ini | cut -d= -f2 | tr -d '\r')
+    fi
+
+    if [ "$image_state" = IMAGE_STATE_COMPLETE ]; then
         use_gpo=true
     else
         use_gpo=false
@@ -3556,8 +3563,12 @@ modify_os_on_disk() {
                 # find /mnt/c -iname windows -type d -maxdepth 1
                 # find: /mnt/c/pagefile.sys: Permission denied
                 # find: /mnt/c/swapfile.sys: Permission denied
-                # shellcheck disable=SC2010
-                if ls -d /os/*/ | grep -i '/windows/' 2>/dev/null; then
+                # shellcheck disable=SC1090
+                # find_file_ignore_case 也在这个文件里面
+                . <(wget -O- $confhome/windows-driver-utils.sh)
+                if ntoskrnl_exe=$(find_file_ignore_case /os/Windows/System32/ntoskrnl.exe 2>/dev/null); then
+                    # 其他地方会用到
+                    is_windows() { true; }
                     # 重新挂载为读写、忽略大小写
                     umount /os
                     mount -t ntfs3 -o nocase /dev/$part /os
@@ -3565,6 +3576,8 @@ modify_os_on_disk() {
                     if mount | grep ' /os ' | grep -wq ro; then
                         error_and_exit "Can't mount windows partition /dev/$part as rw."
                     fi
+                    # 获取版本号，其他地方会用到
+                    get_windows_version_from_dll "$ntoskrnl_exe"
                     modify_windows /os
                     return
                 fi
@@ -4846,6 +4859,7 @@ dd_qcow() {
     # 将前1M从内存 dd 到硬盘
     umount /installer/
     dd if=/first-1M of=/dev/$xda
+    rm -f /first-1M
 
     # gpt 分区表开头记录了备份分区表的位置
     # 如果 qcow2 虚拟容量 大于 实际硬盘容量
@@ -5148,7 +5162,7 @@ get_server_name_by_build_ver() {
         echo 2012
     elif [ "$build_ver" -ge 7600 ]; then
         echo 2008 r2
-    elif [ "$build_ver" -ge 6000 ]; then
+    elif [ "$build_ver" -ge 6001 ]; then
         echo 2008
     else
         error_and_exit "Unknown Build Version: $build_ver"
@@ -5230,11 +5244,15 @@ install_windows() {
     }
 
     info "Process windows iso"
+    mkdir -p /iso /wim
+
+    # find_file_ignore_case 也在这个文件里面
+    # shellcheck disable=SC1090
+    . <(wget -O- $confhome/windows-driver-utils.sh)
 
     apk add wimlib
 
     download $iso /os/windows.iso
-    mkdir -p /iso
     mount -o ro /os/windows.iso /iso
 
     # 防止用了不兼容架构的 iso
@@ -5272,12 +5290,14 @@ install_windows() {
     if [ "$image_count" = 1 ]; then
         # 只有一个版本就用那个版本
         image_name=$all_image_names
+        image_index=1
     else
         while true; do
             # 匹配成功
             # 改成正确的大小写
             if matched_image_name=$(echo "$all_image_names" | grep -ix "$image_name"); then
                 image_name=$matched_image_name
+                image_index=$(wiminfo "$iso_install_wim" "$image_name" | grep 'Index:' | awk '{print $NF}')
                 break
             fi
 
@@ -5298,7 +5318,7 @@ install_windows() {
     fi
 
     get_selected_image_prop() {
-        get_image_prop "$iso_install_wim" "$image_name" "$1"
+        get_image_prop "$iso_install_wim" "$image_index" "$1"
     }
 
     # 多会话的信息来自注册表，因为没有官方 iso
@@ -5344,12 +5364,45 @@ install_windows() {
         ;;
     esac
 
+    # 挂载 install.wim，检查
+    # 1. 是否自带 sac 组件
+    # 2. 是否自带 nvme 驱动
+    # 3. 是否支持 sha256
+
+    wimmount "$iso_install_wim" "$image_index" /wim/
+    {
+        find_file_ignore_case /wim/Windows/System32/sacsess.exe && has_sac=true || has_sac=false
+        find_file_ignore_case /wim/Windows/INF/stornvme.inf && has_stornvme=true || has_stornvme=false
+    } >/dev/null 2>&1
+
+    support_sha256=false
+    if is_nt_ver_ge 6.2; then
+        support_sha256=true
+    else
+        # https://www.hummingheads.co.jp/press/info-certificates.html
+        # https://support.microsoft.com/kb/KB3033929
+        # https://support.microsoft.com/kb/KB4474419
+        # Windows Vista SP2 ldr_escrow   6.0.6003 + KB4474419
+        # Windows 7     SP1              6.1.7601 + KB3033929
+        ntoskrnl_exe=$(find_file_ignore_case /wim/Windows/System32/ntoskrnl.exe)
+        get_windows_version_from_dll "$ntoskrnl_exe"
+        if { [ "$nt_ver" = 6.0 ] && [ "$build_ver" -ge 6003 ] && [ "$rev_ver" -ge 20555 ]; } ||
+            { [ "$nt_ver" = 6.1 ] && [ "$build_ver" -ge 7601 ] && [ "$rev_ver" -ge 18741 ]; }; then
+            support_sha256=true
+        fi
+    fi
+    wimunmount /wim/
+
     info "Selected image info"
     echo "Image Name: $image_name"
     echo "Product Version: $product_ver"
     echo "Windows Type: $windows_type"
     echo "NT Version: $nt_ver"
     echo "Build Version: $build_ver"
+    echo "-------------------------"
+    echo "Has SAC: $has_sac"
+    echo "Has StorNVMe: $has_stornvme"
+    echo "Support SHA256: $support_sha256"
     echo
 
     # 复制 boot.wim 到 /os，用于临时编辑
@@ -5401,7 +5454,7 @@ install_windows() {
     #       （意义不大，因为已经删除了 boot.wim 用来创建虚拟内存，vista 除外）
     # 缺点: 如果 install.wim 只有一个镜像，则只能缩小 10M+
     if false; then
-        time wimexport --threads "$(get_build_threads 512)" "$iso_install_wim" "$image_name" "$install_wim"
+        time wimexport --threads "$(get_build_threads 512)" "$iso_install_wim" "$image_index" "$install_wim"
         info "install.wim size"
         echo "Original:  $(get_filesize_mb "$iso_install_wim")"
         echo "Optimized: $(get_filesize_mb "$install_wim")"
@@ -5415,7 +5468,7 @@ install_windows() {
     # https://github.com/pbatard/rufus/issues/1990
     # https://learn.microsoft.com/windows/iot/iot-enterprise/Hardware/System_Requirements
     if [ "$product_ver" = "11" ] && [ "$(nproc)" -le 1 ]; then
-        wiminfo "$install_wim" "$image_name" --image-property WINDOWS/INSTALLATIONTYPE=Server
+        wiminfo "$install_wim" "$image_index" --image-property WINDOWS/INSTALLATIONTYPE=Server
     fi
 
     # 变量名     使用场景
@@ -5450,10 +5503,6 @@ install_windows() {
         drv=/os/drivers
         mkdir -p "$drv" # 驱动下载临时文件夹
 
-        # 下载脚本
-        # shellcheck disable=SC1090
-        . <(wget -O- $confhome/windows-driver-utils.sh)
-
         # 这里有坑
         # $(get_cloud_vendor) 调用了 cache_dmi_and_virt
         # 但是 $(get_cloud_vendor) 运行在 subshell 里面
@@ -5473,17 +5522,18 @@ install_windows() {
                 add_driver_huawei_virtio
 
             # gcp 官方驱动不全，需要用公版补全
-            elif [ "$vendor" = gcp ] && [ "$nt_ver" = 6.1 ] && [ "$arch_wim" = x86_64 ]; then
-                add_driver_gcp_virtio_win6_1_sha1_x64
-                add_driver_generic_virtio \( -iname viorng.inf -or -iname balloon.inf \)
-
-            elif [ "$vendor" = gcp ] && is_nt_ver_ge 6.2 && [ "$arch_wim" = x86 ]; then
+            # 官方 windows server 模板没有 viorng 设备，但 linux 模板有
+            elif [ "$vendor" = gcp ] && is_nt_ver_ge 6.1 && [ "$arch_wim" = x86 ] && $support_sha256; then
                 add_driver_gcp_virtio
                 add_driver_generic_virtio \( -iname viorng.inf -or -iname pvpanic.inf \)
 
-            elif [ "$vendor" = gcp ] && is_nt_ver_ge 6.2 && [ "$arch_wim" = x86_64 ]; then
+            elif [ "$vendor" = gcp ] && is_nt_ver_ge 6.1 && [ "$arch_wim" = x86_64 ] && $support_sha256; then
                 add_driver_gcp_virtio
                 add_driver_generic_virtio -iname viorng.inf
+
+            elif [ "$vendor" = gcp ] && [ "$nt_ver" = 6.1 ] && [ "$arch_wim" = x86_64 ] && ! $support_sha256; then
+                add_driver_gcp_virtio_win6_1_sha1_x64
+                add_driver_generic_virtio \( -iname viorng.inf -or -iname balloon.inf \)
 
             else
                 # 兜底
@@ -5554,8 +5604,9 @@ install_windows() {
 
         file=$(
             case "$product_ver" in
-            '7' | '2008 r2') echo 29323/eng/prowin${arch_intel}legacy.exe ;; # 24.3 sha1 签名
-            # '7' | '2008 r2') echo 18713/eng/prowin${arch_intel}legacy.exe ;; # 25.0 有部分文件是 sha256 签名
+            '7' | '2008 r2') $support_sha256 &&
+                echo echo 18713/eng/prowin${arch_intel}legacy.exe || # 25.0 有部分文件是 sha256 签名
+                echo 29323/eng/prowin${arch_intel}legacy.exe ;;      # 24.3 sha1 签名
             '8') echo 21642/eng/prowin${arch_intel}.exe ;;
             '8.1') echo 764813/Wired_driver_27.8_${arch_intel}.zip ;;
             '2012' | '2012 r2') echo 785805/Wired_driver_28.2_${arch_intel}.zip ;;
@@ -5663,8 +5714,7 @@ EOF
 
         ena_ver=$(
             case "$nt_ver" in
-            6.1) echo 2.1.4 ;; # sha1 签名
-            # 6.1) echo 2.2.3 ;; # sha256 签名
+            6.1) $support_sha256 && echo 2.2.3 || echo 2.1.4 ;;
             6.2 | 6.3) echo 2.6.0 ;;
             *) echo Latest ;;
             esac
@@ -5708,8 +5758,7 @@ EOF
 
         aws_pv_ver=$(
             case "$nt_ver" in
-            6.1) echo 8.3.2 ;; # sha1 签名
-            # 6.1) echo 8.3.5 ;; # sha256 签名
+            6.1) $support_sha256 && echo 8.3.5 || echo echo 8.3.2 ;;
             6.2 | 6.3) echo 8.4.3 ;;
             *) echo Latest ;;
             esac
@@ -5790,14 +5839,15 @@ EOF
         # 173-9        不是稳定版?
         # 185 ~ 187    win7 vioscsi 是 sha256 签名
         # 189 ~ 215    win7 vultr 气球驱动死机
-        # 217 ~ 266    win7 甲骨文 vioscsi 用不了，即使是红帽的 virtio-win-1.9.44 也用不了
-        # 217 ~ 266    2k12 证书有问题
+        # 217 ~ 271    win7 甲骨文 vioscsi 用不了，即使是红帽的 virtio-win-1.9.45 也用不了
+        # 217 ~ 271    2k12 证书有问题
 
         # 2008 安装的气球驱动不能用，需要到硬件管理器重新安装设备才能用，无需更新驱动
 
         # https://github.com/virtio-win/virtio-win-pkg-scripts/issues/40
         # https://github.com/virtio-win/virtio-win-pkg-scripts/issues/61
         case "$nt_ver" in
+        # 最新版里面的 win2008 win7 是 sha1 签名的，但是甲骨文 vioscsi 用不了
         6.0 | 6.1) dir=archive-virtio/virtio-win-0.1.173-9 ;; # vista|w7|2k8|2k8R2
         6.2 | 6.3) dir=archive-virtio/virtio-win-0.1.215-2 ;; # w8|w8.1|2k12|2k12R2
         *) dir=stable-virtio ;;
@@ -5941,38 +5991,21 @@ EOF
     add_driver_aliyun_virtio() {
         info "Add drivers: Aliyun virtio"
 
-        # win7 旧驱动是 sha1 签名
-        if [ "$nt_ver" = 6.1 ]; then
-            # 旧驱动
-            aliyun_sys=$(
-                case "$nt_ver" in
-                6.1) echo 7 ;;
-                6.2 | 6.3) echo 8 ;;
-                *) echo 10 ;;
-                esac
-            )
+        # win7 sha1 旧驱动
+        if [ "$nt_ver" = 6.1 ] && ! $support_sha256; then
+            filename=210408.1454.1459_bin.zip # sha1
+            # filename=220915.0953.0953_bin.zip # sha256
+            # filename=new_virtio.zip           # sha256
 
-            filename=$(
-                case "$nt_ver" in
-                6.1) echo 210408.1454.1459_bin.zip ;; # sha1
-                *) echo 220915.0953.0953_bin.zip ;;   # sha256
-                # *) echo new_virtio.zip ;;
-                esac
-            )
-
-            region=$(
-                if is_in_china; then
-                    echo cn-beijing
-                else
-                    echo us-west-1
-                fi
-            )
+            if is_in_china; then
+                region=cn-beijing
+            else
+                region=us-west-1
+            fi
 
             download https://windows-driver-$region.oss-$region.aliyuncs.com/virtio/$filename $drv/aliyun.zip
             unzip -o -d $drv/aliyun/ $drv/aliyun.zip
-
-            # 注意文件夹是 win7 Win8 win10 大小写不一致
-            cp_drivers $drv/aliyun -ipath "*/win${aliyun_sys}/${arch}/*"
+            cp_drivers $drv/aliyun -ipath "*/win7/${arch}/*"
         else
             # 新驱动
             aliyun_sys=$(
@@ -5996,7 +6029,7 @@ EOF
         fi
     }
 
-    # gcp virtio win7 x64
+    # gcp virtio win7 x64 sha1
     # 缺 balloon viorng
     add_driver_gcp_virtio_win6_1_sha1_x64() {
         info "Add drivers: GCP virtio win6.1 sha1 x64"
@@ -6005,15 +6038,15 @@ EOF
         for file in \
             WdfCoInstaller01009.dll WdfCoInstaller01011.dll \
             netkvm.inf netkvm.cat netkvm.sys netkvmco.dll \
-            nvme.inf nvme64.cat nvme.sys \
             pvpanic.inf pvpanic.sys pvpanic.cat \
-            vioscsi.inf vioscsi.sys vioscsi.cat; do
+            vioscsi.inf vioscsi.sys vioscsi.cat \
+            $([ -d /sys/module/nvme ] && ! $has_stornvme && echo nvme.inf nvme64.cat nvme.sys); do
             download https://storage.googleapis.com/gce-windows-drivers-public/win6.1sha1/$file $drv/gce/win6.1sha1/$file
         done
         cp_drivers $drv/gce/win6.1sha1
     }
 
-    # gcp virtio win8+
+    # gcp virtio win7+ sha256
     # x86 缺 viorng pvpanic
     # x64 缺 viorng
     # https://github.com/GoogleCloudPlatform/compute-image-tools/tree/master/daisy_workflows/image_build/windows
@@ -6063,7 +6096,9 @@ EOF
             link=$(grep -o "/pool/.*-google-compute-engine-driver-$part.*\.goo" $drv/gce/gce.json)
             wget $gce_repo$link -O- | tar xz -C $drv/gce/$part
 
-            # inf 不限版本，6.0 能装 6.1 的驱动但用不了
+            # inf 不限版本
+            # 但 win7 gvnic ndis 版本是 6.2，vista/2008 能装但用不了
+            # https://github.com/GoogleCloudPlatform/compute-virtual-ethernet-windows/blob/cad1edf7a05465f4972a81f2c015952fd228b5e3/src/gvnic.vcxproj#L298
             if false; then
                 for suffix in '' '-32'; do
                     if [ -d "$drv/gce/$part/win6.1$suffix" ]; then
@@ -6126,6 +6161,8 @@ EOF
     locale=$(get_selected_image_prop 'Default Language')
     use_default_rdp_port=$(is_need_change_rdp_port && echo false || echo true)
     password_base64=$(get_password_windows_administrator_base64)
+    # 7601.24214.180801-1700.win7sp1_ldr_escrow_CLIENT_ULTIMATE_x64FRE_en-us.iso Image Name 为空
+    # 将 xml Image Name 的值设为空可以正常安装
     sed -i \
         -e "s|%arch%|$arch|" \
         -e "s|%image_name%|$image_name|" \
@@ -6152,7 +6189,7 @@ EOF
     # 评估版 iso ei.cfg 有 EVAL 字样，填空白 key 报错 Windows Cannot find Microsoft software license terms
 
     # key
-    if [[ "$image_name" = 'Windows Vista*' ]]; then
+    if [ "$product_ver" = vista ]; then
         # vista 需密钥，密钥可与 edition 不一致
         # TODO: 改成从网页获取？
         # https://learn.microsoft.com/en-us/windows-server/get-started/kms-client-activation-keys
@@ -6168,13 +6205,6 @@ EOF
             sed -i "s/%key%//" /tmp/autounattend.xml
         fi
     fi
-
-    mkdir -p /wim
-
-    # 挂载 install.wim，检查是否有 sac 组件
-    wimmount "$install_wim" "$image_name" /wim/
-    [ -f /wim/Windows/System32/sacsess.exe ] && has_sac=true || has_sac=false
-    wimunmount /wim/
 
     # 挂载 boot.wim
     info "mount boot.wim"
@@ -6306,7 +6336,7 @@ EOF
     # 所以复制 resize.bat 到 install.wim
     if true; then
         info "mount install.wim"
-        wimmountrw $install_wim "$image_name" /wim/
+        wimmountrw $install_wim "$image_index" /wim/
         if false; then
             # 使用 autounattend.xml
             # win7 在此阶段找不到网卡
