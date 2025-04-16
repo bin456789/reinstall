@@ -400,7 +400,7 @@ bash reinstall.sh windows \
 - AWS ([ENA 网卡][aws-ena], [NVME 存储控制器][aws-nvme])
 - GCP ([gVNIC 网卡][gcp-gvnic], [GGA 显卡][gcp-gga])
 - Azure ([MANA 网卡][azure-mana])
-- Intel ([VMD 存储控制器][intel-vmd], 网卡: [7][intel-nic-7-sha256], [8][intel-nic-8], [8.1][intel-nic-8.1], [10][intel-nic-10], [11][intel-nic-11], [2008 R2][intel-nic-7-sha256], [2012][intel-nic-2012], [2012 R2][intel-nic-2012-r2], [2016][intel-nic-2016], [2019][intel-nic-2019], [2022][intel-nic-2022], [2025][intel-nic-2025])
+- Intel ([VMD 存储控制器][intel-vmd], 网卡: [7][intel-nic-7-sha256], [8][intel-nic-8], [8.1][intel-nic-8.1], [10][intel-nic-10], [11][intel-nic-11], [2008 R2][intel-nic-2008-r2-sha256], [2012][intel-nic-2012], [2012 R2][intel-nic-2012-r2], [2016][intel-nic-2016], [2019][intel-nic-2019], [2022][intel-nic-2022], [2025][intel-nic-2025])
 
 [virtio-virtio]: https://fedorapeople.org/groups/virt/virtio-win/direct-downloads/
 [virtio-aliyun]: https://www.alibabacloud.com/help/ecs/user-guide/install-the-virtio-driver-1

@@ -2789,7 +2789,9 @@ modify_windows() {
     image_state=IMAGE_STATE_COMPLETE
     if state_ini=$(find_file_ignore_case $os_dir/Windows/Setup/State/State.ini); then
         cat -n $state_ini
-        image_state=$(grep -i '^ImageState=' $state_ini | cut -d= -f2 | tr -d '\r')
+        if tmp=$(grep -i '^ImageState=' $state_ini | cut -d= -f2 | tr -d '\r' | grep .); then
+            image_state=$tmp
+        fi
     fi
 
     if [ "$image_state" = IMAGE_STATE_COMPLETE ]; then
@@ -5229,12 +5231,24 @@ is_list_has() {
     echo "$list" | grep -qFx "$item"
 }
 
+get_installation_type_from_windows_drive() {
+    os_dir=$1
+
+    apk add hivex
+    software_hive=$(find_file_ignore_case $os_dir/Windows/System32/config/SOFTWARE)
+    hivexsh "$software_hive" <<EOF
+cd \Microsoft\Windows NT\CurrentVersion
+lsval InstallationType
+EOF
+    apk del hivex
+}
+
 install_windows() {
     get_wim_prop() {
         wim=$1
         property=$2
 
-        wiminfo "$wim" | grep -i "^$property:" | cut -d: -f2- | xargs
+        wiminfo "$wim" | grep -i "^$property:" | cut -d: -f2- | trim
     }
 
     get_image_prop() {
@@ -5242,7 +5256,7 @@ install_windows() {
         index=$2
         property=$3
 
-        wiminfo "$wim" "$index" | grep -i "^$property:" | cut -d: -f2- | xargs
+        wiminfo "$wim" "$index" | grep -i "^$property:" | cut -d: -f2- | trim
     }
 
     info "Process windows iso"
@@ -5283,7 +5297,7 @@ install_windows() {
 
     # 匹配映像版本
     # 需要整行匹配，因为要区分 Windows 10 Pro 和 Windows 10 Pro for Workstations
-    image_count=$(wiminfo $iso_install_wim | grep "^Image Count:" | cut -d: -f2 | xargs)
+    image_count=$(wiminfo $iso_install_wim | grep "^Image Count:" | cut -d: -f2 | trim)
     all_image_names=$(wiminfo $iso_install_wim | grep ^Name: | sed 's/^Name: *//')
     info "Images Count: $image_count"
     echo "$all_image_names"
@@ -5326,6 +5340,7 @@ install_windows() {
     # 多会话的信息来自注册表，因为没有官方 iso
 
     # Installation Type:
+    # https://github.com/search?q=InstallationType+Client+Embedded+Server+Core&type=code
     # - Client      (普通 windows)
     # - Server      (windows server 带桌面体验)
     # - Server Core (windows server 不带桌面体验)
@@ -5343,57 +5358,62 @@ install_windows() {
 
     # Product Suite:
     # https://www.geoffchappell.com/studies/windows/km/ntoskrnl/api/ex/exinit/productsuite.htm
-    # - Terminal Server  (普通 windows)
-    # - Enterprise      (windows server 带桌面体验)
-    # - Enterprise      (windows server 不带桌面体验)
-    # - Terminal Server  (WES7 / Thin PC)
-    # - ?                (windows 10/11 enterprise 多会话)
+    # - Terminal Server (普通 windows)
+    # - Enterprise      (windows server 2025 带桌面体验)
+    # - Enterprise      (windows server 2025 不带桌面体验)
+    # - Terminal Server (windows server 2012 R2 评估板 带桌面体验，注册表也是这个值)
+    # - Terminal Server (windows server 2022 R2 评估板 不带桌面体验，注册表也是这个值)
+    # - Terminal Server (WES7 / Thin PC)
+    # - ?               (windows 10/11 enterprise 多会话)
 
     # 用内核版本号筛选驱动
     # 使得可以安装 Hyper-V Server / Azure Stack HCI 等 Windows Server 变种
-    nt_ver=$(get_selected_image_prop "Major Version").$(get_selected_image_prop "Minor Version")
-    build_ver=$(get_selected_image_prop "Build")
-    product_suite=$(get_selected_image_prop "Product Suite")
-
-    case "$product_suite" in
-    'Terminal Server')
-        windows_type=client
-        product_ver=$(get_client_name_by_build_ver "$build_ver")
-        ;;
-    *)
-        windows_type=server
-        product_ver=$(get_server_name_by_build_ver "$build_ver")
-        ;;
-    esac
+    # 7601.24214.180801-1700.win7sp1_ldr_escrow_CLIENT_ULTIMATE_x64FRE_en-us.iso wim 没有 Installation Type
+    # 因此改成从注册表获取
+    if false; then
+        nt_ver=$(get_selected_image_prop "Major Version").$(get_selected_image_prop "Minor Version")
+        build_ver=$(get_selected_image_prop "Build")
+        installation_type=$(get_selected_image_prop "Installation Type")
+    fi
 
     # 挂载 install.wim，检查
     # 1. 是否自带 sac 组件
     # 2. 是否自带 nvme 驱动
     # 3. 是否支持 sha256
-
+    # 4. Installation Type
     wimmount "$iso_install_wim" "$image_index" /wim/
+    ntoskrnl_exe=$(find_file_ignore_case /wim/Windows/System32/ntoskrnl.exe)
+    get_windows_version_from_dll "$ntoskrnl_exe"
+    installation_type=$(get_installation_type_from_windows_drive /wim)
     {
         find_file_ignore_case /wim/Windows/System32/sacsess.exe && has_sac=true || has_sac=false
         find_file_ignore_case /wim/Windows/INF/stornvme.inf && has_stornvme=true || has_stornvme=false
     } >/dev/null 2>&1
-
-    support_sha256=false
-    if is_nt_ver_ge 6.2; then
-        support_sha256=true
-    else
-        # https://www.hummingheads.co.jp/press/info-certificates.html
-        # https://support.microsoft.com/kb/KB3033929
-        # https://support.microsoft.com/kb/KB4474419
-        # Windows Vista SP2 ldr_escrow   6.0.6003 + KB4474419
-        # Windows 7     SP1              6.1.7601 + KB3033929
-        ntoskrnl_exe=$(find_file_ignore_case /wim/Windows/System32/ntoskrnl.exe)
-        get_windows_version_from_dll "$ntoskrnl_exe"
-        if { [ "$nt_ver" = 6.0 ] && [ "$build_ver" -ge 6003 ] && [ "$rev_ver" -ge 20555 ]; } ||
-            { [ "$nt_ver" = 6.1 ] && [ "$build_ver" -ge 7601 ] && [ "$rev_ver" -ge 18741 ]; }; then
-            support_sha256=true
-        fi
-    fi
     wimunmount /wim/
+
+    # https://www.hummingheads.co.jp/press/info-certificates.html
+    # https://support.microsoft.com/kb/KB3033929
+    # https://support.microsoft.com/kb/KB4474419
+    # Windows Vista SP2 ldr_escrow   6.0.6003 + KB4474419
+    # Windows 7     SP1              6.1.7601 + KB3033929
+    support_sha256=false
+    if is_nt_ver_ge 6.2 ||
+        { [ "$nt_ver" = 6.1 ] && [ "$build_ver" -ge 7601 ] && [ "$rev_ver" -ge 18741 ]; } ||
+        { [ "$nt_ver" = 6.0 ] && [ "$build_ver" -ge 6003 ] && [ "$rev_ver" -ge 20555 ]; }; then
+        support_sha256=true
+    fi
+
+    case "$installation_type" in
+    Client | Embedded)
+        windows_type=client
+        product_ver=$(get_client_name_by_build_ver "$build_ver")
+        ;;
+    Server | 'Server Core')
+        windows_type=server
+        product_ver=$(get_server_name_by_build_ver "$build_ver")
+        ;;
+    *) error_and_exit "Unknown Installation Type: $installation_type" ;;
+    esac
 
     info "Selected image info"
     echo "Image Name: $image_name"
@@ -5498,6 +5518,10 @@ install_windows() {
         arch_dd=  # 华为云没有 arm64 驱动
         ;;
     esac
+
+    # win7 drvload 可以加载 sha256 签名的驱动
+    # 但系统安装完重启报错 windows cannot verify the digital signature for this file
+    # 需要按 F8 禁用驱动签名
 
     add_drivers() {
         info "Add drivers"
@@ -5836,21 +5860,46 @@ EOF
             esac
         )
 
-        # https://fedorapeople.org/groups/virt/virtio-win/repo/stable/
-        # 171-1        是稳定版
-        # 173-9        不是稳定版?
-        # 185 ~ 187    win7 vioscsi 是 sha256 签名
-        # 189 ~ 215    win7 vultr 气球驱动死机
-        # 217 ~ 271    win7 甲骨文 vioscsi 用不了，即使是红帽的 virtio-win-1.9.45 也用不了
-        # 217 ~ 271    2k12 证书有问题
+        # win7-drivers 分支 win7 文件夹只有一次提交，也就是 173 全家桶
+        # 1. 2020.1.24 https://github.com/virtio-win/virtio-win-pkg-scripts/tree/win7-drivers/data/old-drivers/Win7
+
+        # master 分支 win7 文件夹有 3 次提交，从古到今
+        # https://github.com/virtio-win/virtio-win-pkg-scripts/commits/master/data/old-drivers/Win7
+        # 1. 2020/6/4  sha256，176 全家桶，相当于没发布的 176 iso
+        # 2. 2020/8/10 将部分文件降到 17400，相当于 189~215 iso
+        # 3. 2022/4/14 将部分文件降级，相当于 217~最新版 iso
 
         # 2008 安装的气球驱动不能用，需要到硬件管理器重新安装设备才能用，无需更新驱动
 
-        # https://github.com/virtio-win/virtio-win-pkg-scripts/issues/40
+        # 2k12
         # https://github.com/virtio-win/virtio-win-pkg-scripts/issues/61
+        # 217 ~ 271    2k12 证书有问题，红帽的 virtio-win-1.9.45 没问题
+
+        # win7
+        # https://fedorapeople.org/groups/virt/virtio-win/repo/stable/
+        # https://github.com/virtio-win/virtio-win-pkg-scripts/issues/40
+        # 171-1     sha1   稳定版
+        # 173-9     sha1   对应上面的 win7-drivers 分支，最后一次编译 win7 + sha1，但不是稳定版?
+        # 176       sha256 对应上面的 master-1  最后一次编译 win7，从这次开始是 sha256，此次不提供 iso，编译的文件在之后的 iso 可以找到
+        # 185 ~ 187 sha256 正常工作，win7 文件来自 176
+        # 189 ~ 215 sha1   对应上面的 master-2  气球版本 17400，vultr 死机
+        # 217 ~ 271 sha1   对应上面的 master-3  甲骨文 vioscsi 因硬件 ID 不同用不了，红帽的 virtio-win-1.9.45 也是
+
+        # 甲骨文 vioscsi 硬件 ID 是 PCI\VEN_1AF4&DEV_1004&SUBSYS_0008108E&REV_00
+        # SUBSYS 的厂商 ID 是甲骨文
+
+        # virtio-win-0.1.173-9
+        # %VirtioScsi.DeviceDesc% = scsi_inst, PCI\VEN_1AF4&DEV_1004&SUBSYS_00081AF4&REV_00, PCI\VEN_1AF4&DEV_1004
+        # %VirtioScsi.DeviceDesc% = scsi_inst, PCI\VEN_1AF4&DEV_1048&SUBSYS_11001AF4&REV_01, PCI\VEN_1AF4&DEV_1048
+
+        # stable-virtio
+        # %RHELScsi.DeviceDesc% = rhelscsi_inst, PCI\VEN_1AF4&DEV_1004&SUBSYS_00081AF4&REV_00
+        # %RHELScsi.DeviceDesc% = rhelscsi_inst, PCI\VEN_1AF4&DEV_1048&SUBSYS_11001AF4&REV_01
+
         case "$nt_ver" in
-        # 最新版里面的 win2008 win7 是 sha1 签名的，但是甲骨文 vioscsi 用不了
-        6.0 | 6.1) dir=archive-virtio/virtio-win-0.1.173-9 ;; # vista|w7|2k8|2k8R2
+        6.0 | 6.1) $support_sha256 &&
+            dir=archive-virtio/virtio-win-0.1.187-1 ||
+            dir=archive-virtio/virtio-win-0.1.173-9 ;;        # vista|w7|2k8|2k8R2
         6.2 | 6.3) dir=archive-virtio/virtio-win-0.1.215-2 ;; # w8|w8.1|2k12|2k12R2
         *) dir=stable-virtio ;;
         esac
@@ -6036,6 +6085,10 @@ EOF
     add_driver_gcp_virtio_win6_1_sha1_x64() {
         info "Add drivers: GCP virtio win6.1 sha1 x64"
 
+        # 用到 nvme 时才下载 nvme 驱动
+        # 因为 win7 可以通过更新获得 nvme 驱动
+        # 而且谷歌推荐使用微软 nvme 驱动
+        # (google-compute-engine-driver-nvme 2.0.0 更新内容是删除谷歌 nvme 驱动)
         mkdir -p $drv/gce/win6.1sha1
         for file in \
             WdfCoInstaller01009.dll WdfCoInstaller01011.dll \
@@ -6435,7 +6488,8 @@ sync_time() {
         ;;
     esac
 
-    hwclock -w
+    # 重启时 alpine 会自动写入到硬件时钟，因此这里跳过
+    # hwclock -w
 }
 
 is_ubuntu_lts() {
