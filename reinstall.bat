@@ -126,11 +126,8 @@ call :check_cygwin_installed || (
         --packages %pkgs%
 
     rem 检查 Cygwin 是否成功安装
-    if errorlevel 1 (
-        goto :install_cygwin_failed
-    ) else (
-        call :check_cygwin_installed || goto :install_cygwin_failed
-    )
+    if errorlevel 1 goto :install_cygwin_failed
+    call :check_cygwin_installed || goto :install_cygwin_failed
 )
 
 rem 在c盘根目录下执行 cygpath -ua . 会得到 /cygdrive/c，因此末尾要有 /
@@ -159,23 +156,28 @@ rem 或者添加 export PATH=/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/
 %SystemDrive%\cygwin\bin\bash %thisdir%reinstall.sh %*
 exit /b
 
-
-
-
-
-:download
 rem bits 要求有 Content-Length 才能下载
+rem cloudflare 的 cdn-cgi/trace 没有 Content-Length
 rem 据说如果网络设为“按流量计费” bits 也无法下载
 rem https://learn.microsoft.com/en-us/windows/win32/bits/http-requirements-for-bits-downloads
+rem bitsadmin /transfer "%~3" /priority foreground %~1 %~2
+
+:download
 rem certutil 会被 windows Defender 报毒
 rem windows server 2019 要用第二条 certutil 命令
 echo Download: %~1 %~2
 del /q "%~2" 2>nul
 if exist "%~2" (echo Cannot delete %~2 & exit /b 1)
-if not exist "%~2" certutil -urlcache -f -split "%~1" "%~2" >nul
-if not exist "%~2" certutil -urlcache -split "%~1" "%~2" >nul
-if not exist "%~2" exit /b 1
-exit /b
+
+certutil -urlcache -f -split "%~1" "%~2" >nul
+if not errorlevel 1 if exist "%~2" exit /b 0
+
+certutil -urlcache -split "%~1" "%~2" >nul
+if not errorlevel 1 if exist "%~2" exit /b 0
+
+rem 下载失败时删除文件，防止下载了一部分导致下次运行时跳过了下载
+del /q "%~2" 2>nul
+exit /b 1
 
 :download_with_curl
 rem 加 --insecure 防止以下错误
