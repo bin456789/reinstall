@@ -2775,6 +2775,28 @@ EOF
     create_cloud_init_network_config "$ci_file" "$recognize_static6" "$recognize_ipv6_types"
 }
 
+get_image_state() {
+    local os_dir=$1
+    local image_state=
+
+    # 如果 dd 镜像精简了 State.ini，则从注册表获取
+    if state_ini=$(find_file_ignore_case $os_dir/Windows/Setup/State/State.ini); then
+        image_state=$(grep -i '^ImageState=' $state_ini | cut -d= -f2 | tr -d '\r')
+    fi
+    if [ -z "$image_state" ]; then
+        apk add hivex
+        hive=$(find_file_ignore_case $os_dir/Windows/System32/config/SOFTWARE)
+        image_state=$(hivexget $hive '\Microsoft\Windows\CurrentVersion\Setup\State' ImageState)
+        apk del hivex
+    fi
+
+    if [ -n "$image_state" ]; then
+        echo "$image_state"
+    else
+        error_and_exit "Cannot get ImageState."
+    fi
+}
+
 modify_windows() {
     os_dir=$1
     info "Modify Windows"
@@ -2784,15 +2806,8 @@ modify_windows() {
     # https://learn.microsoft.com/windows-hardware/manufacture/desktop/add-a-custom-script-to-windows-setup
 
     # 判断用 SetupComplete 还是组策略
-    # 默认视为 IMAGE_STATE_COMPLETE，除非有 State.ini，因为 dd 镜像可能精简了 State.ini
-    # 但最好还是从注册表获取
-    image_state=IMAGE_STATE_COMPLETE
-    if state_ini=$(find_file_ignore_case $os_dir/Windows/Setup/State/State.ini); then
-        cat -n $state_ini
-        if tmp=$(grep -i '^ImageState=' $state_ini | cut -d= -f2 | tr -d '\r' | grep .); then
-            image_state=$tmp
-        fi
-    fi
+    image_state=$(get_image_state "$os_dir")
+    echo "ImageState: $image_state"
 
     if [ "$image_state" = IMAGE_STATE_COMPLETE ]; then
         use_gpo=true
@@ -5231,15 +5246,18 @@ is_list_has() {
     echo "$list" | grep -qFx "$item"
 }
 
+# hivexget 是 shell 脚本，开头是 #!/bin/bash
+# 但 alpine 没安装 bash，直接运行 hivexget 会报错
+hivexget() {
+    ash "$(which hivexget)" "$@"
+}
+
 get_installation_type_from_windows_drive() {
-    os_dir=$1
+    local os_dir=$1
 
     apk add hivex
-    software_hive=$(find_file_ignore_case $os_dir/Windows/System32/config/SOFTWARE)
-    hivexsh "$software_hive" <<EOF
-cd \Microsoft\Windows NT\CurrentVersion
-lsval InstallationType
-EOF
+    hive=$(find_file_ignore_case $os_dir/Windows/System32/config/SOFTWARE)
+    hivexget $hive '\Microsoft\Windows NT\CurrentVersion' InstallationType
     apk del hivex
 }
 
@@ -5631,6 +5649,7 @@ install_windows() {
         file=$(
             case "$product_ver" in
             '7' | '2008 r2') $support_sha256 &&
+                # 25.0 比 24.5 只更新了 ProSet 软件，驱动相同
                 echo echo 18713/eng/prowin${arch_intel}legacy.exe || # 25.0 有部分文件是 sha256 签名
                 echo 29323/eng/prowin${arch_intel}legacy.exe ;;      # 24.3 sha1 签名
             '8') echo 21642/eng/prowin${arch_intel}.exe ;;
@@ -5868,6 +5887,9 @@ EOF
         # 1. 2020/6/4  sha256，176 全家桶，相当于没发布的 176 iso
         # 2. 2020/8/10 将部分文件降到 17400，相当于 189~215 iso
         # 3. 2022/4/14 将部分文件降级，相当于 217~最新版 iso
+
+        # 可改成直接从 github commit 下载 win7 173(sha1) 176(sha256) 全家桶？
+        # 国内可使用 jsdelivr 加速 github
 
         # 2008 安装的气球驱动不能用，需要到硬件管理器重新安装设备才能用，无需更新驱动
 
