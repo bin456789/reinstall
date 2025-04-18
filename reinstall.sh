@@ -58,7 +58,7 @@ Usage: $reinstall_____ anolis      7|8|23
                        opensuse    15.6|tumbleweed
                        alpine      3.18|3.19|3.20|3.21
                        openeuler   20.03|22.03|24.03|25.03
-                       ubuntu      16.04|18.04|20.04|22.04|24.04|24.10 [--minimal]
+                       ubuntu      16.04|18.04|20.04|22.04|24.04|25.04 [--minimal]
                        kali
                        arch
                        gentoo
@@ -1204,7 +1204,7 @@ Continue?
         20.04) codename=focal ;;
         22.04) codename=jammy ;;
         24.04) codename=noble ;;
-        24.10) codename=oracular ;; # non-lts
+        25.04) codename=plucky ;; # non-lts
         esac
 
         if is_use_cloud_image; then
@@ -1244,7 +1244,8 @@ Continue?
                 fi
                 eval ${step}_img="$ci_mirror/minimal/releases/$codename/release/ubuntu-$releasever-minimal-cloudimg-$basearch_alt$(get_suffix).img"
             else
-                eval ${step}_img="$ci_mirror/releases/$releasever/release/ubuntu-$releasever-server-cloudimg-$basearch_alt$(get_suffix).img"
+                # 用 codename 而不是 releasever，可减少一次跳转
+                eval ${step}_img="$ci_mirror/releases/$codename/release/ubuntu-$releasever-server-cloudimg-$basearch_alt$(get_suffix).img"
             fi
         else
             # 传统安装
@@ -1793,7 +1794,7 @@ verify_os_name() {
         'opensuse    15.6|16.0|tumbleweed' \
         'alpine      3.18|3.19|3.20|3.21' \
         'openeuler   20.03|22.03|24.03|25.03' \
-        'ubuntu      16.04|18.04|20.04|22.04|24.04|24.10' \
+        'ubuntu      16.04|18.04|20.04|22.04|24.04|25.04' \
         'kali' \
         'arch' \
         'gentoo' \
