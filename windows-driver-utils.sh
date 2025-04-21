@@ -115,6 +115,9 @@ list_files_from_inf() {
 
     # [Intel.NTamd64.6.0]
     # ; Empty section.
+
+    # 如果后期改成不从 Manufacturer 获取支持的架构，而是从[]获取支持的架构，注意这种情况
+    # [Intel.NTamd64.10.0.1..22000]
     ##############################################
 
     # 例子1
@@ -206,8 +209,7 @@ list_files_from_inf() {
             dir=$(echo "$line" | awk -F, '{print $4}' | simply_inf_word)
             # 每行一条记录
             if [ -n "$SourceDisksNames" ]; then
-                SourceDisksNames="$SourceDisksNames
-"
+                SourceDisksNames=$SourceDisksNames$'\n'
             fi
             SourceDisksNames="$SourceDisksNames$num:$dir"
         fi
@@ -237,7 +239,11 @@ list_files_from_inf() {
     done < <(echo "$inf_txts")
 }
 
-find_file_ignore_case() {
+# windows 安装驱动时，只会安装相同架构的驱动文件到系统，即使 inf 里有列出其它架构的驱动
+# 因此 DISM 导出驱动时，也就没有包含其它架构的驱动文件
+
+# 用于尽可能匹配路径大小写
+get_path_in_correct_case() {
     # 同时支持参数和管道
     local path
     path=$({ if [ -n "$1" ]; then echo "$1"; else cat; fi; })
@@ -247,40 +253,64 @@ find_file_ignore_case() {
     # shellcheck disable=SC2046
     set -- $(echo "$path" | grep -o '[^/]*')
     (
-        # windows 安装驱动时，只会安装相同架构的驱动文件到系统，即使 inf 里有列出其它架构的驱动
-        # 因此导出驱动时，也就不会包含其它架构的驱动文件
-        # 因此这里只警告，不中断脚本
-
         local output=
         if is_absolute_path "$path"; then
             cd /
             output=/
         fi
 
+        stop_find=false
+
         while [ $# -gt 0 ]; do
             local part=$1
+            local tmp
             # shellcheck disable=SC2010
-            if part=$(ls -1 | grep -Fix "$part"); then
-                # 大于 1 表示当前 part 是目录
-                if [ $# -gt 1 ]; then
-                    if cd "$part"; then
-                        output="$output$part/"
-                    else
-                        warn "Can't cd $path"
-                        return 1
+            if ! $stop_find; then
+                if tmp=$(ls -1 | grep -Fix "$part"); then
+                    part=$tmp
+                    # 大于 1 表示当前 part 是目录
+                    if [ $# -gt 1 ]; then
+                        if ! cd "$part" 2>/dev/null; then
+                            warn "Can't cd $path"
+                            stop_find=true
+                        fi
                     fi
                 else
-                    # 最后 part
-                    output="$output$part"
+                    stop_find=true
                 fi
+            fi
+
+            if [ $# -gt 1 ]; then
+                output="$output$part/"
             else
-                warn "Can't find $path" >&2
-                return 1
+                # 最后 part
+                output="$output$part"
             fi
             shift
         done
+
         echo "$output"
     )
+}
+
+is_file_or_link() {
+    # -e / -f 坏软连接，返回 false
+    # -L 坏软连接，返回 true
+    [ -f "$1" ] || [ -L "$1" ]
+}
+
+find_file_ignore_case() {
+    # 同时支持参数和管道
+    local path
+    path=$({ if [ -n "$1" ]; then echo "$1"; else cat; fi; })
+
+    path=$(get_path_in_correct_case "$path")
+    if is_file_or_link "$path"; then
+        echo "$path"
+    else
+        warn "Can't find $path" >&2
+        return 1
+    fi
 }
 
 parse_inf_and_cp_driever() {

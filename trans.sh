@@ -2843,9 +2843,9 @@ modify_windows() {
 
     if $use_gpo; then
         # 使用组策略
-        gpt_ini=$os_dir/Windows/System32/GroupPolicy/gpt.ini
-        scripts_ini=$os_dir/Windows/System32/GroupPolicy/Machine/Scripts/scripts.ini
+        scripts_ini=$(get_path_in_correct_case $os_dir/Windows/System32/GroupPolicy/Machine/Scripts/scripts.ini)
         mkdir -p "$(dirname $scripts_ini)"
+        gpt_ini=$(get_path_in_correct_case $os_dir/Windows/System32/GroupPolicy/gpt.ini)
 
         # 备份 ini
         for file in $gpt_ini $scripts_ini; do
@@ -2892,7 +2892,7 @@ EOF
         download $confhome/windows-del-gpo.bat $os_dir/windows-del-gpo.bat
     else
         # 使用 SetupComplete
-        setup_complete=$os_dir/Windows/Setup/Scripts/SetupComplete.cmd
+        setup_complete=$(get_path_in_correct_case $os_dir/Windows/Setup/Scripts/SetupComplete.cmd)
         mkdir -p "$(dirname $setup_complete)"
 
         # 添加到 C:\Setup\Scripts\SetupComplete.cmd 最前面
