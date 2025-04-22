@@ -5289,9 +5289,24 @@ install_windows() {
     download $iso /os/windows.iso
     mount -o ro /os/windows.iso /iso
 
+    sources_boot_wim=$(
+        cd /iso
+        find_file_ignore_case sources/boot.wim 2>/dev/null ||
+            error_and_exit "can't find boot.wim"
+    )
+
+    # 一般镜像是 install.wim
+    # en_server_install_disc_windows_home_server_2011_x64_dvd_658487.iso 是 Install.wim
+    source_install_wim=$(
+        cd /iso
+        { find_file_ignore_case sources/install.wim ||
+            find_file_ignore_case sources/install.esd; } 2>/dev/null ||
+            error_and_exit "can't find install.wim or install.esd"
+    )
+
     # 防止用了不兼容架构的 iso
-    boot_index=$(get_wim_prop /iso/sources/boot.wim 'Boot Index')
-    arch_wim=$(get_image_prop /iso/sources/boot.wim "$boot_index" 'Architecture' | to_lower)
+    boot_index=$(get_wim_prop "/iso/$sources_boot_wim" 'Boot Index')
+    arch_wim=$(get_image_prop "/iso/$sources_boot_wim" "$boot_index" 'Architecture' | to_lower)
     if ! {
         { [ "$(uname -m)" = "x86_64" ] && [ "$arch_wim" = x86_64 ]; } ||
             { [ "$(uname -m)" = "x86_64" ] && [ "$arch_wim" = x86 ]; } ||
@@ -5305,13 +5320,8 @@ install_windows() {
         error_and_exit "EFI machine can't install 32-bit Windows."
     fi
 
-    if [ -e /iso/sources/install.esd ]; then
-        iso_install_wim=/iso/sources/install.esd
-        install_wim=/os/installer/sources/install.esd
-    else
-        iso_install_wim=/iso/sources/install.wim
-        install_wim=/os/installer/sources/install.wim
-    fi
+    iso_install_wim=/iso/$source_install_wim
+    install_wim=/os/installer/$source_install_wim
 
     # 匹配映像版本
     # 需要整行匹配，因为要区分 Windows 10 Pro 和 Windows 10 Pro for Workstations
@@ -5450,7 +5460,7 @@ install_windows() {
         # 自定义 boot.wim 链接
         download "$boot_wim" /os/boot.wim
     else
-        cp /iso/sources/boot.wim /os/boot.wim
+        cp /iso/$sources_boot_wim /os/boot.wim
     fi
 
     # efi 启动目录为 efi 分区
@@ -5464,15 +5474,16 @@ install_windows() {
     # 复制启动相关的文件
     # efi 额外复制efi目录
     echo 'Copying boot files...'
-    cp -r /iso/boot* $boot_dir
+    cp -r "$(get_path_in_correct_case /iso/boot)"* $boot_dir
     if is_efi; then
         echo 'Copying efi files...'
-        cp -r /iso/efi/ $boot_dir
+        cp -r "$(get_path_in_correct_case /iso/efi)" $boot_dir
     fi
 
     # 复制iso全部文件(除了boot.wim)到installer分区
     echo 'Copying installer files...'
     if false; then
+        # 还需忽略大小写
         rsync -rv \
             --exclude=/sources/boot.wim \
             --exclude=/sources/install.wim \
@@ -5482,9 +5493,9 @@ install_windows() {
         (
             cd /iso
             find . -type f \
-                -not -name boot.wim \
-                -not -name install.wim \
-                -not -name install.esd \
+                -not -iname boot.wim \
+                -not -iname install.wim \
+                -not -iname install.esd \
                 -exec cp -r --parents {} /os/installer/ \;
         )
     fi
@@ -6292,9 +6303,9 @@ EOF
     cp_drivers() {
         if [ "$1" = custom ]; then
             shift
-            dst="/wim/custom_drivers"
+            dst=$(get_path_in_correct_case "/wim/custom_drivers")
         else
-            dst=/wim/drivers
+            dst=$(get_path_in_correct_case "/wim/drivers")
         fi
 
         src=$1
@@ -6316,61 +6327,73 @@ EOF
     add_drivers
 
     # win7 要添加 bootx64.efi 到 efi 目录
-    [ $arch = amd64 ] && boot_efi=bootx64.efi || boot_efi=bootaa64.efi
-    if is_efi && [ ! -e /os/boot/efi/efi/boot/$boot_efi ]; then
-        mkdir -p /os/boot/efi/efi/boot/
-        cp /wim/Windows/Boot/EFI/bootmgfw.efi /os/boot/efi/efi/boot/$boot_efi
+    if is_efi; then
+        [ $arch = amd64 ] && boot_efi=bootx64.efi || boot_efi=bootaa64.efi
+
+        local src dst
+        dst=$(get_path_in_correct_case /os/boot/efi/EFI/boot/$boot_efi)
+        if ! [ -f $dst ]; then
+            mkdir -p "$(dirname $dst)"
+            src=$(get_path_in_correct_case /wim/Windows/Boot/EFI/bootmgfw.efi)
+            cp "$src" "$dst"
+        fi
     fi
 
     # 复制应答文件
     # 移除注释，否则 windows-setup.bat 重新生成的 autounattend.xml 有问题
+    wim_autounattend_xml=$(get_path_in_correct_case /wim/autounattend.xml)
+    wim_windows_xml=$(get_path_in_correct_case /wim/windows.xml)
+    wim_setup_exe=$(get_path_in_correct_case /wim/setup.exe)
+
     apk add xmlstarlet
-    xmlstarlet ed -d '//comment()' /tmp/autounattend.xml >/wim/autounattend.xml
-    unix2dos /wim/autounattend.xml
+    xmlstarlet ed -d '//comment()' /tmp/autounattend.xml >$wim_autounattend_xml
+    unix2dos $wim_autounattend_xml
     info "autounattend.xml"
     # 查看最终文件，并屏蔽密码
-    xmlstarlet ed -d '//*[name()="AdministratorPassword" or name()="Password"]' /wim/autounattend.xml | cat -n
+    xmlstarlet ed -d '//*[name()="AdministratorPassword" or name()="Password"]' $wim_autounattend_xml | cat -n
     apk del xmlstarlet
 
     # 避免无参数运行 setup.exe 时自动安装
-    mv /wim/autounattend.xml /wim/windows.xml
+    mv $wim_autounattend_xml $wim_windows_xml
 
     # 复制安装脚本
     # https://slightlyovercomplicated.com/2016/11/07/windows-pe-startup-sequence-explained/
     # https://learn.microsoft.com/previous-versions/windows/it-pro/windows-vista/cc721977(v=ws.10)
-    mv /wim/setup.exe /wim/setup.exe.disabled
+    mv $wim_setup_exe $wim_setup_exe.disabled
 
     # 如果有重复的 Windows/System32 文件夹，会提示找不到 winload.exe 无法引导
     # win7 win10  boot.wim 是 Windows/System32，install.wim 是 Windows/System32
     # win2016     boot.wim 是 windows/system32，install.wim 是 Windows/System32
     # wimmount 无法挂载成忽略大小写
-    # shellcheck disable=SC2010
-    system32_dir=$(ls -d /wim/*/*32 | grep -i windows/system32)
-    download $confhome/windows-setup.bat $system32_dir/startnet.cmd
+
+    startnet_cmd=$(get_path_in_correct_case /wim/Windows/System32/startnet.cmd)
+    winpeshl_ini=$(get_path_in_correct_case /wim/Windows/System32/winpeshl.ini)
+
+    download $confhome/windows-setup.bat $startnet_cmd
     # dism 手动释放镜像时用
-    # sed -i "s|@image_name@|$image_name|" $system32_dir/startnet.cmd
+    # sed -i "s|@image_name@|$image_name|" "$startnet.cmd"
 
     # shellcheck disable=SC2154
     if [ "$force_old_windows_setup" = 1 ]; then
-        sed -i 's/ForceOldSetup=0/ForceOldSetup=1/i' $system32_dir/startnet.cmd
+        sed -i 's/ForceOldSetup=0/ForceOldSetup=1/i' $startnet_cmd
     fi
 
     # 有 SAC 组件时，启用 EMS
     if $has_sac; then
-        sed -i 's/EnableEMS=0/EnableEMS=1/i' $system32_dir/startnet.cmd
+        sed -i 's/EnableEMS=0/EnableEMS=1/i' $startnet_cmd
     fi
 
     # Windows Thin PC 有 Windows\System32\winpeshl.ini
     # [LaunchApps]
     # %SYSTEMDRIVE%\windows\system32\drvload.exe, %SYSTEMDRIVE%\windows\inf\sdbus.inf
     # %SYSTEMDRIVE%\setup.exe
-    if [ -f $system32_dir/winpeshl.ini ]; then
+    if [ -f "$winpeshl_ini" ]; then
         info "mod winpeshl.ini"
         # https://learn.microsoft.com/previous-versions/windows/it-pro/windows-vista/cc721977(v=ws.10)
         # 两种方法都可以，第一种是原版命令
-        sed -i 's|setup.exe|windows\\system32\\cmd.exe, "/k %SYSTEMROOT%\\system32\\startnet.cmd"|i' $system32_dir/winpeshl.ini
-        # sed -i 's|setup.exe|windows\\system32\\startnet.cmd|i' $system32_dir/winpeshl.ini
-        cat -n $system32_dir/winpeshl.ini
+        sed -i 's|setup.exe|windows\\system32\\cmd.exe, "/k %SYSTEMROOT%\\system32\\startnet.cmd"|i' "$winpeshl_ini"
+        # sed -i 's|setup.exe|windows\\system32\\startnet.cmd|i' "$winpeshl_ini"
+        cat -n "$winpeshl_ini"
     fi
 
     # 提交修改 boot.wim
@@ -6382,7 +6405,6 @@ EOF
     # wimoptimize /os/boot.wim
 
     # 优化 boot.wim 并复制到正确的位置
-    mkdir -p $boot_dir/sources/
     if is_nt_ver_ge 6.1; then
         # win7 或以上删除 boot.wim 镜像 1 不会报错
         # 因为 win7 winre 镜像在 install.wim Windows\System32\Recovery\winRE.wim
@@ -6395,17 +6417,18 @@ EOF
         # vista install.wim 没有 Windows\System32\Recovery\winRE.wim
         images=all
     fi
-    wimexport --boot /os/boot.wim "$images" $boot_dir/sources/boot.wim
+    mkdir -p "$(get_path_in_correct_case "$(dirname $boot_dir/$sources_boot_wim)")"
+    wimexport --boot /os/boot.wim "$images" $boot_dir/$sources_boot_wim
     info "boot.wim size"
-    echo "Original:      $(get_filesize_mb /iso/sources/boot.wim)"
+    echo "Original:      $(get_filesize_mb /iso/$sources_boot_wim)"
     echo "Added Drivers: $(get_filesize_mb /os/boot.wim)"
-    echo "Optimized:     $(get_filesize_mb "$boot_dir/sources/boot.wim")"
+    echo "Optimized:     $(get_filesize_mb "$boot_dir/$sources_boot_wim")"
     echo
 
     # vista 安装时需要 boot.wim，原因见上面
     if [ "$nt_ver" = 6.0 ] &&
-        ! [ -e /os/installer/sources/boot.wim ]; then
-        cp $boot_dir/sources/boot.wim /os/installer/sources/boot.wim
+        ! [ -e /os/installer/$sources_boot_wim ]; then
+        cp $boot_dir/$sources_boot_wim /os/installer/$sources_boot_wim
     fi
 
     # windows 7 没有 invoke-webrequest
