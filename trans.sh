@@ -3693,7 +3693,7 @@ change_ssh_conf() {
 
 allow_password_login() {
     os_dir=$1
-    change_ssh_conf "$os_dir" PasswordAuthentication yes 01-PasswordAuthenticaton.conf
+    change_ssh_conf "$os_dir" PasswordAuthentication yes 01-PasswordAuthentication.conf
 }
 
 allow_root_password_login() {
