@@ -3052,11 +3052,17 @@ remove_cloud_init() {
     if false && [ -d $os_dir/etc/cloud ]; then
         touch $os_dir/etc/cloud/cloud-init.disabled
     fi
-    for name in cloud-init-local cloud-init cloud-config cloud-final; do
-        for type in service socket; do
-            # 服务不存在时会报错
-            chroot $os_dir systemctl disable "$name.$type" 2>/dev/null || true
-        done
+
+    # systemctl is-enabled cloud-init-hotplugd.service 状态是 static
+    # disable 会出现一堆提示信息，也无法 disable
+    for unit in $(
+        chroot $os_dir systemctl list-unit-files |
+            grep -E '^(cloud-init-.*|cloud-config|cloud-final)\.(service|socket)' | grep enabled | awk '{print $1}'
+    ); do
+        # 服务不存在时会报错
+        if chroot $os_dir systemctl -q is-enabled "$unit"; then
+            chroot $os_dir systemctl disable "$unit"
+        fi
     done
 
     for pkg_mgr in dnf yum zypper apt-get; do
@@ -3070,7 +3076,8 @@ remove_cloud_init() {
                 chroot $os_dir zypper remove -y -u cloud-init
                 ;;
             apt-get)
-                chroot_apt_remove $os_dir cloud-init
+                # ubuntu 25.04 开始有 cloud-init-base
+                chroot_apt_remove $os_dir cloud-init cloud-init-base
                 chroot_apt_autoremove $os_dir
                 ;;
             esac
