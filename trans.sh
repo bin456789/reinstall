@@ -331,7 +331,7 @@ get_ttys() {
 
 find_xda() {
     # 出错后再运行脚本，硬盘可能已经格式化，之前记录的分区表 id 无效
-    # 因此找到 xda 后要保存 xda 到 /config/xda
+    # 因此找到 xda 后要保存 xda 到 /configs/xda
 
     # 先读取之前保存的
     if xda=$(get_config xda 2>/dev/null) && [ -n "$xda" ]; then
@@ -1401,6 +1401,15 @@ install_alpine() {
     chmod +x /os/etc/init.d/fix-eth-name
     chroot /os rc-update add fix-eth-name boot
 
+    # 安装 frpc
+    if [ -s /configs/frpc.toml ]; then
+        chroot /os apk add frp
+        # chroot rc-update add 默认添加到 sysinit
+        # 但不加 chroot 默认添加到 default
+        chroot /os rc-update add frpc boot
+        cp /configs/frpc.toml /os/etc/frp/frpc.toml
+    fi
+
     # 安装固件微码会触发 grub-probe
     # 如果没挂载会报错
     # Executing grub-2.12-r5.trigger
@@ -1480,7 +1489,8 @@ install_nixos() {
 
     show_nixos_config() {
         echo
-        cat -n /os/etc/nixos/configuration.nix
+        # 过滤 frp auth.token
+        cat -n /os/etc/nixos/configuration.nix | grep -Fv 'auth.token'
         echo
         cat -n /os/etc/nixos/hardware-configuration.nix
         echo
@@ -1549,7 +1559,7 @@ install_nixos() {
             sh=https://nixos.org/nix/install
         fi
         apk add xz
-        wget -O- "$sh" | sh -s -- --no-channel-add
+        wget -O- "$sh" | sh -s -- --no-daemon --no-channel-add
         apk del xz
         # shellcheck source=/dev/null
         . /root/.nix-profile/etc/profile.d/nix.sh
@@ -1605,6 +1615,22 @@ $(del_comment_lines </configs/ssh_keys | del_empty_lines | quote_line | add_spac
         nix_ssh_ports="services.openssh.ports = [ $ssh_port ];"
     fi
 
+    # 虽然是原始 frpc.toml (string) 转成 toml 类型，再转成最终使用的 frpc.toml (string)
+    # 但是可以避免原始 frpc.toml 有错误导致失联
+    if [ -s /configs/frpc.toml ]; then
+        nix_frpc=$(
+            cat <<EOF
+services.frp = {
+  enable = true;
+  role = "client";
+  settings = builtins.fromTOML ''
+$(del_comment_lines </configs/frpc.toml | add_space 4)
+  '';
+};
+EOF
+        )
+    fi
+
     # TODO: 准确匹配网卡，添加 udev 或者直接配置 networkd 匹配 mac
     create_nixos_network_config /tmp/nixos_network_config.nix
 
@@ -1617,6 +1643,7 @@ boot.kernelParams = [ $(get_ttys console= | quote_word) ];
 services.openssh.enable = true;
 $nix_ssh_keys_or_PermitRootLogin
 $nix_ssh_ports
+$nix_frpc
 $(cat /tmp/nixos_network_config.nix)
 ###################################################
 EOF
@@ -1698,14 +1725,12 @@ EOF
     show_nixos_config
 }
 
-add_fix_eth_name_systemd_service() {
-    os_dir=$1
+add_systemd_service() {
+    local os_dir=$1
+    local service_name=$2
 
-    # 无需执行 systemctl daemon-reload
-    # 因为 chroot 下执行会提示 Running in chroot, ignoring command 'daemon-reload'
-    download "$confhome/fix-eth-name.sh" "$os_dir/fix-eth-name.sh"
-    download "$confhome/fix-eth-name.service" "$os_dir/etc/systemd/system/fix-eth-name.service"
-    chroot "$os_dir" systemctl enable fix-eth-name
+    download "$confhome/$service_name.service" "$os_dir/etc/systemd/system/$service_name.service"
+    chroot "$os_dir" systemctl enable "$service_name.service"
 
     # aosc 首次开机会执行 preset-all
     # 因此需要设置 fix-eth-name 的 preset 状态
@@ -1714,9 +1739,46 @@ add_fix_eth_name_systemd_service() {
 
     # 可能是 /usr/lib/systemd/system-preset/ 或者 /lib/systemd/system-preset/
     if [ -d "$os_dir/usr/lib/systemd/system-preset" ]; then
-        echo 'enable fix-eth-name.service' >"$os_dir/usr/lib/systemd/system-preset/01-fix-eth-name.preset"
+        echo "enable $service_name.service" >"$os_dir/usr/lib/systemd/system-preset/01-$service_name.preset"
     else
-        echo 'enable fix-eth-name.service' >"$os_dir/lib/systemd/system-preset/01-fix-eth-name.preset"
+        echo "enable $service_name.service" >"$os_dir/lib/systemd/system-preset/01-$service_name.preset"
+    fi
+}
+
+add_fix_eth_name_systemd_service() {
+    local os_dir=$1
+
+    # 无需执行 systemctl daemon-reload
+    # 因为 chroot 下执行会提示 Running in chroot, ignoring command 'daemon-reload'
+    download "$confhome/fix-eth-name.sh" "$os_dir/fix-eth-name.sh"
+    add_systemd_service "$os_dir" fix-eth-name
+}
+
+get_frpc_url() {
+    wget "$confhome/get-frpc-url.sh" -O- | sh -s "$@"
+}
+
+add_frpc_systemd_service_if_need() {
+    local os_dir=$1
+
+    if [ -s /configs/frpc.toml ]; then
+        mkdir -p "$os_dir/usr/local/bin"
+        mkdir -p "$os_dir/usr/local/etc/frpc"
+
+        # 下载 frpc
+        # 注意下载的 frpc owner 不是 root:root
+        frpc_url=$(get_frpc_url linux)
+        basename=$(echo "$frpc_url" | awk -F/ '{print $NF}' | sed 's/\.tar\.gz//')
+        download "$frpc_url" "$os_dir/frpc.tar.gz"
+        tar xzf "$os_dir/frpc.tar.gz" "$basename/frpc" -O >"$os_dir/usr/local/bin/frpc"
+        rm -f "$os_dir/frpc.tar.gz"
+        chmod a+x "$os_dir/usr/local/bin/frpc"
+
+        # frpc conf
+        cp /configs/frpc.toml "$os_dir/usr/local/etc/frpc/frpc.toml"
+
+        # 添加服务
+        add_systemd_service "$os_dir" frpc
     fi
 }
 
@@ -1775,6 +1837,9 @@ basic_init() {
     # 即使开了 net.ifnames=0 也需要
     # 因为 alpine live 和目标系统的网卡顺序可能不同
     add_fix_eth_name_systemd_service $os_dir
+
+    # frpc
+    add_frpc_systemd_service_if_need $os_dir
 }
 
 install_arch_gentoo_aosc() {
@@ -2841,6 +2906,28 @@ modify_windows() {
         bats="$bats windows-set-netconf-$ethx.bat"
     done
 
+    # 5 frp
+    if [ -s /configs/frpc.toml ]; then
+        # 好像 win7 无法运行 frpc，暂时不管
+        windows_arch=$(get_windows_arch_from_windows_drive "$os_dir" | to_lower)
+        if [ "$windows_arch" = amd64 ] || [ "$windows_arch" = arm64 ]; then
+            mkdir -p "$os_dir/frpc/"
+            url=$(get_frpc_url windows "$nt_ver")
+            download "$url" $os_dir/frpc/frpc.zip
+            # -j 去除文件夹
+            # -C 筛选文件时不区分大小写，但 busybox zip 不支持
+            unzip -o -j "$os_dir/frpc/frpc.zip" '*/frpc.exe' -d "$os_dir/frpc/"
+            rm -f "$os_dir/frpc/frpc.zip"
+            cp -f /configs/frpc.toml "$os_dir/frpc/frpc.toml"
+            download "$confhome/windows-frpc.xml" "$os_dir/frpc/frpc.xml"
+            download "$confhome/windows-frpc.bat" "$os_dir/frpc/frpc.bat"
+            download "$confhome/windows-frpc-workaround.bat" "$os_dir/frpc/frpc-workaround.bat"
+            bats="$bats frpc\frpc.bat"
+        else
+            warn "$windows_arch Not Support frpc"
+        fi
+    fi
+
     if $use_gpo; then
         # 使用组策略
         scripts_ini=$(get_path_in_correct_case $os_dir/Windows/System32/GroupPolicy/Machine/Scripts/scripts.ini)
@@ -2911,6 +2998,9 @@ EOF
 
         # cat 可以保留权限
         cat $setup_complete_mod >$setup_complete
+
+        # 查看最终内容
+        cat -n $setup_complete
     fi
 }
 
@@ -5268,6 +5358,16 @@ get_installation_type_from_windows_drive() {
     apk del hivex
 }
 
+get_windows_arch_from_windows_drive() {
+    local os_dir=$1
+
+    apk add hivex
+    hive=$(find_file_ignore_case $os_dir/Windows/System32/config/SYSTEM)
+    # 没有 CurrentControlSet
+    hivexget $hive 'ControlSet001\Control\Session Manager\Environment' PROCESSOR_ARCHITECTURE
+    apk del hivex
+}
+
 install_windows() {
     get_wim_prop() {
         wim=$1
@@ -6864,6 +6964,18 @@ if is_need_set_ssh_keys; then
 else
     change_root_password /
     printf '\nyes' | setup-sshd
+fi
+
+# 设置 frpc
+# 并防止重复运行
+if [ -s /configs/frpc.toml ] && ! pidof frpc >/dev/null; then
+    info 'run frpc'
+    add_community_repo
+    apk add frp
+    while true; do
+        frpc -c /configs/frpc.toml || true
+        sleep 5
+    done &
 fi
 
 # shellcheck disable=SC2154

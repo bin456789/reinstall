@@ -34,7 +34,7 @@
 | <img width="16" height="16" src="https://www.alpinelinux.org/alpine-logo.ico" /> Alpine                                                                                                                                                                                                                                                                                | 3.18, 3.19, 3.20, 3.21                | 256 MB    | 1 GB         |
 | <img width="16" height="16" src="https://www.debian.org/favicon.ico" /> Debian                                                                                                                                                                                                                                                                                         | 9, 10, 11, 12                         | 256 MB    | 1 ~ 1.5 GB ^ |
 | <img width="16" height="16" src="https://github.com/bin456789/reinstall/assets/7548515/f74b3d5b-085f-4df3-bcc9-8a9bd80bb16d" /> Kali                                                                                                                                                                                                                                   | 滚动                                  | 256 MB    | 1 ~ 1.5 GB ^ |
-| <img width="16" height="16" src="https://canonical-subiquity.readthedocs-hosted.com/en/latest/_static/favicon.png" /> Ubuntu                                                                                                                                                                                                                                           | 16.04 LTS - 24.04 LTS, 25.04          | 512 MB \* | 2 GB         |
+| <img width="16" height="16" src="https://documentation.ubuntu.com/server/_static/favicon.png" /> Ubuntu                                                                                                                                                                                                                                                                | 16.04 LTS - 24.04 LTS, 25.04          | 512 MB \* | 2 GB         |
 | <img width="16" height="16" src="https://img.alicdn.com/imgextra/i1/O1CN01oJnJZg1yK4RzI4Rx2_!!6000000006559-2-tps-118-118.png" /> Anolis                                                                                                                                                                                                                               | 7, 8, 23                              | 512 MB \* | 5 GB         |
 | <img width="16" height="16" src="https://www.redhat.com/favicon.ico" /> RHEL &nbsp;<img width="16" height="16" src="https://almalinux.org/fav/favicon.ico" /> AlmaLinux &nbsp;<img width="16" height="16" src="https://rockylinux.org/favicon.png" /> Rocky &nbsp;<img width="16" height="16" src="https://www.oracle.com/asset/web/favicons/favicon-32.png" /> Oracle | 8, 9                                  | 512 MB \* | 5 GB         |
 | <img width="16" height="16" src="https://opencloudos.org/qq.ico" /> OpenCloudOS                                                                                                                                                                                                                                                                                        | 8, 9, Stream 23                       | 512 MB \* | 5 GB         |
@@ -42,7 +42,7 @@
 | <img width="16" height="16" src="https://fedoraproject.org/favicon.ico" /> Fedora                                                                                                                                                                                                                                                                                      | 41, 42                                | 512 MB \* | 5 GB         |
 | <img width="16" height="16" src="https://www.openeuler.org/favicon.ico" /> openEuler                                                                                                                                                                                                                                                                                   | 20.03 LTS - 24.03 LTS, 25.03          | 512 MB \* | 5 GB         |
 | <img width="16" height="16" src="https://static.opensuse.org/favicon.ico" /> openSUSE                                                                                                                                                                                                                                                                                  | Leap 15.6, Tumbleweed (滚动)          | 512 MB \* | 5 GB         |
-| <img width="16" height="16" src="https://github.com/user-attachments/assets/99a542b6-6482-4086-addf-f192c06fef73" /> NixOS                                                                                                                                                                                                                                             | 24.11                                 | 512 MB    | 5 GB         |
+| <img width="16" height="16" src="https://nixos.org/favicon.svg" /> NixOS                                                                                                                                                                                                                                                                                               | 24.11                                 | 512 MB    | 5 GB         |
 | <img width="16" height="16" src="https://archlinux.org/static/favicon.png" /> Arch                                                                                                                                                                                                                                                                                     | 滚动                                  | 512 MB    | 5 GB         |
 | <img width="16" height="16" src="https://www.gentoo.org/assets/img/logo/gentoo-g.png" /> Gentoo                                                                                                                                                                                                                                                                        | 滚动                                  | 512 MB    | 5 GB         |
 | <img width="16" height="16" src="https://aosc.io/assets/distros/aosc-os.svg" /> 安同 OS                                                                                                                                                                                                                                                                                | 滚动                                  | 512 MB    | 5 GB         |
@@ -160,6 +160,7 @@ bash reinstall.sh anolis      7|8|23
   - `--ssh-key C:\path\to\public_key`
 - `--ssh-port PORT` 修改 SSH 端口（安装期间观察日志用，也作用于新系统）
 - `--web-port PORT` 修改 Web 端口（安装期间观察日志用）
+- `--frpc-toml /path/to/frpc.toml` 添加 frpc 内网穿透
 - `--hold 2` 安装结束后不重启，此时可以 SSH 登录修改系统内容，系统挂载在 `/os` (此功能不支持 Debian/Kali)
 
 > [!TIP]
@@ -212,10 +213,11 @@ bash reinstall.sh dd --img "https://example.com/xxx.xz"
 
 #### 可选参数
 
-- `--allow-ping` 允许被 Ping (仅限 DD Windows)
+- `--allow-ping` 设置 Windows 防火墙允许被 Ping (仅限 DD Windows)
 - `--rdp-port PORT` 修改 RDP 端口 (仅限 DD Windows)
 - `--ssh-port PORT` 修改 SSH 端口（安装期间观察日志用）
 - `--web-port PORT` 修改 Web 端口（安装期间观察日志用）
+- `--frpc-toml /path/to/frpc.toml` 添加 frpc 内网穿透（仅限 DD Windows）
 - `--hold 2` DD 结束后不重启，此时可以 SSH 登录修改系统内容，Windows 系统会挂载在 `/os`，Linux 系统**不会**自动挂载
 
 > [!TIP]
@@ -245,6 +247,7 @@ bash reinstall.sh alpine --hold=1
   - `--ssh-key gitlab:your_username`
   - `--ssh-key /path/to/public_key`
   - `--ssh-key C:\path\to\public_key`
+- `--frpc-toml /path/to/frpc.toml` 添加 frpc 内网穿透
 
 ### 功能 4: 重启到 <img width="16" height="16" src="https://netboot.xyz/img/favicon.ico" /> netboot.xyz
 
@@ -391,6 +394,7 @@ bash reinstall.sh windows \
 - `--add-driver INF_OR_DIR` 添加额外驱动，填写 .inf 路径，或者 .inf 所在的文件夹
   - 需先下载驱动到本地
   - 可多次设置该参数以添加不同的驱动
+- `--frpc-toml /path/to/frpc.toml` 添加 frpc 内网穿透
 - `--hold 2` 在进入 Windows 官方安装程序之前，可以 SSH 登录修改硬盘内容，硬盘挂载在 `/os`
 
 #### 以下驱动会自动按需下载安装，无需手动添加

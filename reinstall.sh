@@ -69,12 +69,17 @@ Usage: $reinstall_____ anolis      7|8|23
                        windows     --image-name="windows xxx yyy" --iso="http://xxx.com/xxx.iso"
                        netboot.xyz
 
-       Options:        [--password PASSWORD]
-                       [--ssh-key  KEY]
-                       [--ssh-port PORT]
-                       [--rdp-port PORT]
-                       [--web-port PORT]
+       Options:        For Linux/Windows:
+                       [--password  PASSWORD]
+                       [--ssh-key   KEY]
+                       [--ssh-port  PORT]
+                       [--web-port  PORT]
+                       [--frpc-toml TOML]
+
+                       For Windows Only:
                        [--allow-ping]
+                       [--rdp-port   PORT]
+                       [--add-driver INF_OR_DIR]
 
 Manual: https://github.com/bin456789/reinstall
 
@@ -3148,11 +3153,15 @@ EOF
     curl -LO "$confhome/fix-eth-name.sh"
     curl -LO "$confhome/fix-eth-name.service"
 
-    # 最近 kali initrd 删除了原版 wget
+    # 有段时间 kali initrd 删除了原版 wget
     # 但 initrd 的 busybox wget 又不支持 https
     # 因此改成在这里下载
     curl -LO "$confhome/get-xda.sh"
     curl -LO "$confhome/ttys.sh"
+    if [ -n "$frpc_config" ]; then
+        curl -LO "$confhome/get-frpc-url.sh"
+        curl -LO "$confhome/frpc.service"
+    fi
 
     # 可以节省一点内存？
     echo 'export DEBCONF_DROP_TRANSLATIONS=1' |
@@ -3522,6 +3531,9 @@ This script is outdated, please download reinstall.sh again.
     else
         save_password $initrd_dir/configs
     fi
+    if [ -n "$frpc_config" ]; then
+        cat "$frpc_config" >$initrd_dir/configs/frpc.toml
+    fi
 
     if is_distro_like_debian $nextos_distro; then
         mod_initrd_debian_kali
@@ -3690,6 +3702,7 @@ for o in ci installer debug minimal allow-ping force-cn help \
     web-port: http-port: \
     allow-ping: \
     commit: \
+    frpc-conf: frpc-config: frpc-toml: \
     force: \
     force-old-windows-setup:; do
     [ -n "$long_opts" ] && long_opts+=,
@@ -3744,6 +3757,25 @@ while true; do
             error_and_exit "Invalid $1 value: $2"
         fi
         hold=$2
+        shift 2
+        ;;
+    --frpc-conf | --frpc-config | --frpc-toml)
+        [ -n "$2" ] || error_and_exit "Need value for $1"
+
+        # windows 路径转换
+        frpc_config=$(get_unix_path "$2")
+
+        # alpine busybox 不支持 readlink -m
+        # readlink -m /asfsafasfsaf/fasf
+        # 因此需要先判断路径是否存在
+
+        if ! [ -f "$frpc_config" ]; then
+            error_and_exit "Not a toml file: $2"
+        fi
+
+        # 转为绝对路径
+        frpc_config=$(readlink -f "$frpc_config")
+
         shift 2
         ;;
     --force)

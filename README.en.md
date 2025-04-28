@@ -34,7 +34,7 @@ The system requirements for the target system are as follows:
 | <img width="16" height="16" src="https://www.alpinelinux.org/alpine-logo.ico" /> Alpine                                                                                                                                                                                                                                                                                | 3.18, 3.19, 3.20, 3.21                | 256 MB    | 1 GB             |
 | <img width="16" height="16" src="https://www.debian.org/favicon.ico" /> Debian                                                                                                                                                                                                                                                                                         | 9, 10, 11, 12                         | 256 MB    | 1 ~ 1.5 GB ^     |
 | <img width="16" height="16" src="https://github.com/bin456789/reinstall/assets/7548515/f74b3d5b-085f-4df3-bcc9-8a9bd80bb16d" /> Kali                                                                                                                                                                                                                                   | Rolling                               | 256 MB    | 1 ~ 1.5 GB ^     |
-| <img width="16" height="16" src="https://canonical-subiquity.readthedocs-hosted.com/en/latest/_static/favicon.png" /> Ubuntu                                                                                                                                                                                                                                           | 16.04 LTS - 24.04 LTS, 25.04          | 512 MB \* | 2 GB             |
+| <img width="16" height="16" src="https://documentation.ubuntu.com/server/_static/favicon.png" /> Ubuntu                                                                                                                                                                                                                                                                | 16.04 LTS - 24.04 LTS, 25.04          | 512 MB \* | 2 GB             |
 | <img width="16" height="16" src="https://img.alicdn.com/imgextra/i1/O1CN01oJnJZg1yK4RzI4Rx2_!!6000000006559-2-tps-118-118.png" /> Anolis                                                                                                                                                                                                                               | 7, 8, 23                              | 512 MB \* | 5 GB             |
 | <img width="16" height="16" src="https://www.redhat.com/favicon.ico" /> RHEL &nbsp;<img width="16" height="16" src="https://almalinux.org/fav/favicon.ico" /> AlmaLinux &nbsp;<img width="16" height="16" src="https://rockylinux.org/favicon.png" /> Rocky &nbsp;<img width="16" height="16" src="https://www.oracle.com/asset/web/favicons/favicon-32.png" /> Oracle | 8, 9                                  | 512 MB \* | 5 GB             |
 | <img width="16" height="16" src="https://opencloudos.org/qq.ico" /> OpenCloudOS                                                                                                                                                                                                                                                                                        | 8, 9, Stream 23                       | 512 MB \* | 5 GB             |
@@ -42,7 +42,7 @@ The system requirements for the target system are as follows:
 | <img width="16" height="16" src="https://fedoraproject.org/favicon.ico" /> Fedora                                                                                                                                                                                                                                                                                      | 41, 42                                | 512 MB \* | 5 GB             |
 | <img width="16" height="16" src="https://www.openeuler.org/favicon.ico" /> openEuler                                                                                                                                                                                                                                                                                   | 20.03 LTS - 24.03 LTS, 25.03          | 512 MB \* | 5 GB             |
 | <img width="16" height="16" src="https://static.opensuse.org/favicon.ico" /> openSUSE                                                                                                                                                                                                                                                                                  | Leap 15.6, Tumbleweed (Rolling)       | 512 MB \* | 5 GB             |
-| <img width="16" height="16" src="https://github.com/user-attachments/assets/99a542b6-6482-4086-addf-f192c06fef73" /> NixOS                                                                                                                                                                                                                                             | 24.11                                 | 512 MB    | 5 GB             |
+| <img width="16" height="16" src="https://nixos.org/favicon.svg" /> NixOS                                                                                                                                                                                                                                                                                               | 24.11                                 | 512 MB    | 5 GB             |
 | <img width="16" height="16" src="https://archlinux.org/static/favicon.png" /> Arch                                                                                                                                                                                                                                                                                     | Rolling                               | 512 MB    | 5 GB             |
 | <img width="16" height="16" src="https://www.gentoo.org/assets/img/logo/gentoo-g.png" /> Gentoo                                                                                                                                                                                                                                                                        | Rolling                               | 512 MB    | 5 GB             |
 | <img width="16" height="16" src="https://aosc.io/assets/distros/aosc-os.svg" /> AOSC OS                                                                                                                                                                                                                                                                                | Rolling                               | 512 MB    | 5 GB             |
@@ -160,6 +160,7 @@ bash reinstall.sh anolis      7|8|23
   - `--ssh-key C:\path\to\public_key`
 - `--ssh-port PORT` Change the SSH port (for log observation during installation and for the new system)
 - `--web-port PORT` Change the Web port (for log observation during installation)
+- `--frpc-toml /path/to/frpc.toml` Add frpc for intranet tunneling
 - `--hold 2` Prevent reboot after installation completes, allowing SSH login to modify system content; the system is mounted at `/os` (this feature is not supported on Debian/Kali).
 
 > [!TIP]
@@ -212,10 +213,11 @@ bash reinstall.sh dd --img "https://example.com/xxx.xz"
 
 #### Optional parameters
 
-- `--allow-ping` Allow ping responses (DD Windows only)
+- `--allow-ping` Configure Windows Firewall to Allow Ping Responses (DD Windows only)
 - `--rdp-port PORT` Change RDP port (DD Windows only)
 - `--ssh-port PORT` Change SSH port (for log observation during installation)
 - `--web-port PORT` Change Web port (for log observation during installation)
+- `--frpc-toml /path/to/frpc.toml` Add frpc for intranet tunneling (DD Windows only)
 - `--hold 2` Prevent reboot after the DD process finishes, allowing SSH login to modify system content. The Windows system will be mounted at `/os`, but Linux systems will **NOT** be automatically mounted.
 
 > [!TIP]
@@ -245,6 +247,7 @@ bash reinstall.sh alpine --hold=1
   - `--ssh-key gitlab:your_username`
   - `--ssh-key /path/to/public_key`
   - `--ssh-key C:\path\to\public_key`
+- `--frpc-toml /path/to/frpc.toml` Add frpc for intranet tunneling
 
 ### Feature 4: Reboot to <img width="16" height="16" src="https://netboot.xyz/img/favicon.ico" /> netboot.xyz
 
@@ -384,13 +387,14 @@ bash reinstall.sh windows \
 #### Optional parameters
 
 - `--password PASSWORD` Set Password
-- `--allow-ping` Configures the Windows firewall to allow ping requests
+- `--allow-ping` Configure Windows Firewall to Allow Ping Responses
 - `--rdp-port PORT` Change RDP port
 - `--ssh-port PORT` Change SSH port (for log observation during installation)
 - `--web-port PORT` Change Web port (for log observation during installation)
 - `--add-driver INF_OR_DIR` Add additional driver, specifying .inf path, or the folder contains .inf file.
   - The driver must be downloaded locally first.
   - This parameter can be set multiple times to add different driver.
+- `--frpc-toml /path/to/frpc.toml` Add frpc for intranet tunneling
 - `--hold 2` Allow SSH connections for modifying the disk content before rebooting into the official Windows installation program, with the disk mounted at `/os`.
 
 #### The following drivers will automatic download and install as needed, without the need for manual addition

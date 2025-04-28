@@ -8,8 +8,12 @@ charset = utf-8
 trim_trailing_whitespace = true
 insert_final_newline = true
 
-[windows.xml]
+[{windows.xml,windows-*.xml}]
 end_of_line = crlf
+
+[windows-frpc.xml]
+charset = utf-16-le
+indent_size = 2
 
 [*.{bat,cmd,ps1}]
 end_of_line = crlf

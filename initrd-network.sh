@@ -1,6 +1,6 @@
 #!/bin/ash
 # shellcheck shell=dash
-# alpine / debian initrd 共用此脚本
+# alpine/debian initrd 共用此脚本
 
 # accept_ra 接收 RA + 自动配置网关
 # autoconf  自动配置地址，依赖 accept_ra
@@ -287,6 +287,9 @@ if [ -z "$ethx" ]; then
 fi
 
 echo "Configuring $ethx ($mac_addr)..."
+
+# 不开启 lo 则 frp 无法连接 127.0.0.1 22
+ip link set dev lo up
 
 # 开启 ethx
 ip link set dev "$ethx" up
