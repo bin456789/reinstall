@@ -4256,6 +4256,9 @@ install_fnos() {
 
     # 修正网卡名
     add_fix_eth_name_systemd_service $os_dir
+
+    # frpc
+    add_frpc_systemd_service_if_need $os_dir
 }
 
 install_qcow_by_copy() {
