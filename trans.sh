@@ -2921,7 +2921,6 @@ modify_windows() {
             cp -f /configs/frpc.toml "$os_dir/frpc/frpc.toml"
             download "$confhome/windows-frpc.xml" "$os_dir/frpc/frpc.xml"
             download "$confhome/windows-frpc.bat" "$os_dir/frpc/frpc.bat"
-            download "$confhome/windows-frpc-workaround.bat" "$os_dir/frpc/frpc-workaround.bat"
             bats="$bats frpc\frpc.bat"
         else
             warn "$windows_arch Not Support frpc"
