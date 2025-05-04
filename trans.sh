@@ -5770,8 +5770,8 @@ install_windows() {
             case "$product_ver" in
             '7' | '2008 r2') $support_sha256 &&
                 # 25.0 比 24.5 只更新了 ProSet 软件，驱动相同
-                echo echo 18713/eng/prowin${arch_intel}legacy.exe || # 25.0 有部分文件是 sha256 签名
-                echo 29323/eng/prowin${arch_intel}legacy.exe ;;      # 24.3 sha1 签名
+                echo 18713/eng/prowin${arch_intel}legacy.exe || # 25.0 有部分文件是 sha256 签名
+                echo 29323/eng/prowin${arch_intel}legacy.exe ;; # 24.3 sha1 签名
             '8') echo 21642/eng/prowin${arch_intel}.exe ;;
             '8.1') echo 764813/Wired_driver_27.8_${arch_intel}.zip ;;
             '2012' | '2012 r2') echo 785805/Wired_driver_28.2_${arch_intel}.zip ;;
@@ -5923,7 +5923,7 @@ EOF
 
         aws_pv_ver=$(
             case "$nt_ver" in
-            6.1) $support_sha256 && echo 8.3.5 || echo echo 8.3.2 ;;
+            6.1) $support_sha256 && echo 8.3.5 || echo 8.3.2 ;;
             6.2 | 6.3) echo 8.4.3 ;;
             *) echo Latest ;;
             esac
