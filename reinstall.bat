@@ -30,15 +30,25 @@ if errorlevel 1 (
 
 rem 有时 %tmp% 带会话 id，且文件夹不存在
 rem https://learn.microsoft.com/troubleshoot/windows-server/shell-experience/temp-folder-with-logon-session-id-deleted
-if not exist %tmp% (
-    md %tmp%
-)
+rem if not exist %tmp% (
+rem     md %tmp%
+rem )
 
-rem 检查是否国内
+rem 下载 geoip
 if not exist geoip (
     rem www.cloudflare.com/dash.cloudflare.com 国内访问的是美国服务器，而且部分地区被墙
     call :download http://www.qualcomm.cn/cdn-cgi/trace %~dp0geoip || goto :download_failed
 )
+
+rem 判断是否有 loc=
+findstr /c:"loc=" geoip >nul
+if errorlevel 1 (
+    echo Invalid geoip file
+    del geoip
+    exit /b 1
+)
+
+rem 检查是否国内
 findstr /c:"loc=CN" geoip >nul
 if not errorlevel 1 (
     rem mirrors.tuna.tsinghua.edu.cn 会强制跳转 https
@@ -60,37 +70,49 @@ if not errorlevel 1 (
 call :check_cygwin_installed || (
     rem win10 arm 支持运行 x86 软件
     rem win11 arm 支持运行 x86 和 x86_64 软件
-    rem wmic os get osarchitecture 显示中文
-    rem wmic ComputerSystem get SystemType 显示英文
 
-    rem SystemType
     rem windows 11 24h2 没有 wmic
+    rem wmic os get osarchitecture 显示中文，即使设置了 mode con cp select=437
+    rem wmic ComputerSystem get SystemType 显示英文
+    rem for /f "tokens=*" %%a in ('wmic ComputerSystem get SystemType ^| find /i "based"') do (
+    rem     set "SystemType=%%a"
+    rem )
+
     rem 有的系统精简了 powershell
-    where wmic >nul 2>&1
-    if not errorlevel 1 (
-        for /f "tokens=*" %%a in ('wmic ComputerSystem get SystemType ^| find /i "based"') do (
-            set "SystemType=%%a"
-        )
-    ) else (
-        for /f "delims=" %%a in ('powershell -NoLogo -NoProfile -NonInteractive -Command "(Get-WmiObject win32_computersystem).SystemType"') do (
-            set "SystemType=%%a"
-        )
+    rem for /f "delims=" %%a in ('powershell -NoLogo -NoProfile -NonInteractive -Command "(Get-WmiObject win32_computersystem).SystemType"') do (
+    rem     set "SystemType=%%a"
+    rem )
+
+    rem SystemArch
+    for /f "tokens=3" %%a in ('reg query "HKLM\SYSTEM\CurrentControlSet\Control\Session Manager\Environment" /v PROCESSOR_ARCHITECTURE') do (
+        set SystemArch=%%a
     )
+
+    rem 也可以用 PROCESSOR_ARCHITEW6432 和 PROCESSOR_ARCHITECTURE 判断
+    rem ARM64 win11  PROCESSOR_ARCHITEW6432   PROCESSOR_ARCHITECTURE
+    rem 原生cmd          未定义                      ARM64
+    rem 32位cmd          ARM64                       x86
+
+    rem if defined PROCESSOR_ARCHITEW6432 (
+    rem     set "SystemArch=%PROCESSOR_ARCHITEW6432%"
+    rem ) else (
+    rem     set "SystemArch=%PROCESSOR_ARCHITECTURE%"
+    rem )
 
     rem BuildNumber
     for /f "tokens=3" %%a in ('reg query "HKLM\SOFTWARE\Microsoft\Windows NT\CurrentVersion" /v CurrentBuildNumber') do (
-         set /a BuildNumber=%%a
+        set /a BuildNumber=%%a
     )
 
     set CygwinEOL=1
 
-    echo !SystemType! | find "ARM" > nul
+    echo !SystemArch! | find "ARM" > nul
     if not errorlevel 1 (
         if !BuildNumber! GEQ 22000 (
             set CygwinEOL=0
         )
     ) else (
-        echo !SystemType! | find "x64" > nul
+        echo !SystemArch! | find "AMD64" > nul
         if not errorlevel 1 (
             if !BuildNumber! GEQ 9600 (
                 set CygwinEOL=0
@@ -112,6 +134,14 @@ call :check_cygwin_installed || (
     rem 下载 Cygwin
     if not exist setup-!CygwinArch!.exe (
         call :download http://www.cygwin.com/setup-!CygwinArch!.exe %~dp0setup-!CygwinArch!.exe || goto :download_failed
+    )
+
+    rem 少于 1M 视为无效
+    rem 有的 IP 被官网拉黑，无法下载 exe，下载得到 html
+    for %%A in (setup-!CygwinArch!.exe) do if %%~zA LSS 1048576 (
+        echo Invalid Cgywin installer
+        del setup-!CygwinArch!.exe
+        exit /b 1
     )
 
     rem 安装 Cygwin
