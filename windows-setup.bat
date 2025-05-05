@@ -93,6 +93,14 @@ for /f "tokens=3" %%a in (X:\disk.txt) do (
 )
 del X:\disk.txt
 
+rem 这个变量会被 trans.sh 修改
+set is4kn=0
+if "%is4kn%"=="1" (
+    set EFISize=260
+) else (
+    set EFISize=100
+)
+
 rem 重新分区/格式化
 (if "%BootType%"=="efi" (
     echo select disk %DiskIndex%
@@ -104,7 +112,7 @@ rem 重新分区/格式化
     echo select part 3
     echo delete part override
 
-    echo create part efi size=100
+    echo create part efi size=%EFISize%
     echo format fs=fat32 quick
 
     echo create part msr size=16

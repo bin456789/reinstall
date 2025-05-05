@@ -2328,6 +2328,10 @@ get_disk_logic_sector_size() {
     blockdev --getss "$1"
 }
 
+is_4kn() {
+    [ "$(blockdev --getss "$1")" = 4096 ]
+}
+
 is_xda_gt_2t() {
     disk_size=$(get_disk_size /dev/$xda)
     disk_2t=$((2 * 1024 * 1024 * 1024 * 1024))
@@ -6525,6 +6529,12 @@ EOF
     # 有 SAC 组件时，启用 EMS
     if $has_sac; then
         sed -i 's/EnableEMS=0/EnableEMS=1/i' $startnet_cmd
+    fi
+
+    # 4kn EFI 分区最少要 260M
+    # https://learn.microsoft.com/windows-hardware/manufacture/desktop/hard-drives-and-partitions
+    if is_4kn /dev/$xda; then
+        sed -i 's/is4kn=0/is4kn=1/i' $startnet_cmd
     fi
 
     # Windows Thin PC 有 Windows\System32\winpeshl.ini
