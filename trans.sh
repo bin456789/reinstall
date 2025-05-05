@@ -5932,15 +5932,39 @@ EOF
 
         apk add msitools
 
+        # 8.4.3 的 xenbus 挑创建实例时的初始系统
+        # 初始系统为 windows 的实例支持 8.4.3
+        # 初始系统为 linux 的实例不支持 8.4.3
+
+        # 初始系统为 linux + 安装 8.4.3
+        # 如果用 msi 安装，则不会启用 xenbus，结果是能启动但无法上网
+        # 如果通过 inf 安装，则会启用 xenbus，结果是无法启动
+
+        apk add lscpu
+        hypervisor_vendor=$(lscpu | grep 'Hypervisor vendor:' | awk '{print $3}')
+        apk del lscpu
+
         aws_pv_ver=$(
             case "$nt_ver" in
             6.1) $support_sha256 && echo 8.3.5 || echo 8.3.2 ;;
-            6.2 | 6.3) echo 8.4.3 ;;
+            6.2 | 6.3)
+                case "$hypervisor_vendor" in
+                Microsoft) echo 8.4.3 ;; # 实例初始系统为 Windows，能使用 8.4.3
+                Xen) echo 8.3.5 ;;       # 实例初始系统为 Linux，不能使用 8.4.3
+                esac
+                ;;
             *) echo Latest ;;
             esac
         )
 
-        download "$(get_aws_repo)/AWSPV/$aws_pv_ver/AWSPVDriver.zip" $drv/AWSPVDriver.zip
+        url=$(
+            case "$aws_pv_ver" in
+            8.3.2) echo https://web.archive.org/web/20221016194548/https://s3.amazonaws.com/ec2-windows-drivers-downloads/AWSPV/$aws_pv_ver/AWSPVDriver.zip ;; # win7 sha1
+            *) echo "$(get_aws_repo)/AWSPV/$aws_pv_ver/AWSPVDriver.zip" ;;
+            esac
+        )
+
+        download "$url" $drv/AWSPVDriver.zip
 
         unzip -o -d $drv $drv/AWSPVDriver.zip
         mkdir -p $drv/xen/
