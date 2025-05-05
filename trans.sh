@@ -5351,13 +5351,29 @@ hivexget() {
     ash "$(which hivexget)" "$@"
 }
 
-get_installation_type_from_windows_drive() {
+get_windows_type_from_windows_drive() {
     local os_dir=$1
 
     apk add hivex
-    hive=$(find_file_ignore_case $os_dir/Windows/System32/config/SOFTWARE)
-    hivexget $hive '\Microsoft\Windows NT\CurrentVersion' InstallationType
+    software_hive=$(find_file_ignore_case $os_dir/Windows/System32/config/SOFTWARE)
+    system_hive=$(find_file_ignore_case $os_dir/Windows/System32/config/SYSTEM)
+    installation_type=$(hivexget $software_hive '\Microsoft\Windows NT\CurrentVersion' InstallationType || true)
+    product_type=$(hivexget $system_hive '\ControlSet001\Control\ProductOptions' ProductType || true)
     apk del hivex
+
+    # 根据 win11 multi-session 的情况
+    # InstallationType 比 ProductType 准确
+
+    # Vista wim 和注册表都没有 InstallationType
+    case "$installation_type" in
+    Client | Embedded) echo client ;;
+    Server | 'Server Core') echo server ;;
+    *) case "$product_type" in
+        WinNT) echo client ;;
+        ServerNT) echo server ;;
+        *) error_and_exit "Unknown Windows Type" ;;
+        esac ;;
+    esac
 }
 
 get_windows_arch_from_windows_drive() {
@@ -5506,7 +5522,7 @@ install_windows() {
     # 用内核版本号筛选驱动
     # 使得可以安装 Hyper-V Server / Azure Stack HCI 等 Windows Server 变种
     # 7601.24214.180801-1700.win7sp1_ldr_escrow_CLIENT_ULTIMATE_x64FRE_en-us.iso wim 没有 Installation Type
-    # 因此改成从注册表获取
+    # Vista wim 和 注册表 都没有 InstallationType
     if false; then
         nt_ver=$(get_selected_image_prop "Major Version").$(get_selected_image_prop "Minor Version")
         build_ver=$(get_selected_image_prop "Build")
@@ -5521,7 +5537,7 @@ install_windows() {
     wimmount "$iso_install_wim" "$image_index" /wim/
     ntoskrnl_exe=$(find_file_ignore_case /wim/Windows/System32/ntoskrnl.exe)
     get_windows_version_from_dll "$ntoskrnl_exe"
-    installation_type=$(get_installation_type_from_windows_drive /wim)
+    windows_type=$(get_windows_type_from_windows_drive /wim)
     {
         find_file_ignore_case /wim/Windows/System32/sacsess.exe && has_sac=true || has_sac=false
         find_file_ignore_case /wim/Windows/INF/stornvme.inf && has_stornvme=true || has_stornvme=false
@@ -5540,17 +5556,12 @@ install_windows() {
         support_sha256=true
     fi
 
-    case "$installation_type" in
-    Client | Embedded)
-        windows_type=client
-        product_ver=$(get_client_name_by_build_ver "$build_ver")
-        ;;
-    Server | 'Server Core')
-        windows_type=server
-        product_ver=$(get_server_name_by_build_ver "$build_ver")
-        ;;
-    *) error_and_exit "Unknown Installation Type: $installation_type" ;;
-    esac
+    product_ver=$(
+        case "$windows_type" in
+        client) get_client_name_by_build_ver "$build_ver" ;;
+        server) get_server_name_by_build_ver "$build_ver" ;;
+        esac
+    )
 
     info "Selected image info"
     echo "Image Name: $image_name"
