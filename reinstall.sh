@@ -4002,16 +4002,24 @@ redhat | centos | almalinux | rocky | fedora | ubuntu)
     ;;
 esac
 
-# 检查内存
-check_ram
-
 # 检查硬件架构
 if is_in_windows; then
     # x86-based PC
     # x64-based PC
     # ARM-based PC
     # ARM64-based PC
-    basearch=$(wmic ComputerSystem get SystemType | grep '=' | cut -d= -f2 | cut -d- -f1)
+
+    if false; then
+        # 如果机器没有 wmic 则需要下载 wmic.ps1，但此时未判断国内外，还是用国外源
+        basearch=$(wmic ComputerSystem get SystemType | grep '=' | cut -d= -f2 | cut -d- -f1)
+    elif true; then
+        # 可以用
+        basearch=$(reg query "HKLM\SYSTEM\CurrentControlSet\Control\Session Manager\Environment" /v PROCESSOR_ARCHITECTURE |
+            grep . | tail -1 | awk '{print $NF}')
+    else
+        # 也可以用
+        basearch=$(cmd /c "if defined PROCESSOR_ARCHITEW6432 (echo %PROCESSOR_ARCHITEW6432%) else (echo %PROCESSOR_ARCHITECTURE%)")
+    fi
 else
     # archlinux 云镜像没有 arch 命令
     # https://en.wikipedia.org/wiki/Uname
@@ -4045,6 +4053,7 @@ if false && [[ "$confhome" = http*://raw.githubusercontent.com/* ]]; then
 fi
 
 # 设置国内代理
+# 要在使用 wmic 前设置，否则国内机器会从国外源下载 wmic.ps1
 # gitee 不支持ipv6
 # jsdelivr 有12小时缓存
 # https://github.com/XIU2/UserScript/blob/master/GithubEnhanced-High-Speed-Download.user.js#L31
@@ -4056,6 +4065,10 @@ if is_in_china; then
         confhome=${confhome/https:\/\/raw.githubusercontent.com/$github_proxy}
     fi
 fi
+
+# 检查内存
+# 会用到 wmic，因此要在设置国内 confhome 后使用
+check_ram
 
 # 以下目标系统不需要两步安装
 # alpine
