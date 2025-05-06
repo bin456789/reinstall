@@ -194,12 +194,19 @@ download() {
         url=$torrent
     fi
 
+    # intel 禁止了 aria2 下载
+    opt_user_agent=
+    if [[ "$url" =~ downloadmirror.intel.com ]]; then
+        opt_user_agent="-U Wget/1.25.0"
+    fi
+
     # -o 设置 http 下载文件名
     # -O 设置 bt 首个文件的文件名
     aria2c "$url" \
         -d "$(dirname "$path")" \
         -o "$(basename "$path")" \
-        -O "1=$(basename "$path")"
+        -O "1=$(basename "$path")" \
+        $opt_user_agent
 
     # opensuse 官方镜像支持 metalink
     # aira2 无法重命名用 metalink 下载的文件
@@ -5790,13 +5797,15 @@ install_windows() {
             '8') echo 21642/eng/prowin${arch_intel}.exe ;;
             '8.1') echo 764813/Wired_driver_27.8_${arch_intel}.zip ;;
             '2012' | '2012 r2') echo 785805/Wired_driver_28.2_${arch_intel}.zip ;;
-            *) echo 845886/Wired_driver_30.0_${arch_intel}.zip ;;
+            *) case "${arch_intel}" in
+                32) echo 845886/Wired_driver_30.0_${arch_intel}.zip ;;
+                x64) echo 854162/Wired_driver_30.1_${arch_intel}.zip ;;
+                esac ;;
             esac
         )
 
-        # intel 禁止了 aria2 下载
-        # download https://downloadmirror.intel.com/$file $drv/intel.zip
-        wget https://downloadmirror.intel.com/$file -O $drv/intel.zip
+        # 注意 intel 禁止了 aria2 下载
+        download https://downloadmirror.intel.com/$file $drv/intel.zip
 
         # inf 可能是 UTF-16 LE？因此用 rg 搜索
         # 用 busybox unzip 解压 win10 驱动时，路径和文件名会粘在一起
@@ -6372,6 +6381,7 @@ EOF
         elif [ "$build_ver" -ge 15063 ]; then
             url=https://downloadmirror.intel.com/849934/SetupRST.exe # RST v19
         fi
+        # 注意 intel 禁止了 aria2 下载
         download $url $drv/SetupRST.exe
         7z x $drv/SetupRST.exe -o$drv/SetupRST -i!.text
         7z x $drv/SetupRST/.text -o$drv/vmd
