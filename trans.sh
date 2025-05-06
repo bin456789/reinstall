@@ -6375,16 +6375,31 @@ EOF
     }
 
     add_driver_vmd() {
-        apk add 7zip
-        if [ "$build_ver" -ge 19041 ]; then
+        # RST v20 不支持 11代 PCI\VEN_8086&DEV_9A0B
+        is_gen11=false
+        for d in /sys/bus/pci/devices/*; do
+            vendor=$(cat "$d/vendor" 2>/dev/null)
+            device=$(cat "$d/device" 2>/dev/null)
+            if [ "$vendor" = "0x8086" ] && [ "$device" = "0x9a0b" ]; then
+                is_gen11=true
+                break
+            fi
+        done
+
+        if ! $is_gen11 && [ "$build_ver" -ge 19041 ]; then
             url=https://downloadmirror.intel.com/849939/SetupRST.exe # RST v20
         elif [ "$build_ver" -ge 15063 ]; then
             url=https://downloadmirror.intel.com/849934/SetupRST.exe # RST v19
+        else
+            error_and_exit "can't find suitable vmd driver"
         fi
+
         # 注意 intel 禁止了 aria2 下载
         download $url $drv/SetupRST.exe
+        apk add 7zip
         7z x $drv/SetupRST.exe -o$drv/SetupRST -i!.text
         7z x $drv/SetupRST/.text -o$drv/vmd
+        apk del 7zip
         cp_drivers $drv/vmd
     }
 
