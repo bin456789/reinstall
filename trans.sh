@@ -6232,42 +6232,30 @@ EOF
     add_driver_aliyun_virtio() {
         info "Add drivers: Aliyun virtio"
 
-        # win7 sha1 旧驱动
+        aliyun_sys=$(
+            case "$nt_ver" in
+            6.1) echo 2008R2 ;;
+            6.2 | 6.3) echo 2012R2 ;; # 实际上是 2012 的驱动
+            *) echo 2016 ;;
+            esac
+        )
+
+        subdir=
         if [ "$nt_ver" = 6.1 ] && ! $support_sha256; then
-            filename=210408.1454.1459_bin.zip # sha1
-            # filename=220915.0953.0953_bin.zip # sha256
-            # filename=new_virtio.zip           # sha256
-
-            if is_in_china; then
-                region=cn-beijing
-            else
-                region=us-west-1
-            fi
-
-            download https://windows-driver-$region.oss-$region.aliyuncs.com/virtio/$filename $drv/aliyun.zip
-            unzip -o -d $drv/aliyun/ $drv/aliyun.zip
-            cp_drivers $drv/aliyun -ipath "*/win7/${arch}/*"
-        else
-            # 新驱动
-            aliyun_sys=$(
-                case "$nt_ver" in
-                6.1) echo 2008R2 ;;       # sha256
-                6.2 | 6.3) echo 2012R2 ;; # 实际上是 2012 的驱动
-                *) echo 2016 ;;
-                esac
-            )
-
-            region=cn-hangzhou
-
-            download https://windows-driver-$region.oss-$region.aliyuncs.com/virtio/AliyunVirtio_WIN$aliyun_sys.zip $drv/AliyunVirtio.zip
-            unzip -o -d $drv $drv/AliyunVirtio.zip
-
-            apk add innoextract
-            innoextract -d $drv/aliyun/ $drv/AliyunVirtio_*_WIN${aliyun_sys}_$arch_xdd.exe
-            apk del innoextract
-
-            cp_drivers $drv/aliyun -ipath "*/C$/Program Files/AliyunVirtio/*/drivers/*"
+            subdir=58017/ # sha1
         fi
+
+        region=cn-hangzhou
+
+        download https://windows-driver-$region.oss-$region.aliyuncs.com/virtio/${subdir}AliyunVirtio_WIN$aliyun_sys.zip \
+            $drv/AliyunVirtio.zip
+        unzip -o -d $drv $drv/AliyunVirtio.zip
+
+        apk add innoextract
+        innoextract -d $drv/aliyun/ $drv/AliyunVirtio_*_WIN${aliyun_sys}_$arch_xdd.exe
+        apk del innoextract
+
+        cp_drivers $drv/aliyun -ipath "*/C$/Program Files/AliyunVirtio/*/drivers/*"
     }
 
     # gcp virtio win7 x64 sha1
