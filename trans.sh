@@ -3697,10 +3697,20 @@ modify_os_on_disk() {
                     is_windows() { true; }
                     # 重新挂载为读写、忽略大小写
                     umount /os
-                    mount -t ntfs3 -o nocase /dev/$part /os
-                    # 有休眠文件时无法挂载成读写，提醒用户并退出脚本
-                    if mount | grep ' /os ' | grep -wq ro; then
-                        error_and_exit "Can't mount windows partition /dev/$part as rw."
+                    if ! { mount -t ntfs3 -o nocase,rw /dev/$part /os &&
+                        mount | grep -w 'on /os type' | grep -wq rw; }; then
+                        # 显示警告
+                        warn "Can't normally mount windows partition /dev/$part as rw."
+                        dmesg | grep -F "ntfs3($part):" || true
+                        # 有可能 fallback 挂载成 ro, 因此先取消挂载
+                        if mount | grep -wq 'on /os type'; then
+                            umount /os
+                        fi
+                        # 尝试修复并强制挂载
+                        apk add ntfs-3g-progs
+                        ntfsfix /dev/$part
+                        apk del ntfs-3g-progs
+                        mount -t ntfs3 -o nocase,rw,force /dev/$part /os
                     fi
                     # 获取版本号，其他地方会用到
                     get_windows_version_from_dll "$ntoskrnl_exe"
