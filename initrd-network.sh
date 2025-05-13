@@ -258,6 +258,8 @@ test_internet() {
 flush_ipv4_config() {
     ip -4 addr flush scope global dev "$ethx"
     ip -4 route flush dev "$ethx"
+    # DHCP 获取的 IP 不是重装前的 IP 时，一并删除 DHCP 获取的 DNS，以防 DNS 无效
+    sed -i "/\./d" /etc/resolv.conf
 }
 
 should_disable_accept_ra=false
@@ -272,6 +274,8 @@ flush_ipv6_config() {
     fi
     ip -6 addr flush scope global dev "$ethx"
     ip -6 route flush dev "$ethx"
+    # DHCP 获取的 IP 不是重装前的 IP 时，一并删除 DHCP 获取的 DNS，以防 DNS 无效
+    sed -i "/:/d" /etc/resolv.conf
 }
 
 for i in $(seq 20); do
