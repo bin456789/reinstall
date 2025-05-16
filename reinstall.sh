@@ -48,7 +48,6 @@ usage_and_exit() {
 Usage: $reinstall_____ anolis      7|8|23
                        opencloudos 8|9|23
                        rocky       8|9
-                       redhat      8|9 --img="http://xxx.com/xxx.qcow2"
                        oracle      8|9
                        almalinux   8|9
                        centos      9|10
@@ -64,6 +63,7 @@ Usage: $reinstall_____ anolis      7|8|23
                        gentoo
                        aosc
                        fnos
+                       redhat      --img="http://access.cdn.redhat.com/xxx.qcow2"
                        dd          --img="http://xxx.com/yyy.zzz" (raw image stores in raw/vhd/tar/gz/xz/zst)
                        windows     --image-name="windows xxx yyy" --lang=xx-yy
                        windows     --image-name="windows xxx yyy" --iso="http://xxx.com/xxx.iso"
@@ -1677,13 +1677,11 @@ Continue with DD?
     }
 
     setos_redhat() {
-        # el 10 需要 x86-64-v3
-        if [ "$basearch" = x86_64 ] && [ "$releasever" -ge 10 ]; then
-            assert_cpu_supports_x86_64_v3
-        fi
-
         if is_use_cloud_image; then
-            # ci
+            # el 10 需要 x86-64-v3
+            if [ "$basearch" = x86_64 ] && [[ "$img" = *rhel-10* ]]; then
+                assert_cpu_supports_x86_64_v3
+            fi
             eval "${step}_img='$img'"
         else
             :
@@ -1798,7 +1796,6 @@ verify_os_name() {
         'opencloudos 8|9|23' \
         'almalinux   8|9' \
         'rocky       8|9' \
-        'redhat      8|9' \
         'oracle      8|9' \
         'fedora      41|42' \
         'nixos       24.11' \
@@ -1807,6 +1804,7 @@ verify_os_name() {
         'alpine      3.18|3.19|3.20|3.21' \
         'openeuler   20.03|22.03|24.03|25.03' \
         'ubuntu      16.04|18.04|20.04|22.04|24.04|25.04' \
+        'redhat' \
         'kali' \
         'arch' \
         'gentoo' \

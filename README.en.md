@@ -128,7 +128,6 @@ certutil -urlcache -f -split https://cnb.cool/bin456789/reinstall/-/git/raw/main
 bash reinstall.sh anolis      7|8|23
                   opencloudos 8|9|23
                   rocky       8|9
-                  redhat      8|9   --img="http://xxx.com/xxx.qcow2"
                   oracle      8|9
                   almalinux   8|9
                   centos      9|10
@@ -144,6 +143,7 @@ bash reinstall.sh anolis      7|8|23
                   gentoo
                   aosc
                   fnos
+                  redhat      --img="http://access.cdn.redhat.com/xxx.qcow2"
 ```
 
 #### Optional Parameters
