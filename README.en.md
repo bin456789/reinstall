@@ -15,7 +15,7 @@ One-Click Script to Reinstall System [中文](README.md)
 ## Highlights
 
 - One-click Linux installation: Supports 19 common distributions.
-- One-click Windows installation: Uses the official ISO for installation instead of custom images. The script can automatically ~~retrieves the ISO link~~ and installs common drivers like `Virtio`.
+- One-click Windows installation: Uses the official ISO for installation instead of custom images. The script can automatically retrieves the ISO link and installs common drivers like `Virtio`.
 - Supports installation in any direction, i.e., `Linux to Linux`, `Linux to Windows`, `Windows to Windows`, `Windows to Linux`
 - No need to input IP parameters; automatically recognizes dynamic and static IPs, supports `/32`, `/128`, `gateway outside subnet`, `IPv6 only`, `dual NIC`
 - Specially optimized for low-spec servers, requires less memory than the official netboot
@@ -211,7 +211,7 @@ bash reinstall.sh ubuntu --installer
 bash reinstall.sh dd --img "https://example.com/xxx.xz"
 ```
 
-#### Optional parameters
+#### Optional Parameters
 
 - `--allow-ping` Configure Windows Firewall to Allow Ping Responses (DD Windows only)
 - `--rdp-port PORT` Change RDP port (DD Windows only)
@@ -234,7 +234,7 @@ bash reinstall.sh dd --img "https://example.com/xxx.xz"
 bash reinstall.sh alpine --hold=1
 ```
 
-#### Optional parameters
+#### Optional Parameters
 
 - `--password PASSWORD` Set password
 - `--ssh-port PORT` Change SSH port
@@ -278,10 +278,7 @@ bash reinstall.sh netboot.xyz
   - Hyper-V Server \*
   - Azure Stack HCI \*
 
-#### ~~Method 1: Let the Script Automatically Search for ISO~~
-
-> [!CAUTION]
-> The ISO repository currently prohibits direct link downloads, so this method is no longer effective.
+#### Method 1: Let the Script Automatically Search for ISO
 
 - The script will search for ISOs from <https://massgrave.dev/genuine-installation-media>, a site that collects official ISOs.
 - Systems marked with \* do not support automatic ISO searching.
@@ -384,7 +381,7 @@ bash reinstall.sh windows \
 
 </details>
 
-#### Optional parameters
+#### Optional Parameters
 
 - `--password PASSWORD` Set Password
 - `--allow-ping` Configure Windows Firewall to Allow Ping Responses

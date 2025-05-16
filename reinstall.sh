@@ -93,14 +93,20 @@ info() {
         shift
         msg=$*
     else
-        msg=$(to_upper <<<"$@")
+        msg="***** $(to_upper <<<"$*") *****"
     fi
-
-    echo_color_text '\e[32m' "***** $msg *****" >&2
+    echo_color_text '\e[32m' "$msg" >&2
 }
 
 warn() {
-    echo_color_text '\e[33m' "Warning: $*" >&2
+    local msg
+    if [ "$1" = false ]; then
+        shift
+        msg=$*
+    else
+        msg="Warning: $*"
+    fi
+    echo_color_text '\e[33m' "$msg" >&2
 }
 
 error() {
@@ -1423,25 +1429,26 @@ Continue?
         if [[ "$iso" = magnet:* ]]; then
             : # 不测试磁力链接
         else
-            iso_tested=false
+            # 需要用户输入 massgrave.dev 直链
+            if grep -Eiq '\.massgrave\.dev/.*\.(iso|img)$' <<<"$iso"; then
+                info "Set Direct link"
+                # MobaXterm 不支持
+                # printf '\e]8;;http://example.com\e\\This is a link\e]8;;\e\\\n'
 
-            # 获取 massgrave.dev 直链
-            if grep -Eiq '\.massgrave\.dev/.*\.(iso|img)' <<<"$iso"; then
-                # 如果已经是 iso 直链则跳过下面的 iso 测试
-                if test_url_grace "$iso" iso; then
-                    iso_tested=true
-                else
-                    msg="Could not find direct link for $iso"
-                    if ! iso=$(grep -oE 'https?.*\.iso[^"]*' $tmp/img-test | sed 's/&amp;/\&/g' | grep .); then
-                        error_and_exit "$msg"
-                    fi
+                # MobaXterm 不显示为超链接
+                # info false "请在浏览器中打开 $iso 获取直链并粘贴到这里。"
+                # info false "Please open $iso in browser to get the direct link and paste it here."
+
+                echo "请在浏览器中打开 $iso 获取直链并粘贴到这里。"
+                echo "Please open $iso in browser to get the direct link and paste it here."
+                IFS= read -r -p "Direct Link: " iso
+                if [ -z "$iso" ]; then
+                    error_and_exit "ISO Link is empty."
                 fi
             fi
 
             # 测试是否是 iso
-            if ! $iso_tested; then
-                test_url "$iso" iso
-            fi
+            test_url "$iso" iso
 
             # 判断 iso 架构是否兼容
             # https://gitlab.com/libosinfo/osinfo-db/-/tree/main/data/os/microsoft.com?ref_type=heads

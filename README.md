@@ -15,7 +15,7 @@
 ## 亮点
 
 - 一键安装 Linux，支持 19 种常见发行版
-- 一键安装 Windows，使用官方 ISO 安装而非自制镜像，~~脚本会自动获取 ISO 链接~~、自动安装 Virtio 等常见驱动
+- 一键安装 Windows，使用官方 ISO 安装而非自制镜像，脚本会自动获取 ISO 链接、自动安装 Virtio 等常见驱动
 - 支持任意方向重装，即 `Linux to Linux`、`Linux to Windows`、`Windows to Windows`、`Windows to Linux`
 - 无需填写 IP 参数，自动识别动静态，支持 `/32`、`/128`、`网关不在子网范围内`、`纯 IPv6`、`双网卡`
 - 专门适配低配小鸡，比官方 netboot 需要更少的内存
@@ -278,10 +278,7 @@ bash reinstall.sh netboot.xyz
   - Hyper-V Server \*
   - Azure Stack HCI \*
 
-#### ~~方法 1: 让脚本自动查找 ISO~~
-
-> [!CAUTION]
-> 目前该 ISO 仓库禁止了直链下载，因此该方法已失效
+#### 方法 1: 让脚本自动查找 ISO
 
 - 脚本会从 <https://massgrave.dev/genuine-installation-media> 查找 ISO，该网站专门提供官方 ISO 下载
 - 上面带 \* 的系统不支持自动查找 ISO
