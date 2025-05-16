@@ -6449,14 +6449,14 @@ EOF
 
     # key
     if [ "$product_ver" = vista ]; then
-        # vista 需密钥，密钥可与 edition 不一致
-        # TODO: 改成从网页获取？
+        # vista 无人值守安装需要密钥，密钥可与 edition 不一致
         # https://learn.microsoft.com/en-us/windows-server/get-started/kms-client-activation-keys
-        key=VKK3X-68KWM-X2YGT-QR4M6-4BWMV
+        # 从镜像获取默认密钥
+        setup_cfg=$(get_path_in_correct_case /os/installer/sources/inf/setup.cfg)
+        key=$(del_cr <"$setup_cfg" | grep -Eix 'Value=([A-Z0-9]{5}-){4}[A-Z0-9]{5}' | cut -d= -f2 | grep .)
         sed -i "s/%key%/$key/" /tmp/autounattend.xml
     else
-        # shellcheck disable=SC2010
-        if ls -d /os/installer/sources/* | grep -iq ei.cfg; then
+        if [ -f "$(get_path_in_correct_case /os/installer/sources/ei.cfg)" ]; then
             # 镜像有 ei.cfg，删除 key 字段
             sed -i "/%key%/d" /tmp/autounattend.xml
         else
