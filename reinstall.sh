@@ -844,11 +844,10 @@ find_windows_iso() {
     aarch64) arch_win=arm64 ;;
     esac
 
-    get_windows_iso_links
     get_windows_iso_link
 }
 
-get_windows_iso_links() {
+get_windows_iso_link() {
     get_label_msdn() {
         if [ -n "$server" ]; then
             case "$version" in
@@ -878,7 +877,6 @@ get_windows_iso_links() {
                     esac
                     ;;
                 homebasic | homepremium | business | ultimate) echo _ ;;
-                enterprise) echo enterprise ;;
                 esac
                 ;;
             7)
@@ -888,18 +886,10 @@ get_windows_iso_links() {
                     x86) echo ultimate ;;
                     esac
                     ;;
-                professional) echo professional ;;
-                homebasic | homepremium | ultimate) echo ultimate ;;
-                enterprise) echo enterprise ;;
+                homebasic | homepremium | professional | ultimate) echo ultimate ;;
                 esac
                 ;;
-            8.1)
-                case "$edition" in
-                '') ;; # massgrave 不提供 windows 8.1 家庭版链接
-                pro) echo pro ;;
-                enterprise) echo enterprise ;;
-                esac
-                ;;
+            # 8.1 需到 msdl.gravesoft.dev 下载
             10)
                 case "$edition" in
                 home | 'home single language') echo consumer ;;
@@ -951,6 +941,25 @@ get_windows_iso_links() {
         esac
     }
 
+    get_label_msdl() {
+        case "$version" in
+        8.1)
+            case "$edition" in
+            '' | pro) echo _ ;;
+            esac
+            ;;
+        11)
+            case "$edition" in
+            home | 'home single language' | pro | education | 'pro education' | 'pro for workstations')
+                case "$arch_win" in
+                arm64) echo _ ;;
+                esac
+                ;;
+            esac
+            ;;
+        esac
+    }
+
     get_page() {
         if [ "$arch_win" = arm64 ]; then
             echo arm
@@ -973,6 +982,7 @@ get_windows_iso_links() {
 
     # 部分 bash 不支持 $() 里面嵌套case，所以定义成函数
     label_msdn=$(get_label_msdn)
+    label_msdl=$(get_label_msdl)
     label_vlsc=$(get_label_vlsc)
     page=$(get_page)
 
@@ -982,25 +992,32 @@ get_windows_iso_links() {
     echo "Version:    $version"
     echo "Edition:    $edition"
     echo "Label msdn: $label_msdn"
+    echo "Label msdl: $label_msdl"
     echo "Label vlsc: $label_vlsc"
     echo "List:       $page_url"
     echo
 
-    if [ -z "$page" ] || { [ -z "$label_msdn" ] && [ -z "$label_vlsc" ]; }; then
+    if [ -z "$page" ] || { [ -z "$label_msdn" ] && [ -z "$label_msdl" ] && [ -z "$label_vlsc" ]; }; then
         error_and_exit "Not support find this iso. Check if --image-name is wrong. If not, set --iso manually."
     fi
 
-    curl -L "$page_url" | grep -ioP 'https://.*?.(iso|img)' >$tmp/win.list
-
-    # 如果不是 ltsc ，应该先去除 ltsc 链接，否则最终链接有 ltsc 的
-    # 例如查找 windows 10 iot enterprise，会得到
-    # en-us_windows_10_iot_enterprise_ltsc_2021_arm64_dvd_e8d4fc46.iso
-    # en-us_windows_10_iot_enterprise_version_22h2_arm64_dvd_39566b6b.iso
-    # sed -Ei 和 sed -iE 是不同的
-    if is_ltsc; then
-        sed -Ei '/ltsc|ltsb/!d' $tmp/win.list
+    if [ -n "$label_msdl" ]; then
+        iso=$(curl -L "$page_url" | grep -ioP 'https://.*?#[0-9]+' | head -1 | grep .)
     else
-        sed -Ei '/ltsc|ltsb/d' $tmp/win.list
+        curl -L "$page_url" | grep -ioP 'https://.*?.(iso|img)' >$tmp/win.list
+
+        # 如果不是 ltsc ，应该先去除 ltsc 链接，否则最终链接有 ltsc 的
+        # 例如查找 windows 10 iot enterprise，会得到
+        # en-us_windows_10_iot_enterprise_ltsc_2021_arm64_dvd_e8d4fc46.iso
+        # en-us_windows_10_iot_enterprise_version_22h2_arm64_dvd_39566b6b.iso
+        # sed -Ei 和 sed -iE 是不同的
+        if is_ltsc; then
+            sed -Ei '/ltsc|ltsb/!d' $tmp/win.list
+        else
+            sed -Ei '/ltsc|ltsb/d' $tmp/win.list
+        fi
+
+        get_windows_iso_link_inner
     fi
 }
 
@@ -1009,7 +1026,7 @@ get_shortest_line() {
     awk '(NR == 1 || length($0) < length(shortest)) { shortest = $0 } END { print shortest }'
 }
 
-get_windows_iso_link() {
+get_windows_iso_link_inner() {
     regexs=()
 
     # msdn
@@ -1430,7 +1447,8 @@ Continue?
             : # 不测试磁力链接
         else
             # 需要用户输入 massgrave.dev 直链
-            if grep -Eiq '\.massgrave\.dev/.*\.(iso|img)$' <<<"$iso"; then
+            if grep -Eiq '\.massgrave\.dev/.*\.(iso|img)$' <<<"$iso" ||
+                grep -Eiq '\.gravesoft\.dev/#[0-9]+$' <<<"$iso"; then
                 info "Set Direct link"
                 # MobaXterm 不支持
                 # printf '\e]8;;http://example.com\e\\This is a link\e]8;;\e\\\n'
