@@ -6069,8 +6069,6 @@ EOF
         # 可改成直接从 github commit 下载 win7 173(sha1) 176(sha256) 全家桶？
         # 国内可使用 jsdelivr 加速 github
 
-        # 2008 安装的气球驱动不能用，需要到硬件管理器重新安装设备才能用，无需更新驱动
-
         # 2k12
         # https://github.com/virtio-win/virtio-win-pkg-scripts/issues/61
         # 217 ~ 271    2k12 证书有问题，红帽的 virtio-win-1.9.45 没问题
@@ -6118,8 +6116,13 @@ EOF
             mkdir -p $drv/virtio
             mount -o ro $drv/virtio.iso $drv/virtio
 
-            # -not -ipath "*/balloon/*"
-            cp_drivers $drv/virtio -ipath "*/$virtio_sys/$arch/*" "$@"
+            # vista 如果安装气动驱动，会报错 windows could not configure one or more system components
+            # 2008 安装的气球驱动不能用，需要到硬件管理器重新安装设备才能用，无需更新驱动
+            if [ "$product_ver" = vista ]; then
+                cp_drivers $drv/virtio -ipath "*/$virtio_sys/$arch/*" "$@" -not -ipath "*/balloon/*"
+            else
+                cp_drivers $drv/virtio -ipath "*/$virtio_sys/$arch/*" "$@"
+            fi
         else
             # coreutils 的 cp mv rm 才有 -v 参数
             apk add 7zip file coreutils
