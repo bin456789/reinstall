@@ -195,10 +195,7 @@ download() {
     fi
 
     # intel 禁止了 aria2 下载
-    opt_user_agent=
-    if [[ "$url" =~ downloadmirror.intel.com ]]; then
-        opt_user_agent="-U Wget/1.25.0"
-    fi
+    # 腾讯云 virtio 驱动也禁止了 aria2 下载
 
     # -o 设置 http 下载文件名
     # -O 设置 bt 首个文件的文件名
@@ -206,7 +203,7 @@ download() {
         -d "$(dirname "$path")" \
         -o "$(basename "$path")" \
         -O "1=$(basename "$path")" \
-        $opt_user_agent
+        -U Wget/1.25.0
 
     # opensuse 官方镜像支持 metalink
     # aira2 无法重命名用 metalink 下载的文件
