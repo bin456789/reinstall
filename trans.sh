@@ -605,7 +605,7 @@ get_netconf_to() {
     eval "$1='$res'"
 }
 
-is_ipv4_has_internet() {
+is_any_ipv4_has_internet() {
     grep -q 1 /dev/netconf/*/ipv4_has_internet
 }
 
@@ -616,12 +616,20 @@ is_in_china() {
 # 有 dhcpv4 不等于有网关，例如 vultr 纯 ipv6
 # 没有 dhcpv4 不等于是静态ip，可能是没有 ip
 is_dhcpv4() {
+    if ! is_ipv4_has_internet || should_disable_dhcpv4; then
+        return 1
+    fi
+
     get_netconf_to dhcpv4
     # shellcheck disable=SC2154
     [ "$dhcpv4" = 1 ]
 }
 
 is_staticv4() {
+    if ! is_ipv4_has_internet; then
+        return 1
+    fi
+
     if ! is_dhcpv4; then
         get_netconf_to ipv4_addr
         get_netconf_to ipv4_gateway
@@ -633,6 +641,10 @@ is_staticv4() {
 }
 
 is_staticv6() {
+    if ! is_ipv6_has_internet; then
+        return 1
+    fi
+
     if ! is_slaac && ! is_dhcpv6; then
         get_netconf_to ipv6_addr
         get_netconf_to ipv6_gateway
@@ -647,6 +659,24 @@ is_dhcpv6_or_slaac() {
     get_netconf_to dhcpv6_or_slaac
     # shellcheck disable=SC2154
     [ "$dhcpv6_or_slaac" = 1 ]
+}
+
+is_ipv4_has_internet() {
+    get_netconf_to ipv4_has_internet
+    # shellcheck disable=SC2154
+    [ "$ipv4_has_internet" = 1 ]
+}
+
+is_ipv6_has_internet() {
+    get_netconf_to ipv6_has_internet
+    # shellcheck disable=SC2154
+    [ "$ipv6_has_internet" = 1 ]
+}
+
+should_disable_dhcpv4() {
+    get_netconf_to should_disable_dhcpv4
+    # shellcheck disable=SC2154
+    [ "$should_disable_dhcpv4" = 1 ]
 }
 
 should_disable_accept_ra() {
@@ -664,7 +694,12 @@ should_disable_autoconf() {
 is_slaac() {
     # 如果是静态（包括自动获取到 IP 但无法联网而切换成静态）直接返回 1，不考虑 ra
     # 防止部分机器slaac/dhcpv6获取的ip/网关无法上网
-    if ! is_dhcpv6_or_slaac; then
+
+    # 有可能 ra 的 dhcpv6/slaac 是打开的，但实测无法获取到 ipv6 地址
+    # is_dhcpv6_or_slaac 是实测结果，因此如果实测不通过，也返回 1
+
+    # 不要判断 is_staticv6，因为这会导致死循环
+    if ! is_ipv6_has_internet || ! is_dhcpv6_or_slaac || should_disable_accept_ra || should_disable_autoconf; then
         return 1
     fi
     get_netconf_to slaac
@@ -675,7 +710,12 @@ is_slaac() {
 is_dhcpv6() {
     # 如果是静态（包括自动获取到 IP 但无法联网而切换成静态）直接返回 1，不考虑 ra
     # 防止部分机器slaac/dhcpv6获取的ip/网关无法上网
-    if ! is_dhcpv6_or_slaac; then
+
+    # 有可能 ra 的 dhcpv6/slaac 是打开的，但实测无法获取到 ipv6 地址
+    # is_dhcpv6_or_slaac 是实测结果，因此如果实测不通过，也返回 1
+
+    # 不要判断 is_staticv6，因为这会导致死循环
+    if ! is_ipv6_has_internet || ! is_dhcpv6_or_slaac || should_disable_accept_ra || should_disable_autoconf; then
         return 1
     fi
     get_netconf_to dhcpv6
@@ -2017,7 +2057,7 @@ EOF
             git_uri=https://mirror.nju.edu.cn/git/gentoo-portage.git
         else
             # github 不支持 ipv6
-            is_ipv4_has_internet && git_uri=https://github.com/gentoo-mirror/gentoo.git ||
+            is_any_ipv4_has_internet && git_uri=https://github.com/gentoo-mirror/gentoo.git ||
                 git_uri=https://anongit.gentoo.org/git/repo/gentoo.git
         fi
 
@@ -2758,10 +2798,10 @@ create_cloud_init_network_config() {
                     \"address\": \"$ipv6_addr\",
                     \"gateway\": \"$ipv6_gateway\" }
                     " $ci_file
-            # 无法设置 autoconf = false ?
-            if should_disable_accept_ra; then
-                yq -i ".network.config[$config_id].accept-ra = false" $ci_file
-            fi
+        fi
+        # 无法设置 autoconf = false ?
+        if should_disable_accept_ra; then
+            yq -i ".network.config[$config_id].accept-ra = false" $ci_file
         fi
 
         # 有 ipv6 但需设置 dns 的情况

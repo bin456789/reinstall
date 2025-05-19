@@ -262,6 +262,7 @@ flush_ipv4_config() {
     sed -i "/\./d" /etc/resolv.conf
 }
 
+should_disable_dhcpv4=false
 should_disable_accept_ra=false
 should_disable_autoconf=false
 
@@ -386,12 +387,7 @@ done
 # 由于还没设置静态ip，所以有条目表示有动态地址
 is_have_ipv4_addr && dhcpv4=true || dhcpv4=false
 is_have_ipv6_addr && dhcpv6_or_slaac=true || dhcpv6_or_slaac=false
-if is_have_ipv6_gateway; then
-    ra_has_gateway=true
-    ipv6_gateway_from_ra=$(get_ipv6_gateway)
-else
-    ra_has_gateway=false
-fi
+is_have_ipv6_gateway && ra_has_gateway=true || ra_has_gateway=false
 
 # 如果自动获取的 IP 不是重装前的，则改成静态，使用之前的 IP
 # 只比较 IP，不比较掩码/网关，因为
@@ -400,13 +396,12 @@ fi
 if $dhcpv4 && [ -n "$ipv4_addr" ] && [ -n "$ipv4_gateway" ] &&
     ! [ "$(echo "$ipv4_addr" | cut -d/ -f1)" = "$(get_first_ipv4_addr | cut -d/ -f1)" ]; then
     echo "IPv4 address obtained from DHCP is different from old system."
-    dhcpv4=false
+    should_disable_dhcpv4=true
     flush_ipv4_config
 fi
 if $dhcpv6_or_slaac && [ -n "$ipv6_addr" ] && [ -n "$ipv6_gateway" ] &&
     ! [ "$(echo "$ipv6_addr" | cut -d/ -f1)" = "$(get_first_ipv6_addr | cut -d/ -f1)" ]; then
     echo "IPv6 address obtained from SLAAC/DHCPv6 is different from old system."
-    dhcpv6_or_slaac=false
     should_disable_accept_ra=true
     should_disable_autoconf=true
     flush_ipv6_config
@@ -428,7 +423,7 @@ if ! $ipv4_has_internet &&
     $dhcpv4 && [ -n "$ipv4_addr" ] && [ -n "$ipv4_gateway" ] &&
     ! { [ "$ipv4_addr" = "$(get_first_ipv4_addr)" ] && [ "$ipv4_gateway" = "$(get_first_ipv4_gateway)" ]; }; then
     echo "IPv4 netmask/gateway obtained from DHCP is different from old system."
-    dhcpv4=false
+    should_disable_dhcpv4=true
     flush_ipv4_config
     add_missing_ipv4_config
     test_internet
@@ -439,7 +434,6 @@ if ! $ipv6_has_internet &&
     [ -n "$ipv6_addr" ] && [ -n "$ipv6_gateway" ] &&
     ! { [ "$ipv6_addr" = "$(get_first_ipv6_addr)" ] && [ "$ipv6_gateway" = "$(get_first_ipv6_gateway)" ]; }; then
     echo "IPv6 netmask/gateway obtained from SLAAC/DHCPv6 is different from old system."
-    dhcpv6_or_slaac=false
     should_disable_accept_ra=true
     should_disable_autoconf=true
     flush_ipv6_config
@@ -447,23 +441,28 @@ if ! $ipv6_has_internet &&
     test_internet
 fi
 
-# 如果是静态地址（包括动态无法上网而改成静态的），但是 RA 有网关且和正确的网关不同，要关闭 RA，避免自动设置网关
-# TODO: 测试 RA 给的网关和静态设置的网关的优先级
-if $ipv6_has_internet && ! $dhcpv6_or_slaac && $ra_has_gateway &&
-    ! [ "$(get_first_ipv6_gateway)" = "$ipv6_gateway_from_ra" ]; then
-    echo "Ignore IPv6 gateway from RA."
-    should_disable_accept_ra=true
-fi
-
 # 要删除不联网协议的ip，因为
 # 1 甲骨文云管理面板添加ipv6地址然后取消
 #   依然会分配ipv6地址，但ipv6没网络
 #   此时alpine只会用ipv6下载apk，而不用会ipv4下载
-# 2 有ipv4地址但没有ipv4网关的情况(vultr)，aria2会用ipv4下载
-if $ipv4_has_internet && ! $ipv6_has_internet; then
-    flush_ipv6_config
-elif ! $ipv4_has_internet && $ipv6_has_internet; then
+# 2 有ipv4地址但没有ipv4网关的情况(vultr $2.5 ipv6 only)，aria2会用ipv4下载
+
+# 假设 ipv4 ipv6 在不同网卡，ipv4 能上网但 ipv6 不能上网，这时也要删除 ipv6
+# 不能用 ipv4_has_internet && ! ipv6_has_internet 判断，因为它判断的是同一个网卡
+if ! $ipv4_has_internet; then
+    if $dhcpv4; then
+        should_disable_dhcpv4=true
+    fi
     flush_ipv4_config
+fi
+if ! $ipv6_has_internet; then
+    # 防止删除 IPv6 后再次通过 SLAAC 获得
+    # 不用判断 || $ra_has_gateway ，因为没有 IPv6 地址但有 IPv6 网关时，不会出现下载问题
+    if $dhcpv6_or_slaac; then
+        should_disable_accept_ra=true
+        should_disable_autoconf=true
+    fi
+    flush_ipv6_config
 fi
 
 # 如果联网了，但没获取到默认 DNS，则添加我们的 DNS
@@ -481,6 +480,7 @@ netconf="/dev/netconf/$ethx"
 mkdir -p "$netconf"
 $dhcpv4 && echo 1 >"$netconf/dhcpv4" || echo 0 >"$netconf/dhcpv4"
 $dhcpv6_or_slaac && echo 1 >"$netconf/dhcpv6_or_slaac" || echo 0 >"$netconf/dhcpv6_or_slaac"
+$should_disable_dhcpv4 && echo 1 >"$netconf/should_disable_dhcpv4" || echo 0 >"$netconf/should_disable_dhcpv4"
 $should_disable_accept_ra && echo 1 >"$netconf/should_disable_accept_ra" || echo 0 >"$netconf/should_disable_accept_ra"
 $should_disable_autoconf && echo 1 >"$netconf/should_disable_autoconf" || echo 0 >"$netconf/should_disable_autoconf"
 $is_in_china && echo 1 >"$netconf/is_in_china" || echo 0 >"$netconf/is_in_china"
