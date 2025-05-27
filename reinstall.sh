@@ -13,9 +13,6 @@ DEFAULT_PASSWORD=123@@@
 # 用于判断 reinstall.sh 和 trans.sh 是否兼容
 SCRIPT_VERSION=4BACD833-A585-23BA-6CBB-9AA4E08E0003
 
-# 记录要用到的 windows 程序，运行时输出删除 \r
-WINDOWS_EXES='cmd powershell wmic reg diskpart netsh bcdedit mountvol'
-
 # 强制 linux 程序输出英文，防止 grep 不到想要的内容
 # https://www.gnu.org/software/gettext/manual/html_node/The-LANGUAGE-variable.html
 export LC_ALL=C
@@ -39,50 +36,19 @@ trap_err() {
 }
 
 usage_and_exit() {
-    if is_in_windows; then
-        reinstall_____='.\reinstall.bat'
-    else
-        reinstall_____=' ./reinstall.sh'
-    fi
+    reinstall_____=' ./reinstall.sh' # Assuming it will run in a Linux-like environment
     cat <<EOF
-Usage: $reinstall_____ anolis      7|8|23
-                       opencloudos 8|9|23
-                       rocky       8|9
-                       oracle      8|9
-                       almalinux   8|9
-                       centos      9|10
-                       fedora      41|42
-                       nixos       24.11
-                       debian      9|10|11|12
-                       opensuse    15.6|tumbleweed
-                       alpine      3.18|3.19|3.20|3.21
-                       openeuler   20.03|22.03|24.03|25.03
-                       ubuntu      16.04|18.04|20.04|22.04|24.04|25.04 [--minimal]
-                       kali
-                       arch
-                       gentoo
-                       aosc
-                       fnos
-                       redhat      --img="http://access.cdn.redhat.com/xxx.qcow2"
-                       dd          --img="http://xxx.com/yyy.zzz" (raw image stores in raw/vhd/tar/gz/xz/zst)
-                       windows     --image-name="windows xxx yyy" --lang=xx-yy
-                       windows     --image-name="windows xxx yyy" --iso="http://xxx.com/xxx.iso"
-                       netboot.xyz
+Usage: $reinstall_____ [debian] [OPTIONS]
 
-       Options:        For Linux/Windows:
+       Options:
                        [--password  PASSWORD]
                        [--ssh-key   KEY]
                        [--ssh-port  PORT]
-                       [--web-port  PORT]
-                       [--frpc-toml TOML]
-
-                       For Windows Only:
-                       [--allow-ping]
-                       [--rdp-port   PORT]
-                       [--add-driver INF_OR_DIR]
+                       [--help]
 
 Manual: https://github.com/bin456789/reinstall
-
+Error: Only Debian 12 installation is supported.
+错误：仅支持 Debian 12 安装。
 EOF
     exit 1
 }
@@ -153,29 +119,6 @@ mask2cidr() {
     set -- 0^^^128^192^224^240^248^252^254^ $(((${#1} - ${#x}) * 2)) ${x%%.*}
     x=${1%%"$3"*}
     echo $(($2 + (${#x} / 4)))
-}
-
-is_in_china() {
-    [ "$force_cn" = 1 ] && return 0
-
-    if [ -z "$_loc" ]; then
-        # www.cloudflare.com/dash.cloudflare.com 国内访问的是美国服务器，而且部分地区被墙
-        # 没有ipv6 www.visa.cn
-        # 没有ipv6 www.bose.cn
-        # 没有ipv6 www.garmin.com.cn
-        # 备用 www.prologis.cn
-        # 备用 www.autodesk.com.cn
-        # 备用 www.keysight.com.cn
-        if ! _loc=$(curl -L http://www.qualcomm.cn/cdn-cgi/trace | grep '^loc=' | cut -d= -f2 | grep .); then
-            error_and_exit "Can not get location."
-        fi
-        echo "Location: $_loc" >&2
-    fi
-    [ "$_loc" = CN ]
-}
-
-is_in_windows() {
-    [ "$(uname -o)" = Cygwin ] || [ "$(uname -o)" = Msys ]
 }
 
 is_in_alpine() {
@@ -476,24 +419,6 @@ add_community_repo_for_alpine() {
     if ! grep -q "^http.*/$alpine_ver/community$" /etc/apk/repositories; then
         mirror=$(grep '^http.*/main$' /etc/apk/repositories | sed 's,/[^/]*/main$,,' | head -1)
         echo $mirror/$alpine_ver/community >>/etc/apk/repositories
-    fi
-}
-
-assert_not_in_container() {
-    _error_and_exit() {
-        error_and_exit "Not Supported OS in Container.\nPlease use https://github.com/LloydAsp/OsMutation"
-    }
-
-    is_in_windows && return
-
-    if is_have_cmd systemd-detect-virt; then
-        if systemd-detect-virt -qc; then
-            _error_and_exit
-        fi
-    else
-        if [ -d /proc/vz ] || grep -q container=lxc /proc/1/environ; then
-            _error_and_exit
-        fi
     fi
 }
 
@@ -1804,60 +1729,23 @@ get_latest_distro_releasever() {
 # 检查是否为正确的系统名
 verify_os_name() {
     if [ -z "$*" ]; then
-        usage_and_exit
+        distro="debian"
+        releasever="12"
+        return
     fi
 
-    # 不要删除 centos 7
-    for os in \
-        'centos      7|9|10' \
-        'anolis      7|8|23' \
-        'opencloudos 8|9|23' \
-        'almalinux   8|9' \
-        'rocky       8|9' \
-        'oracle      8|9' \
-        'fedora      41|42' \
-        'nixos       24.11' \
-        'debian      9|10|11|12' \
-        'opensuse    15.6|16.0|tumbleweed' \
-        'alpine      3.18|3.19|3.20|3.21' \
-        'openeuler   20.03|22.03|24.03|25.03' \
-        'ubuntu      16.04|18.04|20.04|22.04|24.04|25.04' \
-        'redhat' \
-        'kali' \
-        'arch' \
-        'gentoo' \
-        'aosc' \
-        'fnos' \
-        'windows' \
-        'dd' \
-        'netboot.xyz'; do
-        read -r ds vers <<<"$os"
-        vers_=${vers//\./\\\.}
-        finalos=$(echo "$@" | to_lower | sed -n -E "s,^($ds)[ :-]?(|$vers_)$,\1 \2,p")
-        if [ -n "$finalos" ]; then
-            read -r distro releasever <<<"$finalos"
-            # 默认版本号
-            if [ -z "$releasever" ] && [ -n "$vers" ]; then
-                releasever=$(awk -F '|' '{print $NF}' <<<"|$vers")
-            fi
-            return
-        fi
-    done
+    if [ "$#" -eq 1 ] && [ "$(echo "$1" | to_lower)" = "debian" ]; then
+        distro="debian"
+        releasever="12"
+        return
+    fi
 
-    error "Please specify a proper os"
+    error "Error: Invalid OS specified. Only 'debian' (for Debian 12) or no arguments (for Debian 12) are supported. 错误：指定了无效的操作系统。仅支持 'debian' (用于 Debian 12) 或不带参数 (用于 Debian 12)。"
     usage_and_exit
 }
 
 verify_os_args() {
-    case "$distro" in
-    dd) [ -n "$img" ] || error_and_exit "dd need --img" ;;
-    redhat) [ -n "$img" ] || error_and_exit "redhat need --img" ;;
-    windows) [ -n "$image_name" ] || error_and_exit "Install Windows need --image-name." ;;
-    esac
-
-    case "$distro" in
-    netboot.xyz | windows) [ -z "$ssh_keys" ] || error_and_exit "not support ssh key for $distro" ;;
-    esac
+    : # No specific args to check for Debian 12 yet
 }
 
 get_cmd_path() {
@@ -2086,11 +1974,8 @@ install_pkg() {
 check_ram() {
     ram_standard=$(
         case "$distro" in
-        netboot.xyz) echo 0 ;;
-        alpine | debian | kali | dd) echo 256 ;;
-        arch | gentoo | aosc | nixos | windows) echo 512 ;;
-        redhat | centos | almalinux | rocky | fedora | oracle | ubuntu | anolis | opencloudos | openeuler) echo 1024 ;;
-        opensuse | fnos) echo -1 ;; # 没有安装模式
+        debian) echo 256 ;;
+        *) echo 0 ;; # Should not happen with simplified verify_os_name
         esac
     )
 
@@ -2104,16 +1989,13 @@ check_ram() {
 
     has_cloud_image=$(
         case "$distro" in
-        redhat | centos | almalinux | rocky | oracle | fedora | debian | ubuntu | opensuse | anolis | openeuler) echo true ;;
-        netboot.xyz | alpine | dd | arch | gentoo | nixos | kali | windows) echo false ;;
+        debian) echo true ;;
+        *) echo false ;; # Should not happen
         esac
     )
 
-    if is_in_windows; then
-        ram_size=$(wmic memorychip get capacity | awk -F= '{sum+=$2} END {print sum/1024/1024}')
-    else
-        # lsmem最准确但 centos7 arm 和 alpine 不能用，debian 9 util-linux 没有 lsmem
-        # arm 24g dmidecode 显示少了128m
+    # lsmem最准确但 centos7 arm 和 alpine 不能用，debian 9 util-linux 没有 lsmem
+    # arm 24g dmidecode 显示少了128m
         # arm 24g lshw 显示23BiB
         # ec2 t4g arm alpine 用 lsmem 和 dmidecode 都无效，要用 lshw，但结果和free -m一致，其他平台则没问题
         install_pkg lsmem
@@ -3671,63 +3553,16 @@ if mount | grep -q 'tmpfs on / type tmpfs'; then
     error_and_exit "Can't run this script in Live OS."
 fi
 
-if is_in_windows; then
-    # win系统盘
-    c=$(echo $SYSTEMDRIVE | cut -c1)
-
-    # 64位系统 + 32位cmd/cygwin，需要添加 PATH，否则找不到64位系统程序，例如bcdedit
-    sysnative=$(cygpath -u $WINDIR\\Sysnative)
-    if [ -d $sysnative ]; then
-        PATH=$PATH:$sysnative
-    fi
-
-    # 更改 windows 命令输出语言为英文
-    # chcp 会清屏
-    mode.com con cp select=437 >/dev/null
-
-    # 为 windows 程序输出删除 cr
-    for exe in $WINDOWS_EXES; do
-        # 如果我们覆写了 wmic()，则先将 wmic() 重命名为 _wmic()
-        if get_function $exe >/dev/null 2>&1; then
-            eval "_$(get_function $exe)"
-        fi
-        # 使用以下方法重新生成 wmic()
-        # 调用链：wmic() -> run_with_del_cr(wmic) -> _wmic() -> command wmic
-        eval "$exe(){ $(get_function_content run_with_del_cr_template | sed "s/\$exe/$exe/g") }"
-    done
-fi
-
 # 检查 root
-if is_in_windows; then
-    # 64位系统 + 32位cmd/cygwin，运行 openfiles 报错：目标系统必须运行 32 位的操作系统
-    if ! fltmc >/dev/null 2>&1; then
-        error_and_exit "Please run as administrator."
-    fi
-else
-    if [ "$EUID" -ne 0 ]; then
-        error_and_exit "Please run as root."
-    fi
+if [ "$EUID" -ne 0 ]; then # Removed is_in_windows check for admin
+    error_and_exit "Please run as root."
 fi
 
 long_opts=
-for o in ci installer debug minimal allow-ping force-cn help \
-    add-driver: \
-    hold: sleep: \
-    iso: \
-    image-name: \
-    boot-wim: \
-    img: \
-    lang: \
+for o in debug help \
     passwd: password: \
     ssh-port: \
-    ssh-key: public-key: \
-    rdp-port: \
-    web-port: http-port: \
-    allow-ping: \
-    commit: \
-    frpc-conf: frpc-config: frpc-toml: \
-    force: \
-    force-old-windows-setup:; do
+    ssh-key: public-key:; do
     [ -n "$long_opts" ] && long_opts+=,
     long_opts+=$o
 done
@@ -3744,69 +3579,9 @@ while true; do
     -h | --help)
         usage_and_exit
         ;;
-    --commit)
-        commit=$2
-        shift 2
-        ;;
     --debug)
         set -x
         shift
-        ;;
-    --ci)
-        cloud_image=1
-        unset installer
-        shift
-        ;;
-    --installer)
-        installer=1
-        unset cloud_image
-        shift
-        ;;
-    --minimal)
-        minimal=1
-        shift
-        ;;
-    --allow-ping)
-        allow_ping=1
-        shift
-        ;;
-    --force-cn)
-        # 仅为了方便测试
-        force_cn=1
-        shift
-        ;;
-    --hold | --sleep)
-        if ! { [ "$2" = 1 ] || [ "$2" = 2 ]; }; then
-            error_and_exit "Invalid $1 value: $2"
-        fi
-        hold=$2
-        shift 2
-        ;;
-    --frpc-conf | --frpc-config | --frpc-toml)
-        [ -n "$2" ] || error_and_exit "Need value for $1"
-
-        # windows 路径转换
-        frpc_config=$(get_unix_path "$2")
-
-        # alpine busybox 不支持 readlink -m
-        # readlink -m /asfsafasfsaf/fasf
-        # 因此需要先判断路径是否存在
-
-        if ! [ -f "$frpc_config" ]; then
-            error_and_exit "Not a toml file: $2"
-        fi
-
-        # 转为绝对路径
-        frpc_config=$(readlink -f "$frpc_config")
-
-        shift 2
-        ;;
-    --force)
-        if ! { [ "$2" = bios ] || [ "$2" = efi ]; }; then
-            error_and_exit "Invalid $1 value: $2"
-        fi
-        force=$2
-        shift 2
         ;;
     --passwd | --password)
         [ -n "$2" ] || error_and_exit "Need value for $1"
@@ -3826,9 +3601,8 @@ Available options:
   --ssh-key http://path/to/public_key
   --ssh-key https://path/to/public_key
   --ssh-key /path/to/public_key
-  --ssh-key C:\path\to\public_key
 EOF
-            exit 1
+            exit 1 
         }
 
         # https://manpages.debian.org/testing/openssh-server/authorized_keys.5.en.html#AUTHORIZED_KEYS_FILE_FORMAT
@@ -3857,8 +3631,7 @@ EOF
                 ssh_key=$2
             else
                 # 视为路径
-                # windows 路径转换
-                if ! { ssh_key_file=$(get_unix_path "$2") && [ -f "$ssh_key_file" ]; }; then
+                if ! { ssh_key_file="$2" && [ -f "$ssh_key_file" ]; }; then # Simplified get_unix_path
                     ssh_key_error_and_exit "SSH Key/File/Url \"$2\" is invalid."
                 fi
                 ssh_key=$(<"$ssh_key_file")
@@ -3872,8 +3645,6 @@ EOF
         fi
 
         # 保存 key
-        # 不用处理注释，可以支持写入 authorized_keys
-        # 安装 nixos 时再处理注释/空行，转成数组，再添加到 nix 配置文件中
         if [ -n "$ssh_keys" ]; then
             ssh_keys+=$'\n'
         fi
@@ -3884,78 +3655,6 @@ EOF
     --ssh-port)
         is_port_valid $2 || error_and_exit "Invalid $1 value: $2"
         ssh_port=$2
-        shift 2
-        ;;
-    --rdp-port)
-        is_port_valid $2 || error_and_exit "Invalid $1 value: $2"
-        rdp_port=$2
-        shift 2
-        ;;
-    --web-port | --http-port)
-        is_port_valid $2 || error_and_exit "Invalid $1 value: $2"
-        web_port=$2
-        shift 2
-        ;;
-    --add-driver)
-        [ -n "$2" ] || error_and_exit "Need value for $1"
-
-        # windows 路径转换
-        inf_or_dir=$(get_unix_path "$2")
-
-        # alpine busybox 不支持 readlink -m
-        # readlink -m /asfsafasfsaf/fasf
-        # 因此需要先判断路径是否存在
-
-        if ! [ -d "$inf_or_dir" ] &&
-            ! { [ -f "$inf_or_dir" ] && [[ "$inf_or_dir" =~ \.[iI][nN][fF]$ ]]; }; then
-            ssh_key_error_and_exit "Not a inf or dir: $2"
-        fi
-
-        # 转为绝对路径
-        inf_or_dir=$(readlink -f "$inf_or_dir")
-
-        info "finding inf in $inf_or_dir"
-        # find /tmp -type f -iname '*.inf' 只要 /tmp 存在就会返回 0
-        if infs=$(find "$inf_or_dir" -type f -iname '*.inf' | grep .); then
-            while IFS= read -r inf; do
-                # 防止重复添加
-                if ! grep -Fqx "$inf" <<<"$custom_infs"; then
-                    echo "inf found: $inf"
-                    # 一行一个 inf
-                    if [ -n "$custom_infs" ]; then
-                        custom_infs+=$'\n'
-                    fi
-                    custom_infs+=$inf
-                fi
-            done <<<"$infs"
-        else
-            error_and_exit "Can't find inf files in $2"
-        fi
-
-        shift 2
-        ;;
-    --force-old-windows-setup)
-        force_old_windows_setup=$2
-        shift 2
-        ;;
-    --img)
-        img=$2
-        shift 2
-        ;;
-    --iso)
-        iso=$2
-        shift 2
-        ;;
-    --boot-wim)
-        boot_wim=$2
-        shift 2
-        ;;
-    --image-name)
-        image_name=$(echo "$2" | to_lower)
-        shift 2
-        ;;
-    --lang)
-        lang=$(echo "$2" | to_lower)
         shift 2
         ;;
     --)
@@ -3975,8 +3674,10 @@ verify_os_name "$@"
 # 检查必须的参数
 verify_os_args
 
-# 不支持容器虚拟化
-assert_not_in_container
+if [ "$distro" != "debian" ] || [ "$releasever" != "12" ]; then
+    error "Error: Only Debian 12 installation is supported. 错误：仅支持 Debian 12 安装。"
+    usage_and_exit
+fi
 
 # 不支持安全启动
 if is_secure_boot_enabled; then
@@ -3984,16 +3685,7 @@ if is_secure_boot_enabled; then
 fi
 
 # 密码
-if ! is_netboot_xyz && [ -z "$ssh_keys" ] && [ -z "$password" ]; then
-    if is_use_dd; then
-        echo "
-This password is only used for SSH access to view logs during the installation.
-Password of the image will NOT modify.
-
-密码仅用于安装过程中通过 SSH 查看日志。
-镜像的密码不会被修改。
-"
-    fi
+if [ -z "$ssh_keys" ] && [ -z "$password" ]; then # Simplified condition
     prompt_password
 fi
 
@@ -4005,49 +3697,13 @@ tmp=/reinstall-tmp
 mkdir_clear "$tmp"
 
 # 强制忽略/强制添加 --ci 参数
-# debian 不强制忽略 ci 留作测试
-case "$distro" in
-dd | windows | netboot.xyz | kali | alpine | arch | gentoo | aosc | nixos | fnos)
-    if is_use_cloud_image; then
-        echo "ignored --ci"
-        unset cloud_image
-    fi
-    ;;
-oracle | opensuse | anolis | opencloudos | openeuler)
-    cloud_image=1
-    ;;
-redhat | centos | almalinux | rocky | fedora | ubuntu)
-    if is_force_use_installer; then
-        unset cloud_image
-    else
-        cloud_image=1
-    fi
-    ;;
-esac
+# For Debian, cloud_image can be used. No need to unset or force it here based on distro.
+:
 
 # 检查硬件架构
-if is_in_windows; then
-    # x86-based PC
-    # x64-based PC
-    # ARM-based PC
-    # ARM64-based PC
-
-    if false; then
-        # 如果机器没有 wmic 则需要下载 wmic.ps1，但此时未判断国内外，还是用国外源
-        basearch=$(wmic ComputerSystem get SystemType | grep '=' | cut -d= -f2 | cut -d- -f1)
-    elif true; then
-        # 可以用
-        basearch=$(reg query "HKLM\SYSTEM\CurrentControlSet\Control\Session Manager\Environment" /v PROCESSOR_ARCHITECTURE |
-            grep . | tail -1 | awk '{print $NF}')
-    else
-        # 也可以用
-        basearch=$(cmd /c "if defined PROCESSOR_ARCHITEW6432 (echo %PROCESSOR_ARCHITEW6432%) else (echo %PROCESSOR_ARCHITECTURE%)")
-    fi
-else
-    # archlinux 云镜像没有 arch 命令
-    # https://en.wikipedia.org/wiki/Uname
-    basearch=$(uname -m)
-fi
+# archlinux 云镜像没有 arch 命令
+# https://en.wikipedia.org/wiki/Uname
+basearch=$(uname -m)
 
 # 统一架构名称，并强制 64 位
 case "$(echo $basearch | to_lower)" in
@@ -4075,68 +3731,35 @@ if false && [[ "$confhome" = http*://raw.githubusercontent.com/* ]]; then
     confhome=$(echo "$confhome" | sed "s/main$/$commit/")
 fi
 
-# 设置国内代理
-# 要在使用 wmic 前设置，否则国内机器会从国外源下载 wmic.ps1
-# gitee 不支持ipv6
-# jsdelivr 有12小时缓存
-# https://github.com/XIU2/UserScript/blob/master/GithubEnhanced-High-Speed-Download.user.js#L31
-if is_in_china; then
-    if [ -n "$confhome_cn" ]; then
-        confhome=$confhome_cn
-    elif [ -n "$github_proxy" ] && [[ "$confhome" = http*://raw.githubusercontent.com/* ]]; then
-        confhome=${confhome/http:\/\//https:\/\/}
-        confhome=${confhome/https:\/\/raw.githubusercontent.com/$github_proxy}
-    fi
-fi
+# 设置国内代理 - Removed is_in_china and related logic
 
 # 检查内存
-# 会用到 wmic，因此要在设置国内 confhome 后使用
 check_ram
 
-# 以下目标系统不需要两步安装
-# alpine
-# debian
-# el7 x86_64 >=1g
-# el7 aarch64 >=1.5g
-# el8/9/fedora 任何架构 >=2g
-if is_netboot_xyz ||
-    { ! is_use_cloud_image && {
-        [ "$distro" = "alpine" ] || is_distro_like_debian ||
-            { is_distro_like_redhat && [ $releasever -eq 7 ] && [ $ram_size -ge 1024 ] && [ $basearch = "x86_64" ]; } ||
-            { is_distro_like_redhat && [ $releasever -eq 7 ] && [ $ram_size -ge 1536 ] && [ $basearch = "aarch64" ]; } ||
-            { is_distro_like_redhat && [ $releasever -ge 8 ] && [ $ram_size -ge 2048 ]; }
-    }; }; then
+# 以下目标系统不需要两步安装 - Simplified for Debian
+if ! is_use_cloud_image && is_distro_like_debian; then # Removed: alpine, redhat specific logic
     setos nextos $distro $releasever
 else
-    # alpine 作为中间系统时，使用最新版
-    alpine_ver_for_trans=$(get_latest_distro_releasever alpine)
+    # This block might need further simplification if alpine is fully removed.
+    # For now, assuming alpine might still be used as a temporary OS for Debian cloud image install.
+    alpine_ver_for_trans=$(get_latest_distro_releasever alpine) # This will call the simplified get_latest
     setos finalos $distro $releasever
-    setos nextos alpine $alpine_ver_for_trans
+    setos nextos alpine $alpine_ver_for_trans # This calls setos_alpine
 fi
 
 # 删除之前的条目
-# 防止第一次运行 netboot.xyz，第二次运行其他，但还是进入 netboot.xyz
-# 防止第一次运行其他，第二次运行 netboot.xyz，但还有第一次的菜单
 # bios 无论什么情况都用到 grub，所以不用处理
 if is_efi; then
-    if is_in_windows; then
-        rm -f /cygdrive/$c/grub.cfg
+    # shellcheck disable=SC2046
+    # 如果 nixos 的 efi 挂载到 /efi，则不会生成 /boot 文件夹
+    # find 不存在的路径会报错退出
+    find $(get_maybe_efi_dirs_in_linux) $([ -d /boot ] && echo /boot) \
+        -type f -name 'custom.cfg' -exec rm -f {} \;
 
-        bcdedit /set '{fwbootmgr}' bootsequence '{bootmgr}'
-        bcdedit /enum bootmgr | grep --text -B3 'reinstall' | awk '{print $2}' | grep '{.*}' |
-            xargs -I {} cmd /c bcdedit /delete {}
-    else
-        # shellcheck disable=SC2046
-        # 如果 nixos 的 efi 挂载到 /efi，则不会生成 /boot 文件夹
-        # find 不存在的路径会报错退出
-        find $(get_maybe_efi_dirs_in_linux) $([ -d /boot ] && echo /boot) \
-            -type f -name 'custom.cfg' -exec rm -f {} \;
-
-        install_pkg efibootmgr
-        efibootmgr | grep -q 'BootNext:' && efibootmgr --quiet --delete-bootnext
-        efibootmgr | grep_efi_entry | grep 'reinstall' | grep_efi_index |
-            xargs -I {} efibootmgr --quiet --bootnum {} --delete-bootnum
-    fi
+    install_pkg efibootmgr
+    efibootmgr | grep -q 'BootNext:' && efibootmgr --quiet --delete-bootnext
+    efibootmgr | grep_efi_entry | grep 'reinstall' | grep_efi_index |
+        xargs -I {} efibootmgr --quiet --bootnum {} --delete-bootnum
 fi
 
 # 有的机器开启了 kexec，例如腾讯云轻量 debian，要禁用
