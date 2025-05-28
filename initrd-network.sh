@@ -240,11 +240,11 @@ test_connect() {
 test_internet() {
     for i in $(seq 5); do
         echo "Testing Internet Connection. Test $i... "
-        if is_need_test_ipv4 && test_connect "$(get_first_ipv4_addr | remove_netmask)" "$ipv4_dns1" >/dev/null 2>&1; then
+        if is_need_test_ipv4 && { local current_ipv4_addr; current_ipv4_addr="$(get_first_ipv4_addr | remove_netmask)"; test_connect "$current_ipv4_addr" "$ipv4_dns1" >/dev/null 2>&1 || test_connect "$current_ipv4_addr" "$ipv4_dns2" >/dev/null 2>&1; }; then
             echo "IPv4 has internet."
             ipv4_has_internet=true
         fi
-        if is_need_test_ipv6 && test_connect "$(get_first_ipv6_addr | remove_netmask)" "$ipv6_dns1" >/dev/null 2>&1; then
+        if is_need_test_ipv6 && { local current_ipv6_addr; current_ipv6_addr="$(get_first_ipv6_addr | remove_netmask)"; test_connect "$current_ipv6_addr" "$ipv6_dns1" >/dev/null 2>&1 || test_connect "$current_ipv6_addr" "$ipv6_dns2" >/dev/null 2>&1; }; then
             echo "IPv6 has internet."
             ipv6_has_internet=true
         fi
