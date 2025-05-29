@@ -49,10 +49,10 @@ Usage: $reinstall_____ anolis      7|8|23
                        opencloudos 8|9|23
                        rocky       8|9
                        oracle      8|9
-                       almalinux   8|9
+                       almalinux   8|9|10
                        centos      9|10
                        fedora      41|42
-                       nixos       24.11
+                       nixos       25.05
                        debian      9|10|11|12
                        opensuse    15.6|tumbleweed
                        alpine      3.18|3.19|3.20|3.21
@@ -649,7 +649,7 @@ is_absolute_path() {
     [[ "$1" = /* ]]
 }
 
-assert_cpu_supports_x86_64_v3() {
+is_cpu_supports_x86_64_v3() {
     # 用 ld.so/cpuid/coreinfo.exe 更准确
     # centos 7 /usr/lib64/ld-linux-x86-64.so.2 没有 --help
     # alpine gcompat /lib/ld-linux-x86-64.so.2 没有 --help
@@ -666,9 +666,15 @@ assert_cpu_supports_x86_64_v3() {
 
     for flag in $need_flags; do
         if ! grep -qw $flag <<<"$had_flags"; then
-            error_and_exit "Could not install $distro $releasever because the CPU does not support x86-64-v3."
+            return 1
         fi
     done
+}
+
+assert_cpu_supports_x86_64_v3() {
+    if ! is_cpu_supports_x86_64_v3; then
+        error_and_exit "Could not install $distro $releasever because the CPU does not support x86-64-v3."
+    fi
 }
 
 # sr-latn-rs 到 sr-latn
@@ -1581,11 +1587,16 @@ Continue with DD?
     }
 
     setos_centos_almalinux_rocky_fedora() {
-        # el 10 需要 x86-64-v3
+        # el 10 需要 x86-64-v3，除了 almalinux
         if [ "$basearch" = x86_64 ] &&
-            { [ "$distro" = centos ] || [ "$distro" = almalinux ] || [ "$distro" = rocky ]; } &&
+            { [ "$distro" = centos ] || [ "$distro" = rocky ]; } &&
             [ "$releasever" -ge 10 ]; then
             assert_cpu_supports_x86_64_v3
+        fi
+
+        elarch=$basearch
+        if [ "$distro" = almalinux ] && [ "$basearch" = x86_64 ] && ! is_cpu_supports_x86_64_v3; then
+            elarch=x86_64_v2
         fi
 
         if is_use_cloud_image; then
@@ -1593,16 +1604,16 @@ Continue with DD?
             if is_in_china; then
                 case $distro in
                 centos) ci_mirror="https://mirror.nju.edu.cn/centos-cloud/centos" ;;
-                almalinux) ci_mirror="https://mirror.nju.edu.cn/almalinux/$releasever/cloud/$basearch/images" ;;
-                rocky) ci_mirror="https://mirror.nju.edu.cn/rocky/$releasever/images/$basearch" ;;
-                fedora) ci_mirror="https://mirror.nju.edu.cn/fedora/releases/$releasever/Cloud/$basearch/images" ;;
+                almalinux) ci_mirror="https://mirror.nju.edu.cn/almalinux/$releasever/cloud/$elarch/images" ;;
+                rocky) ci_mirror="https://mirror.nju.edu.cn/rocky/$releasever/images/$elarch" ;;
+                fedora) ci_mirror="https://mirror.nju.edu.cn/fedora/releases/$releasever/Cloud/$elarch/images" ;;
                 esac
             else
                 case $distro in
                 centos) ci_mirror="https://cloud.centos.org/centos" ;;
-                almalinux) ci_mirror="https://repo.almalinux.org/almalinux/$releasever/cloud/$basearch/images" ;;
-                rocky) ci_mirror="https://download.rockylinux.org/pub/rocky/$releasever/images/$basearch" ;;
-                fedora) ci_mirror="https://d2lzkl7pfhq30w.cloudfront.net/pub/fedora/linux/releases/$releasever/Cloud/$basearch/images" ;;
+                almalinux) ci_mirror="https://repo.almalinux.org/almalinux/$releasever/cloud/$elarch/images" ;;
+                rocky) ci_mirror="https://download.rockylinux.org/pub/rocky/$releasever/images/$elarch" ;;
+                fedora) ci_mirror="https://d2lzkl7pfhq30w.cloudfront.net/pub/fedora/linux/releases/$releasever/Cloud/$elarch/images" ;;
                 esac
             fi
             case $distro in
@@ -1611,20 +1622,20 @@ Continue with DD?
                 7)
                     # CentOS-7-aarch64-GenericCloud.qcow2c 是旧版本
                     ver=-2211
-                    ci_image=$ci_mirror/$releasever/images/CentOS-$releasever-$basearch-GenericCloud$ver.qcow2c
+                    ci_image=$ci_mirror/$releasever/images/CentOS-$releasever-$elarch-GenericCloud$ver.qcow2c
                     ;;
                 *)
                     # 有 bios 和 efi 镜像
                     # https://cloud.centos.org/centos/10-stream/x86_64/images/CentOS-Stream-GenericCloud-10-latest.x86_64.qcow2
                     # https://cloud.centos.org/centos/10-stream/x86_64/images/CentOS-Stream-GenericCloud-x86_64-10-latest.x86_64.qcow2
-                    [ "$basearch" = x86_64 ] &&
-                        ci_image=$ci_mirror/$releasever-stream/$basearch/images/CentOS-Stream-GenericCloud-x86_64-$releasever-latest.$basearch.qcow2 ||
-                        ci_image=$ci_mirror/$releasever-stream/$basearch/images/CentOS-Stream-GenericCloud-$releasever-latest.$basearch.qcow2
+                    [ "$elarch" = x86_64 ] &&
+                        ci_image=$ci_mirror/$releasever-stream/$elarch/images/CentOS-Stream-GenericCloud-x86_64-$releasever-latest.$elarch.qcow2 ||
+                        ci_image=$ci_mirror/$releasever-stream/$elarch/images/CentOS-Stream-GenericCloud-$releasever-latest.$elarch.qcow2
                     ;;
                 esac
                 ;;
-            almalinux) ci_image=$ci_mirror/AlmaLinux-$releasever-GenericCloud-latest.$basearch.qcow2 ;;
-            rocky) ci_image=$ci_mirror/Rocky-$releasever-GenericCloud-Base.latest.$basearch.qcow2 ;;
+            almalinux) ci_image=$ci_mirror/AlmaLinux-$releasever-GenericCloud-latest.$elarch.qcow2 ;;
+            rocky) ci_image=$ci_mirror/Rocky-$releasever-GenericCloud-Base.latest.$elarch.qcow2 ;;
             fedora)
                 # 不加 / 会跳转到 https://dl.fedoraproject.org，纯 ipv6 无法访问
                 # curl -L -6 https://d2lzkl7pfhq30w.cloudfront.net/pub/fedora/linux/releases/42/Cloud/x86_64/images
@@ -1639,14 +1650,14 @@ Continue with DD?
         else
             # 传统安装
             case $distro in
-            centos) mirrorlist="https://mirrors.centos.org/mirrorlist?repo=centos-baseos-$releasever-stream&arch=$basearch" ;;
+            centos) mirrorlist="https://mirrors.centos.org/mirrorlist?repo=centos-baseos-$releasever-stream&arch=$elarch" ;;
             almalinux) mirrorlist="https://mirrors.almalinux.org/mirrorlist/$releasever/baseos" ;;
-            rocky) mirrorlist="https://mirrors.rockylinux.org/mirrorlist?arch=$basearch&repo=BaseOS-$releasever" ;;
-            fedora) mirrorlist="https://mirrors.fedoraproject.org/mirrorlist?arch=$basearch&repo=fedora-$releasever" ;;
+            rocky) mirrorlist="https://mirrors.rockylinux.org/mirrorlist?arch=$elarch&repo=BaseOS-$releasever" ;;
+            fedora) mirrorlist="https://mirrors.fedoraproject.org/mirrorlist?arch=$elarch&repo=fedora-$releasever" ;;
             esac
 
-            # rocky/centos9 需要删除第一行注释， almalinux 需要替换$basearch
-            for cur_mirror in $(curl -L $mirrorlist | sed "/^#/d" | sed "s,\$basearch,$basearch,"); do
+            # rocky/centos9 需要删除第一行注释， almalinux 需要替换链接里面的 $basearch
+            for cur_mirror in $(curl -L $mirrorlist | sed "/^#/d" | sed "s,\$basearch,$elarch,"); do
                 host=$(get_host_by_url $cur_mirror)
                 if is_host_has_ipv4_and_ipv6 $host &&
                     test_url_grace ${cur_mirror}images/pxeboot/vmlinuz; then
@@ -1812,11 +1823,11 @@ verify_os_name() {
         'centos      7|9|10' \
         'anolis      7|8|23' \
         'opencloudos 8|9|23' \
-        'almalinux   8|9' \
+        'almalinux   8|9|10' \
         'rocky       8|9' \
         'oracle      8|9' \
         'fedora      41|42' \
-        'nixos       24.11' \
+        'nixos       25.05' \
         'debian      9|10|11|12' \
         'opensuse    15.6|16.0|tumbleweed' \
         'alpine      3.18|3.19|3.20|3.21' \

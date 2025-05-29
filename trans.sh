@@ -3207,6 +3207,7 @@ remove_cloud_init() {
             case $pkg_mgr in
             dnf | yum)
                 chroot $os_dir $pkg_mgr remove -y cloud-init
+                rm -f $os_dir/etc/cloud/cloud.cfg.rpmsave
                 ;;
             zypper)
                 # 加上 -u 才会删除依赖
