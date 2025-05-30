@@ -55,7 +55,7 @@ Usage: $reinstall_____ anolis      7|8|23
                        nixos       25.05
                        debian      9|10|11|12
                        opensuse    15.6|tumbleweed
-                       alpine      3.18|3.19|3.20|3.21
+                       alpine      3.19|3.20|3.21|3.22
                        openeuler   20.03|22.03|24.03|25.03
                        ubuntu      16.04|18.04|20.04|22.04|24.04|25.04 [--minimal]
                        kali
@@ -1830,7 +1830,7 @@ verify_os_name() {
         'nixos       25.05' \
         'debian      9|10|11|12' \
         'opensuse    15.6|16.0|tumbleweed' \
-        'alpine      3.18|3.19|3.20|3.21' \
+        'alpine      3.19|3.20|3.21|3.22' \
         'openeuler   20.03|22.03|24.03|25.03' \
         'ubuntu      16.04|18.04|20.04|22.04|24.04|25.04' \
         'redhat' \

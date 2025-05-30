@@ -1403,6 +1403,18 @@ install_alpine() {
     # 删除 setup-disk 时自动安装的包
     apk del e2fsprogs dosfstools efibootmgr grub*
 
+    # 如果没有挂载 /proc
+
+    # 1. chroot /os setup-keymap us us 会报错
+    # grep: /proc/filesystems: No such file or directory
+
+    # 2. 安装固件微码会触发 grub-probe，如果没挂载会报错
+    # Executing grub-2.12-r5.trigger
+    # /usr/sbin/grub-probe: error: failed to get canonical path of `/dev/vda1'.
+    # ERROR: grub-2.12-r5.trigger: script exited with error 1
+
+    mount_pseudo_fs /os
+
     # 安装到硬盘后才安装各种应用
     # 避免占用 Live OS 内存
 
@@ -1432,7 +1444,9 @@ install_alpine() {
     # 安装其他部件
     chroot /os setup-keymap us us
     chroot /os setup-timezone -i Asia/Shanghai
-    chroot /os setup-ntp chrony || true
+    # 3.21 默认是 chrony
+    # 3.22 默认是 busybox ntp
+    printf '\n' | chroot /os setup-ntp || true
 
     # 设置公钥
     if is_need_set_ssh_keys; then
@@ -1453,13 +1467,6 @@ install_alpine() {
         chroot /os rc-update add frpc boot
         cp /configs/frpc.toml /os/etc/frp/frpc.toml
     fi
-
-    # 安装固件微码会触发 grub-probe
-    # 如果没挂载会报错
-    # Executing grub-2.12-r5.trigger
-    # /usr/sbin/grub-probe: error: failed to get canonical path of `/dev/vda1'.
-    # ERROR: grub-2.12-r5.trigger: script exited with error 1
-    mount_pseudo_fs /os
 
     # setup-disk 会自动选择固件，但不包括微码？
     # https://github.com/alpinelinux/alpine-conf/blob/3.18.1/setup-disk.in#L421
