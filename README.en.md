@@ -126,7 +126,7 @@ certutil -urlcache -f -split https://cnb.cool/bin456789/reinstall/-/git/raw/main
 
 ```bash
 bash reinstall.sh anolis      7|8|23
-                  rocky       8|9
+                  rocky       8|9|10
                   oracle      8|9
                   almalinux   8|9|10
                   opencloudos 8|9|23

@@ -47,7 +47,7 @@ usage_and_exit() {
     cat <<EOF
 Usage: $reinstall_____ anolis      7|8|23
                        opencloudos 8|9|23
-                       rocky       8|9
+                       rocky       8|9|10
                        oracle      8|9
                        almalinux   8|9|10
                        centos      9|10
@@ -1824,7 +1824,7 @@ verify_os_name() {
         'anolis      7|8|23' \
         'opencloudos 8|9|23' \
         'almalinux   8|9|10' \
-        'rocky       8|9' \
+        'rocky       8|9|10' \
         'oracle      8|9' \
         'fedora      41|42' \
         'nixos       25.05' \
