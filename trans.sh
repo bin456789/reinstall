@@ -5853,14 +5853,20 @@ install_windows() {
             '8.1') echo 764813/Wired_driver_27.8_${arch_intel}.zip ;;
             '2012' | '2012 r2') echo 785805/Wired_driver_28.2_${arch_intel}.zip ;;
             *) case "${arch_intel}" in
-                32) echo 845886/Wired_driver_30.0_${arch_intel}.zip ;;
-                x64) echo 854162/Wired_driver_30.1_${arch_intel}.zip ;;
+                32) echo 849483/Wired_driver_30.0.1_${arch_intel}.zip ;;
+                x64) echo 860229/Wired_driver_30.2_${arch_intel}.zip ;;
                 esac ;;
             esac
         )
 
+        web_archive=$(
+            case "$product_ver" in
+            '8') echo https://web.archive.org/web/20250501043104/ ;;
+            esac
+        )
+
         # 注意 intel 禁止了 aria2 下载
-        download https://downloadmirror.intel.com/$file $drv/intel.zip
+        download ${web_archive}https://downloadmirror.intel.com/$file $drv/intel.zip
 
         # inf 可能是 UTF-16 LE？因此用 rg 搜索
         # 用 busybox unzip 解压 win10 驱动时，路径和文件名会粘在一起
