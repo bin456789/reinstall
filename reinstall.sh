@@ -1565,7 +1565,17 @@ Continue with DD?
             fi
         done
 
-        iso=$(curl -L https://fnnas.com/ | grep -o 'https://[^"]*\.iso' | head -1)
+        iso=$(curl -L https://fnnas.com/ | grep -o 'https://[^"]*\.iso' | head -1 | grep .)
+
+        # curl 7.82.0+
+        # curl -L --json '{"url":"'$iso'"}' https://www.fnnas.com/api/download-sign
+
+        iso=$(curl -L \
+            -d '{"url":"'$iso'"}' \
+            -H 'Content-Type: application/json' \
+            https://www.fnnas.com/api/download-sign |
+            grep -o 'https://[^"]*')
+
         test_url "$iso" iso
         eval "${step}_iso='$iso'"
     }
