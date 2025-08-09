@@ -444,6 +444,22 @@ Windows 11 Enterprise LTSC 2024
 Windows Server 2025 SERVERDATACENTER
 ```
 
+Naming convention for Windows Server series (2008 and above):
+```text
+Windows Server {Edition} SERVER{Installation Edition in uppercase}[CORE]  
+Edition refers to 2008, 2012, etc., and Installation Edition refers to Standard, Enterprise, Datacenter, etc. Append CORE if the installation is without a GUI.  
+
+eg. Windows Server 2025 Datacenter Edition:  
+Windows Server 2025 SERVERDATACENTER  
+
+eg. Windows Server 2008 R2 Enterprise Edition:  
+Windows Server 2008 R2 SERVERENTERPRISE  
+
+eg. Windows Server 2008 R2 Datacenter without GUI:  
+Windows Server 2008 R2 SERVERDATACENTERCORE  
+```
+
+
 #### How to Use [DISM++](https://github.com/Chuyu-Team/Dism-Multi-language/releases) to Query the Image Names Included in the ISO
 
 Open File menu > Open Image File, select the iso to be installed to get the image name (full system name), and all available image names are installable.
