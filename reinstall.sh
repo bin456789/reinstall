@@ -53,7 +53,7 @@ Usage: $reinstall_____ anolis      7|8|23
                        centos      9|10
                        fedora      41|42
                        nixos       25.05
-                       debian      9|10|11|12
+                       debian      9|10|11|12|13
                        opensuse    15.6|tumbleweed
                        alpine      3.19|3.20|3.21|3.22
                        openeuler   20.03|22.03|24.03|25.03
@@ -1118,6 +1118,9 @@ setos() {
         10) codename=buster ;;
         11) codename=bullseye ;;
         12) codename=bookworm ;;
+        13) codename=trixie ;;
+        14) codename=forky ;;
+        15) codename=duke ;;
         esac
 
         if ! is_use_cloud_image && is_debian_elts && is_in_china; then
@@ -1838,7 +1841,7 @@ verify_os_name() {
         'oracle      8|9' \
         'fedora      41|42' \
         'nixos       25.05' \
-        'debian      9|10|11|12' \
+        'debian      9|10|11|12|13' \
         'opensuse    15.6|16.0|tumbleweed' \
         'alpine      3.19|3.20|3.21|3.22' \
         'openeuler   20.03|22.03|24.03|25.03' \
@@ -3122,6 +3125,7 @@ partman-xfs
 rescue-check
 wpasupplicant-udeb
 lilo-installer
+systemd-boot-installer
 nic-modules-$kver-di
 nic-pcmcia-modules-$kver-di
 nic-usb-modules-$kver-di
@@ -3172,7 +3176,7 @@ EOF
         fi
 
         # 下载 udeb
-        curl -Lo $tmp/tmp.udeb http://$nextos_udeb_mirror/"$(grep /$package $udeb_list)"
+        curl -Lo $tmp/tmp.udeb http://$nextos_udeb_mirror/"$(grep -F /${package}_ $udeb_list)"
 
         if false; then
             # 使用 dpkg
