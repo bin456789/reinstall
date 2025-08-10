@@ -1063,7 +1063,16 @@ EOF
             echo "iface $ethx inet6 auto" >>$conf_file
 
         elif is_dhcpv6; then
-            echo "iface $ethx inet6 dhcp" >>$conf_file
+            # debian 13 使用 ifupdown + dhcpcd-base
+            # inet/inet6 都配置成 dhcp 时，重启后 dhcpv4 会丢失
+            # 手动 systemctl restart networking 后正常
+            # 删除 dhcpcd-base 安装 isc-dhcp-client（类似 debian 12 升级到 13），轮到 dhcpv6 丢失
+            if { [ "$distro" = debian ] && [ "$releasever" -ge 13 ]; } ||
+                [ "$distro" = kali ]; then
+                echo "iface $ethx inet6 auto" >>$conf_file
+            else
+                echo "iface $ethx inet6 dhcp" >>$conf_file
+            fi
 
         elif is_staticv6; then
             get_netconf_to ipv6_addr
