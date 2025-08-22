@@ -2107,6 +2107,10 @@ install_pkg() {
     done >&2
 }
 
+is_valid_ram_size() {
+    is_digit "$1" && [ "$1" -gt 0 ]
+}
+
 check_ram() {
     ram_standard=$(
         case "$distro" in
@@ -2134,7 +2138,7 @@ check_ram() {
     )
 
     if is_in_windows; then
-        ram_size=$(wmic memorychip get capacity | awk -F= '{sum+=$2} END {print sum/1024/1024}')
+        ram_size=$(wmic memorychip get capacity | awk -F= '{sum+=$2} END {if(sum>0) print sum/1024/1024}')
     else
         # lsmem最准确但 centos7 arm 和 alpine 不能用，debian 9 util-linux 没有 lsmem
         # arm 24g dmidecode 显示少了128m
@@ -2143,12 +2147,12 @@ check_ram() {
         install_pkg lsmem
         ram_size=$(lsmem -b 2>/dev/null | grep 'Total online memory:' | awk '{ print $NF/1024/1024 }')
 
-        if [ -z $ram_size ]; then
+        if ! is_valid_ram_size "$ram_size"; then
             install_pkg dmidecode
-            ram_size=$(dmidecode -t 17 | grep "Size.*[GM]B" | awk '{if ($3=="GB") s+=$2*1024; else s+=$2} END {print s}')
+            ram_size=$(dmidecode -t 17 | grep "Size.*[GM]B" | awk '{if ($3=="GB") s+=$2*1024; else s+=$2} END {if(s>0) print s}')
         fi
 
-        if [ -z $ram_size ]; then
+        if ! is_valid_ram_size "$ram_size"; then
             install_pkg lshw
             # 不能忽略 -i，alpine 显示的是 System memory
             ram_str=$(lshw -c memory -short | grep -i 'System Memory' | awk '{print $3}')
@@ -2159,12 +2163,12 @@ check_ram() {
 
     # 用于兜底，不太准确
     # cygwin 要装 procps-ng 才有 free 命令
-    if [ -z $ram_size ]; then
+    if ! is_valid_ram_size "$ram_size"; then
         ram_size_k=$(grep '^MemTotal:' /proc/meminfo | awk '{print $2}')
         ram_size=$((ram_size_k / 1024 + 64 + 4))
     fi
 
-    if [ -z $ram_size ] || [ $ram_size -le 0 ]; then
+    if ! is_valid_ram_size "$ram_size"; then
         error_and_exit "Could not detect RAM size."
     fi
 
