@@ -1741,7 +1741,12 @@ Continue with DD?
 
         if is_use_cloud_image; then
             # ci
-            dir=$releasever/images/$basearch
+            if [ "$releasever" -eq 9 ]; then
+                dir=$releasever/images/qcow2/$basearch
+            else
+                dir=$releasever/images/$basearch
+            fi
+
             file=$(curl -L $mirror/$dir/ | grep -oP 'OpenCloudOS.*?\.qcow2' |
                 sort -uV | tail -1 | grep .)
             eval ${step}_img=$mirror/$dir/$file
