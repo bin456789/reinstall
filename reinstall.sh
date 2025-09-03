@@ -992,7 +992,12 @@ get_windows_iso_link() {
     label_vlsc=$(get_label_vlsc)
     page=$(get_page)
 
-    page_url=https://massgrave.dev/windows_${page}_links
+    if [ "$page" = server ]; then
+        delimiter=-
+    else
+        delimiter=_
+    fi
+    page_url=https://massgrave.dev/windows${delimiter}${page}${delimiter}links
 
     info "Find windows iso"
     echo "Version:    $version"
