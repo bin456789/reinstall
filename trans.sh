@@ -5858,8 +5858,12 @@ install_windows() {
                 # 25.0 比 24.5 只更新了 ProSet 软件，驱动相同
                 echo 18713/eng/prowin${arch_intel}legacy.exe || # 25.0 有部分文件是 sha256 签名
                 echo 29323/eng/prowin${arch_intel}legacy.exe ;; # 24.3 sha1 签名
-            '8') echo 21642/eng/prowin${arch_intel}.exe ;;
-            '8.1') echo 764813/Wired_driver_27.8_${arch_intel}.zip ;;
+            # 之前有 Intel® Network Adapter Driver for Windows 8* - Final Release ，版本 22.7.1
+            # 但已被删除，原因不明
+            # https://web.archive.org/web/20250501043104/https://www.intel.com/content/www/us/en/download/16765/intel-network-adapter-driver-for-windows-8-final-release.html
+            # 27.8 有 NDIS63 文件夹，意味着支持 Windows 8
+            # 27.8 相比 22.7.1，可能有些老设备不支持了，但我们不管了
+            '8' | '8.1') echo 764813/Wired_driver_27.8_${arch_intel}.zip ;;
             '2012' | '2012 r2') echo 772074/Wired_driver_28.0_${arch_intel}.zip ;;
             *) case "${arch_intel}" in
                 32) echo 849483/Wired_driver_30.0.1_${arch_intel}.zip ;;
@@ -5868,14 +5872,8 @@ install_windows() {
             esac
         )
 
-        web_archive=$(
-            case "$product_ver" in
-            '8') echo https://web.archive.org/web/20250501043104/ ;;
-            esac
-        )
-
         # 注意 intel 禁止了 aria2 下载
-        download ${web_archive}https://downloadmirror.intel.com/$file $drv/intel.zip
+        download https://downloadmirror.intel.com/$file $drv/intel.zip
 
         # inf 可能是 UTF-16 LE？因此用 rg 搜索
         # 用 busybox unzip 解压 win10 驱动时，路径和文件名会粘在一起
