@@ -5860,7 +5860,7 @@ install_windows() {
                 echo 29323/eng/prowin${arch_intel}legacy.exe ;; # 24.3 sha1 签名
             '8') echo 21642/eng/prowin${arch_intel}.exe ;;
             '8.1') echo 764813/Wired_driver_27.8_${arch_intel}.zip ;;
-            '2012' | '2012 r2') echo 785805/Wired_driver_28.2_${arch_intel}.zip ;;
+            '2012' | '2012 r2') echo 772074/Wired_driver_28.0_${arch_intel}.zip ;;
             *) case "${arch_intel}" in
                 32) echo 849483/Wired_driver_30.0.1_${arch_intel}.zip ;;
                 x64) echo 861427/Wired_driver_30.3_${arch_intel}.zip ;;
@@ -5879,12 +5879,41 @@ install_windows() {
 
         # inf 可能是 UTF-16 LE？因此用 rg 搜索
         # 用 busybox unzip 解压 win10 驱动时，路径和文件名会粘在一起
+        # 但解压 28.0 驱动时，依然会出现这个问题
+        # 因此需要 convert_backslashes
         apk add unzip ripgrep
+
+        # https://superuser.com/questions/1382839/zip-files-expand-with-backslashes-on-linux-no-subdirectories
+        convert_backslashes() {
+            for file in "$1"/*\\*; do
+                if [ -f "$file" ]; then
+                    target="${file//\\//}"
+                    mkdir -p "${target%/*}"
+                    mv -v "$file" "$target"
+                fi
+            done
+        }
 
         # win7 驱动是 .exe 解压不会报错
         # win10 驱动是 .zip 解压反而会报错，目测 zip 文件有问题
         # 在 windows 下解压 win8 的驱动会提示 checksum 错误
         unzip -o -d $drv/intel/ $drv/intel.zip || true
+        convert_backslashes $drv/intel
+
+        is_have_inf_in_intel_dir() {
+            find $drv/intel -ipath "*/*.inf" | grep . >/dev/null
+        }
+
+        # Wired_driver_28.0_x64.zip 需要二次解压
+        if ! is_have_inf_in_intel_dir; then
+            unzip -o -d $drv/intel/ $drv/intel/Wired_driver_*.exe || true
+            convert_backslashes $drv/intel
+        fi
+
+        # 由于上面使用了 || true，因此确认下解压后是否有 inf 文件
+        if ! is_have_inf_in_intel_dir; then
+            error_and_exit "No .inf file found in intel driver package"
+        fi
 
         # Vista RTM 版本号是 6000    NDIS 6.0
         # 2008  RTM 版本号是 6001    NDIS 6.1
