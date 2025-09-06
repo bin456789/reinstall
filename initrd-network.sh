@@ -369,6 +369,10 @@ else
             sleep $DNS_FILE_TIMEOUT                # 需要等待写入 dns
             dhcpcd -x "$ethx"                      # 终止
         fi
+        # autoconf 和 accept_ra 会被 dhcpcd 自动关闭，因此需要重新打开
+        # 如果没重新打开，重新运行 dhcpcd 命令依然可以正常生成 slaac 地址和路由
+        sysctl -w "net.ipv6.conf.$ethx.autoconf=1"
+        sysctl -w "net.ipv6.conf.$ethx.accept_ra=1"
         ;;
     esac
 fi
