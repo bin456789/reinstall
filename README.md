@@ -444,6 +444,21 @@ Windows 11 Enterprise LTSC 2024
 Windows Server 2025 SERVERDATACENTER
 ```
 
+Windows Server系列（2008及以上）名称规范：
+```text
+Windows Server {版本} SERVER{安装版本大写}[CORE]
+版本为2008、2012等，安装版本为Standard、Enterprise、Datacenter等，增加CORE为安装无GUI版
+
+eg. Windows Server 2025 Datacenter版： 
+Windows Server 2025 SERVERDATACENTER
+
+eg. Windows Server 2008 R2 Enterprise版： 
+Windows Server 2008 R2 SERVERENTERPRISE
+
+eg. Windows Server 2008 R2 Datacenter 无GUI版： 
+Windows Server 2008 R2 SERVERDATACENTERCORE
+```
+
 #### 如何用 [DISM++](https://github.com/Chuyu-Team/Dism-Multi-language/releases) 查询 ISO 包含的映像名称
 
 打开文件菜单 > 打开映像文件，选择要安装的 iso，即可得到映像名称，所有映像名称都可以安装
