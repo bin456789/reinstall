@@ -5,23 +5,38 @@
 [![Codacy](https://img.shields.io/codacy/grade/dc679a17751448628fe6d8ac35e26eed?logo=Codacy&label=Codacy&style=flat-square)](https://app.codacy.com/gh/bin456789/reinstall/dashboard)
 [![CodeFactor](https://img.shields.io/codefactor/grade/github/bin456789/reinstall?logo=CodeFactor&logoColor=white&label=CodeFactor&style=flat-square)](https://www.codefactor.io/repository/github/bin456789/reinstall)
 [![Lines of Code](https://tokei.rs/b1/github/bin456789/reinstall?category=code&label=Lines%20of%20Code&style=flat-square)](https://github.com/XAMPPRocky/tokei_rs)
-[![Telegram Group](https://img.shields.io/badge/Telegram-2CA5E0?style=flat-square&logo=telegram&logoColor=white)](https://t.me/reinstall_os)
-[![Github Sponsors](https://img.shields.io/badge/sponsor-30363D?style=flat-square&logo=GitHub-Sponsors&logoColor=#EA4AAA)](https://github.com/sponsors/bin456789)
 
-一键重装脚本 [English](README.en.md)
+一键 VPS 系统重装脚本 [English](README.en.md)
 
-[![Sponsors](https://raw.githubusercontent.com/bin456789/sponsors/refs/heads/master/sponsors.svg)](https://github.com/sponsors/bin456789)
+## 介绍
 
-## 亮点
-
-- 一键安装 Linux，支持 19 种常见发行版
-- 一键安装 Windows，使用官方 ISO 安装而非自制镜像，脚本会自动获取 ISO 链接、自动安装 Virtio 等常见驱动
+- 一键重装到 Linux，支持 19 种常见发行版
+- 一键重装到 Windows，使用官方原版 ISO 而非自制镜像，脚本支持自动查找 ISO 链接、自动安装 `VirtIO` 等公有云驱动
 - 支持任意方向重装，即 `Linux to Linux`、`Linux to Windows`、`Windows to Windows`、`Windows to Linux`
-- 无需填写 IP 参数，自动识别动静态，支持 `/32`、`/128`、`网关不在子网范围内`、`纯 IPv6`、`双网卡`
+- 自动设置 IP，智能设置动静态，支持 `/32`、`/128`、`网关不在子网范围内`、`纯 IPv6`、`IPv4/IPv6 在不同的网卡`
 - 专门适配低配小鸡，比官方 netboot 需要更少的内存
 - 全程用分区表 ID 识别硬盘，确保不会写错硬盘
 - 支持 BIOS、EFI 引导，支持 ARM 服务器
 - 不含自制包，所有资源均实时从镜像源获得
+
+如果帮到你，可以请我喝奶茶。
+[![Donate](https://img.shields.io/badge/Donate-30363D?style=for-the-badge&logo=GitHub-Sponsors&logoColor=#EA4AAA)](https://github.com/sponsors/bin456789)
+
+[![Sponsors](https://raw.githubusercontent.com/bin456789/sponsors/refs/heads/master/sponsors.svg)](https://github.com/sponsors/bin456789)
+
+### 反馈
+
+[![GitHub Issues](https://img.shields.io/badge/GitHub-%23121011.svg?style=for-the-badge&logo=github&logoColor=white)](https://github.com/bin456789/reinstall/issues)
+[![Telegram Group](https://img.shields.io/badge/Telegram-2CA5E0?style=for-the-badge&logo=telegram&logoColor=white)](https://t.me/reinstall_os)
+
+## 快速开始
+
+- [下载](#下载当前系统是--linux)
+- [功能 1. 一键重装到 Linux](#功能-1-安装--linux)
+- [功能 2. 一键 DD Raw 镜像到硬盘](#功能-2-dd-raw-镜像到硬盘)
+- [功能 3. 一键引导到 Alpine Live OS 内存系统](#功能-3-重启到--alpine-live-os内存系统)
+- [功能 4. 一键引导到 netboot.xyz](#功能-4-重启到--netbootxyz)
+- [功能 5. 一键重装到 Windows](#功能-5-安装--windows-iso)
 
 ## 系统要求
 
@@ -56,6 +71,13 @@
 ^ 表示需要 256 MB 内存 + 1.5 GB 硬盘，或 512 MB 内存 + 1 GB 硬盘
 
 > [!WARNING]
+>
+> 本脚本理论上支持独服和 PC
+>
+> 但如果能使用 IPMI 或 U 盘，则不建议使用本脚本
+
+> [!WARNING]
+>
 > ❌ 本脚本不支持 OpenVZ、LXC 虚拟机
 >
 > 请改用 <https://github.com/LloydAsp/OsMutation>
@@ -65,13 +87,13 @@
 国外服务器：
 
 ```bash
-curl -O https://raw.githubusercontent.com/bin456789/reinstall/main/reinstall.sh || wget -O reinstall.sh $_
+curl -O https://raw.githubusercontent.com/bin456789/reinstall/main/reinstall.sh || wget -O ${_##*/} $_
 ```
 
 国内服务器：
 
 ```bash
-curl -O https://cnb.cool/bin456789/reinstall/-/git/raw/main/reinstall.sh || wget -O reinstall.sh $_
+curl -O https://cnb.cool/bin456789/reinstall/-/git/raw/main/reinstall.sh || wget -O ${_##*/} $_
 ```
 
 ## 下载（当前系统是 <img width="20" height="20" src="https://blogs.windows.com/wp-content/uploads/prod/2022/09/cropped-Windows11IconTransparent512-32x32.png" /> Windows）
@@ -113,9 +135,15 @@ certutil -urlcache -f -split https://cnb.cool/bin456789/reinstall/-/git/raw/main
 
 - Linux 下运行 `bash reinstall.sh ...`
 - Windows 下先运行 `cmd`，再运行 `reinstall.bat ...`
-  - 如果参数中的链接包含特殊字符，要用 `""` 将链接包起来，不能用 `''`
+  - 如果参数中的链接包含特殊字符，要用 `""` 将链接包裹起来，不能用 `''`
 
 ### 功能 1: 安装 <img width="16" height="16" src="https://www.kernel.org/theme/images/logos/favicon.png" /> Linux
+
+> [!CAUTION]
+>
+> 此功能会清除当前系统**整个硬盘**的全部数据（包含其它分区）！
+>
+> 数据无价，请三思而后行！
 
 - 用户名 `root` 默认密码 `123@@@`
 - 安装最新版可不输入版本号
@@ -149,15 +177,7 @@ bash reinstall.sh anolis      7|8|23
 #### 可选参数
 
 - `--password PASSWORD` 设置密码
-- `--ssh-key KEY` 设置 SSH 登录公钥，支持以下格式。当使用公钥时，密码为空
-  - `--ssh-key "ssh-rsa ..."`
-  - `--ssh-key "ssh-ed25519 ..."`
-  - `--ssh-key "ecdsa-sha2-nistp256/384/521 ..."`
-  - `--ssh-key http://path/to/public_key`
-  - `--ssh-key github:your_username`
-  - `--ssh-key gitlab:your_username`
-  - `--ssh-key /path/to/public_key`
-  - `--ssh-key C:\path\to\public_key`
+- `--ssh-key KEY` 设置 SSH 登录公钥，[格式如下](#--ssh-key)。当使用公钥时，密码为空
 - `--ssh-port PORT` 修改 SSH 端口（安装期间观察日志用，也作用于新系统）
 - `--web-port PORT` 修改 Web 端口（安装期间观察日志用）
 - `--frpc-toml /path/to/frpc.toml` 添加 frpc 内网穿透
@@ -201,7 +221,13 @@ bash reinstall.sh ubuntu --installer
 
 </details>
 
-### 功能 2: DD
+### 功能 2: DD RAW 镜像到硬盘
+
+> [!CAUTION]
+>
+> 此功能会清除当前系统**整个硬盘**的全部数据（包含其它分区）！
+>
+> 数据无价，请三思而后行！
 
 - 支持 `raw` `vhd` 格式的镜像（未压缩，或者压缩成 `.gz` `.xz` `.zst` `.tar` `.tar.gz` `.tar.xz` `.tar.zst`）
 - DD Windows 镜像时，会自动扩展系统盘，静态 IP 的机器会配置好 IP，可能首次开机几分钟后才生效
@@ -226,9 +252,14 @@ bash reinstall.sh dd --img "https://example.com/xxx.xz"
 
 ### 功能 3: 重启到 <img width="16" height="16" src="https://www.alpinelinux.org/alpine-logo.ico" /> Alpine Live OS（内存系统）
 
-- 可用 ssh 连接，进行备份/恢复硬盘、手动 DD、修改分区、手动安装 Alpine/Arch/Gentoo 等操作
+- 可用 ssh 连接，进行备份/恢复硬盘、手动 DD、修改分区、手动安装 Alpine 等操作
 - 用户名 `root` 默认密码 `123@@@`
-- 如果手动操作没有破坏原系统，再次重启将回到原系统
+
+> [!TIP]
+>
+> 虽然运行的脚本叫 `reinstall`，但是此功能**不会**删除任何数据和进行自动重装，而是要用户手动操作
+>
+> 如果用户手动操作没有破坏原系统，再次重启将回到原系统
 
 ```bash
 bash reinstall.sh alpine --hold=1
@@ -238,21 +269,18 @@ bash reinstall.sh alpine --hold=1
 
 - `--password PASSWORD` 设置密码
 - `--ssh-port PORT` 修改 SSH 端口
-- `--ssh-key KEY` 设置 SSH 登录公钥，支持以下格式。当使用公钥时，密码为空
-  - `--ssh-key "ssh-rsa ..."`
-  - `--ssh-key "ssh-ed25519 ..."`
-  - `--ssh-key "ecdsa-sha2-nistp256/384/521 ..."`
-  - `--ssh-key http://path/to/public_key`
-  - `--ssh-key github:your_username`
-  - `--ssh-key gitlab:your_username`
-  - `--ssh-key /path/to/public_key`
-  - `--ssh-key C:\path\to\public_key`
+- `--ssh-key KEY` 设置 SSH 登录公钥，[格式如下](#--ssh-key)。当使用公钥时，密码为空
 - `--frpc-toml /path/to/frpc.toml` 添加 frpc 内网穿透
 
 ### 功能 4: 重启到 <img width="16" height="16" src="https://netboot.xyz/img/favicon.ico" /> netboot.xyz
 
 - 可使用商家后台 VNC 手动安装 [更多系统](https://github.com/netbootxyz/netboot.xyz?tab=readme-ov-file#what-operating-systems-are-currently-available-on-netbootxyz)
-- 如果手动操作没有破坏原系统，再次重启将回到原系统
+
+> [!TIP]
+>
+> 虽然运行的脚本叫 `reinstall`，但是此功能**不会**删除任何数据和进行自动重装，而是要用户手动操作
+>
+> 如果用户手动操作没有破坏原系统，再次重启将回到原系统
 
 ```bash
 bash reinstall.sh netboot.xyz
@@ -263,6 +291,12 @@ bash reinstall.sh netboot.xyz
 ### 功能 5: 安装 <img width="16" height="16" src="https://blogs.windows.com/wp-content/uploads/prod/2022/09/cropped-Windows11IconTransparent512-32x32.png" /> Windows ISO
 
 ![Windows 安装界面](https://github.com/bin456789/reinstall/assets/7548515/07c1aea2-1ce3-4967-904f-aaf9d6eec3f7)
+
+> [!CAUTION]
+>
+> 此功能会清除当前系统**整个硬盘**的全部数据（包含其它分区）！
+>
+> 数据无价，请三思而后行！
 
 - 用户名 `administrator` 默认密码 `123@@@`
 - 如果远程登录失败，可以尝试使用用户名 `.\administrator`
@@ -276,7 +310,7 @@ bash reinstall.sh netboot.xyz
   - Windows Server Essentials \*
   - Windows Server (Semi) Annual Channel \*
   - Hyper-V Server \*
-  - Azure Stack HCI \*
+  - Azure Local (Azure Stack HCI) \*
 
 #### 方法 1: 让脚本自动查找 ISO
 
@@ -386,18 +420,18 @@ bash reinstall.sh windows \
 - `--password PASSWORD` 设置密码
 - `--allow-ping` 设置 Windows 防火墙允许被 Ping
 - `--rdp-port PORT` 更改 RDP 端口
-- `--ssh-port PORT` 修改 SSH 端口（安装期间观察日志用）
-- `--web-port PORT` 修改 Web 端口（安装期间观察日志用）
+- `--ssh-port PORT` 修改 SSH 端口（仅安装期间观察日志用）
+- `--web-port PORT` 修改 Web 端口（仅安装期间观察日志用）
 - `--add-driver INF_OR_DIR` 添加额外驱动，填写 .inf 路径，或者 .inf 所在的文件夹
-  - 需先下载驱动到本地
+  - 需先下载驱动到当前系统
   - 可多次设置该参数以添加不同的驱动
 - `--frpc-toml /path/to/frpc.toml` 添加 frpc 内网穿透
 - `--hold 2` 在进入 Windows 官方安装程序之前，可以 SSH 登录修改硬盘内容，硬盘挂载在 `/os`
 
 #### 以下驱动会自动按需下载安装，无需手动添加
 
-- Virtio ([Virtio][virtio-virtio], [阿里云][virtio-aliyun], [腾讯云][virtio-qcloud], [GCP][virtio-gcp])
-- XEN ([~~XEN~~][xen-xen] (未签名), [Citrix][xen-citrix], [AWS][xen-aws])
+- VirtIO ([社区版][virtio-virtio], [阿里云][virtio-aliyun], [腾讯云][virtio-qcloud], [GCP][virtio-gcp])
+- XEN ([~~社区版~~][xen-xen] (未签名), [Citrix][xen-citrix], [AWS][xen-aws])
 - AWS ([ENA 网卡][aws-ena], [NVME 存储控制器][aws-nvme])
 - GCP ([gVNIC 网卡][gcp-gvnic], [GGA 显卡][gcp-gga])
 - Azure ([MANA 网卡][azure-mana])
@@ -421,7 +455,7 @@ bash reinstall.sh windows \
 [intel-nic-8.1]: https://www.intel.com/content/www/us/en/download/17479/intel-network-adapter-driver-for-windows-8-1.html
 [intel-nic-10]: https://www.intel.com/content/www/us/en/download/18293/intel-network-adapter-driver-for-windows-10.html
 [intel-nic-11]: https://www.intel.com/content/www/us/en/download/727998/intel-network-adapter-driver-for-microsoft-windows-11.html
-[intel-nic-2008-r2]: https://www.intel.com/content/www/us/en/download/15591/intel-network-adapter-driver-for-windows-server-2008-r2-final-release.html
+[intel-nic-2008-r2]: https://web.archive.org/web/20250501002542/https://www.intel.com/content/www/us/en/download/15591/intel-network-adapter-driver-for-windows-server-2008-r2-final-release.html
 [intel-nic-2012]: https://www.intel.com/content/www/us/en/download/16789/intel-network-adapter-driver-for-windows-server-2012.html
 [intel-nic-2012-r2]: https://www.intel.com/content/www/us/en/download/17480/intel-network-adapter-driver-for-windows-server-2012-r2.html
 [intel-nic-2016]: https://www.intel.com/content/www/us/en/download/18737/intel-network-adapter-driver-for-windows-server-2016.html
@@ -431,7 +465,7 @@ bash reinstall.sh windows \
 
 #### 如何填写映像名称 `--image-name`
 
-通常一个 ISO 会包含多个系统版本，例如家庭版、专业版。映像名称 `--image-name` 就是用来指定要安装的版本，填写时不区分大小写
+一个 ISO 通常包含多个系统版本，例如家庭版、专业版。因此需要用 `--image-name` 指定要安装的系统版本（映像名称），不区分大小写
 
 可以用 DISM、DISM++、Wimlib 等工具查询 ISO 包含的映像名称
 
@@ -492,10 +526,18 @@ Windows Server 2025 SERVERDATACENTER
 
 </details>
 
-## 讨论
+## 参数格式
 
-[![GitHub Issues](https://img.shields.io/badge/github-%23121011.svg?style=for-the-badge&logo=github&logoColor=white)](https://github.com/bin456789/reinstall/issues)
-[![Telegram Group](https://img.shields.io/badge/Telegram-2CA5E0?style=for-the-badge&logo=telegram&logoColor=white)](https://t.me/reinstall_os)
+### --ssh-key
+
+- `--ssh-key "ssh-rsa ..."`
+- `--ssh-key "ssh-ed25519 ..."`
+- `--ssh-key "ecdsa-sha2-nistp256/384/521 ..."`
+- `--ssh-key http://path/to/public_key`
+- `--ssh-key github:your_username`
+- `--ssh-key gitlab:your_username`
+- `--ssh-key /path/to/public_key`
+- `--ssh-key C:\path\to\public_key`
 
 ## 如何修改脚本自用
 
@@ -504,8 +546,6 @@ Windows Server 2025 SERVERDATACENTER
 3. 修改其它代码
 
 ## 感谢
-
-[![Github Sponsors](https://img.shields.io/badge/sponsor-30363D?style=for-the-badge&logo=GitHub-Sponsors&logoColor=#EA4AAA)](https://github.com/sponsors/bin456789)
 
 感谢以下商家提供白嫖机器
 

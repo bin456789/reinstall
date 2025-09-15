@@ -7,10 +7,13 @@ assignees: ''
 
 ---
 
-原来的系统：
-要安装的系统：
-遇到的问题：截图或者登录 SSH 获取日志 /reinstall.log
+原来的系统 (Original system):
 
-Original system:
-System to be installed:
-Issues encountered: Screenshot or log in via SSH to get the logs from /reinstall.log
+要安装的系统 (System to be installed):
+
+遇到的问题 (Issue):
+
+<!--
+请上传截图或者报错内容，注意删除 IP 地址和密码
+(Please Upload Screenshot or error message. Be sure to delete the IP address and password)
+-->

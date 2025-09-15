@@ -5,23 +5,38 @@
 [![Codacy](https://img.shields.io/codacy/grade/dc679a17751448628fe6d8ac35e26eed?logo=Codacy&label=Codacy&style=flat-square)](https://app.codacy.com/gh/bin456789/reinstall/dashboard)
 [![CodeFactor](https://img.shields.io/codefactor/grade/github/bin456789/reinstall?logo=CodeFactor&logoColor=white&label=CodeFactor&style=flat-square)](https://www.codefactor.io/repository/github/bin456789/reinstall)
 [![Lines of Code](https://tokei.rs/b1/github/bin456789/reinstall?category=code&label=Lines%20of%20Code&style=flat-square)](https://github.com/XAMPPRocky/tokei_rs)
-[![Telegram Group](https://img.shields.io/badge/Telegram-2CA5E0?style=flat-square&logo=telegram&logoColor=white)](https://t.me/reinstall_os)
-[![Github Sponsors](https://img.shields.io/badge/sponsor-30363D?style=flat-square&logo=GitHub-Sponsors&logoColor=#EA4AAA)](https://github.com/sponsors/bin456789)
 
-One-Click Script to Reinstall System [中文](README.md)
+One-Click system reinstallation script for VPS [中文](README.md)
 
-[![Sponsors](https://raw.githubusercontent.com/bin456789/sponsors/refs/heads/master/sponsors.svg)](https://github.com/sponsors/bin456789)
+## Introduction
 
-## Highlights
-
-- One-click Linux installation: Supports 19 common distributions.
-- One-click Windows installation: Uses the official ISO for installation instead of custom images. The script can automatically retrieves the ISO link and installs common drivers like `Virtio`.
-- Supports installation in any direction, i.e., `Linux to Linux`, `Linux to Windows`, `Windows to Windows`, `Windows to Linux`
-- No need to input IP parameters; automatically recognizes dynamic and static IPs, supports `/32`, `/128`, `gateway outside subnet`, `IPv6 only`, `dual NIC`
+- One-click reinstallation to Linux: Supports 19 common distributions.
+- One-click reinstallation to Windows: Uses the official original ISO instead of custom images. The script can automatically fetch the ISO link and installs public cloud drivers like `VirtIO`.
+- Supports reinstallation in any direction, i.e., `Linux to Linux`, `Linux to Windows`, `Windows to Windows`, `Windows to Linux`
+- Automatically configures IP and intelligently sets it as static or dynamic. Supports `/32`, `/128`, `gateway outside subnet`, `IPv6 only`, `IPv4/IPv6 on different NIC`
 - Specially optimized for low-spec servers, requires less memory than the official netboot
 - Uses partition table ID to identify hard drives throughout the process, ensuring no wrong disk is written
 - Supports BIOS and EFI boot, and ARM Server
 - No homemades image included, all resources are obtained in real-time from mirror sites
+
+If this helped you, you can buy me a milk tea.
+[![Donate](https://img.shields.io/badge/Donate-30363D?style=for-the-badge&logo=GitHub-Sponsors&logoColor=#EA4AAA)](https://github.com/sponsors/bin456789)
+
+[![Sponsors](https://raw.githubusercontent.com/bin456789/sponsors/refs/heads/master/sponsors.svg)](https://github.com/sponsors/bin456789)
+
+### Feedback
+
+[![GitHub Issues](https://img.shields.io/badge/GitHub-%23121011.svg?style=for-the-badge&logo=github&logoColor=white)](https://github.com/bin456789/reinstall/issues)
+[![Telegram Group](https://img.shields.io/badge/Telegram-2CA5E0?style=for-the-badge&logo=telegram&logoColor=white)](https://t.me/reinstall_os)
+
+## Quick Start
+
+- [Download](#download-current-system-is--linux)
+- [Feature 1. One-click reinstallation to Linux](#feature-1-install--linux)
+- [Feature 2. One-click DD Raw image to hard disk](#feature-2-dd-raw-image-to-hard-disk)
+- [Feature 3. One-click reboot to Alpine Live OS in-memory system](#feature-3-reboot-to--alpine-live-os-ram-os)
+- [Feature 4. One-click reboot to netboot.xyz](#feature-4-reboot-to--netbootxyz)
+- [Feature 5. One-click reinstallation to Windows](#feature-5-install--windows-iso)
 
 ## System Requirements
 
@@ -56,6 +71,13 @@ The system requirements for the target system are as follows:
 ^ Indicates requiring either 256 MB memory + 1.5 GB disk, or 512 MB memory + 1 GB disk
 
 > [!WARNING]
+>
+> In theory it also supports dedicated servers and PCs
+>
+> but if you can use IPMI or a USB drive, this script is not recommended.
+
+> [!WARNING]
+>
 > ❌ This script does not support OpenVZ or LXC virtual machines.
 >
 > Please use <https://github.com/LloydAsp/OsMutation> instead.
@@ -65,13 +87,13 @@ The system requirements for the target system are as follows:
 For server outside China:
 
 ```bash
-curl -O https://raw.githubusercontent.com/bin456789/reinstall/main/reinstall.sh || wget -O reinstall.sh $_
+curl -O https://raw.githubusercontent.com/bin456789/reinstall/main/reinstall.sh || wget -O ${_##*/} $_
 ```
 
 For server inside China:
 
 ```bash
-curl -O https://cnb.cool/bin456789/reinstall/-/git/raw/main/reinstall.sh || wget -O reinstall.sh $_
+curl -O https://cnb.cool/bin456789/reinstall/-/git/raw/main/reinstall.sh || wget -O ${_##*/} $_
 ```
 
 ## Download (Current system is <img width="20" height="20" src="https://blogs.windows.com/wp-content/uploads/prod/2022/09/cropped-Windows11IconTransparent512-32x32.png" /> Windows)
@@ -117,6 +139,12 @@ certutil -urlcache -f -split https://cnb.cool/bin456789/reinstall/-/git/raw/main
 
 ### Feature 1: Install <img width="16" height="16" src="https://www.kernel.org/theme/images/logos/favicon.png" /> Linux
 
+> [!CAUTION]
+>
+> This feature will erase **the entire hard disk** of the current system (including other partitions)!
+>
+> Data is priceless — please think twice before proceeding!
+
 - The username is `root` with a default password of `123@@@`.
 - When installing the latest version, the version number does not need to be specified.
 - Maximizes disk space usage: no boot partition (except for Fedora) and no swap partition.
@@ -149,17 +177,9 @@ bash reinstall.sh anolis      7|8|23
 #### Optional Parameters
 
 - `--password PASSWORD` Set the password
-- `--ssh-key KEY` Set up SSH login public key, supports these formats. When using public key, password is empty.
-  - `--ssh-key "ssh-rsa ..."`
-  - `--ssh-key "ssh-ed25519 ..."`
-  - `--ssh-key "ecdsa-sha2-nistp256/384/521 ..."`
-  - `--ssh-key http://path/to/public_key`
-  - `--ssh-key github:your_username`
-  - `--ssh-key gitlab:your_username`
-  - `--ssh-key /path/to/public_key`
-  - `--ssh-key C:\path\to\public_key`
+- `--ssh-key KEY` Set up SSH login public key, [formatted as follows](#--ssh-key). When using public key, password is empty.
 - `--ssh-port PORT` Change the SSH port (for log observation during installation and for the new system)
-- `--web-port PORT` Change the Web port (for log observation during installation)
+- `--web-port PORT` Change the Web port (for log observation during installation only)
 - `--frpc-toml /path/to/frpc.toml` Add frpc for intranet tunneling
 - `--hold 2` Prevent reboot after installation completes, allowing SSH login to modify system content; the system is mounted at `/os` (this feature is not supported on Debian/Kali).
 
@@ -201,7 +221,13 @@ bash reinstall.sh ubuntu --installer
 
 </details>
 
-### Feature 2: DD
+### Feature 2: DD RAW image to hard disk
+
+> [!CAUTION]
+>
+> This feature will erase **the entire hard disk** of the current system (including other partitions)!
+>
+> Data is priceless — please think twice before proceeding!
 
 - Supports `raw` and `vhd` image formats (either uncompressed or compressed as `.gz`, `.xz`, `.zst`, `.tar`, `.tar.gz`, `.tar.xz`, `.tar.zst`).
 - When deploy a Windows image, the system disk will be automatically expanded, and machines with a static IP will have their IP configured, and may take a few minutes after the first boot for the configuration to take effect.
@@ -226,9 +252,14 @@ bash reinstall.sh dd --img "https://example.com/xxx.xz"
 
 ### Feature 3: Reboot to <img width="16" height="16" src="https://www.alpinelinux.org/alpine-logo.ico" /> Alpine Live OS (RAM OS)
 
-- You can use SSH to backup/restore disk, manually perform DD operations, modify partitions, and manually install Alpine, Arch, Gentoo, and other systems.
+- You can use SSH to backup/restore disk, manually perform DD operations, partition modifications, manual Alpine installation, and other operations.
 - Username `root`, Default password `123@@@`
-- If manual operations do not damage the original system, rebooting will return to the original system.
+
+> [!TIP]
+>
+> Although the script being run is `reinstall`, this feature **does not** delete any data or perform an automatic reinstallation; manual user operation is required.
+
+> If the user does not damage the original system during manual operation, rebooting will return to the original system.
 
 ```bash
 bash reinstall.sh alpine --hold=1
@@ -238,21 +269,18 @@ bash reinstall.sh alpine --hold=1
 
 - `--password PASSWORD` Set password
 - `--ssh-port PORT` Change SSH port
-- `--ssh-key KEY` Set up SSH login public key, supports these formats. When using public key, password is empty.
-  - `--ssh-key "ssh-rsa ..."`
-  - `--ssh-key "ssh-ed25519 ..."`
-  - `--ssh-key "ecdsa-sha2-nistp256/384/521 ..."`
-  - `--ssh-key http://path/to/public_key`
-  - `--ssh-key github:your_username`
-  - `--ssh-key gitlab:your_username`
-  - `--ssh-key /path/to/public_key`
-  - `--ssh-key C:\path\to\public_key`
+- `--ssh-key KEY` Set up SSH login public key, [formatted as follows](#--ssh-key). When using public key, password is empty.
 - `--frpc-toml /path/to/frpc.toml` Add frpc for intranet tunneling
 
 ### Feature 4: Reboot to <img width="16" height="16" src="https://netboot.xyz/img/favicon.ico" /> netboot.xyz
 
 - Can manually install [more systems](https://github.com/netbootxyz/netboot.xyz?tab=readme-ov-file#what-operating-systems-are-currently-available-on-netbootxyz) using vendor backend VNC.
-- If manual operations do not damage the original system, rebooting will return to the original system.
+
+> [!TIP]
+>
+> Although the script being run is `reinstall`, this feature **does not** delete any data or perform an automatic reinstallation; manual user operation is required.
+
+> If the user does not damage the original system during manual operation, rebooting will return to the original system.
 
 ```bash
 bash reinstall.sh netboot.xyz
@@ -263,6 +291,12 @@ bash reinstall.sh netboot.xyz
 ### Feature 5: Install <img width="16" height="16" src="https://blogs.windows.com/wp-content/uploads/prod/2022/09/cropped-Windows11IconTransparent512-32x32.png" /> Windows ISO
 
 ![Windows Installation](https://github.com/bin456789/reinstall/assets/7548515/07c1aea2-1ce3-4967-904f-aaf9d6eec3f7)
+
+> [!CAUTION]
+>
+> This feature will erase **the entire hard disk** of the current system (including other partitions)!
+>
+> Data is priceless — please think twice before proceeding!
 
 - Username `administrator`, Default password `123@@@`
 - If remote login fails, try using the username `.\administrator`.
@@ -276,7 +310,7 @@ bash reinstall.sh netboot.xyz
   - Windows Server Essentials \*
   - Windows Server (Semi) Annual Channel \*
   - Hyper-V Server \*
-  - Azure Stack HCI \*
+  - Azure Local (Azure Stack HCI) \*
 
 #### Method 1: Let the Script Automatically Search for ISO
 
@@ -386,18 +420,18 @@ bash reinstall.sh windows \
 - `--password PASSWORD` Set Password
 - `--allow-ping` Configure Windows Firewall to Allow Ping Responses
 - `--rdp-port PORT` Change RDP port
-- `--ssh-port PORT` Change SSH port (for log observation during installation)
-- `--web-port PORT` Change Web port (for log observation during installation)
+- `--ssh-port PORT` Change SSH port (for log observation during installation only)
+- `--web-port PORT` Change Web port (for log observation during installation only)
 - `--add-driver INF_OR_DIR` Add additional driver, specifying .inf path, or the folder contains .inf file.
-  - The driver must be downloaded locally first.
+  - The driver must be downloaded to current system first.
   - This parameter can be set multiple times to add different driver.
 - `--frpc-toml /path/to/frpc.toml` Add frpc for intranet tunneling
 - `--hold 2` Allow SSH connections for modifying the disk content before rebooting into the official Windows installation program, with the disk mounted at `/os`.
 
 #### The following drivers will automatic download and install as needed, without the need for manual addition
 
-- Virtio ([Virtio][virtio-virtio], [Alibaba Cloud][virtio-aliyun], [Tencent Cloud][virtio-qcloud], [GCP][virtio-gcp])
-- XEN ([~~XEN~~][xen-xen] (unsigned), [Citrix][xen-citrix], [AWS][xen-aws])
+- VirtIO ([Community][virtio-virtio], [Alibaba Cloud][virtio-aliyun], [Tencent Cloud][virtio-qcloud], [GCP][virtio-gcp])
+- XEN ([~~Community~~][xen-xen] (unsigned), [Citrix][xen-citrix], [AWS][xen-aws])
 - AWS ([ENA Network Adapter][aws-ena], [NVME Storage Controller][aws-nvme])
 - GCP ([gVNIC Network Adapter][gcp-gvnic], [GGA Display Adapter][gcp-gga])
 - Azure ([MANA Network Adapter][azure-mana])
@@ -421,7 +455,7 @@ bash reinstall.sh windows \
 [intel-nic-8.1]: https://www.intel.com/content/www/us/en/download/17479/intel-network-adapter-driver-for-windows-8-1.html
 [intel-nic-10]: https://www.intel.com/content/www/us/en/download/18293/intel-network-adapter-driver-for-windows-10.html
 [intel-nic-11]: https://www.intel.com/content/www/us/en/download/727998/intel-network-adapter-driver-for-microsoft-windows-11.html
-[intel-nic-2008-r2]: https://www.intel.com/content/www/us/en/download/15591/intel-network-adapter-driver-for-windows-server-2008-r2-final-release.html
+[intel-nic-2008-r2]: https://web.archive.org/web/20250501002542/https://www.intel.com/content/www/us/en/download/15591/intel-network-adapter-driver-for-windows-server-2008-r2-final-release.html
 [intel-nic-2012]: https://www.intel.com/content/www/us/en/download/16789/intel-network-adapter-driver-for-windows-server-2012.html
 [intel-nic-2012-r2]: https://www.intel.com/content/www/us/en/download/17480/intel-network-adapter-driver-for-windows-server-2012-r2.html
 [intel-nic-2016]: https://www.intel.com/content/www/us/en/download/18737/intel-network-adapter-driver-for-windows-server-2016.html
@@ -431,7 +465,7 @@ bash reinstall.sh windows \
 
 #### How to Specify the Image Name `--image-name`
 
-Typically, an ISO will contain multiple system versions, such as Home Edition and Professional Edition. The image name `--image-name` is used to specify the version to be installed, and it is case-insensitive when entered.
+An ISO usually contains multiple system editions, such as Home and Pro. Therefore, you need to use `--image-name` to specify the system edition (image name) to install, case-insensitive.
 
 You can use tools like DISM, DISM++, or Wimlib to query the image names included in the ISO.
 
@@ -492,10 +526,18 @@ Log in to the server using Remote Desktop, open Device Manager, locate the graph
 
 </details>
 
-## Discussion
+## Parameter Format
 
-[![GitHub Issues](https://img.shields.io/badge/github-%23121011.svg?style=for-the-badge&logo=github&logoColor=white)](https://github.com/bin456789/reinstall/issues)
-[![Telegram Group](https://img.shields.io/badge/Telegram-2CA5E0?style=for-the-badge&logo=telegram&logoColor=white)](https://t.me/reinstall_os)
+### --ssh-key
+
+- `--ssh-key "ssh-rsa ..."`
+- `--ssh-key "ssh-ed25519 ..."`
+- `--ssh-key "ecdsa-sha2-nistp256/384/521 ..."`
+- `--ssh-key http://path/to/public_key`
+- `--ssh-key github:your_username`
+- `--ssh-key gitlab:your_username`
+- `--ssh-key /path/to/public_key`
+- `--ssh-key C:\path\to\public_key`
 
 ## How to Modify the Script for Your Own
 
@@ -504,8 +546,6 @@ Log in to the server using Remote Desktop, open Device Manager, locate the graph
 3. Make changes to the other code.
 
 ## Thanks
-
-[![Github Sponsors](https://img.shields.io/badge/sponsor-30363D?style=for-the-badge&logo=GitHub-Sponsors&logoColor=#EA4AAA)](https://github.com/sponsors/bin456789)
 
 Thanks to the following businesses for providing free servers.
 
