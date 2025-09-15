@@ -5867,7 +5867,7 @@ install_windows() {
             '2012' | '2012 r2') echo 772074/Wired_driver_28.0_${arch_intel}.zip ;;
             *) case "${arch_intel}" in
                 32) echo 849483/Wired_driver_30.0.1_${arch_intel}.zip ;;
-                x64) echo 861427/Wired_driver_30.3_${arch_intel}.zip ;;
+                x64) echo 864508/Wired_driver_30.4_${arch_intel}.zip ;;
                 esac ;;
             esac
         )
