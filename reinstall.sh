@@ -1629,7 +1629,9 @@ Continue with DD?
         fi
 
         elarch=$basearch
-        if [ "$distro" = almalinux ] && [ "$basearch" = x86_64 ] && ! is_cpu_supports_x86_64_v3; then
+        if [ "$basearch" = x86_64 ] &&
+            [ "$distro" = almalinux ] && [ "$releasever" -ge 10 ] &&
+            ! is_cpu_supports_x86_64_v3; then
             elarch=x86_64_v2
         fi
 
