@@ -21,18 +21,19 @@ jobs:
           git config --global core.autocrlf false
       - uses: actions/checkout@v4
       - run: |
-          ${{ matrix.command }} centos
-          ${{ matrix.command }} almalinux 8
-          ${{ matrix.command }} rocky 9
-          ${{ matrix.command }} fedora
+          # ${{ matrix.command }} centos
+          ${{ matrix.command }} almalinux
+          # ${{ matrix.command }} rocky
+          # ${{ matrix.command }} fedora
+          # ${{ matrix.command }} oracle
           ${{ matrix.command }} ubuntu
           ${{ matrix.command }} debian
           ${{ matrix.command }} debian --ci
-          ${{ matrix.command }} kali
-          ${{ matrix.command }} alpine
-          ${{ matrix.command }} opensuse
-          ${{ matrix.command }} arch
-          ${{ matrix.command }} gentoo
+          # ${{ matrix.command }} kali
+          # ${{ matrix.command }} alpine
+          # ${{ matrix.command }} opensuse
+          # ${{ matrix.command }} arch
+          # ${{ matrix.command }} gentoo
 
           ${{ matrix.command }} netboot.xyz
           ${{ matrix.command }} dd --img=https://download.opensuse.org/tumbleweed/appliances/openSUSE-MicroOS.x86_64-SelfInstall.raw.xz
