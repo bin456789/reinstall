@@ -6475,7 +6475,7 @@ EOF
         done
 
         if ! $is_gen11 && [ "$build_ver" -ge 19041 ]; then
-            url=https://downloadmirror.intel.com/849939/SetupRST.exe # RST v20
+            url=https://downloadmirror.intel.com/865363/SetupRST.exe # RST v20
         elif [ "$build_ver" -ge 15063 ]; then
             url=https://downloadmirror.intel.com/849934/SetupRST.exe # RST v19
         else
