@@ -442,7 +442,7 @@ EOF
 }
 
 umount_all() {
-    dirs="/mnt /os /iso /wim /installer /nbd /nbd-boot /nbd-efi /root /nix"
+    dirs="/mnt /os /iso /wim /installer /nbd /nbd-boot /nbd-efi /nbd-test /root /nix"
     regex=$(echo "$dirs" | sed 's, ,|,g')
     if mounts=$(mount | grep -Ew "on $regex" | awk '{print $3}' | tac); then
         for mount in $mounts; do
@@ -4447,15 +4447,36 @@ install_qcow_by_copy() {
         # 安装引导
         if is_efi; then
             # 只有centos 和 oracle x86_64 镜像没有efi，其他系统镜像已经从efi分区复制了文件
-            if [ -z "$efi_part" ]; then
-                remove_grub_conflict_files
-                # openeuler 自带 grub2-efi-ia32，此时安装 grub2-efi 提示已经安装了 grub2-efi-ia32，不会继续安装 grub2-efi-x64
-                [ "$(uname -m)" = x86_64 ] && arch=x64 || arch=aa64
+            # openeuler 自带 grub2-efi-ia32，此时安装 grub2-efi 提示已经安装了 grub2-efi-ia32，不会继续安装 grub2-efi-x64
+
+            # 假设极端情况，qcow2 制作时，安装 grub2-efi-x64 时没有挂载 efi 分区，那么 efi 文件会在系统分区下
+            # 但我们复制系统分区时挂载了 /boot/efi，因此 efi 文件会正确地复制到 efi 分区
+            # 因此无需判断 qcow2 的 efi 是否是独立分区
+
+            # rhel 镜像没有源，直接 yum install 安装可能会报错
+            # 因此如果已经安装了要用的包就不再运行 yum install
+            need_install=false
+            need_remove_grub_conflict_files=false
+
+            [ "$(uname -m)" = x86_64 ] && arch=x64 || arch=aa64
+            if ! chroot $os_dir rpm -qi grub2-efi-$arch; then
+                need_install=true
+                need_remove_grub_conflict_files=true
+            elif ! chroot $os_dir rpm -qi shim-$arch || ! chroot $os_dir rpm -qi efibootmgr; then
+                need_install=true
+            fi
+
+            if $need_install; then
+                if $need_remove_grub_conflict_files; then
+                    remove_grub_conflict_files
+                fi
                 chroot_dnf install efibootmgr grub2-efi-$arch shim-$arch
             fi
             # openeuler arm 25.09 云镜像里面的 grubaa64.efi 是用于 mbr 分区表，$root 是 hd0,msdos1
             # 因此要重新下载 $root 是 hd0,gpt1 的 grubaa64.efi
-            chroot_dnf reinstall grub2-efi-$arch
+            if $need_reinstall_grub_efi; then
+                chroot_dnf reinstall grub2-efi-$arch
+            fi
         else
             # bios
             remove_grub_conflict_files
@@ -4802,25 +4823,76 @@ EOF
         lvchange -ay "$vg"
     fi
 
-    # TODO: 系统分区应该是最后一个分区
-    # 选择最大分区
-    os_part=$(lsblk /dev/nbd0p* --sort SIZE -no NAME,FSTYPE | grep -E 'ext4|xfs' | tail -1 | awk '{print $1}')
-    efi_part=$(lsblk /dev/nbd0p* --sort SIZE -no NAME,PARTTYPE | grep -i "$EFI_UUID" | awk '{print $1}')
-    # 排除前两个，再选择最大分区
-    # almalinux9 boot 分区的类型不是规定的 uuid
-    # openeuler boot 分区是 fat 格式
-    boot_part=$(lsblk /dev/nbd0p* --sort SIZE -no NAME,FSTYPE | grep -E 'ext4|xfs|fat' | awk '{print $1}' |
-        grep -vx "$os_part" | grep -vx "$efi_part" | tail -1 | awk '{print $1}')
+    mount_nouuid() {
+        part_fstype=
+        for arg in "$@"; do
+            case "$arg" in
+            /dev/*)
+                part_fstype=$(lsblk -no FSTYPE "$arg")
+                break
+                ;;
+            esac
+        done
 
-    if $is_lvm_image; then
-        os_part="mapper/$os_part"
+        case "$part_fstype" in
+        xfs) mount -o nouuid "$@" ;;
+        *) mount "$@" ;;
+        esac
+    }
+
+    # 可以直接选择最后一个分区为系统分区?
+    # almalinux9 boot 分区的类型不是规定的 uuid
+    # openeuler boot 分区是 vfat 格式
+    # openeuler arm 25.09 是 mbr 分区表, efi boot 是同一个分区，vfat 格式
+
+    info "qcow2 Partitions check"
+
+    # 检测分区表类型
+    partition_table_format=$(get_partition_table_format /dev/nbd0)
+    need_reinstall_grub_efi=false
+    if is_efi && [ "$partition_table_format" = "msdos" ]; then
+        need_reinstall_grub_efi=true
     fi
+
+    # 通过检测文件判断是什么分区
+    os_part='' boot_part='' efi_part=''
+    mkdir -p /nbd-test
+    for part in $(lsblk /dev/nbd0p* --sort SIZE -no NAME,FSTYPE |
+        grep -E ' (ext4|xfs|fat|vfat)$' | awk '{print $1}' | tac); do
+        mapper_part=$part
+        if $is_lvm_image && [ -e /dev/mapper/$part ]; then
+            mapper_part=mapper/$part
+        fi
+
+        if mount_nouuid -o ro /dev/$mapper_part /nbd-test; then
+            if { ls /nbd-test/etc/os-release || ls /nbd-test/*/etc/os-release; } 2>/dev/null; then
+                os_part=$mapper_part
+            fi
+            # shellcheck disable=SC2010
+            # 当 boot 作为独立分区时，vmlinuz 等文件在根目录
+            # 当 boot 不是独立分区时，vmlinuz 等文件在 /boot 目录
+            if ls /nbd-test/ /nbd-test/boot/ 2>/dev/null | grep -Ei '^(vmlinuz|initrd|initramfs)'; then
+                boot_part=$mapper_part
+            fi
+            # mbr + efi 引导 ，分区表没有 esp guid
+            # 因此需要用 efi 文件判断是否 efi 分区
+            # efi 文件可能在 efi 目录的子目录，子目录层数不定
+            if find /nbd-test/ -type f -ipath '/nbd-test/EFI/*.efi' 2>/dev/null | grep .; then
+                efi_part=$mapper_part
+            fi
+            umount /nbd-test
+        fi
+    done
 
     info "qcow2 Partitions"
     lsblk -f /dev/nbd0 -o +PARTTYPE
+    # 显示 OS/EFI/Boot 文件在哪个分区
+    echo "---"
+    echo "Table:     $partition_table_format"
     echo "Part OS:   $os_part"
     echo "Part EFI:  $efi_part"
     echo "Part Boot: $boot_part"
+    echo "---"
 
     # 分区寻找方式
     # 系统/分区          cmdline:root  fstab:efi
@@ -4828,24 +4900,15 @@ EOF
     # ubuntu            PARTUUID      LABEL=UEFI
     # 其他el/ol         UUID           UUID
 
-    # read -r os_part_uuid os_part_label < <(lsblk /dev/$os_part -no UUID,LABEL)
-    os_part_uuid=$(lsblk /dev/$os_part -no UUID)
-    os_part_label=$(lsblk /dev/$os_part -no LABEL)
-    os_part_fstype=$(lsblk /dev/$os_part -no FSTYPE)
+    IFS=, read -r os_part_uuid os_part_label os_part_fstype \
+        < <(lsblk /dev/$os_part -rno UUID,LABEL,FSTYPE | tr ' ' ,)
 
     if [ -n "$efi_part" ]; then
-        efi_part_uuid=$(lsblk /dev/$efi_part -no UUID)
-        efi_part_label=$(lsblk /dev/$efi_part -no LABEL)
+        IFS=, read -r efi_part_uuid efi_part_label \
+            < <(lsblk /dev/$efi_part -rno UUID,LABEL | tr ' ' ,)
     fi
 
     mkdir -p /nbd /nbd-boot /nbd-efi
-
-    mount_nouuid() {
-        case "$os_part_fstype" in
-        ext4) mount "$@" ;;
-        xfs) mount -o nouuid "$@" ;;
-        esac
-    }
 
     # 使用目标系统的格式化程序
     # centos8 如果用alpine格式化xfs，grub2-mkconfig和grub2里面都无法识别xfs分区
@@ -4882,16 +4945,17 @@ EOF
     cp -a /nbd/* /os/
     umount /nbd/
 
-    # 复制boot分区，如果有
-    if [ -n "$boot_part" ]; then
+    # 复制独立的boot分区，如果有
+    if [ -n "$boot_part" ] && ! [ "$boot_part" = "$os_part" ]; then
         echo Copying boot partition...
         mount_nouuid -o ro /dev/$boot_part /nbd-boot/
         cp -a /nbd-boot/* /os/boot/
         umount /nbd-boot/
     fi
 
-    # 复制efi分区，如果有
-    if [ -n "$efi_part" ]; then
+    # 复制独立的efi分区，如果有
+    # 如果 efi 和 boot 是同一个分区，则复制 boot 分区时已经复制了 efi 分区的文件
+    if [ -n "$efi_part" ] && ! [ "$efi_part" = "$os_part" ] && ! [ "$efi_part" = "$boot_part" ]; then
         echo Copying efi partition...
         mount -o ro /dev/$efi_part /nbd-efi/
         cp -a /nbd-efi/* /os/boot/efi/
@@ -4915,11 +4979,11 @@ EOF
     umount /os/
     umount /installer/
 
-    # 如果镜像有efi分区，复制其uuid
+    # 如果镜像有独立的efi分区（包括efi+boot在同一个分区），复制其uuid
     # 如果有相同uuid的fat分区，则无法挂载
     # 所以要先复制efi分区，断开nbd再复制uuid
     # 复制uuid前要取消挂载硬盘 efi 分区
-    if is_efi && [ -n "$efi_part_uuid" ]; then
+    if is_efi && [ -n "$efi_part_uuid" ] && ! [ "$efi_part" = "$os_part" ]; then
         info "Copy efi partition uuid"
         apk add mtools
         mlabel -N "$(echo $efi_part_uuid | sed 's/-//')" -i /dev/$xda*1 ::$efi_part_label
