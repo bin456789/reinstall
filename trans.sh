@@ -4453,6 +4453,9 @@ install_qcow_by_copy() {
                 [ "$(uname -m)" = x86_64 ] && arch=x64 || arch=aa64
                 chroot_dnf install efibootmgr grub2-efi-$arch shim-$arch
             fi
+            # openeuler arm 25.09 云镜像里面的 grubaa64.efi 是用于 mbr 分区表，$root 是 hd0,msdos1
+            # 因此要重新下载 $root 是 hd0,gpt1 的 grubaa64.efi
+            chroot_dnf reinstall grub2-efi-$arch
         else
             # bios
             remove_grub_conflict_files
