@@ -19,23 +19,7 @@ netsh interface ipv6 set global randomizeidentifiers=disabled
 
 rem 检查是否定义了 MAC 地址
 if defined mac_addr (
-    rem vista 没有自带 powershell
-    rem win11 24h2 安装后有 wmic，但是过一段时间会自动删除，因此有的 dd 镜像没有 wmic
-    if exist "%windir%\system32\wbem\wmic.exe" (
-        for /f "tokens=2 delims==" %%a in (
-            'wmic nic where "MACAddress='%mac_addr%'" get InterfaceIndex /format:list ^| findstr /r "^InterfaceIndex=[0-9][0-9]*$"'
-        ) do set id=%%a
-    )
-    if not defined id (
-        for /f %%a in ('powershell -NoLogo -NoProfile -NonInteractive -ExecutionPolicy Bypass ^
-            -Command "(Get-WmiObject Win32_NetworkAdapter | Where-Object { $_.MACAddress -eq '%mac_addr%' }).InterfaceIndex" ^| findstr /r "^[0-9][0-9]*$"'
-        ) do set id=%%a
-    )
-    if not defined id (
-        for /f %%a in ('powershell -NoLogo -NoProfile -NonInteractive -ExecutionPolicy Bypass ^
-            -Command "(Get-CimInstance Win32_NetworkAdapter | Where-Object { $_.MACAddress -eq '%mac_addr%' }).InterfaceIndex" ^| findstr /r "^[0-9][0-9]*$"'
-        ) do set id=%%a
-    )
+    for /f %%a in ('wmic nic where "MACAddress='%mac_addr%'" get InterfaceIndex ^| findstr [0-9]') do set id=%%a
     if defined id (
         rem 配置静态 IPv4 地址和网关
         if defined ipv4_addr if defined ipv4_gateway (
