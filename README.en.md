@@ -497,6 +497,14 @@ Open File menu > Open Image File, select the iso to be installed to get the imag
 >
 > The solution is to update the system patches or manually install the `VCLibs` library <https://www.google.com/search?q=ltsc+wsappx>.
 
+> [!WARNING]
+> When installing Windows ISOs released in `May 2022` or later on GCP, the system may repeatedly reboot during the Windows installation (PE) stage. You can resolve this issue using one of the following two methods:
+>
+> 1. Add the `--force-boot-mode bios` parameter. The script will install Windows in `BIOS boot + MBR partition table` mode.
+> <br /> - (Optional) After installation, you can convert it to `EFI boot + GPT partition table` using the command `MBR2GPT /convert /allowFullOS`.
+>
+> 2. Create a custom RAW image and install it via DD.
+
 #### Considerations for Installing Windows on ARM
 
 Most ARM machines support installing latest Windows 11.

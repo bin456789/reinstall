@@ -248,8 +248,8 @@ update_part() {
 }
 
 is_efi() {
-    if [ -n "$force" ]; then
-        [ "$force" = efi ]
+    if [ -n "$force_boot_mode" ]; then
+        [ "$force_boot_mode" = efi ]
     else
         [ -d /sys/firmware/efi/ ]
     fi

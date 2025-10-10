@@ -2965,7 +2965,7 @@ build_extra_cmdline() {
     # 会将 extra.xxx=yyy 写入新系统的 /etc/modprobe.d/local.conf
     # https://answers.launchpad.net/ubuntu/+question/249456
     # https://salsa.debian.org/installer-team/rootskel/-/blob/master/src/lib/debian-installer-startup.d/S02module-params?ref_type=heads
-    for key in confhome hold force force_cn force_old_windows_setup cloud_image main_disk \
+    for key in confhome hold force_boot_mode force_cn force_old_windows_setup cloud_image main_disk \
         elts deb_mirror \
         ssh_port rdp_port web_port allow_ping; do
         value=${!key}
@@ -3783,7 +3783,7 @@ for o in ci installer debug minimal allow-ping force-cn help \
     allow-ping: \
     commit: \
     frpc-conf: frpc-config: frpc-toml: \
-    force: \
+    force-boot-mode: \
     force-old-windows-setup:; do
     [ -n "$long_opts" ] && long_opts+=,
     long_opts+=$o
@@ -3858,11 +3858,11 @@ while true; do
 
         shift 2
         ;;
-    --force)
+    --force-boot-mode)
         if ! { [ "$2" = bios ] || [ "$2" = efi ]; }; then
             error_and_exit "Invalid $1 value: $2"
         fi
-        force=$2
+        force_boot_mode=$2
         shift 2
         ;;
     --passwd | --password)

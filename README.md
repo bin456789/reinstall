@@ -497,6 +497,14 @@ Windows Server 2025 SERVERDATACENTER
 >
 > 解决方法是更新系统补丁，或者手动安装 `VCLibs` 库 <https://www.google.com/search?q=ltsc+wsappx>
 
+> [!WARNING]
+> 在 GCP 上安装 `2022年5月` 和之后发布的 Windows ISO，在引导 Windows 安装界面 (PE) 时会不断反复重启。解决方法如下，二选一
+>
+> 1. 添加 `--force-boot-mode bios` 参数，脚本将以 `BIOS 引导 + MBR 分区表` 方式安装 Windows
+> <br /> - (可选) 安装完成后用 `MBR2GPT /convert /allowFullOS` 命令转为 `EFI 引导 + GPT 分区表`
+>
+> 2. 自制 RAW 镜像并通过 DD 安装
+
 #### ARM 安装 Windows 的注意事项
 
 大部分 ARM 机器都支持安装最新版 Windows 11
