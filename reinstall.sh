@@ -1262,7 +1262,7 @@ Continue?
         20.04) codename=focal ;;
         22.04) codename=jammy ;;
         24.04) codename=noble ;;
-        25.04) codename=plucky ;; # non-lts
+        25.10) codename=questing ;; # non-lts
         esac
 
         if is_use_cloud_image; then
@@ -1873,7 +1873,7 @@ verify_os_name() {
         'opensuse    15.6|16.0|tumbleweed' \
         'alpine      3.19|3.20|3.21|3.22' \
         'openeuler   20.03|22.03|24.03|25.09' \
-        'ubuntu      16.04|18.04|20.04|22.04|24.04|25.04' \
+        'ubuntu      16.04|18.04|20.04|22.04|24.04|25.10' \
         'redhat' \
         'kali' \
         'arch' \
