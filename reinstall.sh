@@ -3663,7 +3663,7 @@ remove_useless_initrd_files() {
         for item in *; do
             case "$item" in
             # 甲骨文 arm 用自定义镜像支持设为 mlx5 vf 网卡，且不是 azure 那样显示两个网卡
-            amazon | google | mellanox) ;;
+            amazon | google | mellanox | realtek) ;;
             intel)
                 (
                     cd "$item"
