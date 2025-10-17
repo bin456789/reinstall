@@ -1613,11 +1613,36 @@ install_nixos() {
             done
         fi
 
-        if is_in_china; then
-            sh=https://mirror.nju.edu.cn/nix/latest/install
+        # 备用方案
+        # 1. 从 https://mirror.nju.edu.cn/nix-channels/nixos-25.05/nixexprs.tar.xz 获取
+        #    https://github.com/NixOS/nixpkgs/blob/nixos-25.05/pkgs/tools/package-management/nix/default.nix
+        #    https://github.com/NixOS/nixpkgs/blob/nixos-25.05/nixos/modules/installer/tools/nix-fallback-paths.nix
+        # 2. 安装最新版 nix，添加 nixos channel 后获取
+        #    nix eval -f '<nixpkgs>' --raw 'nixVersions.stable.version' --extra-experimental-features nix-command
+
+        if true; then
+            # nix 版本号使用目标系统里面的
+            download $mirror/nixos-$releasever/store-paths.xz /os/store-paths.xz
+            apk add xz
+            nix_ver=$(xz -dc </os/store-paths.xz | grep -F 'vm-test-run-nix-upgrade' |
+                head -1 | awk -F- '{print $7}' | grep .)
+            rm -f /os/store-paths.xz
+            if is_in_china; then
+                sh_mirror=https://mirror.nju.edu.cn/nix
+            else
+                sh_mirror=https://releases.nixos.org/nix
+            fi
+            sh=$sh_mirror/nix-$nix_ver/install
         else
-            sh=https://nixos.org/nix/install
+            # 最新版 nix 在 nixos-install 时可能会出问题
+            # https://github.com/bin456789/reinstall/issues/451
+            if is_in_china; then
+                sh=https://mirror.nju.edu.cn/nix/latest/install
+            else
+                sh=https://nixos.org/nix/install
+            fi
         fi
+
         apk add xz
         wget -O- "$sh" | sh -s -- --no-daemon --no-channel-add
         apk del xz
@@ -1757,8 +1782,7 @@ EOF
     # 设置 channel
     if is_in_china; then
         nixos-enter --root /os -- \
-            /run/current-system/sw/bin/nix-channel \
-            --add https://mirrors.cernet.edu.cn/nix-channels/nixos-$releasever nixos
+            /run/current-system/sw/bin/nix-channel --add $mirror/nixos-$releasever nixos
     fi
 
     # 清理
