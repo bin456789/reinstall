@@ -54,10 +54,10 @@ Usage: $reinstall_____ anolis      7|8|23
                        fedora      41|42
                        nixos       25.05
                        debian      9|10|11|12|13
-                       opensuse    15.6|tumbleweed
                        alpine      3.19|3.20|3.21|3.22
+                       opensuse    15.6|16.0|tumbleweed
                        openeuler   20.03|22.03|24.03|25.09
-                       ubuntu      16.04|18.04|20.04|22.04|24.04|25.04 [--minimal]
+                       ubuntu      16.04|18.04|20.04|22.04|24.04|25.10 [--minimal]
                        kali
                        arch
                        gentoo
@@ -1436,26 +1436,17 @@ Continue?
         else
             # leap
             dir=distribution/leap/$releasever/appliances
-            if [ "$releasever" = 15.6 ]; then
-                file=openSUSE-Leap-$releasever-Minimal-VM.$basearch-Cloud.qcow2
-                # https://build.opensuse.org/projects/Virtualization:Appliances:Images:openSUSE-Leap-15.6/packages/kiwi-templates-Minimal/files/Minimal.kiwi
-                # https://build.opensuse.org/projects/Virtualization:Appliances:Images:openSUSE-Tumbleweed/packages/kiwi-templates-Minimal/files/Minimal.kiwi
-                # 有专门的kvm镜像，openSUSE-Leap-15.5-Minimal-VM.x86_64-kvm-and-xen.qcow2，里面没有cloud-init
-                # file=openSUSE-Leap-15.5-Minimal-VM.x86_64-kvm-and-xen.qcow2
-            else
-                # https://src.opensuse.org/openSUSE/Leap/raw/branch/16.0/Leap/Leap.kiwi
-                # Default 比 Base 多了以下组件
-                # <namedCollection name="salt_minion" />
-                # <package name="patterns-base-salt_minion" />
-                # <namedCollection name="kvm_host" />
-                # <package name="patterns-base-kvm_host" />
-                # <package name="lzop" />
-                # <package name="wpa_supplicant" arch="x86_64,aarch64" />
-                # <package name="k3s-install" />
+            case "$releasever" in
+            15.6) file=openSUSE-Leap-$releasever-Minimal-VM.$basearch-Cloud.qcow2 ;;
+            # 16.0) file=Leap-$releasever-Minimal-VM.$basearch-Cloud.qcow2 ;; # 缺少 openSUSE-repos-Leap 包，导致没有源
+            16.0) file=Leap-$releasever-Minimal-VM.$basearch-kvm$(if [ "$basearch" = x86_64 ]; then echo '-and-xen'; fi).qcow2 ;;
+            esac
 
-                # file=Leap.x86_64-Default.raw.xz
-                file=Leap.x86_64-Base.raw.xz
-            fi
+            # https://src.opensuse.org/openSUSE/Leap-Images/src/branch/leap-16.0/kiwi-templates-Minimal/Minimal.kiwi
+            # https://build.opensuse.org/projects/Virtualization:Appliances:Images:openSUSE-Leap-15.6/packages/kiwi-templates-Minimal/files/Minimal.kiwi
+            # https://build.opensuse.org/projects/Virtualization:Appliances:Images:openSUSE-Tumbleweed/packages/kiwi-templates-Minimal/files/Minimal.kiwi
+            # 有专门的kvm镜像，openSUSE-Leap-15.5-Minimal-VM.x86_64-kvm-and-xen.qcow2，里面没有cloud-init
+            # file=openSUSE-Leap-15.5-Minimal-VM.x86_64-kvm-and-xen.qcow2
         fi
         eval ${step}_img=$mirror/$dir/$file
     }

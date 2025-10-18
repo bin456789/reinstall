@@ -3277,6 +3277,9 @@ disable_jeos_firstboot() {
         # 服务不存在时会报错
         chroot $os_dir systemctl disable "$name.service" 2>/dev/null || true
     done
+
+    # 可选
+    # chroot $os_dir zypper remove -y -u jeos-firstboot
 }
 
 create_network_manager_config() {
@@ -3544,7 +3547,7 @@ EOF
     fi
 
     # opensuse
-    # 1. kernel-default-base 缺少 nvme 驱动，换成 kernel-default
+    # 1. kernel-default-base 缺少 nvme gve mlx5 mana 驱动，换成 kernel-default
     # 2. 添加微码+固件
     # https://documentation.suse.com/smart/virtualization-cloud/html/minimal-vm/index.html
     if grep -q opensuse $os_dir/etc/os-release; then
@@ -3555,11 +3558,6 @@ EOF
         find_and_mount /boot/efi
 
         disable_jeos_firstboot $os_dir
-
-        # 16.0 需要安装 openssh
-        if ! chroot $os_dir rpm -qi openssh-server; then
-            chroot $os_dir zypper install -y openssh-server
-        fi
 
         # 禁用 selinux
         disable_selinux $os_dir
@@ -3634,23 +3632,19 @@ EOF
             error_and_exit "Unexpected kernel installed: $installed_kernel"
         fi
 
-        # 15.6 / tumbleweed 自带的是 kernel-default-base
-        # 16.0 自带的是 kernel-default
         # 不能同时装 kernel-default-base 和 kernel-default
-
+        # 因此需要添加 --force-resolution 自动删除 kernel-default-base
         if ! [ "$installed_kernel" = "$target_kernel" ]; then
-            chroot $os_dir zypper remove -y -u $installed_kernel
-
             # x86 必须设置一个密码，否则报错，arm 没有这个问题
             # Failed to get root password hash
             # Failed to import /etc/uefi/certs/76B6A6A0.crt
             # warning: %post(kernel-default-5.14.21-150500.55.83.1.x86_64) scriptlet failed, exit status 255
             if grep -q '^root:[:!*]' $os_dir/etc/shadow; then
                 echo "root:$(mkpasswd '')" | chroot $os_dir chpasswd -e
-                chroot $os_dir zypper install -y $target_kernel
+                chroot $os_dir zypper install -y --force-resolution $target_kernel
                 chroot $os_dir passwd -d root
             else
-                chroot $os_dir zypper install -y $target_kernel
+                chroot $os_dir zypper install -y --force-resolution $target_kernel
             fi
         fi
 
@@ -3861,23 +3855,22 @@ change_ssh_conf() {
     value=$3
     sub_conf=$4
 
-    if line="^$key .*" && grep -Exq "$line" $os_dir/etc/ssh/sshd_config; then
+    if line="^$key .*" && grep -Exq "$line" $os_dir/etc/ssh/sshd_config 2>/dev/null; then
         # 如果 sshd_config 存在此 key（非注释状态），则替换
         sed -Ei "s/$line/$key $value/" $os_dir/etc/ssh/sshd_config
-    elif {
+    elif include_line='^Include.*/etc/ssh/sshd_config.d' &&
         # arch 没有 /etc/ssh/sshd_config.d/ 文件夹
         # opensuse tumbleweed 没有 /etc/ssh/sshd_config
         #                       有 /etc/ssh/sshd_config.d/ 文件夹
         #                       有 /usr/etc/ssh/sshd_config
-        grep -q 'Include.*/etc/ssh/sshd_config.d' $os_dir/etc/ssh/sshd_config ||
-            grep -q '^Include.*/etc/ssh/sshd_config.d/' $os_dir/usr/etc/ssh/sshd_config
-    } 2>/dev/null; then
+        { grep -q "$include_line" $os_dir/etc/ssh/sshd_config ||
+            grep -q "$include_line" $os_dir/usr/etc/ssh/sshd_config; } 2>/dev/null; then
         mkdir -p $os_dir/etc/ssh/sshd_config.d/
         echo "$key $value" >"$os_dir/etc/ssh/sshd_config.d/$sub_conf"
     else
         # 如果 sshd_config 存在此 key (无论是否已注释)，则替换，包括删除注释
         # 否则追加
-        line="^#?$key .*"
+        line="^[# ]*$key .*"
         if grep -Exq "$line" $os_dir/etc/ssh/sshd_config; then
             sed -Ei "s/$line/$key $value/" $os_dir/etc/ssh/sshd_config
         else
@@ -3894,7 +3887,17 @@ allow_password_login() {
 allow_root_password_login() {
     os_dir=$1
 
-    change_ssh_conf "$os_dir" PermitRootLogin yes 01-permitrootlogin.conf
+    # opensuse 16/tumbleweed 安装 openssh-server-config-rootlogin
+    # 会生成 /usr/etc/ssh/sshd_config.d/50-permit-root-login.conf
+    # 但是如果用户删除了此文件，包有更新的话，可能会重新创建这个文件？
+    # 因此先不用这个方法
+    if false && [ -f $os_dir/etc/os-release ] &&
+        grep -iq opensuse $os_dir/etc/os-release &&
+        ! grep -iq 15.6 $os_dir/etc/os-release; then
+        chroot $os_dir zypper install -y openssh-server-config-rootlogin
+    else
+        change_ssh_conf "$os_dir" PermitRootLogin yes 01-permitrootlogin.conf
+    fi
 }
 
 change_ssh_port() {

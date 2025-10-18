@@ -56,7 +56,7 @@
 | <img width="16" height="16" src="https://www.centos.org/assets/icons/favicon.svg" /> CentOS Stream                                                                                                                                                                                                                                                                     | 9, 10                                 | 512 MB \* | 5 GB         |
 | <img width="16" height="16" src="https://fedoraproject.org/favicon.ico" /> Fedora                                                                                                                                                                                                                                                                                      | 41, 42                                | 512 MB \* | 5 GB         |
 | <img width="16" height="16" src="https://www.openeuler.org/favicon.ico" /> openEuler                                                                                                                                                                                                                                                                                   | 20.03 LTS - 24.03 LTS, 25.09          | 512 MB \* | 5 GB         |
-| <img width="16" height="16" src="https://static.opensuse.org/favicon.ico" /> openSUSE                                                                                                                                                                                                                                                                                  | Leap 15.6, Tumbleweed (滚动)          | 512 MB \* | 5 GB         |
+| <img width="16" height="16" src="https://static.opensuse.org/favicon.ico" /> openSUSE                                                                                                                                                                                                                                                                                  | Leap 15.6, 16.0, Tumbleweed (滚动)    | 512 MB \* | 5 GB         |
 | <img width="16" height="16" src="https://nixos.org/favicon.svg" /> NixOS                                                                                                                                                                                                                                                                                               | 25.05                                 | 512 MB    | 5 GB         |
 | <img width="16" height="16" src="https://archlinux.org/static/favicon.png" /> Arch                                                                                                                                                                                                                                                                                     | 滚动                                  | 512 MB    | 5 GB         |
 | <img width="16" height="16" src="https://www.gentoo.org/assets/img/logo/gentoo-g.png" /> Gentoo                                                                                                                                                                                                                                                                        | 滚动                                  | 512 MB    | 5 GB         |
@@ -162,8 +162,8 @@ bash reinstall.sh anolis      7|8|23
                   fedora      41|42
                   nixos       25.05
                   debian      9|10|11|12|13
-                  opensuse    15.6|tumbleweed
                   alpine      3.19|3.20|3.21|3.22
+                  opensuse    15.6|16.0|tumbleweed
                   openeuler   20.03|22.03|24.03|25.09
                   ubuntu      16.04|18.04|20.04|22.04|24.04|25.10 [--minimal]
                   kali
@@ -546,6 +546,21 @@ Windows Server 2025 SERVERDATACENTER
 - `--ssh-key gitlab:your_username`
 - `--ssh-key /path/to/public_key`
 - `--ssh-key C:\path\to\public_key`
+
+## 如何使用旧版本
+
+根据 Bug 守恒定律，修复旧 Bug 的同时会引入新的 Bug
+
+如果遇到这种情况，可以尝试使用旧版本
+
+从 <https://github.com/bin456789/reinstall/commits/main> 右侧找到旧版本的 `commit_id`
+
+```bash
+commit_id=xxxxxxx
+curl -O https://raw.githubusercontent.com/bin456789/reinstall/$commit_id/reinstall.sh || wget -O ${_##*/} $_
+sed -i "/^confhome.*main$/s/main/$commit_id/" reinstall.sh
+bash reinstall.sh ...
+```
 
 ## 如何修改脚本自用
 

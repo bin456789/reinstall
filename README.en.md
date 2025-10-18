@@ -56,7 +56,7 @@ The system requirements for the target system are as follows:
 | <img width="16" height="16" src="https://www.centos.org/assets/icons/favicon.svg" /> CentOS Stream                                                                                                                                                                                                                                                                     | 9, 10                                 | 512 MB \* | 5 GB             |
 | <img width="16" height="16" src="https://fedoraproject.org/favicon.ico" /> Fedora                                                                                                                                                                                                                                                                                      | 41, 42                                | 512 MB \* | 5 GB             |
 | <img width="16" height="16" src="https://www.openeuler.org/favicon.ico" /> openEuler                                                                                                                                                                                                                                                                                   | 20.03 LTS - 24.03 LTS, 25.09          | 512 MB \* | 5 GB             |
-| <img width="16" height="16" src="https://static.opensuse.org/favicon.ico" /> openSUSE                                                                                                                                                                                                                                                                                  | Leap 15.6, Tumbleweed (Rolling)       | 512 MB \* | 5 GB             |
+| <img width="16" height="16" src="https://static.opensuse.org/favicon.ico" /> openSUSE                                                                                                                                                                                                                                                                                  | Leap 15.6, 16.0, Tumbleweed (Rolling) | 512 MB \* | 5 GB             |
 | <img width="16" height="16" src="https://nixos.org/favicon.svg" /> NixOS                                                                                                                                                                                                                                                                                               | 25.05                                 | 512 MB    | 5 GB             |
 | <img width="16" height="16" src="https://archlinux.org/static/favicon.png" /> Arch                                                                                                                                                                                                                                                                                     | Rolling                               | 512 MB    | 5 GB             |
 | <img width="16" height="16" src="https://www.gentoo.org/assets/img/logo/gentoo-g.png" /> Gentoo                                                                                                                                                                                                                                                                        | Rolling                               | 512 MB    | 5 GB             |
@@ -162,8 +162,8 @@ bash reinstall.sh anolis      7|8|23
                   fedora      41|42
                   nixos       25.05
                   debian      9|10|11|12|13
-                  opensuse    15.6|tumbleweed
                   alpine      3.19|3.20|3.21|3.22
+                  opensuse    15.6|16.0|tumbleweed
                   openeuler   20.03|22.03|24.03|25.09
                   ubuntu      16.04|18.04|20.04|22.04|24.04|25.10 [--minimal]
                   kali
@@ -546,6 +546,21 @@ Log in to the server using Remote Desktop, open Device Manager, locate the graph
 - `--ssh-key gitlab:your_username`
 - `--ssh-key /path/to/public_key`
 - `--ssh-key C:\path\to\public_key`
+
+## How to Use an Old Version
+
+According to the Law of Bug Conservation, fixing old bugs often introduces new ones.
+
+If you encounter such a situation, you can try using an older version.
+
+Go to <https://github.com/bin456789/reinstall/commits/main> and find the old version’s `commit_id` on the right side.
+
+```bash
+commit_id=xxxxxxx
+curl -O https://raw.githubusercontent.com/bin456789/reinstall/$commit_id/reinstall.sh || wget -O ${_##*/} $_
+sed -i "/^confhome.*main$/s/main/$commit_id/" reinstall.sh
+bash reinstall.sh ...
+```
 
 ## How to Modify the Script for Your Own
 
