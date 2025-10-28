@@ -960,22 +960,16 @@ get_windows_iso_link() {
         esac
     }
 
-    # 8.1 和 11 arm 没有每月发布 iso
-    # 因此优先从 msdl 下载
+    # msdl 没有每月发布的 iso
+    # msdl 只有 consumer 版本，因此里面的 pro 版本不是 vl 版
+    # 8.1 没有每月发布的 iso，因此优先从 msdl 下载
+    # win10 22h2 arm 有每月发布的 iso，因此不从 msdl 下载
+    # win10/11 ltsc 没有每月发布的 iso，但是 msdl 没有 ltsc 版本
     get_label_msdl() {
         case "$version" in
         8.1)
             case "$edition" in
             '' | pro) echo _ ;;
-            esac
-            ;;
-        11)
-            case "$edition" in
-            home | 'home single language' | pro | education | 'pro education' | 'pro for workstations')
-                case "$arch_win" in
-                arm64) echo _ ;;
-                esac
-                ;;
             esac
             ;;
         esac
