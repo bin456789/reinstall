@@ -3364,6 +3364,19 @@ EOF
         create_network_manager_config /net.cfg "$os_dir"
         rm /net.cfg
 
+        # TODO: fedora 43 eol 后删除
+        # 删除 cloud-init 会删除依赖包 netcat
+        # 但是删除 netcat 时会报错
+        # 因此保留 netcat 包
+        # >>> Running %preun scriptlet: netcat-0:1.229-3.fc43.x86_64
+        # >>> Error in %preun scriptlet: netcat-0:1.229-3.fc43.x86_64
+        # >>> Scriptlet output:
+        # >>> failed to create admindir: No such file or directory
+        # >>> [RPM] %preun(netcat-1.229-3.fc43.x86_64) scriptlet failed, exit status 2
+        # >>> [RPM] netcat-1.229-3.fc43.x86_64: erase failed
+        if [ "$distro" = fedora ] && [ "$releasever" = 43 ]; then
+            chroot $os_dir dnf mark user netcat -y
+        fi
         remove_cloud_init $os_dir
 
         disable_selinux $os_dir

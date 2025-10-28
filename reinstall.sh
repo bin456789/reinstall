@@ -51,7 +51,7 @@ Usage: $reinstall_____ anolis      7|8|23
                        oracle      8|9|10
                        almalinux   8|9|10
                        centos      9|10
-                       fedora      41|42
+                       fedora      42|43
                        nixos       25.05
                        debian      9|10|11|12|13
                        alpine      3.19|3.20|3.21|3.22
@@ -1852,7 +1852,7 @@ verify_os_name() {
         'almalinux   8|9|10' \
         'rocky       8|9|10' \
         'oracle      8|9|10' \
-        'fedora      41|42' \
+        'fedora      42|43' \
         'nixos       25.05' \
         'debian      9|10|11|12|13' \
         'opensuse    15.6|16.0|tumbleweed' \

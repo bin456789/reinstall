@@ -159,7 +159,7 @@ bash reinstall.sh anolis      7|8|23
                   almalinux   8|9|10
                   opencloudos 8|9|23
                   centos      9|10
-                  fedora      41|42
+                  fedora      42|43
                   nixos       25.05
                   debian      9|10|11|12|13
                   alpine      3.19|3.20|3.21|3.22
