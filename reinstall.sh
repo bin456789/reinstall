@@ -7,9 +7,6 @@ confhome=https://raw.githubusercontent.com/bin456789/reinstall/main
 confhome_cn=https://cnb.cool/bin456789/reinstall/-/git/raw/main
 # confhome_cn=https://www.ghproxy.cc/https://raw.githubusercontent.com/bin456789/reinstall/main
 
-# 默认密码
-DEFAULT_PASSWORD=123@@@
-
 # 用于判断 reinstall.sh 和 trans.sh 是否兼容
 SCRIPT_VERSION=4BACD833-A585-23BA-6CBB-9AA4E08E0004
 
@@ -124,6 +121,16 @@ echo_color_text() {
 error_and_exit() {
     error "$@"
     exit 1
+}
+
+show_dd_password_tips() {
+    warn false "
+This password is only used for SSH access to view logs during the installation.
+Password of the image will NOT modify.
+
+密码仅用于安装过程中通过 SSH 查看日志。
+镜像的密码不会被修改。
+"
 }
 
 curl() {
@@ -2297,16 +2304,23 @@ trim() {
 
 prompt_password() {
     info "prompt password"
+    warn false "Leave blank to use a random password."
+    warn false "不填写则使用随机密码"
     while true; do
-        IFS= read -r -p "Password [$DEFAULT_PASSWORD]: " password
-        IFS= read -r -p "Retype password [$DEFAULT_PASSWORD]: " password_confirm
-        password=${password:-$DEFAULT_PASSWORD}
-        password_confirm=${password_confirm:-$DEFAULT_PASSWORD}
-        if [ -z "$password" ]; then
-            error "Passwords is empty. Try again."
-        elif [ "$password" != "$password_confirm" ]; then
-            error "Passwords don't match. Try again."
+        # 特殊字符列表
+        # https://learn.microsoft.com/previous-versions/windows/it-pro/windows-server-2012-r2-and-2012/hh994562(v=ws.11)
+        chars=\''A-Za-z0-9~!@#$%^&*_=+`|(){}[]:;"<>,.?/-'
+        random_password=$(tr -dc "$chars" </dev/random | head -c16)
+        IFS= read -r -p "Password: " password
+        if [ -n "$password" ]; then
+            IFS= read -r -p "Retype password: " password_confirm
+            if [ "$password" = "$password_confirm" ]; then
+                break
+            else
+                error "Passwords don't match. Try again."
+            fi
         else
+            password=$random_password
             break
         fi
     done
@@ -4088,13 +4102,7 @@ fi
 # 密码
 if ! is_netboot_xyz && [ -z "$ssh_keys" ] && [ -z "$password" ]; then
     if is_use_dd; then
-        echo "
-This password is only used for SSH access to view logs during the installation.
-Password of the image will NOT modify.
-
-密码仅用于安装过程中通过 SSH 查看日志。
-镜像的密码不会被修改。
-"
+        show_dd_password_tips
     fi
     prompt_password
 fi
@@ -4544,8 +4552,8 @@ echo "$distro $releasever"
 
 case "$distro" in
 windows) username=administrator ;;
-dd | netboot.xyz) username= ;;
-*) username=root ;;
+netboot.xyz) username= ;;
+dd | *) username=root ;;
 esac
 
 if [ -n "$username" ]; then
@@ -4562,6 +4570,7 @@ if is_netboot_xyz; then
 elif is_alpine_live; then
     echo 'Reboot to start Alpine Live OS.'
 elif is_use_dd; then
+    show_dd_password_tips
     echo 'Reboot to start DD.'
 elif [ "$distro" = fnos ]; then
     echo "Special note for FNOS:"
