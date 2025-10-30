@@ -35,6 +35,11 @@ trap_err() {
     sed -n "$line_no"p "$THIS_SCRIPT"
 }
 
+if ! { [ -n "$BASH" ] && [ -n "$BASH_VERSION" ]; }; then
+    echo "Please run this script with bash." >&2
+    exit 1
+fi
+
 usage_and_exit() {
     if is_in_windows; then
         reinstall_____='.\reinstall.bat'
@@ -133,14 +138,25 @@ Password of the image will NOT modify.
 "
 }
 
+show_url_in_args() {
+    while [ $# -gt 0 ]; do
+        case "$1" in
+        [Hh][Tt][Tt][Pp][Ss]://* | [Hh][Tt][Tt][Pp]://* | [Mm][Aa][Gg][Nn][Ee][Tt]:*) echo "$1" ;;
+        esac
+        shift
+    done
+}
+
 curl() {
     is_have_cmd curl || install_pkg curl
+
+    # 显示 url
+    show_url_in_args "$@" >&2
 
     # 添加 -f, --fail，不然 404 退出码也为0
     # 32位 cygwin 已停止更新，证书可能有问题，先添加 --insecure
     # centos 7 curl 不支持 --retry-connrefused --retry-all-errors
     # 因此手动 retry
-    grep -o 'http[^ ]*' <<<"$@" >&2
     for i in $(seq 5); do
         if command curl --insecure --connect-timeout 10 -f "$@"; then
             return
@@ -1053,13 +1069,13 @@ get_windows_iso_link() {
     fi
 
     if [ "$basearch" = aarch64 ] && ! is_have_arm_version; then
-        error_and_exit "No ARM iso for this Windows Version and Edition."
+        error_and_exit "No ARM iso for this Windows Version or Edition."
     fi
 
     if [ -n "$label_msdl" ]; then
-        iso=$(curl -L "$page_url" | grep -ioP 'https://.*?#[0-9]+' | head -1 | grep .)
+        iso=$(curl -L "$page_url" | grep -ioP 'https://[^ ]+?#[0-9]+' | head -1 | grep .)
     else
-        curl -L "$page_url" | grep -ioP 'https://.*?.(iso|img)' >$tmp/win.list
+        curl -L "$page_url" | grep -ioP 'https://[^ ]+?.(iso|img)' >$tmp/win.list
 
         # 如果不是 ltsc ，应该先去除 ltsc 链接，否则最终链接有 ltsc 的
         # 例如查找 windows 10 iot enterprise，会得到
@@ -1157,6 +1173,10 @@ setos() {
         is_debian_elts() {
             [ "$releasever" -le 10 ]
         }
+
+        if [ "$releasever" -le 9 ] && [ "$basearch" = aarch64 ]; then
+            error_and_exit "Debian $releasever ELTS does not support aarch64."
+        fi
 
         # 用此标记要是否 elts, 用于安装后修改 elts/etls-cn 源
         # shellcheck disable=SC2034
@@ -1953,8 +1973,7 @@ install_pkg() {
         # 因为可能装了多种包管理器
         if [ -f /etc/os-release ]; then
             # shellcheck source=/dev/null
-            . /etc/os-release
-            for id in $ID $ID_LIKE; do
+            for id in $({ . /etc/os-release && echo $ID $ID_LIKE; }); do
                 # https://github.com/chef/os_release
                 case "$id" in
                 fedora | centos | rhel) is_have_cmd dnf && pkg_mgr=dnf || pkg_mgr=yum ;;
@@ -2796,7 +2815,8 @@ install_grub_linux_efi() {
     info 'download grub efi'
 
     # fedora 39 的 efi 无法识别 opensuse tumbleweed 的 xfs
-    efi_distro=fedora
+    efi_distro=opensuse
+
     grub_efi=$(get_grub_efi_filename)
 
     # 不要用 download.opensuse.org 和 download.fedoraproject.org
@@ -2811,6 +2831,7 @@ install_grub_linux_efi() {
     # dl.fedoraproject.org 不支持 ipv6
 
     if [ "$efi_distro" = fedora ]; then
+        # fedora 43 efi 在 vultr 无法引导 debain 9/10 netboot
         fedora_ver=$(get_latest_distro_releasever fedora)
 
         if is_in_china; then
@@ -3113,9 +3134,9 @@ mkdir_clear() {
 
     # 再次运行时，有可能 mount 了 btrfs root，因此先要 umount_all
     # 但目前不需要 mount ，因此用不到
-    # umount_all $dir
-    rm -rf $dir
-    mkdir -p $dir
+    # umount_all "$dir"
+    rm -rf "$dir"
+    mkdir -p "$dir"
 }
 
 mod_initrd_debian_kali() {
@@ -3712,6 +3733,11 @@ This script is outdated, please download reinstall.sh again.
         remove_useless_initrd_files
     fi
 
+    if [ "$hold" = 0 ]; then
+        info 'hold 0'
+        read -r -p 'Press Enter to continue...'
+    fi
+
     # 重建
     # 注意要用 cpio -H newc 不要用 cpio -c ，不同版本的 -c 作用不一样，很坑
     # -c    Use the old portable (ASCII) archive format
@@ -3739,14 +3765,15 @@ remove_useless_initrd_files() {
         for item in *; do
             case "$item" in
             # 甲骨文 arm 用自定义镜像支持设为 mlx5 vf 网卡，且不是 azure 那样显示两个网卡
-            amazon | google | mellanox | realtek) ;;
+            # https://debian.pkgs.org/13/debian-main-amd64/linux-image-6.12.43+deb13-cloud-amd64_6.12.43-1_amd64.deb.html
+            amazon | google | mellanox | realtek | pensando) ;;
             intel)
                 (
                     cd "$item"
                     for sub_item in *; do
                         case "$sub_item" in
                         # 有 e100.ko e1000文件夹 e1000e文件夹
-                        e100* | lib* | *vf) ;;
+                        e100* | lib* | *vf | idpf) ;;
                         *) rm -rf $sub_item ;;
                         esac
                     done
@@ -3800,6 +3827,7 @@ get_unix_path() {
 }
 
 # 脚本入口
+
 if mount | grep -q 'tmpfs on / type tmpfs'; then
     error_and_exit "Can't run this script in Live OS."
 fi
@@ -3866,7 +3894,7 @@ for o in ci installer debug minimal allow-ping force-cn help \
 done
 
 # 整理参数
-if ! opts=$(getopt -n $0 -o "h" --long "$long_opts" -- "$@"); then
+if ! opts=$(getopt -n $0 -o "h,x" --long "$long_opts" -- "$@"); then
     exit
 fi
 
@@ -3886,7 +3914,7 @@ while true; do
         commit=$2
         shift 2
         ;;
-    --debug)
+    -x | --debug)
         set -x
         shift
         ;;
@@ -3914,7 +3942,7 @@ while true; do
         shift
         ;;
     --hold | --sleep)
-        if ! { [ "$2" = 1 ] || [ "$2" = 2 ]; }; then
+        if ! { [ "$2" = 0 ] || [ "$2" = 1 ] || [ "$2" = 2 ]; }; then
             error_and_exit "Invalid $1 value: $2"
         fi
         hold=$2

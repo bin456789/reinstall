@@ -87,11 +87,20 @@ apk() {
     retry 5 command apk "$@" >&2
 }
 
+show_url_in_args() {
+    while [ $# -gt 0 ]; do
+        case "$1" in
+        [Hh][Tt][Tt][Pp][Ss]://* | [Hh][Tt][Tt][Pp]://* | [Mm][Aa][Gg][Nn][Ee][Tt]:*) echo "$1" ;;
+        esac
+        shift
+    done
+}
+
 # 在没有设置 set +o pipefail 的情况下，限制下载大小：
 # retry 5 command wget | head -c 1048576 会触发 retry，下载 5 次
 # command wget "$@" --tries=5 | head -c 1048576 不会触发 wget 自带的 retry，只下载 1 次
 wget() {
-    echo "$@" | grep -o 'http[^ ]*' >&2
+    show_url_in_args "$@" >&2
     if command wget 2>&1 | grep -q BusyBox; then
         # busybox wget 没有重试功能
         # 好像默认永不超时
@@ -194,7 +203,8 @@ download() {
         url=$torrent
     fi
 
-    # intel 禁止了 aria2 下载
+    # intel 禁止了 aria2 下载驱动
+    # intel 禁止了 wget 下载网页内容
     # 腾讯云 virtio 驱动也禁止了 aria2 下载
 
     # -o 设置 http 下载文件名
@@ -203,7 +213,7 @@ download() {
         -d "$(dirname "$path")" \
         -o "$(basename "$path")" \
         -O "1=$(basename "$path")" \
-        -U Wget/1.25.0
+        -U curl/7.54.1
 
     # opensuse 官方镜像支持 metalink
     # aira2 无法重命名用 metalink 下载的文件
@@ -313,7 +323,7 @@ get_approximate_ram_size() {
 setup_web_if_enough_ram() {
     total_ram=$(get_approximate_ram_size)
     # 512内存才安装
-    if [ $total_ram -gt 400 ]; then
+    if [ "$total_ram" -ge 400 ]; then
         # lighttpd 虽然运行占用内存少，但安装占用空间大
         # setup_lighttpd
         # setup_nginx
@@ -2282,8 +2292,8 @@ aria2c() {
         apk add coreutils
     fi
 
-    # 指定 bt 种子时没有链接，因此忽略错误
-    echo "$@" | grep -oE '(http|https|magnet):[^ ]*' || true
+    # 显示 url
+    show_url_in_args "$@" >&2
 
     # 下载 tracker
     # 在 sub shell 里面无法保存变量，因此写入到文件
@@ -2448,8 +2458,8 @@ create_part() {
     # shellcheck disable=SC2154
     if [ "$distro" = windows ]; then
         if ! size_bytes=$(get_link_file_size "$iso"); then
-            # 默认值，最大的iso 23h2 假设 7g
-            size_bytes=$((7 * 1024 * 1024 * 1024))
+            # 默认值，目前最大的 iso 小于 8g
+            size_bytes=$((8 * 1024 * 1024 * 1024))
         fi
 
         # 按iso容量计算分区大小
@@ -4421,7 +4431,7 @@ install_qcow_by_copy() {
             fi
 
             # el7 yum 可能会使用 ipv6，即使没有 ipv6 网络
-            if [ "$(cat /dev/netconf/eth*/ipv6_has_internet | sort -u)" = 0 ]; then
+            if [ "$(cat /dev/netconf/*/ipv6_has_internet | sort -u)" = 0 ]; then
                 echo 'ip_resolve=4' >>/os/etc/yum.conf
             fi
 
@@ -5827,6 +5837,7 @@ install_windows() {
     # 用注册表无法绕过
     # https://github.com/pbatard/rufus/issues/1990
     # https://learn.microsoft.com/windows/iot/iot-enterprise/Hardware/System_Requirements
+    # win11 旧版本安装程序（24h2之前）无法用 setup.exe /product server 跳过 cpu 核数限制，因此在xml里解除限制
     if [ "$product_ver" = "11" ] && [ "$(nproc)" -le 1 ]; then
         wiminfo "$install_wim" "$image_index" --image-property WINDOWS/INSTALLATIONTYPE=Server
     fi

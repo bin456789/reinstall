@@ -54,13 +54,13 @@
 | <img width="16" height="16" src="https://www.redhat.com/favicon.ico" /> RHEL &nbsp;<img width="16" height="16" src="https://almalinux.org/fav/favicon.ico" /> AlmaLinux &nbsp;<img width="16" height="16" src="https://rockylinux.org/favicon.png" /> Rocky &nbsp;<img width="16" height="16" src="https://www.oracle.com/asset/web/favicons/favicon-32.png" /> Oracle | 8, 9, 10                              | 512 MB \* | 5 GB         |
 | <img width="16" height="16" src="https://opencloudos.org/qq.ico" /> OpenCloudOS                                                                                                                                                                                                                                                                                        | 8, 9, Stream 23                       | 512 MB \* | 5 GB         |
 | <img width="16" height="16" src="https://www.centos.org/assets/icons/favicon.svg" /> CentOS Stream                                                                                                                                                                                                                                                                     | 9, 10                                 | 512 MB \* | 5 GB         |
-| <img width="16" height="16" src="https://fedoraproject.org/favicon.ico" /> Fedora                                                                                                                                                                                                                                                                                      | 41, 42                                | 512 MB \* | 5 GB         |
+| <img width="16" height="16" src="https://fedoraproject.org/favicon.ico" /> Fedora                                                                                                                                                                                                                                                                                      | 42, 43                                | 512 MB \* | 5 GB         |
 | <img width="16" height="16" src="https://www.openeuler.org/favicon.ico" /> openEuler                                                                                                                                                                                                                                                                                   | 20.03 LTS - 24.03 LTS, 25.09          | 512 MB \* | 5 GB         |
 | <img width="16" height="16" src="https://static.opensuse.org/favicon.ico" /> openSUSE                                                                                                                                                                                                                                                                                  | Leap 15.6, 16.0, Tumbleweed (滚动)    | 512 MB \* | 5 GB         |
 | <img width="16" height="16" src="https://nixos.org/favicon.svg" /> NixOS                                                                                                                                                                                                                                                                                               | 25.05                                 | 512 MB    | 5 GB         |
 | <img width="16" height="16" src="https://archlinux.org/static/favicon.png" /> Arch                                                                                                                                                                                                                                                                                     | 滚动                                  | 512 MB    | 5 GB         |
 | <img width="16" height="16" src="https://www.gentoo.org/assets/img/logo/gentoo-g.png" /> Gentoo                                                                                                                                                                                                                                                                        | 滚动                                  | 512 MB    | 5 GB         |
-| <img width="16" height="16" src="https://aosc.io/assets/distros/aosc-os.svg" /> 安同 OS                                                                                                                                                                                                                                                                                | 滚动                                  | 512 MB    | 5 GB         |
+| <img width="16" height="16" src="https://aosc.io/distros/aosc-os.svg" /> 安同 OS                                                                                                                                                                                                                                                                                       | 滚动                                  | 512 MB    | 5 GB         |
 | <img width="16" height="16" src="https://www.fnnas.com/favicon.ico" /> 飞牛 fnOS                                                                                                                                                                                                                                                                                       | 公测                                  | 512 MB    | 8 GB         |
 | <img width="16" height="16" src="https://blogs.windows.com/wp-content/uploads/prod/2022/09/cropped-Windows11IconTransparent512-32x32.png" /> Windows (DD)                                                                                                                                                                                                              | 任何                                  | 512 MB    | 取决于镜像   |
 | <img width="16" height="16" src="https://blogs.windows.com/wp-content/uploads/prod/2022/09/cropped-Windows11IconTransparent512-32x32.png" /> Windows (ISO)                                                                                                                                                                                                             | Vista, 7, 8.x (Server 2008 - 2012 R2) | 512 MB    | 25 GB        |
@@ -145,7 +145,7 @@ certutil -urlcache -f -split https://cnb.cool/bin456789/reinstall/-/git/raw/main
 >
 > 数据无价，请三思而后行！
 
-- 用户名 `root` 默认密码 `123@@@`
+- 用户名为 `root`，脚本会提示输入密码，不输入则使用随机密码
 - 安装最新版可不输入版本号
 - 最大化利用磁盘空间：不含 boot 分区（Fedora 例外），不含 swap 分区
 - 自动根据机器类型选择不同的优化内核，例如 `Cloud`、`HWE` 内核
@@ -180,14 +180,17 @@ bash reinstall.sh anolis      7|8|23
 - `--ssh-key KEY` 设置 SSH 登录公钥，[格式如下](#--ssh-key)。当使用公钥时，密码为空
 - `--ssh-port PORT` 修改 SSH 端口（安装期间观察日志用，也作用于新系统）
 - `--web-port PORT` 修改 Web 端口（安装期间观察日志用）
-- `--frpc-toml /path/to/frpc.toml` 添加 frpc 内网穿透
-- `--hold 2` 安装结束后不重启，此时可以 SSH 登录修改系统内容，系统挂载在 `/os` (此功能不支持 Debian/Kali)
+- `--frpc-toml PATH` 添加 frpc 内网穿透，参数填本地路径或 HTTP 链接
+- `--hold 1` 仅重启到安装环境，不运行安装，用于 SSH 登录验证网络连通性
+- `--hold 2` 安装结束后不重启，用于 SSH 登录修改系统内容，Debian/Kali 会挂载在 `/target`，其它系统会挂载在 `/os`
 
 > [!TIP]
-> 安装 Debian/Kali 时，x86 可通过商家后台 VNC 查看安装进度，ARM 可通过串行控制台查看安装进度。
 >
-> 安装其它系统时，可通过多种方式（SSH、HTTP 80 端口、商家后台 VNC、串行控制台）查看安装进度。
-> <br />即使安装过程出错，也能通过 SSH 运行 `/trans.sh alpine` 安装到 Alpine。
+> 可通过多种方式（SSH、HTTP 80 端口、商家后台 VNC、串行控制台）查看安装进度。
+>
+> 即使安装过程出错，也能连接 SSH 手动救砖。
+>
+> 目标系统非 Debian/Kali 时，可以运行 `/trans.sh alpine` 自动救砖成 Alpine 系统。
 
 <details>
 
@@ -229,7 +232,7 @@ bash reinstall.sh ubuntu --installer
 >
 > 数据无价，请三思而后行！
 
-- 支持 `raw` `vhd` 格式的镜像（未压缩，或者压缩成 `.gz` `.xz` `.zst` `.tar` `.tar.gz` `.tar.xz` `.tar.zst`）
+- 支持 `raw` 和固定大小的 `vhd` 镜像。未压缩或者压缩成 `.gz` `.xz` `.zst` `.tar` `.tar.gz` `.tar.xz` `.tar.zst`
 - DD Windows 镜像时，会自动扩展系统盘，静态 IP 的机器会配置好 IP，可能首次开机几分钟后才生效
 - DD Linux 镜像时，**不会**修改镜像的任何内容
 
@@ -243,17 +246,22 @@ bash reinstall.sh dd --img "https://example.com/xxx.xz"
 - `--rdp-port PORT` 修改 RDP 端口 (仅限 DD Windows)
 - `--ssh-port PORT` 修改 SSH 端口（安装期间观察日志用）
 - `--web-port PORT` 修改 Web 端口（安装期间观察日志用）
-- `--frpc-toml /path/to/frpc.toml` 添加 frpc 内网穿透（仅限 DD Windows）
-- `--hold 2` DD 结束后不重启，此时可以 SSH 登录修改系统内容，Windows 系统会挂载在 `/os`，Linux 系统**不会**自动挂载
+- `--frpc-toml PATH` 添加 frpc 内网穿透（仅限 DD Windows），参数填本地路径或 HTTP 链接
+- `--hold 1` 仅重启到安装环境，不运行安装，用于 SSH 登录验证网络连通性
+- `--hold 2` DD 结束后不重启，用于 SSH 登录修改系统内容，Windows 系统会挂载在 `/os`，Linux 系统**不会**自动挂载
 
 > [!TIP]
+>
 > 可通过多种方式（SSH、HTTP 80 端口、商家后台 VNC、串行控制台）查看安装进度。
-> <br />即使安装过程出错，也能通过 SSH 运行 `/trans.sh alpine` 安装到 Alpine。
+>
+> 即使安装过程出错，也能连接 SSH 手动救砖
+>
+> 也可以运行 `/trans.sh alpine` 自动救砖成 Alpine 系统。
 
 ### 功能 3: 重启到 <img width="16" height="16" src="https://www.alpinelinux.org/alpine-logo.ico" /> Alpine Live OS（内存系统）
 
 - 可用 ssh 连接，进行备份/恢复硬盘、手动 DD、修改分区、手动安装 Alpine 等操作
-- 用户名 `root` 默认密码 `123@@@`
+- 用户名为 `root`，脚本会提示输入密码，不输入则使用随机密码
 
 > [!TIP]
 >
@@ -262,7 +270,7 @@ bash reinstall.sh dd --img "https://example.com/xxx.xz"
 > 如果用户手动操作没有破坏原系统，再次重启将回到原系统
 
 ```bash
-bash reinstall.sh alpine --hold=1
+bash reinstall.sh alpine --hold 1
 ```
 
 #### 可选参数
@@ -270,7 +278,7 @@ bash reinstall.sh alpine --hold=1
 - `--password PASSWORD` 设置密码
 - `--ssh-port PORT` 修改 SSH 端口
 - `--ssh-key KEY` 设置 SSH 登录公钥，[格式如下](#--ssh-key)。当使用公钥时，密码为空
-- `--frpc-toml /path/to/frpc.toml` 添加 frpc 内网穿透
+- `--frpc-toml PATH` 添加 frpc 内网穿透，参数填本地路径或 HTTP 链接
 
 ### 功能 4: 重启到 <img width="16" height="16" src="https://netboot.xyz/img/favicon.ico" /> netboot.xyz
 
@@ -298,10 +306,11 @@ bash reinstall.sh netboot.xyz
 >
 > 数据无价，请三思而后行！
 
-- 用户名 `administrator` 默认密码 `123@@@`
+- 用户名为 `administrator`，脚本会提示输入密码，不输入则使用随机密码
 - 如果远程登录失败，可以尝试使用用户名 `.\administrator`
 - 静态机器会自动配置好 IP，可能首次开机几分钟后才生效
-- 支持所有语言
+- 支持任意语言的 ISO
+- 支持绕过 Windows 11 硬件限制
 
 #### 支持的系统
 
@@ -401,7 +410,6 @@ bash reinstall.sh windows \
   - <https://www.microsoft.com/software-download/windows11>
   - <https://www.microsoft.com/software-download/windows11arm64>
 - 评估版
-  - <https://www.microsoft.com/evalcenter/download-windows-10-enterprise>
   - <https://www.microsoft.com/evalcenter/download-windows-11-enterprise>
   - <https://www.microsoft.com/evalcenter/download-windows-11-iot-enterprise-ltsc-eval>
   - <https://www.microsoft.com/evalcenter/download-windows-server-2012-r2>
@@ -425,8 +433,9 @@ bash reinstall.sh windows \
 - `--add-driver INF_OR_DIR` 添加额外驱动，填写 .inf 路径，或者 .inf 所在的文件夹
   - 需先下载驱动到当前系统
   - 可多次设置该参数以添加不同的驱动
-- `--frpc-toml /path/to/frpc.toml` 添加 frpc 内网穿透
-- `--hold 2` 在进入 Windows 官方安装程序之前，可以 SSH 登录修改硬盘内容，硬盘挂载在 `/os`
+- `--frpc-toml PATH` 添加 frpc 内网穿透，参数填本地路径或 HTTP 链接
+- `--hold 1` 仅重启到安装环境，不运行安装，用于 SSH 登录验证网络连通性
+- `--hold 2` 用于在进入 Windows 官方安装程序之前，SSH 登录修改 `boot.wim`、`install.wim` 或者其它内容，硬盘挂载在 `/os`
 
 #### 以下驱动会自动按需下载安装，无需手动添加
 
@@ -488,20 +497,26 @@ Windows Server 2025 SERVERDATACENTER
 > Vista (Server 2008) 和 32 位系统可能会缺少驱动
 
 > [!WARNING]
-> 未开启 CSM 的 EFI 机器，无法安装 Windows 7 (Server 2008 R2)
 >
-> Hyper-V (Azure) 需选择合适的虚拟机代系 <https://learn.microsoft.com/windows-server/virtualization/hyper-v/plan/should-i-create-a-generation-1-or-2-virtual-machine-in-hyper-v>
+> 安装 Windows 7 (Server 2008 R2) 时
+>
+> 1. EFI 引导的机器要开启 CSM
+>
+> 2. Hyper-V (Azure) 需选择第 1 代虚拟机 <https://learn.microsoft.com/windows-server/virtualization/hyper-v/plan/should-i-create-a-generation-1-or-2-virtual-machine-in-hyper-v>
 
 > [!WARNING]
+>
 > Windows 10 LTSC 2021 中文版镜像 `zh-cn_windows_10_enterprise_ltsc_2021_x64_dvd_033b7312.iso` 的 `wsappx` 进程会长期占用 CPU
 >
 > 解决方法是更新系统补丁，或者手动安装 `VCLibs` 库 <https://www.google.com/search?q=ltsc+wsappx>
 
 > [!WARNING]
+>
 > 在 GCP 上安装 `2022年5月` 和之后发布的 Windows ISO，在引导 Windows 安装界面 (PE) 时会不断反复重启。解决方法如下，二选一
 >
 > 1. 添加 `--force-boot-mode bios` 参数，脚本将以 `BIOS 引导 + MBR 分区表` 方式安装 Windows
-> <br /> - (可选) 安装完成后用 `MBR2GPT /convert /allowFullOS` 命令转为 `EFI 引导 + GPT 分区表`
+>
+>    (可选) 安装完成后用 `MBR2GPT /convert /allowFullOS` 命令转为 `EFI 引导 + GPT 分区表`
 >
 > 2. 自制 RAW 镜像并通过 DD 安装
 
@@ -551,7 +566,7 @@ Windows Server 2025 SERVERDATACENTER
 
 根据 Bug 守恒定律，修复旧 Bug 的同时会引入新的 Bug
 
-如果遇到这种情况，可以尝试使用旧版本
+如果遇到新的 Bug，可以试下旧版本是否正常
 
 从 <https://github.com/bin456789/reinstall/commits/main> 右侧找到旧版本的 `commit_id`
 

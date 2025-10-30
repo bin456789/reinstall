@@ -10,7 +10,7 @@ is_in_china() {
 }
 
 is_ipv6_only() {
-    ! grep -q 1 /dev/netconf/eth*/ipv4_has_internet
+    ! grep -q 1 /dev/netconf/*/ipv4_has_internet
 }
 
 get_frpc_url() {

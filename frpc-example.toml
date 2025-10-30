@@ -1,6 +1,6 @@
-serverAddr = "YOUR_FRP_SERVER_IP"
+serverAddr = "11.22.33.44"
 serverPort = 7000
-auth.token = "YOUR_FRP_TOKEN"
+auth.token = "123456"
 
 [[proxies]]
 name = "ssh"
