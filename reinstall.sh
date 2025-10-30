@@ -71,7 +71,7 @@ Usage: $reinstall_____ anolis      7|8|23
                        [--ssh-key   KEY]
                        [--ssh-port  PORT]
                        [--web-port  PORT]
-                       [--frpc-toml TOML]
+                       [--frpc-toml PATH]
 
                        For Windows Only:
                        [--allow-ping]
@@ -3853,6 +3853,11 @@ if ! opts=$(getopt -n $0 -o "h" --long "$long_opts" -- "$@"); then
     exit
 fi
 
+# /tmp 挂载在内存的话，可能不够空间
+# 处理 --frpc--toml 时会下载文件，因此在处理参数前就创建临时目录
+tmp=/reinstall-tmp
+mkdir_clear "$tmp"
+
 eval set -- "$opts"
 # shellcheck disable=SC2034
 while true; do
@@ -3901,16 +3906,21 @@ while true; do
     --frpc-conf | --frpc-config | --frpc-toml)
         [ -n "$2" ] || error_and_exit "Need value for $1"
 
-        # windows 路径转换
-        frpc_config=$(get_unix_path "$2")
-
-        # alpine busybox 不支持 readlink -m
-        # readlink -m /asfsafasfsaf/fasf
-        # 因此需要先判断路径是否存在
-
-        if ! [ -f "$frpc_config" ]; then
-            error_and_exit "Not a toml file: $2"
-        fi
+        case "$(to_lower <<<"$2")" in
+        http://* | https://*)
+            frpc_config_url=$2
+            frpc_config=$tmp/frpc_config
+            if ! curl -L "$frpc_config_url" -o "$frpc_config"; then
+                error_and_exit "Can't get frpc config from $frpc_config_url"
+            fi
+            ;;
+        *)
+            # windows 路径转换
+            if ! { frpc_config=$(get_unix_path "$2") && [ -f "$frpc_config" ]; }; then
+                error_and_exit "File not exists: $2"
+            fi
+            ;;
+        esac
 
         # 转为绝对路径
         frpc_config=$(readlink -f "$frpc_config")
@@ -4109,10 +4119,6 @@ fi
 
 # 必备组件
 install_pkg curl grep
-
-# /tmp 挂载在内存的话，可能不够空间
-tmp=/reinstall-tmp
-mkdir_clear "$tmp"
 
 # 强制忽略/强制添加 --ci 参数
 # debian 不强制忽略 ci 留作测试
