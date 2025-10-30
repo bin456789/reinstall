@@ -11,7 +11,7 @@ confhome_cn=https://cnb.cool/bin456789/reinstall/-/git/raw/main
 DEFAULT_PASSWORD=123@@@
 
 # 用于判断 reinstall.sh 和 trans.sh 是否兼容
-SCRIPT_VERSION=4BACD833-A585-23BA-6CBB-9AA4E08E0003
+SCRIPT_VERSION=4BACD833-A585-23BA-6CBB-9AA4E08E0004
 
 # 记录要用到的 windows 程序，运行时输出删除 \r
 WINDOWS_EXES='cmd powershell wmic reg diskpart netsh bcdedit mountvol'
@@ -280,11 +280,21 @@ get_function_content() {
 }
 
 insert_into_file() {
-    file=$1
-    location=$2
-    regex_to_find=$3
+    local file=$1
+    local location=$2
+    local regex_to_find=$3
+    shift 3
 
-    line_num=$(grep -E -n "$regex_to_find" "$file" | cut -d: -f1)
+    if ! [ -f "$file" ]; then
+        error_and_exit "File not found: $file"
+    fi
+
+    # 默认 grep -E
+    if [ $# -eq 0 ]; then
+        set -- -E
+    fi
+
+    line_num=$(grep "$@" -n "$regex_to_find" "$file" | cut -d: -f1)
 
     found_count=$(echo "$line_num" | wc -l)
     if [ ! "$found_count" -eq 1 ]; then
@@ -1242,6 +1252,7 @@ Continue?
             eval ${step}_vmlinuz=$mirror/linux
             eval ${step}_initrd=$mirror/initrd.gz
             eval ${step}_ks=$confhome/debian.cfg
+            eval ${step}_deb_mirror=$hostname/kali
             eval ${step}_udeb_mirror=$hostname/kali
             eval ${step}_codename=$codename
             eval ${step}_kernel=linux-image$flavour-$basearch_alt
@@ -2275,6 +2286,10 @@ del_empty_lines() {
     sed '/^[[:space:]]*$/d'
 }
 
+del_comment_lines() {
+    sed '/^[[:space:]]*#/d'
+}
+
 trim() {
     # sed -E -e 's/^[[:space:]]+//' -e 's/[[:space:]]+$//'
     sed -e 's/^[[:space:]]*//' -e 's/[[:space:]]*$//'
@@ -2998,7 +3013,11 @@ build_nextos_cmdline() {
     if [ $nextos_distro = alpine ]; then
         nextos_cmdline="alpine_repo=$nextos_repo modloop=$nextos_modloop"
     elif is_distro_like_debian $nextos_distro; then
+        # 设置分辨率为800*600，防止分辨率过高 ssh screen attach 后无法全部显示
+        # iso 默认有 vga=788
+        # 如果要设置位数: video=800x600-16
         nextos_cmdline="lowmem/low=1 auto=true priority=critical"
+        # nextos_cmdline+=" vga=788 video=800x600"
         nextos_cmdline+=" url=$nextos_ks"
         nextos_cmdline+=" mirror/http/hostname=${nextos_udeb_mirror%/*}"
         nextos_cmdline+=" mirror/http/directory=/${nextos_udeb_mirror##*/}"
@@ -3074,6 +3093,14 @@ mod_initrd_debian_kali() {
     sed -Ei 's,&&( onlink=),||\1,' etc/udhcpc/default.script
 
     # hack 2
+    # 强制使用 screen
+    # shellcheck disable=SC1003,SC2016
+    {
+        echo 'if false && : \' | insert_into_file lib/debian-installer.d/S70menu before 'if [ -x "$bterm" ]' -F
+        echo 'if true  || : \' | insert_into_file lib/debian-installer.d/S70menu before 'if [ -x "$screen_bin" -a' -F
+    }
+
+    # hack 3
     # 修改 /var/lib/dpkg/info/netcfg.postinst 运行我们的脚本
     netcfg() {
         #!/bin/sh
@@ -3085,17 +3112,23 @@ mod_initrd_debian_kali() {
 
         # 运行 trans.sh，保存配置
         db_progress INFO base-installer/progress/netcfg
-        sh /trans.sh
+        # 添加 || exit ，可以在 debian installer 不兼容 /trans.sh 语法时强制报错
+        # exit 不带参数，返回值为 || 前面命令的返回值
+        sh /trans.sh || exit
         db_progress STEP 1
+        db_progress STOP
     }
-
-    # 直接覆盖 net-retriever，方便调试
-    # curl -Lo /usr/lib/debian-installer/retriever/net-retriever $confhome/net-retriever
 
     postinst=var/lib/dpkg/info/netcfg.postinst
     get_function_content netcfg >$postinst
     get_ip_conf_cmd | insert_into_file $postinst after ": get_ip_conf_cmd"
     # cat $postinst
+
+    # hack 4
+    # 修改 udeb 依赖
+
+    # 直接覆盖 net-retriever，方便调试
+    # curl -Lo /usr/lib/debian-installer/retriever/net-retriever $confhome/net-retriever
 
     change_priority() {
         while IFS= read -r line; do
@@ -3180,32 +3213,44 @@ EOF
     #                   云内核没有 sata 模块，也没有内嵌，有一个 CONFIG_SATA_HOST=y，libata-$(CONFIG_SATA_HOST)	+= libata-sata.o
     # scsi-modules      默认安装（改成可选），包含 nvme.ko(+) 和各种虚拟化驱动(+)
 
-    download_and_extract_udeb() {
-        package=$1
-        extract_dir=$2
+    download_and_extract_deb() {
+        local type=$1
+        local package=$2
+        local extract_dir=$3
 
-        # 获取 udeb 列表
-        udeb_list=$tmp/udeb_list
-        if ! [ -f $udeb_list ]; then
-            # shellcheck disable=SC2154
-            curl -L http://$nextos_udeb_mirror/dists/$nextos_codename/main/debian-installer/binary-$basearch_alt/Packages.gz |
-                zcat | grep 'Filename:' | awk '{print $2}' >$udeb_list
+        # shellcheck disable=SC2154
+        case "$type" in
+        deb)
+            local mirror=$nextos_deb_mirror
+            local url=http://$mirror/dists/$nextos_codename/main/binary-$basearch_alt/Packages.gz
+            ;;
+        udeb)
+            local mirror=$nextos_udeb_mirror
+            local url=http://$mirror/dists/$nextos_codename/main/debian-installer/binary-$basearch_alt/Packages.gz
+            ;;
+        esac
+
+        # 获取 deb/udeb 列表
+        deb_list=$tmp/${type}_list
+        if ! [ -f $deb_list ]; then
+            curl -L "$url" | zcat | grep 'Filename:' | awk '{print $2}' >$deb_list
         fi
 
-        # 下载 udeb
-        curl -Lo $tmp/tmp.udeb http://$nextos_udeb_mirror/"$(grep -F /${package}_ $udeb_list)"
+        # 下载 deb/udeb
+        deb_path=$(grep -F "/${package}_" "$deb_list")
+        curl -Lo $tmp/tmp.deb http://$mirror/"$deb_path"
 
         if false; then
             # 使用 dpkg
             # cygwin 没有 dpkg
             install_pkg dpkg
-            dpkg -x $tmp/tmp.udeb $extract_dir
+            dpkg -x $tmp/tmp.deb $extract_dir
         else
             # 使用 ar tar xz
             # cygwin 需安装 binutils
             # centos7 ar 不支持 --output
             install_pkg ar tar xz
-            (cd $tmp && ar x $tmp/tmp.udeb)
+            (cd $tmp && ar x $tmp/tmp.deb)
             tar xf $tmp/data.tar.xz -C $extract_dir
         fi
     }
@@ -3249,11 +3294,26 @@ EOF
         curl -Lo usr/share/keyrings/debian-archive-keyring.gpg https://deb.freexian.com/extended-lts/archive-key.gpg
     fi
 
+    # 提前下载 sshd
+    # 以便在配置下载源之前就可以启动 sshd
+    mkdir_clear $tmp/sshd
+    download_and_extract_deb udeb openssh-server-udeb $tmp/sshd
+    cp -r $tmp/sshd/* .
+
     # 提前下载 fdisk
     # 因为 fdisk-udeb 包含 fdisk 和 sfdisk，提前下载可减少占用
     mkdir_clear $tmp/fdisk
-    download_and_extract_udeb fdisk-udeb $tmp/fdisk
+    download_and_extract_deb udeb fdisk-udeb $tmp/fdisk
     cp -f $tmp/fdisk/usr/sbin/fdisk usr/sbin/
+
+    # 下载 websocketd
+    # debian 11+ 才有 websocketd
+    if [ "$distro" = kali ] ||
+        { [ "$distro" = debian ] && [ "$releasever" -ge 11 ]; }; then
+        mkdir_clear $tmp/websocketd
+        download_and_extract_deb deb websocketd $tmp/websocketd
+        cp -f $tmp/websocketd/usr/bin/websocketd usr/bin/
+    fi
 
     # >256M 或者当前系统是 windows
     if [ $ram_size -gt 256 ] || is_in_windows; then
@@ -3285,7 +3345,7 @@ EOF
         # 但反查也找不到 curl https://deb.debian.org/debian/dists/bookworm/main/Contents-udeb-amd64.gz | zcat | grep xen
         if [ -n "$extra_drivers" ]; then
             mkdir_clear $tmp/scsi
-            download_and_extract_udeb scsi-modules-$kver-di $tmp/scsi
+            download_and_extract_deb udeb scsi-modules-$kver-di $tmp/scsi
             relative_drivers_dir=lib/modules/$kver/kernel/drivers
 
             udeb_drivers_dir=$tmp/scsi/$relative_drivers_dir
@@ -4454,13 +4514,18 @@ EOF
         get_function_content load_grubenv_if_not_loaded >$target_cfg
 
         # 原系统为 openeuler 云镜像，需要添加 --unrestricted，否则要输入密码
-        del_empty_lines <<EOF | tee -a $target_cfg
+        del_empty_lines <<EOF | del_comment_lines | tee -a $target_cfg
 set timeout_style=menu
 set timeout=5
 menuentry "$(get_entry_name)" --unrestricted {
     $(! is_in_windows && echo 'insmod lvm')
     $(is_os_in_btrfs && echo 'set btrfs_relative_path=n')
+    # fedora efi 没有 load_video
     insmod all_video
+    # set gfxmode=800x600
+    # set gfxpayload=keep
+    # terminal_output gfxterm 在 vultr 上会花屏
+    # terminal_output console
     search --no-floppy --file --set=root $vmlinuz
     $linux_cmd $vmlinuz $cmdline
     $([ -n "$initrds" ] && echo "$initrd_cmd $initrds")
