@@ -758,17 +758,19 @@ is_windows_support_rdnss() {
     [ "$build_ver" -ge 15063 ]
 }
 
-get_windows_version_from_dll() {
-    local dll=$1
-    [ -f "$dll" ] || error_and_exit "File not found: $dll"
+get_windows_version_from_windows_drive() {
+    local os_dir=$1
 
-    apk add pev
-    local ver
-    ver="$(peres -v "$dll" | grep 'Product Version:' | awk '{print $NF}')"
-    echo "Version: $ver" >&2
-    IFS=. read -r nt_ver_major nt_ver_minor build_ver rev_ver _ < <(echo "$ver")
+    apk add hivex pev
+    ntoskrnl_exe=$(find_file_ignore_case $os_dir/Windows/System32/ntoskrnl.exe)
+    hive=$(find_file_ignore_case $os_dir/Windows/System32/config/SOFTWARE)
+    IFS=. read -r nt_ver_major nt_ver_minor _ rev_ver _ \
+        < <(peres -v "$ntoskrnl_exe" | grep 'Product Version:' | awk '{print $NF}')
     nt_ver="$nt_ver_major.$nt_ver_minor"
-    apk del pev
+    # win10 22h2 19045 的 exe/dll 版本还是 19041 的，因此要从注册表获取
+    build_ver=$(hivexget $hive 'Microsoft\Windows NT\CurrentVersion' CurrentBuildNumber)
+    echo "Version: $nt_ver_major.$nt_ver_minor.$build_ver.$rev_ver" >&2
+    apk del hivex pev
 }
 
 is_elts() {
@@ -3783,7 +3785,7 @@ modify_os_on_disk() {
                 # shellcheck disable=SC1090
                 # find_file_ignore_case 也在这个文件里面
                 . <(wget -O- $confhome/windows-driver-utils.sh)
-                if ntoskrnl_exe=$(find_file_ignore_case /os/Windows/System32/ntoskrnl.exe 2>/dev/null); then
+                if find_file_ignore_case /os/Windows/System32/ntoskrnl.exe >/dev/null 2>&1; then
                     # 其他地方会用到
                     is_windows() { true; }
                     # 重新挂载为读写、忽略大小写
@@ -3804,7 +3806,7 @@ modify_os_on_disk() {
                         mount -t ntfs3 -o nocase,rw,force /dev/$part /os
                     fi
                     # 获取版本号，其他地方会用到
-                    get_windows_version_from_dll "$ntoskrnl_exe"
+                    get_windows_version_from_windows_drive /os
                     modify_windows /os
                     return
                 fi
@@ -5723,8 +5725,7 @@ install_windows() {
     # 3. 是否支持 sha256
     # 4. Installation Type
     wimmount "$iso_install_wim" "$image_index" /wim/
-    ntoskrnl_exe=$(find_file_ignore_case /wim/Windows/System32/ntoskrnl.exe)
-    get_windows_version_from_dll "$ntoskrnl_exe"
+    get_windows_version_from_windows_drive /wim
     windows_type=$(get_windows_type_from_windows_drive /wim)
     {
         find_file_ignore_case /wim/Windows/System32/sacsess.exe && has_sac=true || has_sac=false
