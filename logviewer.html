@@ -66,6 +66,12 @@
         const scrollToBottomButton = document.getElementById('scroll-to-bottom');
         let shouldScrollToBottom = true;
 
+        // 缓冲区相关
+        let messageBuffer = [];
+        let flushScheduled = false;
+        const BUFFER_FLUSH_INTERVAL = 100; // 毫秒
+        const BUFFER_MAX_SIZE = 50; // 最大缓冲消息数
+
         scrollToBottomButton.addEventListener('click', () => {
             logContainer.scrollTop = logContainer.scrollHeight;
         });
@@ -81,30 +87,71 @@
             shouldScrollToBottom = isAtBottom;
         });
 
-        var ws = new ReconnectingWebSocket('ws://' + location.host + '/');
-        ws.onopen = function () {
-            logContainer.textContent += '\nWebSocket Connected.';
-        };
-        ws.onclose = function () {
-            logContainer.textContent += '\nWebSocket Disconnected.';
-        };
-        ws.onmessage = function (event) {
-            logContainer.textContent += '\n' + event.data;
+        // 刷新缓冲区到 DOM
+        function flushBuffer() {
+            if (messageBuffer.length === 0) {
+                flushScheduled = false;
+                return;
+            }
+
+            // 批量更新文本内容
+            const batchText = messageBuffer.join('\n');
+            logContainer.textContent += '\n' + batchText;
+
+            // 检查状态变化（优先级：error > done > start）
+            if (batchText.includes('***** ERROR *****')) {
+                document.body.className = 'error';
+            } else if (batchText.includes('***** DONE *****')) {
+                document.body.className = 'done';
+            } else if (batchText.includes('***** START TRANS *****')) {
+                document.body.className = '';
+            }
+
+            // 自动滚动
             if (shouldScrollToBottom) {
                 logContainer.scrollTop = logContainer.scrollHeight;
             }
-            // 开始/重新开始
-            if (event.data.includes('***** START TRANS *****')) {
-                document.body.className = ''
+
+            // 清空缓冲区
+            messageBuffer = [];
+            flushScheduled = false;
+        }
+
+        // 调度刷新
+        function scheduleFlush() {
+            if (!flushScheduled) {
+                flushScheduled = true;
+                requestAnimationFrame(() => {
+                    setTimeout(flushBuffer, BUFFER_FLUSH_INTERVAL);
+                });
             }
-            // 错误
-            else if (event.data.includes('***** ERROR *****')) {
-                document.body.className = 'error'
+        }
+
+        // 添加消息到缓冲区
+        function bufferMessage(message) {
+            messageBuffer.push(message);
+
+            // 如果缓冲区满了，立即刷新
+            if (messageBuffer.length >= BUFFER_MAX_SIZE) {
+                if (flushScheduled) {
+                    // 取消之前的调度，立即刷新
+                    flushScheduled = false;
+                }
+                flushBuffer();
+            } else {
+                scheduleFlush();
             }
-            // 完成
-            else if (event.data.includes('***** DONE *****')) {
-                document.body.className = 'done'
-            }
+        }
+
+        var ws = new ReconnectingWebSocket('ws://' + location.host + '/');
+        ws.onopen = function () {
+            bufferMessage('WebSocket Connected.');
+        };
+        ws.onclose = function () {
+            bufferMessage('WebSocket Disconnected.');
+        };
+        ws.onmessage = function (event) {
+            bufferMessage(event.data);
         };
     </script>
 </body>
