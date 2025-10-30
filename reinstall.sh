@@ -830,18 +830,13 @@ is_have_arm_version() {
     case "$version" in
     10)
         case "$edition" in
-        pro | education | enterprise | 'pro education' | 'pro for workstations') return ;;
+        home | 'home single language' | pro | education | enterprise | 'pro education' | 'pro for workstations') return ;;
         'iot enterprise') return ;;
+        # arm ltsc 只有 2021 有 iso
         'enterprise ltsc 2021' | 'iot enterprise ltsc 2021') return ;;
         esac
         ;;
-    11)
-        case "$edition" in
-        pro | education | enterprise | 'pro education' | 'pro for workstations') return ;;
-        'iot enterprise' | 'iot enterprise subscription') return ;;
-        'enterprise ltsc 2024' | 'iot enterprise ltsc 2024' | 'iot enterprise ltsc 2024 subscription') return ;;
-        esac
-        ;;
+    11) return ;;
     esac
     return 1
 }
@@ -850,9 +845,6 @@ find_windows_iso() {
     parse_windows_image_name || error_and_exit "--image-name wrong: $image_name"
     if ! [ "$version" = 8.1 ] && [ -z "$edition" ]; then
         error_and_exit "Edition is not set."
-    fi
-    if [ "$basearch" = 'aarch64' ] && ! is_have_arm_version; then
-        error_and_exit "No ARM iso for this Windows Version."
     fi
 
     if [ -z "$lang" ]; then
@@ -929,7 +921,13 @@ get_windows_iso_link() {
             10)
                 case "$edition" in
                 home | 'home single language') echo consumer ;;
-                pro | education | enterprise | 'pro education' | 'pro for workstations') echo business ;;
+                pro | enterprise) echo business ;;
+                education | 'pro education' | 'pro for workstations')
+                    case "$arch_win" in
+                    arm64) echo consumer ;;
+                    x64) echo business ;; # iso 更小
+                    esac
+                    ;;
                 # iot
                 'iot enterprise') echo 'iot enterprise' ;;
                 # iot ltsc
@@ -946,13 +944,23 @@ get_windows_iso_link() {
                 esac
                 ;;
             11)
+                # arm business iso 都没有 education, pro education, pro for workstations
+                # 即使它的名字包含 EDU
+                # SW_DVD9_Win_Pro_10_22H2.31_Arm64_English_Pro_Ent_EDU_N_MLF_X24-05074.ISO
+                # en-us_windows_11_business_editions_version_25h2_arm64_dvd_8afc9b39.iso
                 case "$edition" in
                 home | 'home single language') echo consumer ;;
-                pro | education | enterprise | 'pro education' | 'pro for workstations') echo business ;;
+                pro | enterprise) echo business ;;
+                education | 'pro education' | 'pro for workstations')
+                    case "$arch_win" in
+                    arm64) echo consumer ;;
+                    x64) echo business ;; # iso 更小
+                    esac
+                    ;;
                 # iot
                 'iot enterprise' | 'iot enterprise subscription') echo 'iot enterprise' ;;
                 # iot ltsc
-                'iot enterprise ltsc 2024' | 'iot enterprise ltsc 2024 subscription') echo 'iot enterprise ltsc 2024' ;;
+                'iot enterprise ltsc 2024' | 'iot enterprise subscription ltsc 2024') echo 'iot enterprise ltsc 2024' ;;
                 # ltsc
                 'enterprise ltsc 2024')
                     # arm64 的 enterprise ltsc 2024 要下载 iot enterprise ltsc 2024 iso
@@ -1035,8 +1043,17 @@ get_windows_iso_link() {
     echo "List:       $page_url"
     echo
 
+    # 先判断是否能自动查找该版本
+    # 再判断是否支持 arm
+    # 这样可以在输入错误 Edition 时例如 windows 11 enterprise ltsc 2021
+    # 显示名称错误，而不是显示该版本不支持 arm
+
     if [ -z "$page" ] || { [ -z "$label_msdn" ] && [ -z "$label_msdl" ] && [ -z "$label_vlsc" ]; }; then
-        error_and_exit "Not support find this iso. Check if --image-name is wrong. If not, set --iso manually."
+        error_and_exit "Not support find this iso. Check if --image-name is wrong. Or set --iso manually."
+    fi
+
+    if [ "$basearch" = aarch64 ] && ! is_have_arm_version; then
+        error_and_exit "No ARM iso for this Windows Version and Edition."
     fi
 
     if [ -n "$label_msdl" ]; then
