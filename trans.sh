@@ -6615,12 +6615,17 @@ EOF
         done
 
         if ! $is_gen11 && [ "$build_ver" -ge 19041 ]; then
-            url=https://downloadmirror.intel.com/865363/SetupRST.exe # RST v20
+            # RST v20
+            local page=https://www.intel.com/content/www/us/en/download/849936.html
         elif [ "$build_ver" -ge 15063 ]; then
-            url=https://downloadmirror.intel.com/849934/SetupRST.exe # RST v19
+            # RST v19
+            local page=https://www.intel.com/content/www/us/en/download/849933.html
         else
             error_and_exit "can't find suitable vmd driver"
         fi
+        local url
+        url=$(wget -U curl/7.54.1 "$page" -O- |
+            grep -Eio -m1 "\"https://.+/SetupRST\.exe\"" | tr -d '"' | grep .)
 
         # 注意 intel 禁止了 aria2 下载
         download $url $drv/SetupRST.exe
