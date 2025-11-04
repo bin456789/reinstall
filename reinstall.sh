@@ -859,7 +859,7 @@ is_have_arm_version() {
 
 find_windows_iso() {
     parse_windows_image_name || error_and_exit "--image-name wrong: $image_name"
-    if ! [ "$version" = 8.1 ] && [ -z "$edition" ]; then
+    if ! { [ "$version" = 8 ] || [ "$version" = 8.1 ]; } && [ -z "$edition" ]; then
         error_and_exit "Edition is not set."
     fi
 
@@ -908,7 +908,8 @@ get_windows_iso_link() {
                     x86) echo _ ;;
                     esac
                     ;;
-                homebasic | homepremium | business | ultimate) echo _ ;;
+                homebasic | homepremium | ultimate) echo _ ;;
+                business | enterprise) "$edition" ;;
                 esac
                 ;;
             7)
@@ -927,10 +928,9 @@ get_windows_iso_link() {
                 professional | enterprise | ultimate) echo "$edition" ;;
                 esac
                 ;;
-            # massgrave 不提供 windows 8 下载
-            8.1)
+            8 | 8.1)
                 case "$edition" in
-                '') echo _ ;; # windows 8.1 core
+                '') echo _ ;; # windows 8.x core
                 pro | enterprise) echo "$edition" ;;
                 esac
                 ;;
@@ -1025,7 +1025,7 @@ get_windows_iso_link() {
             echo server
         else
             case "$version" in
-            vista | 7 | 8.1 | 10 | 11)
+            vista | 7 | 8 | 8.1 | 10 | 11)
                 echo "$version"
                 ;;
             esac
