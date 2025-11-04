@@ -2343,10 +2343,6 @@ prompt_password() {
     warn false "Leave blank to use a random password."
     warn false "不填写则使用随机密码"
     while true; do
-        # 特殊字符列表
-        # https://learn.microsoft.com/previous-versions/windows/it-pro/windows-server-2012-r2-and-2012/hh994562(v=ws.11)
-        chars=\''A-Za-z0-9~!@#$%^&*_=+`|(){}[]:;"<>,.?/-'
-        random_password=$(tr -dc "$chars" </dev/random | head -c16)
         IFS= read -r -p "Password: " password
         if [ -n "$password" ]; then
             IFS= read -r -p "Retype password: " password_confirm
@@ -2356,7 +2352,11 @@ prompt_password() {
                 error "Passwords don't match. Try again."
             fi
         else
-            password=$random_password
+            # 特殊字符列表
+            # https://learn.microsoft.com/previous-versions/windows/it-pro/windows-server-2012-r2-and-2012/hh994562(v=ws.11)
+            # 有的机器运行 centos 7 ，用 /dev/random 产生 16 位密码，开启了 rngd 也要 5 秒，关闭了 rngd 则长期阻塞
+            chars=\''A-Za-z0-9~!@#$%^&*_=+`|(){}[]:;"<>,.?/-'
+            password=$(tr -dc "$chars" </dev/urandom | head -c16)
             break
         fi
     done
