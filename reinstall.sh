@@ -4004,7 +4004,7 @@ EOF
 
         # https://manpages.debian.org/testing/openssh-server/authorized_keys.5.en.html#AUTHORIZED_KEYS_FILE_FORMAT
         is_valid_ssh_key() {
-            grep -qE '^(ecdsa-sha2-nistp(256|384|512)|ssh-(ed25519|rsa)) ' <<<"$1"
+            grep -qE '^(ecdsa-sha2-nistp(256|384|521)|ssh-(ed25519|rsa)) ' <<<"$1"
         }
 
         [ -n "$2" ] || ssh_key_error_and_exit "Need value for $1"
