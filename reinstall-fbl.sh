@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # reinstall-freebsd-linux.sh
-# Reinstall system on Linux / FreeBSD using DD + cloud-init (NoCloud) with:
+# Reinstall system on Linux / FreeBSD (推荐在 ISO/Rescue 环境运行) using DD + cloud-init (NoCloud) with:
 #   - freebsd
 #   - rocky
 #   - almalinux
@@ -38,11 +38,11 @@ info() {
 usage() {
     cat <<EOF
 Usage:
-  $SCRIPT_NAME freebsd   14   [--disk /dev/sdX] [options...]
-  $SCRIPT_NAME rocky     10   [--disk /dev/sdX] [options...]
-  $SCRIPT_NAME almalinux 10   [--disk /dev/sdX] [options...]
-  $SCRIPT_NAME fedora    43   [--disk /dev/sdX] [options...]
-  $SCRIPT_NAME redhat         [--disk /dev/sdX] --img URL [options...]
+  $SCRIPT_NAME freebsd    14   [--disk /dev/sdX] [options...]
+  $SCRIPT_NAME rocky      10   [--disk /dev/sdX] [options...]
+  $SCRIPT_NAME almalinux  10   [--disk /dev/sdX] [options...]
+  $SCRIPT_NAME fedora     43   [--disk /dev/sdX] [options...]
+  $SCRIPT_NAME redhat          [--disk /dev/sdX] --img URL [options...]
 
 If --disk is not specified, the script will try to auto-detect the main disk:
   - On Linux, picks the largest non-removable disk from lsblk.
@@ -307,20 +307,6 @@ show_partition_info() {
         fi
     fi
     echo "-------------------------------------------------------"
-}
-
-# RHEL-specific hook: kept for compatibility; you可以按需删除
-run_rhel_freebsd_hook() {
-    if [ "$OS" = "Linux" ] && [ -f /etc/redhat-release ]; then
-        if [ -f "./reinstall-fbll.sh" ]; then
-            info "RHEL detected, running: bash reinstall-fbll.sh freebsd 14"
-            if ! bash ./reinstall-fbll.sh freebsd 14; then
-                warn "reinstall-fbll.sh freebsd 14 failed, continuing anyway."
-            fi
-        else
-            warn "RHEL detected, but ./reinstall-fbll.sh not found; skipping RHEL hook."
-        fi
-    fi
 }
 
 # Parse ssh-key: supports inline / URL / github / gitlab / file
@@ -702,6 +688,7 @@ if [ -z "$PASSWORD" ] && [ -z "$SSH_KEYS_ALL" ]; then
     echo "You can set a root password now, or leave empty to auto-generate a random 20-character password."
 
     while :; do
+        # 不再隐藏密码输入，方便排错
         read -r -p "Enter root password (leave empty to auto-generate): " pw1
         echo
 
@@ -746,7 +733,7 @@ fi
 
 # Get default image URL (redhat requires user-supplied --img)
 if [ -z "$IMG_URL" ]; then
-    IMG_URL=$(get_default_image_url "$TARGET_OS" "$TARGET_VER")
+    IMG_URL=$(get_default_image_url("$TARGET_OS" "$TARGET_VER")
     if [ -z "$IMG_URL" ] && [ "$TARGET_OS" = "redhat" ]; then
         error "For redhat you must specify image URL with --img"
     fi
@@ -933,9 +920,6 @@ else
 fi
 
 info "Image write and cloud-init NoCloud injection completed."
-
-# RHEL hook: run reinstall-fbll.sh freebsd 14 if present
-run_rhel_freebsd_hook
 
 # Show partition info
 show_partition_info
