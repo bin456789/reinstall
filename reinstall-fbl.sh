@@ -665,24 +665,36 @@ fi
 if [ -z "$PASSWORD" ] && [ -z "$SSH_KEYS_ALL" ]; then
     echo "No --password or --ssh-key specified."
     echo "You can set a root password now, or leave empty to auto-generate a random 20-character password."
-    read -r -s -p "Enter root password (leave empty to auto-generate): " pw1
-    echo
-    if [ -z "$pw1" ]; then
-        # generate random password
-        if command -v tr >/dev/null 2>&1; then
-            PASSWORD=$(LC_ALL=C tr -dc 'A-Za-z0-9' </dev/urandom | head -c 20 || true)
+
+    while :; do
+        read -r -s -p "Enter root password (leave empty to auto-generate): " pw1
+        echo
+
+        # Empty: auto-generate random password, no need to confirm
+        if [ -z "$pw1" ]; then
+            if command -v tr >/dev/null 2>&1; then
+                PASSWORD=$(LC_ALL=C tr -dc 'A-Za-z0-9' </dev/urandom | head -c 20 || true)
+            fi
+            if [ -z "$PASSWORD" ]; then
+                error "Failed to generate random password."
+            fi
+            AUTO_PASSWORD=1
+            info "A random root password will be generated and shown after installation."
+            break
         fi
-        if [ -z "$PASSWORD" ]; then
-            error "Failed to generate random password."
-        fi
-        AUTO_PASSWORD=1
-        info "A random root password will be generated and shown after installation."
-    else
+
+        # Non-empty: ask for confirmation, loop until they match
         read -r -s -p "Confirm root password: " pw2
         echo
-        [ "$pw1" = "$pw2" ] || error "Passwords do not match."
-        PASSWORD="$pw1"
-    fi
+
+        if [ "$pw1" = "$pw2" ]; then
+            PASSWORD="$pw1"
+            break
+        else
+            echo "Passwords do not match, please try again."
+            echo
+        fi
+    done
 fi
 
 # Default versions
