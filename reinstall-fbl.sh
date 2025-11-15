@@ -105,7 +105,7 @@ Examples:
 Notes:
   * This script will dd an entire disk. Make sure the auto-detected disk is correct,
     or override it with --disk explicitly.
-  * On RHEL/Rocky/Alma/Fedora, the script will try to install xz, qemu-img and curl automatically
+  * On RHEL/Rocky/Alma/Fedora, the script will try to install xz, qemu-img, curl and pv automatically
     if they are missing.
   * All target systems use cloud-init NoCloud to inject root password, SSH keys, etc.
 EOF
@@ -182,6 +182,10 @@ ensure_dependencies_linux_rhel_like() {
     if ! command -v curl >/dev/null 2>&1 && ! command -v wget >/dev/null 2>&1 && ! command -v fetch >/dev/null 2>&1; then
         need_pkgs+=("curl")
     fi
+    # pv is optional but nice to have for decompression progress
+    if ! command -v pv >/dev/null 2>&1; then
+        need_pkgs+=("pv")
+    fi
 
     if [ "${#need_pkgs[@]}" -gt 0 ]; then
         info "Installing missing dependencies with $pm: ${need_pkgs[*]}"
@@ -190,7 +194,7 @@ ensure_dependencies_linux_rhel_like() {
 }
 
 ensure_dependencies_linux_generic() {
-    # For non-Red-Hat Linux, just check and error with a clear message.
+    # For non-Red-Hat Linux, just check and error with a clear message for hard deps.
     local missing=()
 
     if ! command -v qemu-img >/dev/null 2>&1; then
@@ -207,10 +211,14 @@ ensure_dependencies_linux_generic() {
         error "Missing dependencies on Linux: ${missing[*]}
 Please install them manually with your package manager (e.g. apt, zypper, pacman) and rerun this script."
     fi
+
+    if ! command -v pv >/dev/null 2>&1; then
+        warn "Optional tool 'pv' not found. xz decompression will work but without a progress bar.
+You can install 'pv' with your package manager if you want throughput/time progress."
+    fi
 }
 
 ensure_dependencies_freebsd() {
-    # Placeholder for future automation.
     # For now just check and give a hint.
     local missing=()
 
@@ -228,6 +236,12 @@ ensure_dependencies_freebsd() {
         error "Missing dependencies on FreeBSD: ${missing[*]}
 Hint: you can install them with:
   pkg install qemu-tools xz curl"
+    fi
+
+    if ! command -v pv >/dev/null 2>&1; then
+        warn "Optional tool 'pv' not found. xz decompression will work but without a progress bar.
+On FreeBSD you can install it with:
+  pkg install pv"
     fi
 }
 
@@ -680,7 +694,7 @@ while [ $# -gt 0 ]; do
 done
 
 detect_os_arch
-ensure_dependencies  # auto install / check qemu-img, xz, curl/wget/fetch
+ensure_dependencies  # auto install / check qemu-img, xz, curl/wget/fetch, pv (on RHEL-like)
 
 # Disk handling: auto-detect if not provided
 if [ -n "$DISK" ]; then
@@ -708,7 +722,7 @@ if [ -z "$PASSWORD" ] && [ -z "$SSH_KEYS_ALL" ]; then
         # Empty: auto-generate random password, no need to confirm
         if [ -z "$pw1" ]; then
             if command -v tr >/dev/null 2>&1; then
-                PASSWORD=$(LC_ALL=C tr -dc 'A-Za-z0n9' </dev/urandom | head -c 20 || true)
+                PASSWORD=$(LC_ALL=C tr -dc 'A-Za-z0-9' </dev/urandom | head -c 20 || true)
             fi
             if [ -z "$PASSWORD" ]; then
                 error "Failed to generate random password."
@@ -777,7 +791,7 @@ if file "$IMG_QCOW" | grep -qi 'xz compressed'; then
     info "Detected xz compressed image, decompressing (progress may be shown)..."
     mv "$IMG_QCOW" "$IMG_QCOW.xz"
     if command -v pv >/dev/null 2>&1; then
-        # pv 可选依赖，有则显示流量和时间
+        # pv is optional; if present, show progress
         xz -dc "$IMG_QCOW.xz" | pv >"$IMG_QCOW"
     else
         xz -dc "$IMG_QCOW.xz" >"$IMG_QCOW"
