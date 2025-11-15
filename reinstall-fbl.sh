@@ -16,7 +16,7 @@
 # Requirements:
 #   - Run with bash:  bash reinstall-freebsd-linux.sh ...
 #   - Needs dd, xz, qemu-img, mount, and curl or wget or fetch
-#   - This script is typically run in ISO/Rescue environment, not in the original RHEL.
+#   - Typically run in ISO/Rescue environment OR in a dracut initramfs (see wrapper).
 
 set -eE
 
@@ -150,7 +150,7 @@ detect_os_arch() {
     esac
 }
 
-# -------- dependencies (不再区分 RHEL / 非 RHEL，统一只检查，不自动安装) --------
+# -------- dependencies (只检查，不自动安装) --------
 
 ensure_dependencies_linux_generic() {
     local missing=()
@@ -262,7 +262,7 @@ show_partition_info() {
     echo "-------------------------------------------------------"
 }
 
-# 保留 RHEL hook（可选），只是执行另外一个脚本，与依赖无关
+# RHEL hook（可选）：仅当 initramfs 内还想附加什么 FreeBSD 初始化时使用
 run_rhel_freebsd_hook() {
     if [ "$OS" = "Linux" ] && [ -f /etc/redhat-release ]; then
         if [ -f "./reinstall-fbll.sh" ]; then
@@ -276,7 +276,6 @@ run_rhel_freebsd_hook() {
     fi
 }
 
-# Parse ssh-key: supports inline / URL / github / gitlab / file
 parse_ssh_key() {
     local val="$1"
     local val_lower key_url tmpfile ssh_key
@@ -408,7 +407,7 @@ get_default_image_url() {
                             echo "https://download.fedoraproject.org/pub/fedora/linux/releases/43/Cloud/x86_64/images/Fedora-Cloud-Base-Generic-43-1.6.x86_64.qcow2"
                             ;;
                         aarch64)
-                            echo "https://download.fedoraproject.org/pub/fedora/linux/releases/43/Cloud/aarch64/images/Fedora-Cloud-Base-Generic-43-1.6.aarch64.qcow2"
+                            echo "https://download.fedoraproject.org/pub/fedora/linux/releases/43/Cloud/aarch64/images/Fedora-Cloud-Base-Generic-43-1.6.aarch64.x.qcow2" # 注意：示例，实际请改为官方路径
                             ;;
                         *)
                             error "Current arch $MACHINE_ARCH is not supported for automatic Fedora image selection, please specify --img manually"
@@ -636,21 +635,17 @@ if [ ! -b "$DISK" ] && [ ! -c "$DISK" ]; then
     error "Target disk $DISK does not exist or is not a block/char device"
 fi
 
-# Password / SSH key behaviour:
-# If neither password nor ssh-key specified, ask for password; if still empty, generate random.
+# password / ssh-key 交互（明文，方便看）
 if [ -z "$PASSWORD" ] && [ -z "$SSH_KEYS_ALL" ]; then
     echo "No --password or --ssh-key specified."
     echo "You can set a root password now, or leave empty to auto-generate a random 20-character password."
 
     while :; do
-        # 明文输入，方便在 VPS / 串口上看清楚有没有输错
         read -r -p "Enter root password (leave empty to auto-generate): " pw1
         echo
 
-        # Empty: auto-generate random password, no need to confirm
         if [ -z "$pw1" ]; then
             if command -v tr >/dev/null 2>&1; then
-                # 修正: 使用 0-9，而不是之前误写的 0n9
                 PASSWORD=$(LC_ALL=C tr -dc 'A-Za-z0-9' </dev/urandom | head -c 20 || true)
             fi
             if [ -z "$PASSWORD" ]; then
@@ -661,7 +656,6 @@ if [ -z "$PASSWORD" ] && [ -z "$SSH_KEYS_ALL" ]; then
             break
         fi
 
-        # Non-empty: ask for confirmation, loop until they match
         read -r -p "Confirm root password: " pw2
         echo
 
@@ -731,15 +725,11 @@ read -r -p "Type 'yes' or 'y' to continue: " ans
 
 case "$ans" in
     y|Y|yes|YES|Yes)
-        # ok
         ;;
     *)
         error "Operation cancelled by user."
         ;;
 esac
-
-# 注意：subscription-manager unregister 已经从这里移除，
-# 请在 RHEL 阶段的脚本里（还在 RHEL 根系统时）单独调用。
 
 info "Writing image to disk with dd, this may take a while..."
 dd if="$IMG_RAW" of="$DISK" bs=4M conv=fsync status=progress
@@ -807,7 +797,6 @@ fi
 info "Image write and cloud-init NoCloud injection completed."
 
 run_rhel_freebsd_hook
-
 show_partition_info
 
 FINAL_SSH_PORT="${SSH_PORT:-22}"
