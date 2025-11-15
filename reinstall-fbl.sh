@@ -105,7 +105,7 @@ Examples:
 Notes:
   * This script will dd an entire disk. Make sure the auto-detected disk is correct,
     or override it with --disk explicitly.
-  * On RHEL/Rocky/Alma/Fedora, the script will try to install xz, qemu-img, curl and pv automatically
+  * On RHEL/Rocky/Alma/Fedora, the script will try to install xz, qemu-img and curl automatically
     if they are missing.
   * All target systems use cloud-init NoCloud to inject root password, SSH keys, etc.
 EOF
@@ -182,10 +182,6 @@ ensure_dependencies_linux_rhel_like() {
     if ! command -v curl >/dev/null 2>&1 && ! command -v wget >/dev/null 2>&1 && ! command -v fetch >/dev/null 2>&1; then
         need_pkgs+=("curl")
     fi
-    # pv is optional but nice to have for decompression progress
-    if ! command -v pv >/dev/null 2>&1; then
-        need_pkgs+=("pv")
-    fi
 
     if [ "${#need_pkgs[@]}" -gt 0 ]; then
         info "Installing missing dependencies with $pm: ${need_pkgs[*]}"
@@ -194,7 +190,7 @@ ensure_dependencies_linux_rhel_like() {
 }
 
 ensure_dependencies_linux_generic() {
-    # For non-Red-Hat Linux, just check and error with a clear message for hard deps.
+    # For non-Red-Hat Linux, just check and error with a clear message.
     local missing=()
 
     if ! command -v qemu-img >/dev/null 2>&1; then
@@ -211,14 +207,10 @@ ensure_dependencies_linux_generic() {
         error "Missing dependencies on Linux: ${missing[*]}
 Please install them manually with your package manager (e.g. apt, zypper, pacman) and rerun this script."
     fi
-
-    if ! command -v pv >/dev/null 2>&1; then
-        warn "Optional tool 'pv' not found. xz decompression will work but without a progress bar.
-You can install 'pv' with your package manager if you want throughput/time progress."
-    fi
 }
 
 ensure_dependencies_freebsd() {
+    # Placeholder for future automation.
     # For now just check and give a hint.
     local missing=()
 
@@ -236,12 +228,6 @@ ensure_dependencies_freebsd() {
         error "Missing dependencies on FreeBSD: ${missing[*]}
 Hint: you can install them with:
   pkg install qemu-tools xz curl"
-    fi
-
-    if ! command -v pv >/dev/null 2>&1; then
-        warn "Optional tool 'pv' not found. xz decompression will work but without a progress bar.
-On FreeBSD you can install it with:
-  pkg install pv"
     fi
 }
 
@@ -694,7 +680,7 @@ while [ $# -gt 0 ]; do
 done
 
 detect_os_arch
-ensure_dependencies  # auto install / check qemu-img, xz, curl/wget/fetch, pv (on RHEL-like)
+ensure_dependencies  # auto install / check qemu-img, xz, curl/wget/fetch
 
 # Disk handling: auto-detect if not provided
 if [ -n "$DISK" ]; then
@@ -714,9 +700,10 @@ fi
 if [ -z "$PASSWORD" ] && [ -z "$SSH_KEYS_ALL" ]; then
     echo "No --password or --ssh-key specified."
     echo "You can set a root password now, or leave empty to auto-generate a random 20-character password."
+    echo "NOTE: Passwords you type below will be ECHOED (visible) for easier debugging."
 
     while :; do
-        read -r -s -p "Enter root password (leave empty to auto-generate): " pw1
+        read -r -p "Enter root password (leave empty to auto-generate): " pw1
         echo
 
         # Empty: auto-generate random password, no need to confirm
@@ -733,7 +720,7 @@ if [ -z "$PASSWORD" ] && [ -z "$SSH_KEYS_ALL" ]; then
         fi
 
         # Non-empty: ask for confirmation, loop until they match
-        read -r -s -p "Confirm root password: " pw2
+        read -r -p "Confirm root password: " pw2
         echo
 
         if [ "$pw1" = "$pw2" ]; then
@@ -788,14 +775,9 @@ http_download "$IMG_URL" "$IMG_QCOW"
 
 # Check if it's xz compressed
 if file "$IMG_QCOW" | grep -qi 'xz compressed'; then
-    info "Detected xz compressed image, decompressing (progress may be shown)..."
+    info "Detected xz compressed image, decompressing with xz --verbose..."
     mv "$IMG_QCOW" "$IMG_QCOW.xz"
-    if command -v pv >/dev/null 2>&1; then
-        # pv is optional; if present, show progress
-        xz -dc "$IMG_QCOW.xz" | pv >"$IMG_QCOW"
-    else
-        xz -dc "$IMG_QCOW.xz" >"$IMG_QCOW"
-    fi
+    xz -dc --verbose --verbose "$IMG_QCOW.xz" >"$IMG_QCOW"
 fi
 
 # Convert to raw using qemu-img (with progress)
