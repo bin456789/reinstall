@@ -359,7 +359,7 @@ Available options:
             fi
             info "Downloading SSH key from: $key_url"
             tmpfile=$(mktemp /tmp/reinstall-sshkey.XXXXXX)
-            if ! http_download("$key_url" "$tmpfile"); then
+            if ! http_download "$key_url" "$tmpfile"; then
                 rm -f "$tmpfile"
                 ssh_key_error_and_exit "Failed to download SSH key from $key_url"
             fi
@@ -708,7 +708,7 @@ if [ -z "$PASSWORD" ] && [ -z "$SSH_KEYS_ALL" ]; then
         # Empty: auto-generate random password, no need to confirm
         if [ -z "$pw1" ]; then
             if command -v tr >/dev/null 2>&1; then
-                PASSWORD=$(LC_ALL=C tr -dc 'A-Za-z0-9' </dev/urandom | head -c 20 || true)
+                PASSWORD=$(LC_ALL=C tr -dc 'A-Za-z0n9' </dev/urandom | head -c 20 || true)
             fi
             if [ -z "$PASSWORD" ]; then
                 error "Failed to generate random password."
@@ -746,7 +746,7 @@ fi
 
 # Get default image URL (redhat requires user-supplied --img)
 if [ -z "$IMG_URL" ]; then
-    IMG_URL=$(get_default_image_url("$TARGET_OS" "$TARGET_VER"))
+    IMG_URL=$(get_default_image_url "$TARGET_OS" "$TARGET_VER")
     if [ -z "$IMG_URL" ] && [ "$TARGET_OS" = "redhat" ]; then
         error "For redhat you must specify image URL with --img"
     fi
