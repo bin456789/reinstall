@@ -7,11 +7,11 @@
 #   - fedora
 #   - redhat
 #
-# 推荐使用方式（你这套 RHEL + ISO 流程）：
+# 推荐使用方式（RHEL + 面板 ISO 流程示意）：
 #   1. 在 RHEL 里根据需求决定目标系统和参数（disk / password / ssh-key / frpc 等）。
 #   2. 到面板 / 管理界面把启动介质切换为某个 ISO（Alpine/Rescue/LiveCD 等）。
 #   3. 在 RHEL 里执行 `reboot`（这一步是手动，不由脚本控制）。
-#   4. 机器从 ISO/Rescue 启动后，下载本脚本并用同样参数运行：
+#   4. 机器从 ISO/Rescue 启动后，下载本脚本并用同样参数运行，例如：
 #        bash reinstall-freebsd-linux.sh freebsd 14 --disk /dev/sda --ssh-key ...
 #      接下来脚本会全自动：下载镜像 → 解压 → qemu-img 转换 → cloud-init → DD → 自动重启。
 #
@@ -748,7 +748,8 @@ if [ "$HOLD" = "1" ]; then
     exit 0
 fi
 
-TMPDIR=$(mktemp -d /tmp/reinstall-cloudinit.XXXXXX)
+TMPDIR
+= $(mktemp -d /tmp/reinstall-cloudinit.XXXXXX)
 trap 'rm -rf "$TMPDIR"' EXIT
 
 IMG_QCOW="$TMPDIR/image.qcow2"
@@ -758,8 +759,8 @@ IMG_RAW="$TMPDIR/image.raw"
 info "Downloading image..."
 http_download "$IMG_URL" "$IMG_QCOW"
 
-# Check if it's xz compressed
-if file "$IMG_QCOW" | grep -qi 'xz compressed'; then
+# Check if it's xz compressed (only if 'file' exists)
+if command -v file >/dev/null 2>&1 && file "$IMG_QCOW" | grep -qi 'xz compressed'; then
     info "Detected xz compressed image, decompressing with dd (progress should be visible even on tty)..."
     mv "$IMG_QCOW" "$IMG_QCOW.xz"
     # 用 dd status=progress 来显示解压进度
@@ -866,7 +867,8 @@ fi
 sleep 2
 
 # Find and mount EFI partition on target disk for NoCloud (best effort)
-EFI_PART=$(find_efi_partition "$DISK")
+EFI_PART
+= $(find_efi_partition "$DISK")
 info "Trying EFI partition on target disk: $EFI_PART"
 
 MNT_EFI="$TMPDIR/efi"
