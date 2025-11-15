@@ -727,10 +727,16 @@ qemu-img convert -p -O raw "$IMG_QCOW" "$IMG_RAW"
 
 echo
 echo "WARNING: dd will be run on $DISK. ALL DATA ON THIS DISK WILL BE LOST!"
-read -r -p "Type 'yes' to continue: " ans
-if [ "$ans" != "yes" ]; then
-    error "Operation cancelled by user."
-fi
+read -r -p "Type 'yes' or 'y' to continue: " ans
+
+case "$ans" in
+    y|Y|yes|YES|Yes)
+        # ok
+        ;;
+    *)
+        error "Operation cancelled by user."
+        ;;
+esac
 
 # 注意：subscription-manager unregister 已经从这里移除，
 # 请在 RHEL 阶段的脚本里（还在 RHEL 根系统时）单独调用。
