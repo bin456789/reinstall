@@ -174,7 +174,6 @@ ensure_dependencies_linux_rhel_like() {
     local need_pkgs=()
 
     if ! command -v qemu-img >/dev/null 2>&1; then
-        # Name is qemu-img on RHEL/Fedora family
         need_pkgs+=("qemu-img")
     fi
     if ! command -v xz >/dev/null 2>&1; then
@@ -186,7 +185,6 @@ ensure_dependencies_linux_rhel_like() {
 
     if [ "${#need_pkgs[@]}" -gt 0 ]; then
         info "Installing missing dependencies with $pm: ${need_pkgs[*]}"
-        # best-effort; if install fails, script will exit due to set -eE
         "$pm" -y install "${need_pkgs[@]}"
     fi
 }
@@ -256,7 +254,6 @@ auto_detect_disk() {
             while read -r name type rm size; do
                 [ "$type" = "disk" ] || continue
                 [ "$rm" = "0" ] || continue
-                # size is in bytes (-b)
                 if [ "$size" -gt "$best_size" ]; then
                     best_size="$size"
                     best_name="$name"
@@ -285,6 +282,44 @@ auto_detect_disk() {
             done
         fi
         error "Unable to auto-detect target disk on FreeBSD. Please specify --disk explicitly."
+    fi
+}
+
+# Show disk partition info at the end (best-effort).
+show_partition_info() {
+    echo
+    echo "---------------- Disk partition layout ----------------"
+    if [ "$OS" = "Linux" ]; then
+        if command -v lsblk >/dev/null 2>&1; then
+            lsblk "$DISK" || true
+        elif command -v fdisk >/dev/null 2>&1; then
+            fdisk -l "$DISK" || true
+        else
+            echo "Could not show partition info (no lsblk/fdisk)."
+        fi
+    else
+        # FreeBSD
+        if command -v gpart >/dev/null 2>&1; then
+            local d="${DISK#/dev/}"
+            gpart show "$d" 2>/dev/null || gpart show "$DISK" 2>/dev/null || echo "Could not show partition info with gpart."
+        else
+            echo "Could not show partition info (no gpart)."
+        fi
+    fi
+    echo "-------------------------------------------------------"
+}
+
+# RHEL-specific hook: run reinstall-fbll.sh freebsd 14 before final summary (if present)
+run_rhel_freebsd_hook() {
+    if [ "$OS" = "Linux" ] && [ -f /etc/redhat-release ]; then
+        if [ -f "./reinstall-fbll.sh" ]; then
+            info "RHEL detected, running: bash reinstall-fbll.sh freebsd 14"
+            if ! bash ./reinstall-fbll.sh freebsd 14; then
+                warn "reinstall-fbll.sh freebsd 14 failed, continuing anyway."
+            fi
+        else
+            warn "RHEL detected, but ./reinstall-fbll.sh not found; skipping RHEL hook."
+        fi
     fi
 }
 
@@ -645,7 +680,7 @@ while [ $# -gt 0 ]; do
 done
 
 detect_os_arch
-ensure_dependencies  # <--- auto install / check qemu-img, xz, curl/wget/fetch
+ensure_dependencies  # auto install / check qemu-img, xz, curl/wget/fetch
 
 # Disk handling: auto-detect if not provided
 if [ -n "$DISK" ]; then
@@ -679,7 +714,7 @@ if [ -z "$PASSWORD" ] && [ -z "$SSH_KEYS_ALL" ]; then
                 error "Failed to generate random password."
             fi
             AUTO_PASSWORD=1
-            info "A random root password will be generated and shown after installation."
+            info "A random root password will be generated and shown in the final summary."
             break
         fi
 
@@ -826,14 +861,43 @@ fi
 
 info "Image write and cloud-init NoCloud injection completed."
 
+# RHEL hook: run reinstall-fbll.sh freebsd 14 if present
+run_rhel_freebsd_hook
+
+# Show partition info
+show_partition_info
+
+# Final summary: username, password/key, SSH port
+FINAL_SSH_PORT="${SSH_PORT:-22}"
+
+echo
+echo "==================== Installation summary ===================="
+echo "Disk device:  $DISK"
+echo "Target OS:    $TARGET_OS ${TARGET_VER:-"(no version)"}"
+echo "Username:     root"
+echo "SSH port:     $FINAL_SSH_PORT"
+
+if [ -n "$PASSWORD" ]; then
+    echo "Root password:"
+    echo "  $PASSWORD"
+else
+    echo "Root password: (not set; SSH key login only)"
+fi
+
+echo "SSH authorized keys:"
+if [ -n "$SSH_KEYS_ALL" ]; then
+    while IFS= read -r k; do
+        [ -n "$k" ] && echo "  $k"
+    done <<<"$SSH_KEYS_ALL"
+else
+    echo "  (none)"
+fi
+
 if [ "$AUTO_PASSWORD" -eq 1 ]; then
     echo
-    echo "========================================================"
-    echo "Generated random root password (keep this safe):"
-    echo "  $PASSWORD"
-    echo "Username: root"
-    echo "========================================================"
+    echo "NOTE: The above root password was auto-generated."
 fi
+echo "=============================================================="
 
 if [ "$HOLD" = "2" ]; then
     info "--hold 2 is set: will NOT reboot automatically. You can inspect or chroot into the new system manually."
