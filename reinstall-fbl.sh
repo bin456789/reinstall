@@ -7,6 +7,14 @@
 #   - fedora
 #   - redhat
 #
+# 推荐使用方式（你这套 RHEL + ISO 流程）：
+#   1. 在 RHEL 里根据需求决定目标系统和参数（disk / password / ssh-key / frpc 等）。
+#   2. 到面板 / 管理界面把启动介质切换为某个 ISO（Alpine/Rescue/LiveCD 等）。
+#   3. 在 RHEL 里执行 `reboot`（这一步是手动，不由脚本控制）。
+#   4. 机器从 ISO/Rescue 启动后，下载本脚本并用同样参数运行：
+#        bash reinstall-freebsd-linux.sh freebsd 14 --disk /dev/sda --ssh-key ...
+#      接下来脚本会全自动：下载镜像 → 解压 → qemu-img 转换 → cloud-init → DD → 自动重启。
+#
 # All target systems use cloud-init to inject:
 #   - root password (--password)
 #   - SSH public key(s) (--ssh-key, multiple)
@@ -82,9 +90,7 @@ Options:
                        and start frpc if available.
 
   --hold 1             Only validate and print planned actions, do not download or write disk.
-                       Useful for connectivity/parameter checks.
-  --hold 2             Perform dd + NoCloud injection but do NOT reboot. Useful to inspect or
-                       chroot into the new system before first boot.
+  --hold 2             Perform dd + NoCloud injection but do NOT reboot.
 
 Password / SSH key behaviour:
   - If you specify one or more --ssh-key, you may omit --password (root login via key only).
@@ -101,13 +107,6 @@ Examples:
   bash $SCRIPT_NAME almalinux 10 --disk /dev/sda --password "P@ssw0rd"
   bash $SCRIPT_NAME fedora 43    --disk /dev/vda --ssh-key https://example.com/id_ed25519.pub
   bash $SCRIPT_NAME redhat       --img "https://access.cdn.redhat.com/...qcow2?...auth..." --disk /dev/sda --ssh-key "ssh-ed25519 AAAA... comment"
-
-Notes:
-  * This script will dd an entire disk. Make sure the auto-detected disk is correct,
-    or override it with --disk explicitly.
-  * On RHEL/Rocky/Alma/Fedora, the script will try to install xz, qemu-img and curl automatically
-    if they are missing.
-  * All target systems use cloud-init NoCloud to inject root password, SSH keys, etc.
 EOF
     exit 1
 }
@@ -733,7 +732,7 @@ fi
 
 # Get default image URL (redhat requires user-supplied --img)
 if [ -z "$IMG_URL" ]; then
-    IMG_URL=$(get_default_image_url("$TARGET_OS" "$TARGET_VER")
+    IMG_URL=$(get_default_image_url "$TARGET_OS" "$TARGET_VER")
     if [ -z "$IMG_URL" ] && [ "$TARGET_OS" = "redhat" ]; then
         error "For redhat you must specify image URL with --img"
     fi
@@ -780,7 +779,7 @@ case "$ans" in
     *) error "Operation cancelled by user." ;;
 esac
 
-# RHEL: unregister subscription BEFORE dd
+# RHEL: unregister subscription BEFORE dd（非必须，ISO 里一般不会触发）
 if [ "$OS" = "Linux" ] && [ -f /etc/redhat-release ] && command -v subscription-manager >/dev/null 2>&1; then
     info "RHEL detected, trying to unregister existing subscription before overwriting disk..."
     if ! subscription-manager unregister; then
@@ -844,7 +843,7 @@ inject_nocloud_into_image() {
     info "Writing NoCloud seed into image EFI:/nocloud/ ..."
     write_nocloud_seed "$TARGET_OS" "$NOCLOUD_DIR_IMG/meta-data" "$NOCLOUD_DIR_IMG/user-data"
 
-    sync
+    sync || true
     umount "$mnt_img" || true
     losetup -d "$loopdev" || true
 }
@@ -854,7 +853,7 @@ inject_nocloud_into_image
 # dd to disk
 info "Writing image to disk with dd, this may take a while..."
 dd if="$IMG_RAW" of="$DISK" bs=4M conv=fsync status=progress
-sync
+sync || true
 info "dd finished."
 
 # Try to refresh partition table (best-effort)
@@ -913,7 +912,7 @@ if [ -n "$EFI_PART" ]; then
     info "Writing NoCloud seed to EFI:/nocloud/ ..."
     write_nocloud_seed "$TARGET_OS" "$NOCLOUD_DIR/meta-data" "$NOCLOUD_DIR/user-data"
 
-    sync
+    sync || true
     umount "$MNT_EFI" || true
 else
     warn "EFI could not be mounted; target system can still boot, but cloud-init configuration may not be applied."
@@ -961,20 +960,8 @@ if [ "$HOLD" = "2" ]; then
     exit 0
 fi
 
-echo
-echo "Reboot into new system now? [Y/n] (auto reboot in 10 seconds if empty)..."
-printf "> "
-read -r -t 10 REBOOT_ANS || REBOOT_ANS=""
-
-case "$REBOOT_ANS" in
-    n|N|no)
-        info "User chose not to reboot automatically. Please reboot manually when ready."
-        exit 0
-        ;;
-    *)
-        info "Rebooting into new system..."
-        ;;
-esac
+# 注意：这里按你的要求，DD 完成后不再交互，直接尝试重启。
+info "Rebooting into new system..."
 
 # 尝试正常 reboot，如果已经被 dd 搞坏就用 sysrq 强制重启
 if command -v systemctl >/dev/null 2>&1; then
