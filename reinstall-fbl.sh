@@ -636,18 +636,21 @@ if [ ! -b "$DISK" ] && [ ! -c "$DISK" ]; then
     error "Target disk $DISK does not exist or is not a block/char device"
 fi
 
-# Password / SSH key behaviour
+# Password / SSH key behaviour:
+# If neither password nor ssh-key specified, ask for password; if still empty, generate random.
 if [ -z "$PASSWORD" ] && [ -z "$SSH_KEYS_ALL" ]; then
     echo "No --password or --ssh-key specified."
     echo "You can set a root password now, or leave empty to auto-generate a random 20-character password."
 
     while :; do
-        read -r -s -p "Enter root password (leave empty to auto-generate): " pw1
+        # 明文输入，方便在 VPS / 串口上看清楚有没有输错
+        read -r -p "Enter root password (leave empty to auto-generate): " pw1
         echo
 
+        # Empty: auto-generate random password, no need to confirm
         if [ -z "$pw1" ]; then
             if command -v tr >/dev/null 2>&1; then
-                # 修正：A-Za-z0n9 -> A-Za-z0-9
+                # 修正: 使用 0-9，而不是之前误写的 0n9
                 PASSWORD=$(LC_ALL=C tr -dc 'A-Za-z0-9' </dev/urandom | head -c 20 || true)
             fi
             if [ -z "$PASSWORD" ]; then
@@ -658,7 +661,8 @@ if [ -z "$PASSWORD" ] && [ -z "$SSH_KEYS_ALL" ]; then
             break
         fi
 
-        read -r -s -p "Confirm root password: " pw2
+        # Non-empty: ask for confirmation, loop until they match
+        read -r -p "Confirm root password: " pw2
         echo
 
         if [ "$pw1" = "$pw2" ]; then
