@@ -373,7 +373,7 @@ Available options:
                 ssh_key_error_and_exit "Windows path is not supported, please copy the key file to local filesystem and use /path/to/public_key"
             fi
             # Inline key or local file
-            if is_valid_ssh_key("$val"); then
+            if is_valid_ssh_key "$val"; then
                 ssh_key="$val"
             else
                 if [ ! -f "$val" ]; then
@@ -746,7 +746,7 @@ fi
 
 # Get default image URL (redhat requires user-supplied --img)
 if [ -z "$IMG_URL" ]; then
-    IMG_URL=$(get_default_image_url("$TARGET_OS" "$TARGET_VER"))
+    IMG_URL=$(get_default_image_url "$TARGET_OS" "$TARGET_VER")
     if [ -z "$IMG_URL" ] && [ "$TARGET_OS" = "redhat" ]; then
         error "For redhat you must specify image URL with --img"
     fi
