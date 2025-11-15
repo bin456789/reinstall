@@ -1,19 +1,11 @@
 #!/usr/bin/env bash
 # reinstall-freebsd-linux.sh
-# Reinstall system on Linux / FreeBSD (推荐在 ISO/Rescue 环境运行) using DD + cloud-init (NoCloud) with:
+# Reinstall system on Linux / FreeBSD using DD + cloud-init (NoCloud) with:
 #   - freebsd
 #   - rocky
 #   - almalinux
 #   - fedora
 #   - redhat
-#
-# 推荐使用方式（RHEL + 面板 ISO 流程示意）：
-#   1. 在 RHEL 里根据需求决定目标系统和参数（disk / password / ssh-key / frpc 等）。
-#   2. 到面板 / 管理界面把启动介质切换为某个 ISO（Alpine/Rescue/LiveCD 等）。
-#   3. 在 RHEL 里执行 `reboot`（这一步是手动，不由脚本控制）。
-#   4. 机器从 ISO/Rescue 启动后，下载本脚本并用同样参数运行，例如：
-#        bash reinstall-freebsd-linux.sh freebsd 14 --disk /dev/sda --ssh-key ...
-#      接下来脚本会全自动：下载镜像 → 解压 → qemu-img 转换 → cloud-init → DD → 自动重启。
 #
 # All target systems use cloud-init to inject:
 #   - root password (--password)
@@ -24,7 +16,7 @@
 # Requirements:
 #   - Run with bash:  bash reinstall-freebsd-linux.sh ...
 #   - Needs dd, xz, qemu-img, mount, and curl or wget or fetch
-#   - On Linux (RHEL/Rocky/Alma/Fedora) this script will try to install missing deps automatically.
+#   - This script is typically run in ISO/Rescue environment, not in the original RHEL.
 
 set -eE
 
@@ -46,11 +38,11 @@ info() {
 usage() {
     cat <<EOF
 Usage:
-  $SCRIPT_NAME freebsd    14   [--disk /dev/sdX] [options...]
-  $SCRIPT_NAME rocky      10   [--disk /dev/sdX] [options...]
-  $SCRIPT_NAME almalinux  10   [--disk /dev/sdX] [options...]
-  $SCRIPT_NAME fedora     43   [--disk /dev/sdX] [options...]
-  $SCRIPT_NAME redhat          [--disk /dev/sdX] --img URL [options...]
+  $SCRIPT_NAME freebsd   14   [--disk /dev/sdX] [options...]
+  $SCRIPT_NAME rocky     10   [--disk /dev/sdX] [options...]
+  $SCRIPT_NAME almalinux 10   [--disk /dev/sdX] [options...]
+  $SCRIPT_NAME fedora    43   [--disk /dev/sdX] [options...]
+  $SCRIPT_NAME redhat         [--disk /dev/sdX] --img URL [options...]
 
 If --disk is not specified, the script will try to auto-detect the main disk:
   - On Linux, picks the largest non-removable disk from lsblk.
@@ -90,7 +82,9 @@ Options:
                        and start frpc if available.
 
   --hold 1             Only validate and print planned actions, do not download or write disk.
-  --hold 2             Perform dd + NoCloud injection but do NOT reboot.
+                       Useful for connectivity/parameter checks.
+  --hold 2             Perform dd + NoCloud injection but do NOT reboot. Useful to inspect or
+                       chroot into the new system before first boot.
 
 Password / SSH key behaviour:
   - If you specify one or more --ssh-key, you may omit --password (root login via key only).
@@ -107,6 +101,11 @@ Examples:
   bash $SCRIPT_NAME almalinux 10 --disk /dev/sda --password "P@ssw0rd"
   bash $SCRIPT_NAME fedora 43    --disk /dev/vda --ssh-key https://example.com/id_ed25519.pub
   bash $SCRIPT_NAME redhat       --img "https://access.cdn.redhat.com/...qcow2?...auth..." --disk /dev/sda --ssh-key "ssh-ed25519 AAAA... comment"
+
+Notes:
+  * This script will dd an entire disk. Make sure the auto-detected disk is correct,
+    or override it with --disk explicitly.
+  * All target systems use cloud-init NoCloud to inject root password, SSH keys, etc.
 EOF
     exit 1
 }
@@ -151,45 +150,9 @@ detect_os_arch() {
     esac
 }
 
-ensure_dependencies_linux_rhel_like() {
-    # Only called on Linux with /etc/redhat-release present.
-    if [ "$(id -u)" -ne 0 ]; then
-        warn "Running as non-root; cannot auto-install dependencies. Please run as root if you want auto-install."
-        return
-    fi
-
-    local pm=
-    if command -v dnf >/dev/null 2>&1; then
-        pm="dnf"
-    elif command -v yum >/dev/null 2>&1; then
-        pm="yum"
-    fi
-
-    if [ -z "$pm" ]; then
-        warn "Could not find dnf/yum on a Red Hat like system; please install dependencies manually."
-        return
-    fi
-
-    local need_pkgs=()
-
-    if ! command -v qemu-img >/dev/null 2>&1; then
-        need_pkgs+=("qemu-img")
-    fi
-    if ! command -v xz >/dev/null 2>&1; then
-        need_pkgs+=("xz")
-    fi
-    if ! command -v curl >/dev/null 2>&1 && ! command -v wget >/dev/null 2>&1 && ! command -v fetch >/dev/null 2>&1; then
-        need_pkgs+=("curl")
-    fi
-
-    if [ "${#need_pkgs[@]}" -gt 0 ]; then
-        info "Installing missing dependencies with $pm: ${need_pkgs[*]}"
-        "$pm" -y install "${need_pkgs[@]}"
-    fi
-}
+# -------- dependencies (不再区分 RHEL / 非 RHEL，统一只检查，不自动安装) --------
 
 ensure_dependencies_linux_generic() {
-    # For non-Red-Hat Linux, just check and error with a clear message.
     local missing=()
 
     if ! command -v qemu-img >/dev/null 2>&1; then
@@ -209,8 +172,6 @@ Please install them manually with your package manager (e.g. apt, zypper, pacman
 }
 
 ensure_dependencies_freebsd() {
-    # Placeholder for future automation.
-    # For now just check and give a hint.
     local missing=()
 
     if ! command -v qemu-img >/dev/null 2>&1; then
@@ -232,24 +193,20 @@ Hint: you can install them with:
 
 ensure_dependencies() {
     if [ "$OS" = "Linux" ]; then
-        if [ -f /etc/redhat-release ]; then
-            ensure_dependencies_linux_rhel_like
-        else
-            ensure_dependencies_linux_generic
-        fi
+        ensure_dependencies_linux_generic
     elif [ "$OS" = "FreeBSD" ]; then
         ensure_dependencies_freebsd
     fi
 }
 
+# --------------------------------------------------------------------
+
 auto_detect_disk() {
-    # Only called when DISK is empty.
     info "Auto-detecting target disk..."
 
     if [[ "$OS" == "Linux" ]]; then
         if command -v lsblk >/dev/null 2>&1; then
             local best_name="" best_size=0
-            # NAME TYPE RM SIZE(bytes)
             while read -r name type rm size; do
                 [ "$type" = "disk" ] || continue
                 [ "$rm" = "0" ] || continue
@@ -267,7 +224,6 @@ auto_detect_disk() {
         fi
         error "Unable to auto-detect target disk on Linux. Please specify --disk explicitly."
     else
-        # FreeBSD
         if command -v sysctl >/dev/null 2>&1; then
             local disks
             disks=$(sysctl -n kern.disks 2>/dev/null || true)
@@ -284,7 +240,6 @@ auto_detect_disk() {
     fi
 }
 
-# Show disk partition info at the end (best-effort).
 show_partition_info() {
     echo
     echo "---------------- Disk partition layout ----------------"
@@ -297,7 +252,6 @@ show_partition_info() {
             echo "Could not show partition info (no lsblk/fdisk)."
         fi
     else
-        # FreeBSD
         if command -v gpart >/dev/null 2>&1; then
             local d="${DISK#/dev/}"
             gpart show "$d" 2>/dev/null || gpart show "$DISK" 2>/dev/null || echo "Could not show partition info with gpart."
@@ -306,6 +260,20 @@ show_partition_info() {
         fi
     fi
     echo "-------------------------------------------------------"
+}
+
+# 保留 RHEL hook（可选），只是执行另外一个脚本，与依赖无关
+run_rhel_freebsd_hook() {
+    if [ "$OS" = "Linux" ] && [ -f /etc/redhat-release ]; then
+        if [ -f "./reinstall-fbll.sh" ]; then
+            info "RHEL detected, running: bash reinstall-fbll.sh freebsd 14"
+            if ! bash ./reinstall-fbll.sh freebsd 14; then
+                warn "reinstall-fbll.sh freebsd 14 failed, continuing anyway."
+            fi
+        else
+            warn "RHEL detected, but ./reinstall-fbll.sh not found; skipping RHEL hook."
+        fi
+    fi
 }
 
 # Parse ssh-key: supports inline / URL / github / gitlab / file
@@ -353,11 +321,9 @@ Available options:
             [ -n "$ssh_key" ] || ssh_key_error_and_exit "No valid SSH key found in $key_url"
             ;;
         *)
-            # Reject Windows-style paths explicitly
             if [[ "$val" =~ ^[A-Za-z]:\\ ]]; then
                 ssh_key_error_and_exit "Windows path is not supported, please copy the key file to local filesystem and use /path/to/public_key"
             fi
-            # Inline key or local file
             if is_valid_ssh_key "$val"; then
                 ssh_key="$val"
             else
@@ -373,7 +339,6 @@ Available options:
     echo "$ssh_key"
 }
 
-# Choose default image URL based on target OS, version, and host arch
 get_default_image_url() {
     local os="$1" ver="$2"
 
@@ -456,7 +421,6 @@ get_default_image_url() {
             esac
             ;;
         redhat)
-            # Red Hat image must be supplied by user via --img
             echo ""
             ;;
         *)
@@ -466,14 +430,12 @@ get_default_image_url() {
 }
 
 find_efi_partition() {
-    # Guess EFI partition name from disk path (p1 vs 1)
     local disk="$1" part
     case "$disk" in
         */nvme*|*/*nvd*)
             part="${disk}p1"
             ;;
         *)
-            # /dev/sda /dev/vda /dev/ada0 etc.
             if [[ "$(uname -s)" == "FreeBSD" ]]; then
                 part="${disk}p1"
             else
@@ -489,13 +451,11 @@ write_nocloud_seed() {
 
     mkdir -p "$(dirname "$meta_path")"
 
-    # meta-data
     cat >"$meta_path" <<EOF
 instance-id: iid-$(date +%s)
 local-hostname: $os
 EOF
 
-    # user-data (cloud-config)
     {
         echo "#cloud-config"
 
@@ -518,7 +478,6 @@ EOF
             done <<<"$SSH_KEYS_ALL"
         fi
 
-        # Example of writing web-port to a file for later use
         if [ -n "$WEB_PORT" ]; then
             cat <<EOF
 
@@ -531,7 +490,6 @@ write_files:
 EOF
         fi
 
-        # runcmd: change SSH port + optional FRPC
         if [ -n "$SSH_PORT" ] || [ -n "$FRPC_PRESENT" ]; then
             echo
             echo "runcmd:"
@@ -584,7 +542,6 @@ FRPC_PRESENT=""
 HOLD="0"
 AUTO_PASSWORD=0
 
-# If the next positional arg is numeric, treat it as version for specific OSes.
 if [ $# -gt 0 ] && [[ "$1" =~ ^[0-9]+$ ]]; then
     case "$TARGET_OS" in
         freebsd|rocky|almalinux|fedora)
@@ -665,9 +622,8 @@ while [ $# -gt 0 ]; do
 done
 
 detect_os_arch
-ensure_dependencies  # auto install / check qemu-img, xz, curl/wget/fetch
+ensure_dependencies  # no auto-install, just verify deps
 
-# Disk handling: auto-detect if not provided
 if [ -n "$DISK" ]; then
     if [[ "$DISK" != /dev/* ]]; then
         DISK="/dev/$DISK"
@@ -680,20 +636,18 @@ if [ ! -b "$DISK" ] && [ ! -c "$DISK" ]; then
     error "Target disk $DISK does not exist or is not a block/char device"
 fi
 
-# Password / SSH key behaviour:
-# If neither password nor ssh-key specified, ask for password; if still empty, generate random.
+# Password / SSH key behaviour
 if [ -z "$PASSWORD" ] && [ -z "$SSH_KEYS_ALL" ]; then
     echo "No --password or --ssh-key specified."
     echo "You can set a root password now, or leave empty to auto-generate a random 20-character password."
 
     while :; do
-        # 不再隐藏密码输入，方便排错
-        read -r -p "Enter root password (leave empty to auto-generate): " pw1
+        read -r -s -p "Enter root password (leave empty to auto-generate): " pw1
         echo
 
-        # Empty: auto-generate random password, no need to confirm
         if [ -z "$pw1" ]; then
             if command -v tr >/dev/null 2>&1; then
+                # 修正：A-Za-z0n9 -> A-Za-z0-9
                 PASSWORD=$(LC_ALL=C tr -dc 'A-Za-z0-9' </dev/urandom | head -c 20 || true)
             fi
             if [ -z "$PASSWORD" ]; then
@@ -704,8 +658,7 @@ if [ -z "$PASSWORD" ] && [ -z "$SSH_KEYS_ALL" ]; then
             break
         fi
 
-        # Non-empty: ask for confirmation, loop until they match
-        read -r -p "Confirm root password: " pw2
+        read -r -s -p "Confirm root password: " pw2
         echo
 
         if [ "$pw1" = "$pw2" ]; then
@@ -718,19 +671,17 @@ if [ -z "$PASSWORD" ] && [ -z "$SSH_KEYS_ALL" ]; then
     done
 fi
 
-# Default versions
 if [ -z "$TARGET_VER" ]; then
     case "$TARGET_OS" in
         freebsd)   TARGET_VER="14" ;;
         rocky)     TARGET_VER="10" ;;
         almalinux) TARGET_VER="10" ;;
         fedora)    TARGET_VER="43" ;;
-        redhat)    TARGET_VER="" ;; # user must provide image
+        redhat)    TARGET_VER="" ;;
         *)         ;;
     esac
 fi
 
-# Get default image URL (redhat requires user-supplied --img)
 if [ -z "$IMG_URL" ]; then
     IMG_URL=$(get_default_image_url "$TARGET_OS" "$TARGET_VER")
     if [ -z "$IMG_URL" ] && [ "$TARGET_OS" = "redhat" ]; then
@@ -748,116 +699,43 @@ if [ "$HOLD" = "1" ]; then
     exit 0
 fi
 
-TMPDIR
-= $(mktemp -d /tmp/reinstall-cloudinit.XXXXXX)
+TMPDIR=$(mktemp -d /tmp/reinstall-cloudinit.XXXXXX)
 trap 'rm -rf "$TMPDIR"' EXIT
 
 IMG_QCOW="$TMPDIR/image.qcow2"
 IMG_RAW="$TMPDIR/image.raw"
 
-# Download image
 info "Downloading image..."
 http_download "$IMG_URL" "$IMG_QCOW"
 
-# Check if it's xz compressed (only if 'file' exists)
-if command -v file >/dev/null 2>&1 && file "$IMG_QCOW" | grep -qi 'xz compressed'; then
-    info "Detected xz compressed image, decompressing with dd (progress should be visible even on tty)..."
+if file "$IMG_QCOW" | grep -qi 'xz compressed'; then
+    info "Detected xz compressed image, decompressing (progress may be shown)..."
     mv "$IMG_QCOW" "$IMG_QCOW.xz"
-    # 用 dd status=progress 来显示解压进度
-    xz -dc "$IMG_QCOW.xz" | dd of="$IMG_QCOW" bs=4M status=progress
+    if command -v pv >/dev/null 2>&1; then
+        xz -dc "$IMG_QCOW.xz" | pv >"$IMG_QCOW"
+    else
+        xz -dc "$IMG_QCOW.xz" >"$IMG_QCOW"
+    fi
 fi
 
-# Convert to raw using qemu-img (with progress)
 info "Converting qcow2 to raw with qemu-img (with progress)..."
 qemu-img convert -p -O raw "$IMG_QCOW" "$IMG_RAW"
 
-# Final confirmation
 echo
 echo "WARNING: dd will be run on $DISK. ALL DATA ON THIS DISK WILL BE LOST!"
-read -r -p "Type 'yes' or 'y' to continue: " ans
-case "$ans" in
-    yes|y|Y) ;;
-    *) error "Operation cancelled by user." ;;
-esac
-
-# RHEL: unregister subscription BEFORE dd（非必须，ISO 里一般不会触发）
-if [ "$OS" = "Linux" ] && [ -f /etc/redhat-release ] && command -v subscription-manager >/dev/null 2>&1; then
-    info "RHEL detected, trying to unregister existing subscription before overwriting disk..."
-    if ! subscription-manager unregister; then
-        warn "subscription-manager unregister failed, continuing anyway."
-    fi
+read -r -p "Type 'yes' to continue: " ans
+if [ "$ans" != "yes" ]; then
+    error "Operation cancelled by user."
 fi
 
-# Try to inject NoCloud into image EFI (best effort)
-inject_nocloud_into_image() {
-    if [ "$OS" != "Linux" ]; then
-        return 0
-    fi
-    if ! command -v losetup >/dev/null 2>&1; then
-        warn "losetup not found, skipping NoCloud injection into image."
-        return 0
-    fi
+# 注意：subscription-manager unregister 已经从这里移除，
+# 请在 RHEL 阶段的脚本里（还在 RHEL 根系统时）单独调用。
 
-    info "Mounting raw image and injecting NoCloud seed into its EFI (before dd)..."
-    local loopdev=
-    loopdev=$(losetup --find --show "$IMG_RAW") || {
-        warn "Failed to create loop device for image, skipping NoCloud injection."
-        return 0
-    }
-
-    # Try reread partition
-    partprobe "$loopdev" 2>/dev/null || true
-
-    local efi_part="${loopdev}p1"
-    local mnt_img="$TMPDIR/img-efi"
-    mkdir -p "$mnt_img"
-
-    if ! mount "$efi_part" "$mnt_img" 2>/dev/null; then
-        if ! mount -t vfat "$efi_part" "$mnt_img" 2>/dev/null && ! mount -t msdos "$efi_part" "$mnt_img" 2>/dev/null; then
-            warn "Failed to mount image EFI partition $efi_part; skipping NoCloud injection."
-            losetup -d "$loopdev" || true
-            return 0
-        fi
-    fi
-
-    local NOCLOUD_DIR_IMG="$mnt_img/nocloud"
-    mkdir -p "$NOCLOUD_DIR_IMG"
-
-    # FRPC
-    if [ -n "$FRPC_TOML" ]; then
-        FRPC_PRESENT=1
-        if [[ "$FRPC_TOML" =~ ^https?:// ]]; then
-            info "Downloading FRPC config for image: $FRPC_TOML"
-            if ! http_download "$FRPC_TOML" "$NOCLOUD_DIR_IMG/frpc.toml"; then
-                warn "Failed to download FRPC config for image, ignoring"
-                FRPC_PRESENT=""
-            fi
-        elif [ -f "$FRPC_TOML" ]; then
-            info "Copying FRPC config for image from: $FRPC_TOML"
-            cp "$FRPC_TOML" "$NOCLOUD_DIR_IMG/frpc.toml"
-        else
-            warn "Invalid FRPC config path: $FRPC_TOML, ignoring"
-            FRPC_PRESENT=""
-        fi
-    fi
-
-    info "Writing NoCloud seed into image EFI:/nocloud/ ..."
-    write_nocloud_seed "$TARGET_OS" "$NOCLOUD_DIR_IMG/meta-data" "$NOCLOUD_DIR_IMG/user-data"
-
-    sync || true
-    umount "$mnt_img" || true
-    losetup -d "$loopdev" || true
-}
-
-inject_nocloud_into_image
-
-# dd to disk
 info "Writing image to disk with dd, this may take a while..."
 dd if="$IMG_RAW" of="$DISK" bs=4M conv=fsync status=progress
-sync || true
+sync
 info "dd finished."
 
-# Try to refresh partition table (best-effort)
 if command -v partprobe >/dev/null 2>&1; then
     partprobe "$DISK" || true
 elif command -v blockdev >/dev/null 2>&1; then
@@ -866,10 +744,8 @@ fi
 
 sleep 2
 
-# Find and mount EFI partition on target disk for NoCloud (best effort)
-EFI_PART
-= $(find_efi_partition "$DISK")
-info "Trying EFI partition on target disk: $EFI_PART"
+EFI_PART=$(find_efi_partition "$DISK")
+info "Trying EFI partition: $EFI_PART"
 
 MNT_EFI="$TMPDIR/efi"
 mkdir -p "$MNT_EFI"
@@ -881,7 +757,6 @@ if [[ "$OS" == "FreeBSD" ]]; then
     fi
 else
     if ! mount "$EFI_PART" "$MNT_EFI" 2>/dev/null; then
-        # Some systems require explicit vfat
         if ! mount -t vfat "$EFI_PART" "$MNT_EFI" 2>/dev/null && ! mount -t msdos "$EFI_PART" "$MNT_EFI" 2>/dev/null; then
             warn "Failed to mount EFI partition $EFI_PART, skipping cloud-init NoCloud injection."
             EFI_PART=""
@@ -893,7 +768,6 @@ if [ -n "$EFI_PART" ]; then
     NOCLOUD_DIR="$MNT_EFI/nocloud"
     mkdir -p "$NOCLOUD_DIR"
 
-    # Handle FRPC config if present
     if [ -n "$FRPC_TOML" ]; then
         FRPC_PRESENT=1
         if [[ "$FRPC_TOML" =~ ^https?:// ]]; then
@@ -914,7 +788,7 @@ if [ -n "$EFI_PART" ]; then
     info "Writing NoCloud seed to EFI:/nocloud/ ..."
     write_nocloud_seed "$TARGET_OS" "$NOCLOUD_DIR/meta-data" "$NOCLOUD_DIR/user-data"
 
-    sync || true
+    sync
     umount "$MNT_EFI" || true
 else
     warn "EFI could not be mounted; target system can still boot, but cloud-init configuration may not be applied."
@@ -922,10 +796,10 @@ fi
 
 info "Image write and cloud-init NoCloud injection completed."
 
-# Show partition info
+run_rhel_freebsd_hook
+
 show_partition_info
 
-# Final summary: username, password/key, SSH port
 FINAL_SSH_PORT="${SSH_PORT:-22}"
 
 echo
@@ -962,25 +836,12 @@ if [ "$HOLD" = "2" ]; then
     exit 0
 fi
 
-# 注意：这里按你的要求，DD 完成后不再交互，直接尝试重启。
-info "Rebooting into new system..."
-
-# 尝试正常 reboot，如果已经被 dd 搞坏就用 sysrq 强制重启
-if command -v systemctl >/dev/null 2>&1; then
-    systemctl reboot || true
+echo
+echo "You can now reboot into the new system, for example:"
+if [ "$OS" = "FreeBSD" ]; then
+    echo "  shutdown -r now"
+else
+    echo "  reboot"
 fi
-
-if command -v reboot >/dev/null 2>&1; then
-    reboot || true
-fi
-
-# 最后兜底：sysrq 强制重启（内核级别，不依赖 systemd/用户空间）
-if [ -w /proc/sysrq-trigger ]; then
-    echo 1 > /proc/sys/kernel/sysrq 2>/dev/null || true
-    echo b > /proc/sysrq-trigger
-fi
-
-# 如果到这里还没重启，只能让用户手动在面板上重启
-warn "Automatic reboot failed. Please use your provider's control panel to power cycle the VM."
 
 exit 0
