@@ -373,7 +373,7 @@ Available options:
                 ssh_key_error_and_exit "Windows path is not supported, please copy the key file to local filesystem and use /path/to/public_key"
             fi
             # Inline key or local file
-            if is_valid_ssh_key "$val"; then
+            if is_valid_ssh_key("$val"); then
                 ssh_key="$val"
             else
                 if [ ! -f "$val" ]; then
@@ -702,7 +702,7 @@ if [ -z "$PASSWORD" ] && [ -z "$SSH_KEYS_ALL" ]; then
     echo "You can set a root password now, or leave empty to auto-generate a random 20-character password."
 
     while :; do
-        read -r -s -p "Enter root password (leave empty to auto-generate): " pw1
+        read -r -p "Enter root password (leave empty to auto-generate): " pw1
         echo
 
         # Empty: auto-generate random password, no need to confirm
@@ -719,7 +719,7 @@ if [ -z "$PASSWORD" ] && [ -z "$SSH_KEYS_ALL" ]; then
         fi
 
         # Non-empty: ask for confirmation, loop until they match
-        read -r -s -p "Confirm root password: " pw2
+        read -r -p "Confirm root password: " pw2
         echo
 
         if [ "$pw1" = "$pw2" ]; then
@@ -746,7 +746,7 @@ fi
 
 # Get default image URL (redhat requires user-supplied --img)
 if [ -z "$IMG_URL" ]; then
-    IMG_URL=$(get_default_image_url "$TARGET_OS" "$TARGET_VER")
+    IMG_URL=$(get_default_image_url("$TARGET_OS" "$TARGET_VER"))
     if [ -z "$IMG_URL" ] && [ "$TARGET_OS" = "redhat" ]; then
         error "For redhat you must specify image URL with --img"
     fi
