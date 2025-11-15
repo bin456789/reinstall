@@ -16,6 +16,7 @@
 # Requirements:
 #   - Run with bash:  bash reinstall-freebsd-linux.sh ...
 #   - Needs dd, xz, qemu-img, mount, and curl or wget or fetch
+#   - On Linux (RHEL/Rocky/Alma/Fedora) this script will try to install missing deps automatically.
 
 set -eE
 
@@ -104,6 +105,8 @@ Examples:
 Notes:
   * This script will dd an entire disk. Make sure the auto-detected disk is correct,
     or override it with --disk explicitly.
+  * On RHEL/Rocky/Alma/Fedora, the script will try to install xz, qemu-img and curl automatically
+    if they are missing.
   * All target systems use cloud-init NoCloud to inject root password, SSH keys, etc.
 EOF
     exit 1
@@ -147,6 +150,99 @@ detect_os_arch() {
             MACHINE_ARCH="$ARCH"
             ;;
     esac
+}
+
+ensure_dependencies_linux_rhel_like() {
+    # Only called on Linux with /etc/redhat-release present.
+    if [ "$(id -u)" -ne 0 ]; then
+        warn "Running as non-root; cannot auto-install dependencies. Please run as root if you want auto-install."
+        return
+    fi
+
+    local pm=
+    if command -v dnf >/dev/null 2>&1; then
+        pm="dnf"
+    elif command -v yum >/dev/null 2>&1; then
+        pm="yum"
+    fi
+
+    if [ -z "$pm" ]; then
+        warn "Could not find dnf/yum on a Red Hat like system; please install dependencies manually."
+        return
+    fi
+
+    local need_pkgs=()
+
+    if ! command -v qemu-img >/dev/null 2>&1; then
+        # Name is qemu-img on RHEL/Fedora family
+        need_pkgs+=("qemu-img")
+    fi
+    if ! command -v xz >/dev/null 2>&1; then
+        need_pkgs+=("xz")
+    fi
+    if ! command -v curl >/dev/null 2>&1 && ! command -v wget >/dev/null 2>&1 && ! command -v fetch >/dev/null 2>&1; then
+        need_pkgs+=("curl")
+    fi
+
+    if [ "${#need_pkgs[@]}" -gt 0 ]; then
+        info "Installing missing dependencies with $pm: ${need_pkgs[*]}"
+        # best-effort; if install fails, script will exit due to set -eE
+        "$pm" -y install "${need_pkgs[@]}"
+    fi
+}
+
+ensure_dependencies_linux_generic() {
+    # For non-Red-Hat Linux, just check and error with a clear message.
+    local missing=()
+
+    if ! command -v qemu-img >/dev/null 2>&1; then
+        missing+=("qemu-img")
+    fi
+    if ! command -v xz >/dev/null 2>&1; then
+        missing+=("xz")
+    fi
+    if ! command -v curl >/dev/null 2>&1 && ! command -v wget >/dev/null 2>&1 && ! command -v fetch >/dev/null 2>&1; then
+        missing+=("curl/wget/fetch")
+    fi
+
+    if [ "${#missing[@]}" -gt 0 ]; then
+        error "Missing dependencies on Linux: ${missing[*]}
+Please install them manually with your package manager (e.g. apt, zypper, pacman) and rerun this script."
+    fi
+}
+
+ensure_dependencies_freebsd() {
+    # Placeholder for future automation.
+    # For now just check and give a hint.
+    local missing=()
+
+    if ! command -v qemu-img >/dev/null 2>&1; then
+        missing+=("qemu-img (qemu-tools)")
+    fi
+    if ! command -v xz >/dev/null 2>&1; then
+        missing+=("xz")
+    fi
+    if ! command -v curl >/dev/null 2>&1 && ! command -v wget >/dev/null 2>&1 && ! command -v fetch >/dev/null 2>&1; then
+        missing+=("curl/wget/fetch")
+    fi
+
+    if [ "${#missing[@]}" -gt 0 ]; then
+        error "Missing dependencies on FreeBSD: ${missing[*]}
+Hint: you can install them with:
+  pkg install qemu-tools xz curl"
+    fi
+}
+
+ensure_dependencies() {
+    if [ "$OS" = "Linux" ]; then
+        if [ -f /etc/redhat-release ]; then
+            ensure_dependencies_linux_rhel_like
+        else
+            ensure_dependencies_linux_generic
+        fi
+    elif [ "$OS" = "FreeBSD" ]; then
+        ensure_dependencies_freebsd
+    fi
 }
 
 auto_detect_disk() {
@@ -549,6 +645,7 @@ while [ $# -gt 0 ]; do
 done
 
 detect_os_arch
+ensure_dependencies  # <--- auto install / check qemu-img, xz, curl/wget/fetch
 
 # Disk handling: auto-detect if not provided
 if [ -n "$DISK" ]; then
@@ -631,19 +728,12 @@ http_download "$IMG_URL" "$IMG_QCOW"
 # Check if it's xz compressed
 if file "$IMG_QCOW" | grep -qi 'xz compressed'; then
     info "Detected xz compressed image, decompressing..."
-    if ! command -v xz >/dev/null 2>&1; then
-        error "xz not found, please install xz-utils / xz"
-    fi
     mv "$IMG_QCOW" "$IMG_QCOW.xz"
     xz -dc "$IMG_QCOW.xz" >"$IMG_QCOW"
 fi
 
 # Convert to raw using qemu-img
 info "Converting qcow2 to raw with qemu-img..."
-if ! command -v qemu-img >/dev/null 2>&1; then
-    error "qemu-img not found; install qemu-img (Linux) or qemu-tools (FreeBSD) first"
-fi
-
 qemu-img convert -O raw "$IMG_QCOW" "$IMG_RAW"
 
 # Final confirmation
