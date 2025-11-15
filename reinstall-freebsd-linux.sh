@@ -37,11 +37,15 @@ info() {
 usage() {
     cat <<EOF
 Usage:
-  $SCRIPT_NAME freebsd   14   --disk /dev/sdX [options...]
-  $SCRIPT_NAME rocky     10   --disk /dev/sdX [options...]
-  $SCRIPT_NAME almalinux 10   --disk /dev/sdX [options...]
-  $SCRIPT_NAME fedora    43   --disk /dev/sdX [options...]
-  $SCRIPT_NAME redhat         --disk /dev/sdX --img URL [options...]
+  $SCRIPT_NAME freebsd   14   [--disk /dev/sdX] [options...]
+  $SCRIPT_NAME rocky     10   [--disk /dev/sdX] [options...]
+  $SCRIPT_NAME almalinux 10   [--disk /dev/sdX] [options...]
+  $SCRIPT_NAME fedora    43   [--disk /dev/sdX] [options...]
+  $SCRIPT_NAME redhat         [--disk /dev/sdX] --img URL [options...]
+
+If --disk is not specified, the script will try to auto-detect the main disk:
+  - On Linux, picks the largest non-removable disk from lsblk.
+  - On FreeBSD, picks the first non-cd disk from kern.disks.
 
 Options:
   --disk DISK          Target disk, e.g. /dev/sda, /dev/vda, /dev/nvme0n1, /dev/ada0
@@ -50,8 +54,8 @@ Options:
   --img URL            Override default image URL (redhat requires this).
                        Supports http:// and https://
 
-  --password PASSWORD  Set root password. When using --ssh-key only, password can be empty
-                       (SSH key login only).
+  --password PASSWORD  Set root password.
+                       When using --ssh-key only, password can be empty (SSH key login only).
 
   --ssh-key KEY        Set SSH public key, can be specified multiple times. Supported forms:
                          --ssh-key "ssh-rsa AAAA... comment"
@@ -65,7 +69,7 @@ Options:
                          --ssh-key C:\\path\\to\\public_key   (not supported directly, copy to local file first)
 
   --ssh-port PORT      Change SSH port in the new system. cloud-init will try to modify
-                       sshd_config and restart sshd.
+                       sshd_config and restart sshd. Default is 22 if not specified.
 
   --web-port PORT      Reserved for web log port. This script only writes it into cloud-init,
                        you can consume it later from within the system.
@@ -81,6 +85,15 @@ Options:
   --hold 2             Perform dd + NoCloud injection but do NOT reboot. Useful to inspect or
                        chroot into the new system before first boot.
 
+Password / SSH key behaviour:
+  - If you specify one or more --ssh-key, you may omit --password (root login via key only).
+  - If you specify --password, you may omit --ssh-key.
+  - If you specify neither password nor ssh-key:
+      * The script will prompt for a root password.
+      * If you leave it empty, a random 20-character password (A–Z, a–z, 0–9) will be generated.
+      * The generated password will be printed before reboot.
+  - Username is always: root
+
 Examples:
   bash $SCRIPT_NAME freebsd 14   --disk /dev/sda --ssh-key "ssh-ed25519 AAAA... comment"
   bash $SCRIPT_NAME rocky 10     --disk /dev/sda --ssh-key github:your_name
@@ -89,7 +102,8 @@ Examples:
   bash $SCRIPT_NAME redhat       --img "https://access.cdn.redhat.com/...qcow2?...auth..." --disk /dev/sda --ssh-key "ssh-ed25519 AAAA... comment"
 
 Notes:
-  * This script will dd an entire disk. Make sure --disk is correct!
+  * This script will dd an entire disk. Make sure the auto-detected disk is correct,
+    or override it with --disk explicitly.
   * All target systems use cloud-init NoCloud to inject root password, SSH keys, etc.
 EOF
     exit 1
@@ -133,6 +147,49 @@ detect_os_arch() {
             MACHINE_ARCH="$ARCH"
             ;;
     esac
+}
+
+auto_detect_disk() {
+    # Only called when DISK is empty.
+    info "Auto-detecting target disk..."
+
+    if [[ "$OS" == "Linux" ]]; then
+        if command -v lsblk >/dev/null 2>&1; then
+            local best_name="" best_size=0
+            # NAME TYPE RM SIZE(bytes)
+            while read -r name type rm size; do
+                [ "$type" = "disk" ] || continue
+                [ "$rm" = "0" ] || continue
+                # size is in bytes (-b)
+                if [ "$size" -gt "$best_size" ]; then
+                    best_size="$size"
+                    best_name="$name"
+                fi
+            done < <(lsblk -b -ndo NAME,TYPE,RM,SIZE 2>/dev/null || true)
+
+            if [ -n "$best_name" ]; then
+                DISK="/dev/$best_name"
+                info "Auto-detected disk: $DISK (largest non-removable disk)"
+                return 0
+            fi
+        fi
+        error "Unable to auto-detect target disk on Linux. Please specify --disk explicitly."
+    else
+        # FreeBSD
+        if command -v sysctl >/dev/null 2>&1; then
+            local disks
+            disks=$(sysctl -n kern.disks 2>/dev/null || true)
+            for d in $disks; do
+                case "$d" in
+                    cd*|md*|lo*|ram*) continue ;;
+                esac
+                DISK="/dev/$d"
+                info "Auto-detected disk: $DISK (from kern.disks)"
+                return 0
+            done
+        fi
+        error "Unable to auto-detect target disk on FreeBSD. Please specify --disk explicitly."
+    fi
 }
 
 # Parse ssh-key: supports inline / URL / github / gitlab / file
@@ -409,6 +466,7 @@ WEB_PORT=""
 FRPC_TOML=""
 FRPC_PRESENT=""
 HOLD="0"
+AUTO_PASSWORD=0
 
 # If the next positional arg is numeric, treat it as version for specific OSes.
 if [ $# -gt 0 ] && [[ "$1" =~ ^[0-9]+$ ]]; then
@@ -418,7 +476,7 @@ if [ $# -gt 0 ] && [[ "$1" =~ ^[0-9]+$ ]]; then
             shift
             ;;
         redhat)
-            error "Do not specify a version for redhat. Use: $SCRIPT_NAME redhat --img URL --disk /dev/XXX ..."
+            error "Do not specify a version for redhat. Use: $SCRIPT_NAME redhat --img URL [--disk /dev/XXX] ..."
             ;;
         *)
             ;;
@@ -490,18 +548,45 @@ while [ $# -gt 0 ]; do
     shift || true
 done
 
-[ -n "$DISK" ] || error "You must specify --disk, e.g. --disk /dev/sda or --disk /dev/ada0"
+detect_os_arch
 
-# Normalize disk path
-if [[ "$DISK" != /dev/* ]]; then
-    DISK="/dev/$DISK"
+# Disk handling: auto-detect if not provided
+if [ -n "$DISK" ]; then
+    if [[ "$DISK" != /dev/* ]]; then
+        DISK="/dev/$DISK"
+    fi
+else
+    auto_detect_disk
 fi
 
 if [ ! -b "$DISK" ] && [ ! -c "$DISK" ]; then
     error "Target disk $DISK does not exist or is not a block/char device"
 fi
 
-detect_os_arch
+# Password / SSH key behaviour:
+# If neither password nor ssh-key specified, ask for password; if still empty, generate random.
+if [ -z "$PASSWORD" ] && [ -z "$SSH_KEYS_ALL" ]; then
+    echo "No --password or --ssh-key specified."
+    echo "You can set a root password now, or leave empty to auto-generate a random 20-character password."
+    read -r -s -p "Enter root password (leave empty to auto-generate): " pw1
+    echo
+    if [ -z "$pw1" ]; then
+        # generate random password
+        if command -v tr >/dev/null 2>&1; then
+            PASSWORD=$(LC_ALL=C tr -dc 'A-Za-z0-9' </dev/urandom | head -c 20 || true)
+        fi
+        if [ -z "$PASSWORD" ]; then
+            error "Failed to generate random password."
+        fi
+        AUTO_PASSWORD=1
+        info "A random root password will be generated and shown after installation."
+    else
+        read -r -s -p "Confirm root password: " pw2
+        echo
+        [ "$pw1" = "$pw2" ] || error "Passwords do not match."
+        PASSWORD="$pw1"
+    fi
+fi
 
 # Default versions
 if [ -z "$TARGET_VER" ]; then
@@ -638,6 +723,15 @@ else
 fi
 
 info "Image write and cloud-init NoCloud injection completed."
+
+if [ "$AUTO_PASSWORD" -eq 1 ]; then
+    echo
+    echo "========================================================"
+    echo "Generated random root password (keep this safe):"
+    echo "  $PASSWORD"
+    echo "Username: root"
+    echo "========================================================"
+fi
 
 if [ "$HOLD" = "2" ]; then
     info "--hold 2 is set: will NOT reboot automatically. You can inspect or chroot into the new system manually."
