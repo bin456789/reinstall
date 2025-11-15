@@ -359,7 +359,7 @@ Available options:
             fi
             info "Downloading SSH key from: $key_url"
             tmpfile=$(mktemp /tmp/reinstall-sshkey.XXXXXX)
-            if ! http_download "$key_url" "$tmpfile"; then
+            if ! http_download("$key_url" "$tmpfile"); then
                 rm -f "$tmpfile"
                 ssh_key_error_and_exit "Failed to download SSH key from $key_url"
             fi
@@ -746,7 +746,7 @@ fi
 
 # Get default image URL (redhat requires user-supplied --img)
 if [ -z "$IMG_URL" ]; then
-    IMG_URL=$(get_default_image_url "$TARGET_OS" "$TARGET_VER")
+    IMG_URL=$(get_default_image_url("$TARGET_OS" "$TARGET_VER"))
     if [ -z "$IMG_URL" ] && [ "$TARGET_OS" = "redhat" ]; then
         error "For redhat you must specify image URL with --img"
     fi
@@ -774,14 +774,19 @@ http_download "$IMG_URL" "$IMG_QCOW"
 
 # Check if it's xz compressed
 if file "$IMG_QCOW" | grep -qi 'xz compressed'; then
-    info "Detected xz compressed image, decompressing..."
+    info "Detected xz compressed image, decompressing (progress may be shown)..."
     mv "$IMG_QCOW" "$IMG_QCOW.xz"
-    xz -dc "$IMG_QCOW.xz" >"$IMG_QCOW"
+    if command -v pv >/dev/null 2>&1; then
+        # pv 可选依赖，有则显示流量和时间
+        xz -dc "$IMG_QCOW.xz" | pv >"$IMG_QCOW"
+    else
+        xz -dc "$IMG_QCOW.xz" >"$IMG_QCOW"
+    fi
 fi
 
-# Convert to raw using qemu-img
-info "Converting qcow2 to raw with qemu-img..."
-qemu-img convert -O raw "$IMG_QCOW" "$IMG_RAW"
+# Convert to raw using qemu-img (with progress)
+info "Converting qcow2 to raw with qemu-img (with progress)..."
+qemu-img convert -p -O raw "$IMG_QCOW" "$IMG_RAW"
 
 # Final confirmation
 echo
@@ -789,6 +794,14 @@ echo "WARNING: dd will be run on $DISK. ALL DATA ON THIS DISK WILL BE LOST!"
 read -r -p "Type 'yes' to continue: " ans
 if [ "$ans" != "yes" ]; then
     error "Operation cancelled by user."
+fi
+
+# RHEL: unregister subscription BEFORE dd
+if [ "$OS" = "Linux" ] && [ -f /etc/redhat-release ] && command -v subscription-manager >/dev/null 2>&1; then
+    info "RHEL detected, trying to unregister existing subscription before overwriting disk..."
+    if ! subscription-manager unregister; then
+        warn "subscription-manager unregister failed, continuing anyway."
+    fi
 fi
 
 # dd to disk
