@@ -16,7 +16,7 @@
 # Requirements:
 #   - Run with bash:  bash reinstall-freebsd-linux.sh ...
 #   - Needs dd, xz, qemu-img, mount, and curl or wget or fetch
-#   - Typically run in ISO/Rescue environment OR in a dracut initramfs (see wrapper).
+#   - Designed to be executed from a dracut initramfs (via rd.reinstall=1 wrapper).
 
 set -eE
 
@@ -82,30 +82,15 @@ Options:
                        and start frpc if available.
 
   --hold 1             Only validate and print planned actions, do not download or write disk.
-                       Useful for connectivity/parameter checks.
-  --hold 2             Perform dd + NoCloud injection but do NOT reboot. Useful to inspect or
-                       chroot into the new system before first boot.
+  --hold 2             Perform dd + NoCloud injection but do NOT reboot.
 
 Password / SSH key behaviour:
   - If you specify one or more --ssh-key, you may omit --password (root login via key only).
   - If you specify --password, you may omit --ssh-key.
   - If you specify neither password nor ssh-key:
-      * The script will prompt for a root password.
-      * If you leave it empty, a random 20-character password (A–Z, a–z, 0–9) will be generated.
-      * The generated password will be printed before reboot.
+      * A random 20-character password (A–Z, a–z, 0–9) will be generated.
+      * The generated password will be printed in the final summary.
   - Username is always: root
-
-Examples:
-  bash $SCRIPT_NAME freebsd 14   --disk /dev/sda --ssh-key "ssh-ed25519 AAAA... comment"
-  bash $SCRIPT_NAME rocky 10     --disk /dev/sda --ssh-key github:your_name
-  bash $SCRIPT_NAME almalinux 10 --disk /dev/sda --password "P@ssw0rd"
-  bash $SCRIPT_NAME fedora 43    --disk /dev/vda --ssh-key https://example.com/id_ed25519.pub
-  bash $SCRIPT_NAME redhat       --img "https://access.cdn.redhat.com/...qcow2?...auth..." --disk /dev/sda --ssh-key "ssh-ed25519 AAAA... comment"
-
-Notes:
-  * This script will dd an entire disk. Make sure the auto-detected disk is correct,
-    or override it with --disk explicitly.
-  * All target systems use cloud-init NoCloud to inject root password, SSH keys, etc.
 EOF
     exit 1
 }
@@ -199,8 +184,6 @@ ensure_dependencies() {
     fi
 }
 
-# --------------------------------------------------------------------
-
 auto_detect_disk() {
     info "Auto-detecting target disk..."
 
@@ -262,7 +245,7 @@ show_partition_info() {
     echo "-------------------------------------------------------"
 }
 
-# RHEL hook（可选）：仅当 initramfs 内还想附加什么 FreeBSD 初始化时使用
+# 可选 RHEL hook（不影响 initramfs 自动重装）
 run_rhel_freebsd_hook() {
     if [ "$OS" = "Linux" ] && [ -f /etc/redhat-release ]; then
         if [ -f "./reinstall-fbll.sh" ]; then
@@ -407,7 +390,7 @@ get_default_image_url() {
                             echo "https://download.fedoraproject.org/pub/fedora/linux/releases/43/Cloud/x86_64/images/Fedora-Cloud-Base-Generic-43-1.6.x86_64.qcow2"
                             ;;
                         aarch64)
-                            echo "https://download.fedoraproject.org/pub/fedora/linux/releases/43/Cloud/aarch64/images/Fedora-Cloud-Base-Generic-43-1.6.aarch64.x.qcow2" # 注意：示例，实际请改为官方路径
+                            echo "https://download.fedoraproject.org/pub/fedora/linux/releases/43/Cloud/aarch64/images/Fedora-Cloud-Base-Generic-43-1.6.aarch64.qcow2"
                             ;;
                         *)
                             error "Current arch $MACHINE_ARCH is not supported for automatic Fedora image selection, please specify --img manually"
@@ -635,38 +618,17 @@ if [ ! -b "$DISK" ] && [ ! -c "$DISK" ]; then
     error "Target disk $DISK does not exist or is not a block/char device"
 fi
 
-# password / ssh-key 交互（明文，方便看）
+# 密码 / SSH：完全无人值守模式
+# 如果既没有 --password 也没有 --ssh-key，就自动生成随机密码，不提示。
 if [ -z "$PASSWORD" ] && [ -z "$SSH_KEYS_ALL" ]; then
-    echo "No --password or --ssh-key specified."
-    echo "You can set a root password now, or leave empty to auto-generate a random 20-character password."
-
-    while :; do
-        read -r -p "Enter root password (leave empty to auto-generate): " pw1
-        echo
-
-        if [ -z "$pw1" ]; then
-            if command -v tr >/dev/null 2>&1; then
-                PASSWORD=$(LC_ALL=C tr -dc 'A-Za-z0-9' </dev/urandom | head -c 20 || true)
-            fi
-            if [ -z "$PASSWORD" ]; then
-                error "Failed to generate random password."
-            fi
-            AUTO_PASSWORD=1
-            info "A random root password will be generated and shown in the final summary."
-            break
-        fi
-
-        read -r -p "Confirm root password: " pw2
-        echo
-
-        if [ "$pw1" = "$pw2" ]; then
-            PASSWORD="$pw1"
-            break
-        else
-            echo "Passwords do not match, please try again."
-            echo
-        fi
-    done
+    if command -v tr >/dev/null 2>&1; then
+        PASSWORD=$(LC_ALL=C tr -dc 'A-Za-z0-9' </dev/urandom | head -c 20 || true)
+    fi
+    if [ -z "$PASSWORD" ]; then
+        error "Failed to generate random password."
+    fi
+    AUTO_PASSWORD=1
+    info "No --password or --ssh-key specified; generated random root password (will be shown in final summary)."
 fi
 
 if [ -z "$TARGET_VER" ]; then
@@ -681,7 +643,8 @@ if [ -z "$TARGET_VER" ]; then
 fi
 
 if [ -z "$IMG_URL" ]; then
-    IMG_URL=$(get_default_image_url "$TARGET_OS" "$TARGET_VER")
+    IMG_URL=$(get_default_image_url("$TARGET_OS" "$TARGET_VER"))
+    # shellcheck disable=SC2016
     if [ -z "$IMG_URL" ] && [ "$TARGET_OS" = "redhat" ]; then
         error "For redhat you must specify image URL with --img"
     fi
@@ -721,15 +684,7 @@ qemu-img convert -p -O raw "$IMG_QCOW" "$IMG_RAW"
 
 echo
 echo "WARNING: dd will be run on $DISK. ALL DATA ON THIS DISK WILL BE LOST!"
-read -r -p "Type 'yes' or 'y' to continue: " ans
-
-case "$ans" in
-    y|Y|yes|YES|Yes)
-        ;;
-    *)
-        error "Operation cancelled by user."
-        ;;
-esac
+info "Initramfs/unattended mode: no interactive confirmation, proceeding automatically."
 
 info "Writing image to disk with dd, this may take a while..."
 dd if="$IMG_RAW" of="$DISK" bs=4M conv=fsync status=progress
