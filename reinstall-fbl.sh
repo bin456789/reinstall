@@ -412,21 +412,69 @@ get_default_image_url() {
     esac
 }
 
+# 改进版：根据分区类型 / label 查找 EFI 分区，找不到再退回老逻辑
 find_efi_partition() {
-    local disk="$1" part
-    case "$disk" in
-        */nvme*|*/*nvd*)
-            part="${disk}p1"
-            ;;
-        *)
-            if [[ "$(uname -s)" == "FreeBSD" ]]; then
-                part="${disk}p1"
-            else
-                part="${disk}1"
+    local disk="$1"
+
+    if [ "$OS" = "Linux" ]; then
+        # 优先用 lsblk 精确找 EFI System Partition
+        if command -v lsblk >/dev/null 2>&1; then
+            local base part line
+            base="${disk#/dev/}"
+            # 读取当前磁盘的所有分区（TYPE="part"），解析为变量
+            while read -r line; do
+                # lsblk -P 输出格式：KEY="VAL" KEY2="VAL2" ...
+                eval "$line"
+                [ "$TYPE" = "part" ] || continue
+                # 只考虑本磁盘的分区
+                case "$NAME" in
+                    "$base"*) ;;
+                    *) continue ;;
+                esac
+                # 1️⃣ GPT EFI GUID
+                if [ "$PARTTYPE" = "c12a7328-f81f-11d2-ba4b-00a0c93ec93b" ]; then
+                    part="/dev/$NAME"
+                    echo "$part"
+                    return 0
+                fi
+                # 2️⃣ 分区 label 包含 EFI / ESP（容错）
+                if echo "$PARTLABEL" | grep -qiE 'efi|esp'; then
+                    part="/dev/$NAME"
+                    echo "$part"
+                    return 0
+                fi
+                # 3️⃣ vfat 且带 boot,esp flag（有些发行版这么标）
+                if [ "$FSTYPE" = "vfat" ] && echo "$PARTFLAGS" | grep -qi 'boot,esp'; then
+                    part="/dev/$NAME"
+                    echo "$part"
+                    return 0
+                fi
+            done < <(lsblk -P -o NAME,TYPE,PARTTYPE,FSTYPE,PARTLABEL,PARTFLAGS "$disk" 2>/dev/null || true)
+        fi
+
+        # fallback：保持原有猜测策略
+        case "$disk" in
+            */nvme*|*/*nvd*)
+                echo "${disk}p1"
+                ;;
+            *)
+                echo "${disk}1"
+                ;;
+        esac
+    else
+        # FreeBSD: 使用 gpart 查找 type = efi 的分区
+        if command -v gpart >/dev/null 2>&1; then
+            local d p
+            d="${disk#/dev/}"
+            p=$(gpart show -p "$d" 2>/dev/null | awk '$4 == "efi" {print $3; exit}')
+            if [ -n "$p" ]; then
+                echo "/dev/$p"
+                return 0
             fi
-            ;;
-    esac
-    echo "$part"
+        fi
+        # fallback：保持原来的 p1 猜测
+        echo "${disk}p1"
+    fi
 }
 
 write_nocloud_seed() {
@@ -488,7 +536,7 @@ EOF
         sed -i '' 's/^#Port .*/Port ${SSH_PORT}/' /etc/ssh/sshd_config 2>/dev/null || \
         sed -i '' 's/^Port .*/Port ${SSH_PORT}/' /etc/ssh/sshd_config 2>/dev/null || true
       fi
-      service sshd restart 2>/dev/null || systemctl restart sshd 2>/dev/null || true
+      service sshd restart 2>/null || systemctl restart sshd 2>/dev/null || true
 EOF
         fi
 
@@ -665,7 +713,7 @@ if [ -z "$TARGET_VER" ]; then
 fi
 
 if [ -z "$IMG_URL" ]; then
-    IMG_URL=$(get_default_image_url("$TARGET_OS" "$TARGET_VER"))
+    IMG_URL=$(get_default_image_url "$TARGET_OS" "$TARGET_VER")
     if [ -z "$IMG_URL" ] && [ "$TARGET_OS" = "redhat" ]; then
         error "For redhat you must specify image URL with --img"
     fi
@@ -724,7 +772,7 @@ if [ "$OS" = "FreeBSD" ]; then
         dd if="$IMG_RAW" of="$DISK" bs=4M conv=fsync
     fi
 else
-    # Linux 保持原样：使用 GNU dd 的 status=progress
+    # Linux：保持原来行为，使用 GNU dd 的 status=progress
     dd if="$IMG_RAW" of="$DISK" bs=4M conv=fsync status=progress
 fi
 sync
