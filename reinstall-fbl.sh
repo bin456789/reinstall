@@ -307,7 +307,7 @@ Available options:
             if [[ "$val" =~ ^[A-Za-z]:\\ ]]; then
                 ssh_key_error_and_exit "Windows path is not supported, please copy the key file to local filesystem and use /path/to/public_key"
             fi
-            if is_valid_ssh_key("$val"); then
+            if is_valid_ssh_key "$val"; then
                 ssh_key="$val"
             else
                 if [ ! -f "$val" ]; then
@@ -620,7 +620,6 @@ if [ ! -b "$DISK" ] && [ ! -c "$DISK" ]; then
 fi
 
 # 密码 / SSH 交互：明文，方便 initramfs / VPS 直接看是否输错
-# 有 --password 或 --ssh-key 就不会走这里（完全无人值守）。
 if [ -z "$PASSWORD" ] && [ -z "$SSH_KEYS_ALL" ]; then
     echo "No --password or --ssh-key specified."
     echo "You can set a root password now, or leave empty to auto-generate a random 20-character password."
@@ -666,7 +665,7 @@ if [ -z "$TARGET_VER" ]; then
 fi
 
 if [ -z "$IMG_URL" ]; then
-    IMG_URL=$(get_default_image_url "$TARGET_OS" "$TARGET_VER")
+    IMG_URL=$(get_default_image_url("$TARGET_OS" "$TARGET_VER"))
     if [ -z "$IMG_URL" ] && [ "$TARGET_OS" = "redhat" ]; then
         error "For redhat you must specify image URL with --img"
     fi
@@ -706,10 +705,28 @@ qemu-img convert -p -O raw "$IMG_QCOW" "$IMG_RAW"
 
 echo
 echo "WARNING: dd will be run on $DISK. ALL DATA ON THIS DISK WILL BE LOST!"
-info "Unattended / initramfs mode: proceeding without interactive confirmation."
+read -r -p "Type 'yes' or 'y' to continue: " ans
+
+case "$ans" in
+    y|Y|yes|YES|Yes)
+        ;;
+    *)
+        error "Operation cancelled by user."
+        ;;
+esac
 
 info "Writing image to disk with dd, this may take a while..."
-dd if="$IMG_RAW" of="$DISK" bs=4M conv=fsync status=progress
+if [ "$OS" = "FreeBSD" ]; then
+    if command -v pv >/dev/null 2>&1; then
+        pv "$IMG_RAW" | dd of="$DISK" bs=4M conv=fsync
+    else
+        echo "TIP: Press Ctrl+T to see dd progress on FreeBSD."
+        dd if="$IMG_RAW" of="$DISK" bs=4M conv=fsync
+    fi
+else
+    # Linux 保持原样：使用 GNU dd 的 status=progress
+    dd if="$IMG_RAW" of="$DISK" bs=4M conv=fsync status=progress
+fi
 sync
 info "dd finished."
 
