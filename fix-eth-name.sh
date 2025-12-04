@@ -48,20 +48,39 @@ retry() {
 # 用 systemd-analyze plot >a.svg 发现 sys-subsystem-net-devices-enp3s0.device 也是出现在 NetworkManager 之后
 # 因此需要等待网卡出现
 get_ethx_by_mac() {
-    mac=$(echo "$1" | to_lower)
-    retry 10 _get_ethx_by_mac "$mac"
+    retry 10 _get_ethx_by_mac "$@"
 }
 
 _get_ethx_by_mac() {
+    mac=$(echo "$1" | to_lower)
+
+    flag=$2
+    if [ -z "$flag" ]; then
+        flag=master
+    fi
+
     if true; then
-        # 过滤 azure vf (带 master ethx)
-        ip -o link | grep -i "$mac" | grep -v master | awk '{print $2}' | cut -d: -f1 | grep .
-        return
+        if [ "$flag" = master ]; then
+            # master
+            # 过滤 azure vf (带 master ethx)
+            ip -o link | grep -i "$mac" | grep -v master | awk '{print $2}' | cut -d: -f1 | grep .
+        else
+            # slave
+            # 带 master ethx
+            ip -o link | grep -i "$mac" | grep -w master | awk '{print $2}' | cut -d: -f1 | grep .
+        fi
     else
         for i in $(cd /sys/class/net && echo *); do
             if [ "$(cat "/sys/class/net/$i/address")" = "$mac" ]; then
-                echo "$i"
-                return
+                if [ $(($(cat "/sys/class/net/$i/flags") & 0x800)) -ne 0 ]; then
+                    fact_flag=slave
+                else
+                    fact_flag=master
+                fi
+                if [ "$flag" = "$fact_flag" ]; then
+                    echo "$i"
+                    return
+                fi
             fi
         done
         return 1
@@ -138,6 +157,23 @@ fix_network_manager() {
 
         # 更改文件名
         mv "$file" "$proper_file"
+
+        # NM 不会自动忽略 Azure 的 slave 网卡，需手动设置
+        # azure 文档中的方法不够通用，只适合 azure
+        # https://learn.microsoft.com/zh-cn/azure/virtual-network/accelerated-networking-overview
+
+        # 我们采用红帽的方法
+        # https://docs.redhat.com/en/documentation/red_hat_enterprise_linux/8/html/configuring_and_managing_networking/configuring-networkmanager-to-ignore-certain-devices_configuring-and-managing-networking
+        if slave_ethx=$(get_ethx_by_mac "$mac" slave); then
+            cat >"/etc/NetworkManager/conf.d/99-$slave_ethx-unmanaged.conf" <<EOF
+[device-$slave_ethx-unmanaged]
+match-device=interface-name:$slave_ethx
+managed=0
+EOF
+        fi
+
+        # 也可以设置 unmanaged-devices, 但是官方文档不推荐
+        # https://networkmanager.pages.freedesktop.org/NetworkManager/NetworkManager/NetworkManager.conf.html#:~:text=may%20be%20a-,better%20choice,-.
     done
 }
 
