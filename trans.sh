@@ -1630,9 +1630,9 @@ install_nixos() {
         fi
 
         # 备用方案
-        # 1. 从 https://mirror.nju.edu.cn/nix-channels/nixos-25.05/nixexprs.tar.xz 获取
-        #    https://github.com/NixOS/nixpkgs/blob/nixos-25.05/pkgs/tools/package-management/nix/default.nix
-        #    https://github.com/NixOS/nixpkgs/blob/nixos-25.05/nixos/modules/installer/tools/nix-fallback-paths.nix
+        # 1. 从 https://mirror.nju.edu.cn/nix-channels/nixos-25.11/nixexprs.tar.xz 获取
+        #    https://github.com/NixOS/nixpkgs/blob/nixos-25.11/pkgs/tools/package-management/nix/default.nix
+        #    https://github.com/NixOS/nixpkgs/blob/nixos-25.11/nixos/modules/installer/tools/nix-fallback-paths.nix
         # 2. 安装最新版 nix，添加 nixos channel 后获取
         #    nix eval -f '<nixpkgs>' --raw 'nixVersions.stable.version' --extra-experimental-features nix-command
 
@@ -2756,14 +2756,6 @@ mount_pseudo_fs() {
     fi
 }
 
-get_yq_name() {
-    if grep -q '3\.1[6789]' /etc/alpine-release; then
-        echo yq
-    else
-        echo yq-go
-    fi
-}
-
 create_cloud_init_network_config() {
     ci_file=$1
     recognize_static6=${2:-true}
@@ -2775,7 +2767,7 @@ create_cloud_init_network_config() {
     mkdir -p "$(dirname "$ci_file")"
     touch "$ci_file"
 
-    apk add "$(get_yq_name)"
+    apk add yq-go
 
     need_set_dns4=false
     need_set_dns6=false
@@ -2889,7 +2881,7 @@ create_cloud_init_network_config() {
         yq -i "del(.network.config[$config_id] | select(has(\"address\") | not))" $ci_file
     fi
 
-    apk del "$(get_yq_name)"
+    apk del yq-go
 
     # 查看文件
     info "Cloud-init network config"

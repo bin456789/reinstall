@@ -64,10 +64,11 @@ Usage: $reinstall_____ anolis      7|8|23
                        oracle      8|9|10
                        almalinux   8|9|10
                        centos      9|10
+                       fnos        1
+                       nixos       25.11
                        fedora      42|43
-                       nixos       25.05
                        debian      9|10|11|12|13
-                       alpine      3.19|3.20|3.21|3.22
+                       alpine      3.20|3.21|3.22|3.23
                        opensuse    15.6|16.0|tumbleweed
                        openeuler   20.03|22.03|24.03|25.09
                        ubuntu      16.04|18.04|20.04|22.04|24.04|25.10 [--minimal]
@@ -75,7 +76,6 @@ Usage: $reinstall_____ anolis      7|8|23
                        arch
                        gentoo
                        aosc
-                       fnos
                        redhat      --img="http://access.cdn.redhat.com/xxx.qcow2"
                        dd          --img="http://xxx.com/yyy.zzz" (raw image stores in raw/vhd/tar/gz/xz/zst)
                        windows     --image-name="windows xxx yyy" --lang=xx-yy
@@ -920,7 +920,7 @@ get_windows_iso_link() {
                     esac
                     ;;
                 homebasic | homepremium | ultimate) echo _ ;;
-                business | enterprise) "$edition" ;;
+                business | enterprise) echo "$edition" ;;
                 esac
                 ;;
             7)
@@ -1918,11 +1918,12 @@ verify_os_name() {
         'almalinux   8|9|10' \
         'rocky       8|9|10' \
         'oracle      8|9|10' \
+        'fnos        1' \
         'fedora      42|43' \
-        'nixos       25.05' \
+        'nixos       25.11' \
         'debian      9|10|11|12|13' \
         'opensuse    15.6|16.0|tumbleweed' \
-        'alpine      3.19|3.20|3.21|3.22' \
+        'alpine      3.20|3.21|3.22|3.23' \
         'openeuler   20.03|22.03|24.03|25.09' \
         'ubuntu      16.04|18.04|20.04|22.04|24.04|25.10' \
         'redhat' \
@@ -1930,7 +1931,6 @@ verify_os_name() {
         'arch' \
         'gentoo' \
         'aosc' \
-        'fnos' \
         'windows' \
         'dd' \
         'netboot.xyz'; do
