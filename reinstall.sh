@@ -1498,8 +1498,8 @@ Continue?
             dir=distribution/leap/$releasever/appliances
             case "$releasever" in
             15.6) file=openSUSE-Leap-$releasever-Minimal-VM.$basearch-Cloud.qcow2 ;;
-            # 16.0) file=Leap-$releasever-Minimal-VM.$basearch-Cloud.qcow2 ;; # 缺少 openSUSE-repos-Leap 包，导致没有源
-            16.0) file=Leap-$releasever-Minimal-VM.$basearch-kvm$(if [ "$basearch" = x86_64 ]; then echo '-and-xen'; fi).qcow2 ;;
+            16.0) file=Leap-$releasever-Minimal-VM.$basearch-Cloud.qcow2 ;;
+            # 16.0) file=Leap-$releasever-Minimal-VM.$basearch-kvm$(if [ "$basearch" = x86_64 ]; then echo '-and-xen'; fi).qcow2 ;;
             esac
 
             # https://src.opensuse.org/openSUSE/Leap-Images/src/branch/leap-16.0/kiwi-templates-Minimal/Minimal.kiwi
