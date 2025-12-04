@@ -22,6 +22,22 @@ export LC_ALL=C
 # 不要漏了最后的 $PATH，否则会找不到 windows 系统程序例如 diskpart
 export PATH=/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin:$PATH
 
+# 如果不是 bash 的话，继续执行会有语法错误，因此在这里判断是否 bash
+if [ -z "$BASH" ]; then
+    if [ -f /etc/alpine-release ]; then
+        if ! apk add bash; then
+            echo "Error while install bash." >&2
+            exit 1
+        fi
+    fi
+    if command -v bash >/dev/null; then
+        exec bash "$0" "$@"
+    else
+        echo "Please run this script with bash." >&2
+        exit 1
+    fi
+fi
+
 # 记录日志，过滤含有 password 的行
 exec > >(tee >(grep -iv password >>/reinstall.log)) 2>&1
 THIS_SCRIPT=$(readlink -f "$0")
@@ -34,11 +50,6 @@ trap_err() {
     error "Line $line_no return $ret_no"
     sed -n "$line_no"p "$THIS_SCRIPT"
 }
-
-if ! { [ -n "$BASH" ] && [ -n "$BASH_VERSION" ]; }; then
-    echo "Please run this script with bash." >&2
-    exit 1
-fi
 
 usage_and_exit() {
     if is_in_windows; then
