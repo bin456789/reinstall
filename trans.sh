@@ -3226,52 +3226,60 @@ chroot_systemctl_disable() {
     done
 }
 
-remove_cloud_init() {
+remove_or_disable_cloud_init() {
     os_dir=$1
 
     if ! is_have_cmd_on_disk $os_dir cloud-init; then
         return
     fi
 
-    info "Remove Cloud-Init"
+    info "Remove or Disable Cloud-Init"
 
-    # 两种方法都可以
-    if false && [ -d $os_dir/etc/cloud ]; then
+    # ubuntu-server-minimal ubuntu-cloud-minimal 都包含 cloud-init
+    # 用 iso 安装的 ubuntu 也有 cloud-init
+    # 因此不删除 ubuntu 的 cloud-init，而是禁用它
+
+    # iso 安装首次启动是通过 /etc/cloud/cloud.cfg.d/99-installer.cfg 初始化系统，包括：
+    #     1. 创建普通用户和密码，添加 ssh 登录公钥
+    #     2. 创建 /etc/cloud/cloud-init.disabled
+
+    if grep -iq ubuntu $os_dir/etc/os-release; then
+        # 模仿 iso 安装的 ubuntu，只创建 cloud-init.disabled，不禁用服务
         touch $os_dir/etc/cloud/cloud-init.disabled
+    else
+        # systemctl is-enabled cloud-init-hotplugd.service 状态是 static
+        # disable 会出现一堆提示信息，也无法 disable
+        for unit in $(
+            chroot $os_dir systemctl list-unit-files |
+                grep -E '^(cloud-init|cloud-init-.*|cloud-config|cloud-final)\.(service|socket)' | grep enabled | awk '{print $1}'
+        ); do
+            # 服务不存在时会报错
+            if chroot $os_dir systemctl -q is-enabled "$unit"; then
+                chroot $os_dir systemctl disable "$unit"
+            fi
+        done
+
+        for pkg_mgr in dnf yum zypper apt-get; do
+            if is_have_cmd_on_disk $os_dir $pkg_mgr; then
+                case $pkg_mgr in
+                dnf | yum)
+                    chroot $os_dir $pkg_mgr remove -y cloud-init
+                    rm -f $os_dir/etc/cloud/cloud.cfg.rpmsave
+                    ;;
+                zypper)
+                    # 加上 -u 才会删除依赖
+                    chroot $os_dir zypper remove -y -u cloud-init cloud-init-config-suse
+                    ;;
+                apt-get)
+                    # ubuntu 25.04 开始有 cloud-init-base
+                    chroot_apt_remove $os_dir cloud-init cloud-init-base
+                    chroot_apt_autoremove $os_dir
+                    ;;
+                esac
+                break
+            fi
+        done
     fi
-
-    # systemctl is-enabled cloud-init-hotplugd.service 状态是 static
-    # disable 会出现一堆提示信息，也无法 disable
-    for unit in $(
-        chroot $os_dir systemctl list-unit-files |
-            grep -E '^(cloud-init|cloud-init-.*|cloud-config|cloud-final)\.(service|socket)' | grep enabled | awk '{print $1}'
-    ); do
-        # 服务不存在时会报错
-        if chroot $os_dir systemctl -q is-enabled "$unit"; then
-            chroot $os_dir systemctl disable "$unit"
-        fi
-    done
-
-    for pkg_mgr in dnf yum zypper apt-get; do
-        if is_have_cmd_on_disk $os_dir $pkg_mgr; then
-            case $pkg_mgr in
-            dnf | yum)
-                chroot $os_dir $pkg_mgr remove -y cloud-init
-                rm -f $os_dir/etc/cloud/cloud.cfg.rpmsave
-                ;;
-            zypper)
-                # 加上 -u 才会删除依赖
-                chroot $os_dir zypper remove -y -u cloud-init cloud-init-config-suse
-                ;;
-            apt-get)
-                # ubuntu 25.04 开始有 cloud-init-base
-                chroot_apt_remove $os_dir cloud-init cloud-init-base
-                chroot_apt_autoremove $os_dir
-                ;;
-            esac
-            break
-        fi
-    done
 }
 
 disable_jeos_firstboot() {
@@ -3387,7 +3395,7 @@ EOF
         if [ "$distro" = fedora ] && [ "$releasever" = 43 ]; then
             chroot $os_dir dnf mark user netcat -y
         fi
-        remove_cloud_init $os_dir
+        remove_or_disable_cloud_init $os_dir
 
         disable_selinux $os_dir
         disable_kdump $os_dir
@@ -3414,7 +3422,7 @@ EOF
         find_and_mount /boot
         find_and_mount /boot/efi
 
-        remove_cloud_init $os_dir
+        remove_or_disable_cloud_init $os_dir
 
         # 获取当前开启的 Components, 后面要用
         if [ -f $os_dir/etc/apt/sources.list.d/debian.sources ]; then
@@ -3689,7 +3697,7 @@ EOF
 
         # 最后才删除 cloud-init
         # 因为生成 sysconfig 网络配置要用目标系统的 cloud-init
-        remove_cloud_init $os_dir
+        remove_or_disable_cloud_init $os_dir
 
         restore_resolv_conf $os_dir
     fi
@@ -5082,7 +5090,7 @@ EOF
 
     # 最后才删除 cloud-init
     # 因为生成 netplan/sysconfig 网络配置要用目标系统的 cloud-init
-    remove_cloud_init /os
+    remove_or_disable_cloud_init /os
 
     # 删除 swapfile
     swapoff -a
