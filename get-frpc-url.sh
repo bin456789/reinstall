@@ -60,6 +60,7 @@ get_frpc_url() {
     mirror=$(
         # nju 没有 win7 用的旧版
         # github 不支持 ipv6
+        # daocloud 加速不支持 ipv6
         # jsdelivr 不支持 github releases 文件
         if is_ipv6_only; then
             if is_need_old_version; then
@@ -71,7 +72,7 @@ get_frpc_url() {
         else
             if is_in_china; then
                 if is_need_old_version; then
-                    echo https://github.com/fatedier/frp/releases/download
+                    echo https://files.m.daocloud.io/github.com/fatedier/frp/releases/download
                 else
                     echo https://mirrors.nju.edu.cn/github-release/fatedier/frp
                 fi

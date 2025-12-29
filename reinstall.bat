@@ -131,6 +131,13 @@ call :check_cygwin_installed || (
         set dir=/sourceware/cygwin
     )
 
+    rem daocloud 加速有 90 天缓存，且不支持 IPv6
+    rem https://github.com/DaoCloud/public-binary-files-mirror
+    rem 无法用查询字符串强制刷新缓存
+    rem https://files.m.daocloud.io/www.cloudflare.com/cdn-cgi/trace?a=1
+    rem https://files.m.daocloud.io/www.cloudflare.com/cdn-cgi/trace?b=2
+    rem 也就无法用 https://www.cygwin.com/setup-x86_64.exe?xxx=20250101 强制每天刷新缓存
+
     rem 下载 Cygwin
     if not exist setup-!CygwinArch!.exe (
         call :download http://www.cygwin.com/setup-!CygwinArch!.exe %~dp0setup-!CygwinArch!.exe || goto :download_failed
@@ -195,7 +202,7 @@ rem bitsadmin /transfer "%~3" /priority foreground %~1 %~2
 :download
 rem certutil 会被 windows Defender 报毒
 rem windows server 2019 要用第二条 certutil 命令
-echo Download: %~1 %~2
+echo Downloading: %~1 %~2
 del /q "%~2" 2>nul
 if exist "%~2" (echo Cannot delete %~2 & exit /b 1)
 
