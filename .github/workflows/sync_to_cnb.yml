@@ -1,10 +1,10 @@
-name: 同步到 Gitlab CN
+name: 同步到 CNB
 on:
   workflow_dispatch:
   push:
 jobs:
   run:
-    name: 同步到 Gitlab CN
+    name: 同步到 CNB
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -12,7 +12,7 @@ jobs:
           fetch-depth: 0
       - uses: yesolutions/mirror-action@master
         with:
-          REMOTE: https://jihulab.com/bin456789/reinstall.git
-          GIT_USERNAME: username
-          GIT_PASSWORD: ${{ secrets.JIHULAB_TOKEN }}
+          REMOTE: https://cnb.cool/bin456789/reinstall.git
+          GIT_USERNAME: cnb
+          GIT_PASSWORD: ${{ secrets.CNB_TOKEN }}
           PUSH_ALL_REFS: false

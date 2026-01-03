@@ -1,14 +1,42 @@
 #!/bin/ash
 # shellcheck shell=dash
-# shellcheck disable=SC3001,SC3010
+# shellcheck disable=SC3001,SC3003,SC3010
 # reinstall.sh / trans.sh 共用此文件
+
+# grep 无法处理 UTF-16LE 编码的 inf，有以下几种解决方法
+# 1. 使用 ripgrep (rg) 或者 ugrep，但 cygwin 没有
+# 2. grep -a a.b.c.d
+# 3. iconv -f UTF-16 -t UTF-8
 
 del_inf_comment() {
     sed 's/;.*//'
 }
 
 simply_inf() {
-    del_cr | del_inf_comment | trim | del_empty_lines
+    convert_file_to_utf8 "$1" | del_cr | del_inf_comment | trim | del_empty_lines
+}
+
+convert_file_to_utf8() {
+    # ash 用 * 比较字符串有问题
+    # [[ $'\xEF\xBB' = $'\xEF\xBB*' ]] && echo 1
+
+    # UTF-16LE without BOM 要处理吗？ windows 支持这种编码的 inf?
+
+    # UTF-16LE with BOM
+    if [ "$(head -c2 "$1")" = $'\xFF\xFE' ]; then
+        # -f UTF-16LE -t UTF-8 会添加 UTF-8 BOM
+        iconv -f UTF-16 -t UTF-8 "$1"
+
+    # UTF-8 with BOM
+    elif [ "$(head -c3 "$1")" = $'\xEF\xBB\xBF' ]; then
+        # busybox sed 不支持
+        # sed '1s/^\xEF\xBB\xBF//' "$1"
+        tail -c +4 "$1"
+
+    # 其它
+    else
+        cat "$1"
+    fi
 }
 
 simply_inf_word() {
@@ -33,7 +61,7 @@ list_files_from_inf() {
     local mix_x86_x86_64=$3
 
     # 所有字段不区分大小写
-    inf_txts=$(simply_inf <"$inf" | to_lower)
+    inf_txts=$(simply_inf "$inf" | to_lower)
 
     is_match_section() {
         local section=$1
@@ -78,6 +106,19 @@ list_files_from_inf() {
 
     # 0. 检测 inf 是否适合当前架构
     # 目前没有对比版本号
+
+    ##############################################
+    # 注意这种情况, NTamd64.6.0 为空，表示不支持 6.0
+
+    # [Manufacturer]
+    # %V_INTEL%   = Intel, NTamd64.6.0, NTamd64.6.1.1
+
+    # [Intel.NTamd64.6.0]
+    # ; Empty section.
+
+    # 如果后期改成不从 Manufacturer 获取支持的架构，而是从[]获取支持的架构，注意这种情况
+    # [Intel.NTamd64.10.0.1..22000]
+    ##############################################
 
     # 例子1
     # [Manufacturer]
@@ -163,12 +204,12 @@ list_files_from_inf() {
         # 注意可能有空格和引号
 
         if $in_section; then
+            local num dir
             num=$(echo "$line" | awk -F= '{print $1}' | simply_inf_word)
             dir=$(echo "$line" | awk -F, '{print $4}' | simply_inf_word)
             # 每行一条记录
             if [ -n "$SourceDisksNames" ]; then
-                SourceDisksNames="$SourceDisksNames
-"
+                SourceDisksNames=$SourceDisksNames$'\n'
             fi
             SourceDisksNames="$SourceDisksNames$num:$dir"
         fi
@@ -198,7 +239,11 @@ list_files_from_inf() {
     done < <(echo "$inf_txts")
 }
 
-find_file_ignore_case() {
+# windows 安装驱动时，只会安装相同架构的驱动文件到系统，即使 inf 里有列出其它架构的驱动
+# 因此 DISM 导出驱动时，也就没有包含其它架构的驱动文件
+
+# 用于尽可能匹配路径大小写
+get_path_in_correct_case() {
     # 同时支持参数和管道
     local path
     path=$({ if [ -n "$1" ]; then echo "$1"; else cat; fi; })
@@ -208,40 +253,64 @@ find_file_ignore_case() {
     # shellcheck disable=SC2046
     set -- $(echo "$path" | grep -o '[^/]*')
     (
-        # windows 安装驱动时，只会安装相同架构的驱动文件到系统，即使 inf 里有列出其它架构的驱动
-        # 因此导出驱动时，也就不会包含其它架构的驱动文件
-        # 因此这里只警告，不中断脚本
-
         local output=
         if is_absolute_path "$path"; then
             cd /
             output=/
         fi
 
+        stop_find=false
+
         while [ $# -gt 0 ]; do
             local part=$1
+            local tmp
             # shellcheck disable=SC2010
-            if part=$(ls -1 | grep -Fix "$part"); then
-                # 大于 1 表示当前 part 是目录
-                if [ $# -gt 1 ]; then
-                    if cd "$part"; then
-                        output="$output$part/"
-                    else
-                        warn "Can't cd $path"
-                        return 1
+            if ! $stop_find; then
+                if tmp=$(ls -1 | grep -Fix "$part"); then
+                    part=$tmp
+                    # 大于 1 表示当前 part 是目录
+                    if [ $# -gt 1 ]; then
+                        if ! cd "$part" 2>/dev/null; then
+                            warn "Can't cd $path"
+                            stop_find=true
+                        fi
                     fi
                 else
-                    # 最后 part
-                    output="$output$part"
+                    stop_find=true
                 fi
+            fi
+
+            if [ $# -gt 1 ]; then
+                output="$output$part/"
             else
-                warn "Can't find $path" >&2
-                return 1
+                # 最后 part
+                output="$output$part"
             fi
             shift
         done
+
         echo "$output"
     )
+}
+
+is_file_or_link() {
+    # -e / -f 坏软连接，返回 false
+    # -L 坏软连接，返回 true
+    [ -f "$1" ] || [ -L "$1" ]
+}
+
+find_file_ignore_case() {
+    # 同时支持参数和管道
+    local path
+    path=$({ if [ -n "$1" ]; then echo "$1"; else cat; fi; })
+
+    path=$(get_path_in_correct_case "$path")
+    if is_file_or_link "$path"; then
+        echo "$path"
+    else
+        warn "Can't find $path" >&2
+        return 1
+    fi
 }
 
 parse_inf_and_cp_driever() {
@@ -275,4 +344,23 @@ parse_inf_and_cp_driever() {
             error_and_exit "Unknown error while parse $inf."
         fi
     fi
+}
+
+get_sys_dir_for_eth() {
+    (
+        cd "$(readlink -f "/sys/class/net/$1")" || error_and_exit "Can't cd to $1"
+        while ! [ "$(pwd)" = / ]; do
+            # DRIVER=virtio-pci
+            # PCI_CLASS=20000            # 2 开头表示网络设备
+            # PCI_ID=1AF4:1041
+            # PCI_SUBSYS_ID=1AF4:1100
+            # PCI_SLOT_NAME=0000:03:00.0
+            if [ -f uevent ] && grep -q 'PCI_CLASS=2' uevent && grep -q 'PCI_ID' uevent; then
+                pwd
+                return
+            fi
+            cd ..
+        done
+        return 1
+    )
 }

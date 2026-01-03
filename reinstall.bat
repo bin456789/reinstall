@@ -3,7 +3,7 @@ mode con cp select=437 >nul
 setlocal EnableDelayedExpansion
 
 set confhome=https://raw.githubusercontent.com/bin456789/reinstall/main
-set confhome_cn=https://gitlab.com/bin456789/reinstall/-/raw/main
+set confhome_cn=https://cnb.cool/bin456789/reinstall/-/git/raw/main
 rem set confhome_cn=https://www.ghproxy.cc/https://raw.githubusercontent.com/bin456789/reinstall/main
 
 set pkgs=curl,cpio,p7zip,dos2unix,jq,xz,gzip,zstd,openssl,bind-utils,libiconv,binutils
@@ -30,15 +30,25 @@ if errorlevel 1 (
 
 rem 有时 %tmp% 带会话 id，且文件夹不存在
 rem https://learn.microsoft.com/troubleshoot/windows-server/shell-experience/temp-folder-with-logon-session-id-deleted
-if not exist %tmp% (
-    md %tmp%
+rem if not exist %tmp% (
+rem     md %tmp%
+rem )
+
+rem 下载 geoip
+if not exist geoip (
+    rem www.cloudflare.com/dash.cloudflare.com 国内访问的是美国服务器，而且部分地区被墙
+    call :download http://www.qualcomm.cn/cdn-cgi/trace %~dp0geoip || goto :download_failed
+)
+
+rem 判断是否有 loc=
+findstr /c:"loc=" geoip >nul
+if errorlevel 1 (
+    echo Invalid geoip file
+    del geoip
+    exit /b 1
 )
 
 rem 检查是否国内
-if not exist geoip (
-    rem www.cloudflare.com/dash.cloudflare.com 国内访问的是美国服务器，而且部分地区被墙
-    call :download http://www.visa.cn/cdn-cgi/trace %~dp0geoip || goto :download_failed
-)
 findstr /c:"loc=CN" geoip >nul
 if not errorlevel 1 (
     rem mirrors.tuna.tsinghua.edu.cn 会强制跳转 https
@@ -60,37 +70,49 @@ if not errorlevel 1 (
 call :check_cygwin_installed || (
     rem win10 arm 支持运行 x86 软件
     rem win11 arm 支持运行 x86 和 x86_64 软件
-    rem wmic os get osarchitecture 显示中文
-    rem wmic ComputerSystem get SystemType 显示英文
 
-    rem SystemType
     rem windows 11 24h2 没有 wmic
+    rem wmic os get osarchitecture 显示中文，即使设置了 mode con cp select=437
+    rem wmic ComputerSystem get SystemType 显示英文
+    rem for /f "tokens=*" %%a in ('wmic ComputerSystem get SystemType ^| find /i "based"') do (
+    rem     set "SystemType=%%a"
+    rem )
+
     rem 有的系统精简了 powershell
-    where wmic >nul 2>&1
-    if not errorlevel 1 (
-        for /f "tokens=*" %%a in ('wmic ComputerSystem get SystemType ^| find /i "based"') do (
-            set "SystemType=%%a"
-        )
-    ) else (
-        for /f "delims=" %%a in ('powershell -NoLogo -NoProfile -NonInteractive -Command "(Get-WmiObject win32_computersystem).SystemType"') do (
-            set "SystemType=%%a"
-        )
+    rem for /f "delims=" %%a in ('powershell -NoLogo -NoProfile -NonInteractive -Command "(Get-WmiObject win32_computersystem).SystemType"') do (
+    rem     set "SystemType=%%a"
+    rem )
+
+    rem SystemArch
+    for /f "tokens=3" %%a in ('reg query "HKLM\SYSTEM\CurrentControlSet\Control\Session Manager\Environment" /v PROCESSOR_ARCHITECTURE') do (
+        set SystemArch=%%a
     )
+
+    rem 也可以用 PROCESSOR_ARCHITEW6432 和 PROCESSOR_ARCHITECTURE 判断
+    rem ARM64 win11  PROCESSOR_ARCHITEW6432   PROCESSOR_ARCHITECTURE
+    rem 原生cmd          未定义                      ARM64
+    rem 32位cmd          ARM64                       x86
+
+    rem if defined PROCESSOR_ARCHITEW6432 (
+    rem     set "SystemArch=%PROCESSOR_ARCHITEW6432%"
+    rem ) else (
+    rem     set "SystemArch=%PROCESSOR_ARCHITECTURE%"
+    rem )
 
     rem BuildNumber
     for /f "tokens=3" %%a in ('reg query "HKLM\SOFTWARE\Microsoft\Windows NT\CurrentVersion" /v CurrentBuildNumber') do (
-         set /a BuildNumber=%%a
+        set /a BuildNumber=%%a
     )
 
     set CygwinEOL=1
 
-    echo !SystemType! | find "ARM" > nul
+    echo !SystemArch! | find "ARM" > nul
     if not errorlevel 1 (
         if !BuildNumber! GEQ 22000 (
             set CygwinEOL=0
         )
     ) else (
-        echo !SystemType! | find "x64" > nul
+        echo !SystemArch! | find "AMD64" > nul
         if not errorlevel 1 (
             if !BuildNumber! GEQ 9600 (
                 set CygwinEOL=0
@@ -109,9 +131,24 @@ call :check_cygwin_installed || (
         set dir=/sourceware/cygwin
     )
 
+    rem daocloud 加速有 90 天缓存，且不支持 IPv6
+    rem https://github.com/DaoCloud/public-binary-files-mirror
+    rem 无法用查询字符串强制刷新缓存
+    rem https://files.m.daocloud.io/www.cloudflare.com/cdn-cgi/trace?a=1
+    rem https://files.m.daocloud.io/www.cloudflare.com/cdn-cgi/trace?b=2
+    rem 也就无法用 https://www.cygwin.com/setup-x86_64.exe?xxx=20250101 强制每天刷新缓存
+
     rem 下载 Cygwin
     if not exist setup-!CygwinArch!.exe (
         call :download http://www.cygwin.com/setup-!CygwinArch!.exe %~dp0setup-!CygwinArch!.exe || goto :download_failed
+    )
+
+    rem 少于 1M 视为无效
+    rem 有的 IP 被官网拉黑，无法下载 exe，下载得到 html
+    for %%A in (setup-!CygwinArch!.exe) do if %%~zA LSS 1048576 (
+        echo Invalid Cgywin installer
+        del setup-!CygwinArch!.exe
+        exit /b 1
     )
 
     rem 安装 Cygwin
@@ -126,11 +163,8 @@ call :check_cygwin_installed || (
         --packages %pkgs%
 
     rem 检查 Cygwin 是否成功安装
-    if errorlevel 1 (
-        goto :install_cygwin_failed
-    ) else (
-        call :check_cygwin_installed || goto :install_cygwin_failed
-    )
+    if errorlevel 1 goto :install_cygwin_failed
+    call :check_cygwin_installed || goto :install_cygwin_failed
 )
 
 rem 在c盘根目录下执行 cygpath -ua . 会得到 /cygdrive/c，因此末尾要有 /
@@ -159,23 +193,28 @@ rem 或者添加 export PATH=/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/
 %SystemDrive%\cygwin\bin\bash %thisdir%reinstall.sh %*
 exit /b
 
-
-
-
-
-:download
 rem bits 要求有 Content-Length 才能下载
+rem cloudflare 的 cdn-cgi/trace 没有 Content-Length
 rem 据说如果网络设为“按流量计费” bits 也无法下载
 rem https://learn.microsoft.com/en-us/windows/win32/bits/http-requirements-for-bits-downloads
+rem bitsadmin /transfer "%~3" /priority foreground %~1 %~2
+
+:download
 rem certutil 会被 windows Defender 报毒
 rem windows server 2019 要用第二条 certutil 命令
-echo Download: %~1 %~2
+echo Downloading: %~1 %~2
 del /q "%~2" 2>nul
 if exist "%~2" (echo Cannot delete %~2 & exit /b 1)
-if not exist "%~2" certutil -urlcache -f -split "%~1" "%~2" >nul
-if not exist "%~2" certutil -urlcache -split "%~1" "%~2" >nul
-if not exist "%~2" exit /b 1
-exit /b
+
+certutil -urlcache -f -split "%~1" "%~2" >nul
+if not errorlevel 1 if exist "%~2" exit /b 0
+
+certutil -urlcache -split "%~1" "%~2" >nul
+if not errorlevel 1 if exist "%~2" exit /b 0
+
+rem 下载失败时删除文件，防止下载了一部分导致下次运行时跳过了下载
+del /q "%~2" 2>nul
+exit /b 1
 
 :download_with_curl
 rem 加 --insecure 防止以下错误

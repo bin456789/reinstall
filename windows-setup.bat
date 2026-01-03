@@ -19,7 +19,7 @@ rem echo a | find "a"
 rem 使用高性能模式
 rem https://learn.microsoft.com/windows-hardware/manufacture/desktop/capture-and-apply-windows-using-a-single-wim
 rem win8 pe 没有 powercfg
-call powercfg /s 8c5e7fda-e8bf-4a96-9a85-a6e23a8c635c 2>nul
+powercfg /s SCHEME_MIN 2>nul
 
 rem 安装 SCSI 驱动
 if exist X:\drivers\ (
@@ -93,6 +93,14 @@ for /f "tokens=3" %%a in (X:\disk.txt) do (
 )
 del X:\disk.txt
 
+rem 这个变量会被 trans.sh 修改
+set is4kn=0
+if "%is4kn%"=="1" (
+    set EFISize=260
+) else (
+    set EFISize=100
+)
+
 rem 重新分区/格式化
 (if "%BootType%"=="efi" (
     echo select disk %DiskIndex%
@@ -104,7 +112,7 @@ rem 重新分区/格式化
     echo select part 3
     echo delete part override
 
-    echo create part efi size=100
+    echo create part efi size=%EFISize%
     echo format fs=fat32 quick
 
     echo create part msr size=16

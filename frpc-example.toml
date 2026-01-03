@@ -1,0 +1,24 @@
+serverAddr = "11.22.33.44"
+serverPort = 7000
+auth.token = "123456"
+
+[[proxies]]
+name = "ssh"
+type = "tcp"
+localIP = "127.0.0.1"
+localPort = 22
+remotePort = 2222
+
+[[proxies]]
+name = "rdp_tcp"
+type = "tcp"
+localIP = "127.0.0.1"
+localPort = 3389
+remotePort = 33890
+
+[[proxies]]
+name = "rdp_udp"
+type = "udp"
+localIP = "127.0.0.1"
+localPort = 3389
+remotePort = 33890
