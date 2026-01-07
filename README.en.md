@@ -4,7 +4,8 @@
 
 [![Codacy](https://img.shields.io/codacy/grade/dc679a17751448628fe6d8ac35e26eed?logo=Codacy&label=Codacy&style=flat-square)](https://app.codacy.com/gh/bin456789/reinstall/dashboard)
 [![CodeFactor](https://img.shields.io/codefactor/grade/github/bin456789/reinstall?logo=CodeFactor&logoColor=white&label=CodeFactor&style=flat-square)](https://www.codefactor.io/repository/github/bin456789/reinstall)
-[![Lines of Code](https://tokei.rs/b1/github/bin456789/reinstall?category=code&label=Lines%20of%20Code&style=flat-square)](https://github.com/XAMPPRocky/tokei_rs)
+[![Lines of Code](https://aschey.tech/tokei/github/bin456789/reinstall?category=code&label=Lines%20of%20Code&style=flat-square)](https://github.com/aschey/vercel-tokei)
+<!-- [![Lines of Code](https://tokei.rs/b1/github/bin456789/reinstall?category=code&label=Lines%20of%20Code&style=flat-square)](https://github.com/XAMPPRocky/tokei_rs) -->
 
 One-Click system reinstallation script for VPS [中文](README.md)
 
@@ -34,7 +35,7 @@ If this helped you, you can buy me a milk tea.
 - [Download](#download-current-system-is--linux)
 - [Feature 1. One-click reinstallation to Linux](#feature-1-install--linux)
 - [Feature 2. One-click DD Raw image to hard disk](#feature-2-dd-raw-image-to-hard-disk)
-- [Feature 3. One-click reboot to Alpine Live OS in-memory system](#feature-3-reboot-to--alpine-live-os-ram-os)
+- [Feature 3. One-click reboot to Alpine Live OS](#feature-3-reboot-to--alpine-live-os)
 - [Feature 4. One-click reboot to netboot.xyz](#feature-4-reboot-to--netbootxyz)
 - [Feature 5. One-click reinstallation to Windows](#feature-5-install--windows-iso)
 
@@ -149,7 +150,7 @@ certutil -urlcache -f -split https://cnb.cool/bin456789/reinstall/-/git/raw/main
 - When installing the latest version, the version number does not need to be specified.
 - Maximizes disk space usage: no boot partition (except for Fedora) and no swap partition.
 - Automatically selects different optimized kernels based on machine type, such as `Cloud` or `HWE` kernels.
-- When installing Red Hat, you must provide the `qcow2` image link obtained from <https://access.redhat.com/downloads/content/rhel>. You can also install other RHEL-based OS, such as `Alibaba Cloud Linux` and `TencentOS Server`.
+- When installing Red Hat, you must provide the `qcow2` image link obtained from <https://access.redhat.com/downloads/content/rhel>. You can also install `qcow2` of other RHEL-based OS, such as `Alibaba Cloud Linux` and `TencentOS Server`.
 - After reinstallation, if you need to change the SSH port or switch to key-based login, make sure to also modify the files inside `/etc/ssh/sshd_config.d/`.
 
 ```bash
@@ -258,7 +259,7 @@ bash reinstall.sh dd --img "https://example.com/xxx.xz"
 >
 > Or Run `/trans.sh alpine` to automatically recover to Alpine Linux.
 
-### Feature 3: Reboot to <img width="16" height="16" src="https://www.alpinelinux.org/alpine-logo.ico" /> Alpine Live OS (RAM OS)
+### Feature 3: Reboot to <img width="16" height="16" src="https://www.alpinelinux.org/alpine-logo.ico" /> Alpine Live OS
 
 - You can use SSH to backup/restore disk, manually perform DD operations, partition modifications, manual Alpine installation, and other operations.
 - Username `root`. The script prompts for a password. If left blank, a random one is generated.
@@ -266,7 +267,7 @@ bash reinstall.sh dd --img "https://example.com/xxx.xz"
 > [!TIP]
 >
 > Although the script being run is `reinstall`, this feature **does not** delete any data or perform an automatic reinstallation; manual user operation is required.
-
+>
 > If the user does not damage the original system during manual operation, rebooting will return to the original system.
 
 ```bash
@@ -287,7 +288,7 @@ bash reinstall.sh alpine --hold 1
 > [!TIP]
 >
 > Although the script being run is `reinstall`, this feature **does not** delete any data or perform an automatic reinstallation; manual user operation is required.
-
+>
 > If the user does not damage the original system during manual operation, rebooting will return to the original system.
 
 ```bash
