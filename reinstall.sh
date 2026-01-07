@@ -1086,7 +1086,10 @@ get_windows_iso_link() {
     if [ -n "$label_msdl" ]; then
         iso=$(curl -L "$page_url" | grep -ioP 'https://[^ ]+?#[0-9]+' | head -1 | grep .)
     else
-        curl -L "$page_url" | grep -ioP 'https://[^ ]+?.(iso|img)' >$tmp/win.list
+        curl -L "$page_url" |
+            tr -d '\n' | sed -e 's,<a ,\n<a ,g' -e 's,</a>,</a>\n,g' |    # 使每个 <a></a> 占一行
+            grep -Ei '\.(iso|img)</a>$' |                                 # 找出是 iso 或 img 的行
+            sed -E 's,<a href="([^"]+)".+>(.+)</a>,\2 \1,' >$tmp/win.list # 提取文件名和链接
 
         # 如果不是 ltsc ，应该先去除 ltsc 链接，否则最终链接有 ltsc 的
         # 例如查找 windows 10 iot enterprise，会得到
@@ -1104,8 +1107,12 @@ get_windows_iso_link() {
 }
 
 get_shortest_line() {
-    # awk '{print length($0), $0}' | sort -n | head -1 | awk '{print $2}'
     awk '(NR == 1 || length($0) < length(shortest)) { shortest = $0 } END { print shortest }'
+}
+
+get_shortest_line_by_field() {
+    local field=$1
+    awk "(NR == 1 || length(\$$field) < length(field)) { line = \$0; field = \$$field } END { print line }"
 }
 
 get_windows_iso_link_inner() {
@@ -1139,7 +1146,9 @@ get_windows_iso_link_inner() {
         regex=${regex// /_}
 
         echo "looking for: $regex" >&2
-        if iso=$(grep -Ei "/$regex" "$tmp/win.list" | get_shortest_line | grep .); then
+        if line=$(grep -Ei "^$regex " "$tmp/win.list" | get_shortest_line_by_field 1 | grep .) &&
+            iso=$(awk '{print $2}' <<<"$line" | grep .); then
+            echo "Selected: $line" >&2
             return
         fi
     done
@@ -1512,7 +1521,9 @@ Continue?
     }
 
     setos_windows() {
+        auto_find_iso=false
         if [ -z "$iso" ]; then
+            auto_find_iso=true
             # 查找时将 windows longhorn serverdatacenter 改成 windows server 2008 serverdatacenter
             image_name=${image_name/windows longhorn server/windows server 2008 server}
             echo "iso url is not set. Attempting to find it automatically."
@@ -1527,27 +1538,32 @@ Continue?
         if [[ "$iso" = magnet:* ]]; then
             : # 不测试磁力链接
         else
-            # 需要用户输入 massgrave.dev 直链
-            if grep -Eiq '\.massgrave\.dev/.*\.(iso|img)$' <<<"$iso" ||
-                grep -Eiq '\.gravesoft\.dev/#[0-9]+$' <<<"$iso"; then
-                info "Set Direct link"
-                # MobaXterm 不支持
-                # printf '\e]8;;http://example.com\e\\This is a link\e]8;;\e\\\n'
+            iso_is_tested=false
+            if $auto_find_iso; then
+                if test_url_grace "$iso" iso 2>/dev/null; then
+                    iso_is_tested=true
+                else
+                    # 需要用户输入 massgrave.dev 直链
+                    info "Set Direct link"
+                    # MobaXterm 不支持
+                    # printf '\e]8;;http://example.com\e\\This is a link\e]8;;\e\\\n'
 
-                # MobaXterm 不显示为超链接
-                # info false "请在浏览器中打开 $iso 获取直链并粘贴到这里。"
-                # info false "Please open $iso in browser to get the direct link and paste it here."
+                    # MobaXterm 不显示为超链接
+                    # info false "请在浏览器中打开 $iso 获取直链并粘贴到这里。"
+                    # info false "Please open $iso in browser to get the direct link and paste it here."
 
-                echo "请在浏览器中打开 $iso 获取直链并粘贴到这里。"
-                echo "Please open $iso in browser to get the direct link and paste it here."
-                IFS= read -r -p "Direct Link: " iso
-                if [ -z "$iso" ]; then
-                    error_and_exit "ISO Link is empty."
+                    echo "请在浏览器中打开 $iso 获取直链并粘贴到这里。"
+                    echo "Please open $iso in browser to get the direct link and paste it here."
+                    IFS= read -r -p "Direct Link: " iso
+                    if [ -z "$iso" ]; then
+                        error_and_exit "ISO Link is empty."
+                    fi
                 fi
             fi
 
-            # 测试是否是 iso
-            test_url "$iso" iso
+            if ! $iso_is_tested; then
+                test_url "$iso" iso
+            fi
 
             # 判断 iso 架构是否兼容
             # https://gitlab.com/libosinfo/osinfo-db/-/tree/main/data/os/microsoft.com?ref_type=heads
