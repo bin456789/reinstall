@@ -1622,15 +1622,13 @@ Continue with DD?
     }
 
     setos_fnos() {
-        if [ "$basearch" = aarch64 ]; then
-            error_and_exit "FNOS not supports ARM."
-        fi
-
         # 系统盘大小
         min=8
         default=8
+        echo "请输入系统分区大小，最小 $min GB，但可能无法更新系统。"
+        echo "Please input System Partition Size. Minimal is $min GB but may not be able to do system updates."
         while true; do
-            IFS= read -r -p "Type System Partition Size in GB. Minimal $min GB. [$default]: " input
+            IFS= read -r -p "Size in GB [$default]: " input
             input=${input:-$default}
             if ! { is_digit "$input" && [ "$input" -ge "$min" ]; }; then
                 error "Invalid Size. Please Try again."
@@ -1640,16 +1638,25 @@ Continue with DD?
             fi
         done
 
-        iso=$(curl -L https://fnnas.com/ | grep -o 'https://[^"]*\.iso' | head -1 | grep .)
+        if [ "$basearch" = aarch64 ]; then
+            if [ -z "$iso" ]; then
+                IFS= read -r -p "ISO Link: " iso
+                if [ -z "$iso" ]; then
+                    error_and_exit "ISO Link is empty."
+                fi
+            fi
+        else
+            iso=$(curl -L https://fnnas.com/ | grep -o -m1 'https://[^"]*\.iso')
 
-        # curl 7.82.0+
-        # curl -L --json '{"url":"'$iso'"}' https://www.fnnas.com/api/download-sign
+            # curl 7.82.0+
+            # curl -L --json '{"url":"'$iso'"}' https://www.fnnas.com/api/download-sign
 
-        iso=$(curl -L \
-            -d '{"url":"'$iso'"}' \
-            -H 'Content-Type: application/json' \
-            https://www.fnnas.com/api/download-sign |
-            grep -o 'https://[^"]*')
+            iso=$(curl -L \
+                -d '{"url":"'$iso'"}' \
+                -H 'Content-Type: application/json' \
+                https://www.fnnas.com/api/download-sign |
+                grep -o 'https://[^"]*')
+        fi
 
         test_url "$iso" iso
         eval "${step}_iso='$iso'"

@@ -2431,7 +2431,7 @@ get_disk_logic_sector_size() {
 }
 
 is_4kn() {
-    [ "$(blockdev --getss "$1")" = 4096 ]
+    [ "$(blockdev --getss "/dev/$xda")" = 4096 ]
 }
 
 is_xda_gt_2t() {
@@ -2523,15 +2523,18 @@ create_part() {
         sector_size=$(get_disk_logic_sector_size /dev/$xda)
         total_sector_count=$(get_disk_sector_count /dev/$xda)
 
-        # 截止最后一个分区的总扇区数（也就是总硬盘扇区数 - 备份分区表扇区数）
-        if is_efi; then
-            total_sector_count_except_backup_gpt=$((total_sector_count - 33))
-        else
+        # 截止最后一个分区的总扇区数（也就是总硬盘扇区数 - 备份分区表扇区数 - 备份 GPT Header）
+        if ! is_efi && ! is_xda_gt_2t; then
+            # mbr
             total_sector_count_except_backup_gpt=$total_sector_count
+        elif is_4kn; then
+            total_sector_count_except_backup_gpt=$((total_sector_count - 4 - 1))
+        else
+            total_sector_count_except_backup_gpt=$((total_sector_count - 32 - 1))
         fi
 
         # 向下取整 MiB
-        # gpt 最后 33 个扇区是备份分区表，不可用
+        # gpt 最后 33 (512n/512e) 或 5 (4Kn) 个扇区是备份分区表，不可用
         # parted 结束位置填 100% 时也会忽略最后不足 1MiB 的部分，我们模仿它
         max_can_use_m=$((total_sector_count_except_backup_gpt * sector_size / 1024 / 1024))
 
@@ -2560,9 +2563,20 @@ create_part() {
 
             mkfs.fat /dev/$xda*1                #1 efi
             mkfs.ext4 -F $ext4_opts /dev/$xda*2 #2 os + installer
+        elif is_xda_gt_2t; then
+            # bios > 2t
+            # 官方安装器是 mkpart BOOT 1M 100M，无论 esp 或者 bios_grub 都用这个分区和大小
+            parted /dev/$xda -s -- \
+                mklabel gpt \
+                mkpart BOOT ext4 1MiB 101MiB \
+                mkpart SYSTEM ext4 101MiB $os_part_end \
+                set 1 bios_grub on
+            update_part
+
+            echo                                #1 bios_boot
+            mkfs.ext4 -F $ext4_opts /dev/$xda*2 #2 os + installer
         else
             # bios
-            # 官方安装器不支持 bios + >2t
             parted /dev/$xda -s -- \
                 mklabel msdos \
                 mkpart primary 1MiB 101MiB \
@@ -4310,7 +4324,14 @@ install_fnos() {
     mkdir -p $initrd_dir
     (
         cd $initrd_dir
-        zcat /iso/install.amd/initrd.gz | cpio -idm
+        suffix=$(
+            case $(uname -m) in
+            x86_64) echo amd ;;
+            aarch64) echo a64 ;;
+            *) ;;
+            esac
+        )
+        zcat /iso/install.$suffix/initrd.gz | cpio -idm
     )
     apk del cpio
 
@@ -4346,9 +4367,6 @@ install_fnos() {
     # 挂载 proc sys dev
     mount_pseudo_fs /os
 
-    # 更新 initrd
-    # chroot $os_dir update-initramfs -u
-
     # 更改密码
     if is_need_set_ssh_keys; then
         set_ssh_keys_and_del_password $os_dir
@@ -4362,6 +4380,31 @@ install_fnos() {
         chroot $os_dir systemctl enable ssh
     fi
 
+    # fstab
+    {
+        # /
+        uuid=$(lsblk /dev/$xda*2 -no UUID)
+        echo "$fstab_line_os" | sed "s/%s/$uuid/"
+
+        # swapfile
+        # 官方安装器即使 swapfile 设为 0 也会有这行
+        echo "$fstab_line_swapfile"
+
+        # /boot/efi
+        if is_efi; then
+            uuid=$(lsblk /dev/$xda*1 -no UUID)
+            echo "$fstab_line_efi" | sed "s/%s/$uuid/"
+        fi
+    } >$os_dir/etc/fstab
+
+    # 更新 initrd，官方安装器也有这一步
+    # 理论上 /var/tmp 要设置 1777 权限，但飞牛官方安装器安装后不是
+    # 需要先创建 /etc/fstab ，否则会有以下警告
+    # W: Couldn't identify type of root file system for fsck hook
+    mkdir -p $os_dir/var/tmp
+    chmod 1777 $os_dir/var/tmp
+    chroot $os_dir update-initramfs -u
+
     # grub
     if is_efi; then
         chroot $os_dir grub-install --efi-directory=/boot/efi
@@ -4370,27 +4413,15 @@ install_fnos() {
         chroot $os_dir grub-install /dev/$xda
     fi
 
+    # grub 配置
+    # 取自 strings trim-install | grep GRUB_DISTRIBUTOR
+    sed -i 's/^GRUB_DISTRIBUTOR=.*/GRUB_DISTRIBUTOR="FNOS"/' $os_dir/etc/default/grub
+
     # grub tty
     ttys_cmdline=$(get_ttys console=)
-    echo GRUB_CMDLINE_LINUX=\"\$GRUB_CMDLINE_LINUX $ttys_cmdline\" \
-        >>$os_dir/etc/default/grub.d/tty.cfg
+    echo GRUB_CMDLINE_LINUX=\"\$GRUB_CMDLINE_LINUX $ttys_cmdline\" >$os_dir/etc/default/grub.d/tty.cfg
+
     chroot $os_dir update-grub
-
-    # fstab
-    {
-        # /
-        uuid=$(lsblk /dev/$xda*2 -no UUID)
-        echo "$fstab_line_os" | sed "s/%s/$uuid/"
-
-        # 官方安装器即使 swapfile 设为 0 也会有这行
-        echo "$fstab_line_swapfile" | sed "s/%s/$uuid/"
-
-        # /boot/efi
-        if is_efi; then
-            uuid=$(lsblk /dev/$xda*1 -no UUID)
-            echo "$fstab_line_efi" | sed "s/%s/$uuid/"
-        fi
-    } >$os_dir/etc/fstab
 
     # 网卡配置
     create_cloud_init_network_config /net.cfg
@@ -5554,12 +5585,6 @@ is_list_has() {
     local list=$1
     local item=$2
     echo "$list" | grep -qFx "$item"
-}
-
-# hivexget 是 shell 脚本，开头是 #!/bin/bash
-# 但 alpine 没安装 bash，直接运行 hivexget 会报错
-hivexget() {
-    ash "$(which hivexget)" "$@"
 }
 
 get_windows_type_from_windows_drive() {
@@ -6802,7 +6827,7 @@ EOF
 
     # 4kn EFI 分区最少要 260M
     # https://learn.microsoft.com/windows-hardware/manufacture/desktop/hard-drives-and-partitions
-    if is_4kn /dev/$xda; then
+    if is_4kn; then
         sed -i 's/is4kn=0/is4kn=1/i' $startnet_cmd
     fi
 
