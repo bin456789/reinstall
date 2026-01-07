@@ -6040,8 +6040,18 @@ install_windows() {
                     echo https://downloadmirror.intel.com/849483/Wired_driver_30.0.1_${arch_intel}.zip
                     ;;
                 x64)
+                    id=$(
+                        case "$product_ver" in
+                        10) echo 18293 ;;
+                        11) echo 727998 ;;
+                        2016) echo 18737 ;;
+                        2019) echo 19372 ;;
+                        2022) echo 706171 ;;
+                        2025) echo 838943 ;;
+                        esac
+                    )
                     # intel 禁止了 wget 下载网页
-                    wget -U curl/7.54.1 https://www.intel.com/content/www/us/en/download/727998.html -O- |
+                    wget -U curl/7.54.1 https://www.intel.com/content/www/us/en/download/$id.html -O- |
                         grep -Eio -m1 "\"https://.+/(Wired_driver|prowin).*${arch_intel}(legacy)?\.(zip|exe)\"" | tr -d '"' | grep .
                     ;;
                 esac ;;
