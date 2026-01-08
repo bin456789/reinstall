@@ -414,22 +414,30 @@ extract_env_from_cmdline() {
 }
 
 ensure_service_started() {
-    service=$1
+    local service=$1
 
-    if ! rc-service -q $service status; then
-        if ! retry 5 rc-service -q $service start; then
-            error_and_exit "Failed to start $service."
-        fi
+    if ! rc-service -q "$service" start; then
+        for i in $(seq 10); do
+            if [ "$service" = modloop ]; then
+                # 避免有时 modloop 下载不完整导致报错
+                # * Failed to verify signature of !
+                # mount: mounting /dev/loop0 on /.modloop failed: Invalid argument
+                rm -f /lib/modloop-lts /lib/modloop-virt
+            fi
+            if rc-service -q "$service" start; then
+                return
+            fi
+            sleep 5
+        done
+        error_and_exit "Failed to start $service."
     fi
 }
 
 ensure_service_stopped() {
-    service=$1
+    local service=$1
 
-    if rc-service -q $service status; then
-        if ! retry 5 rc-service -q $service stop; then
-            error_and_exit "Failed to stop $service."
-        fi
+    if ! retry 10 5 rc-service -q "$service" stop; then
+        error_and_exit "Failed to stop $service."
     fi
 }
 
