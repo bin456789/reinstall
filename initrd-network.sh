@@ -345,14 +345,14 @@ EOF
     db_progress INFO netcfg/link_detect_progress
 else
     # alpine
-    # h3c 移动云电脑使用 udhcpc 会重复提示 sending select，无法获得 ipv6
+    # h3c 移动云电脑使用 udhcpc 会重复提示 sending select，因此添加 timeout 强制结束进程
     # dhcpcd 会配置租约时间，过期会移除 IP，但我们的没有在后台运行 dhcpcd ，因此用 udhcpc
     method=udhcpc
 
     case "$method" in
     udhcpc)
-        udhcpc -i "$ethx" -f -q -n || true
-        udhcpc6 -i "$ethx" -f -q -n || true
+        timeout $DHCP_TIMEOUT udhcpc -i "$ethx" -f -q -n || true
+        timeout $DHCP_TIMEOUT udhcpc6 -i "$ethx" -f -q -n || true
         sleep $DNS_FILE_TIMEOUT # 好像不用等待写入 dns，但是以防万一
         ;;
     dhcpcd)
