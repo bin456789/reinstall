@@ -3488,10 +3488,8 @@ EOF
             ! sh /can_use_cloud_kernel.sh "$xda" $(get_eths); then
             kernel_package=$(echo "$kernel_package" | sed 's/-cloud//')
         fi
-        # 如果镜像自带内核跟最佳内核是同一种且有更新
-        # 则 apt install 只会进行更新，不会将包设置成 manual
-        # 需要再运行 apt install 才会将包设置成 manual
-        chroot_apt_install $os_dir "$kernel_package"
+
+        # 该方法包含了 apt-mark manual
         chroot_apt_install $os_dir "$kernel_package"
 
         # 使用 autoremove 删除非最佳内核
@@ -4192,7 +4190,7 @@ chroot_dnf() {
 }
 
 chroot_apt_update() {
-    os_dir=$1
+    local os_dir=$1
 
     current_hash=$(cat $os_dir/etc/apt/sources.list $os_dir/etc/apt/sources.list.d/*.sources 2>/dev/null | md5sum)
     if ! [ "$saved_hash" = "$current_hash" ]; then
@@ -4202,15 +4200,30 @@ chroot_apt_update() {
 }
 
 chroot_apt_install() {
-    os_dir=$1
+    local os_dir=$1
     shift
 
-    chroot_apt_update $os_dir
-    DEBIAN_FRONTEND=noninteractive chroot $os_dir apt-get install -y "$@"
+    # 只安装未安装的软件包
+    # 避免更新浪费时间
+    local pkg='' pkgs=''
+    for pkg in "$@"; do
+        if chroot $os_dir dpkg -s "$pkg" >/dev/null 2>&1; then
+            # 如果已安装则标记为 manual，防止被 autoremove 删除
+            chroot $os_dir apt-mark manual "$pkg"
+        else
+            pkgs="$pkgs $pkg"
+        fi
+    done
+
+    # 一次性安装，避免多次 update-initramfs
+    if [ -n "$pkgs" ]; then
+        chroot_apt_update $os_dir
+        DEBIAN_FRONTEND=noninteractive chroot $os_dir apt-get install -y $pkgs
+    fi
 }
 
 chroot_apt_remove() {
-    os_dir=$1
+    local os_dir=$1
     shift
 
     # minimal 镜像 删除 grub-pc 时会安装 grub-efi-amd64
@@ -4233,7 +4246,7 @@ chroot_apt_remove() {
 }
 
 chroot_apt_autoremove() {
-    os_dir=$1
+    local os_dir=$1
 
     change_confs() {
         action=$1
@@ -4782,10 +4795,13 @@ EOF
         # 安装最佳内核
         flavor=$(get_ubuntu_kernel_flavor)
         echo "Use kernel flavor: $flavor"
-        # 如果镜像自带内核跟最佳内核是同一种且有更新
-        # 则 apt install 只会进行更新，不会将包设置成 manual
-        # 需要再运行 apt install 才会将包设置成 manual
-        chroot_apt_install $os_dir "linux-image-$flavor"
+
+        # 题外话
+        # 如果某个包是 auto 状态且有更新
+        # 则 apt install PKG 只会进行更新，不会将包设置成 manual
+        # 需要再次运行 apt install PKG 才会将包设置成 manual
+
+        # 该方法包含了 apt-mark manual
         chroot_apt_install $os_dir "linux-image-$flavor"
 
         # 使用 autoremove 删除多余内核
