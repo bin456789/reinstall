@@ -1087,9 +1087,9 @@ get_windows_iso_link() {
         iso=$(curl -L "$page_url" | grep -ioP 'https://[^ ]+?#[0-9]+' | head -1 | grep .)
     else
         curl -L "$page_url" |
-            tr -d '\n' | sed -e 's,<a ,\n<a ,g' -e 's,</a>,</a>\n,g' |    # 使每个 <a></a> 占一行
-            grep -Ei '\.(iso|img)</a>$' |                                 # 找出是 iso 或 img 的行
-            sed -E 's,<a href="([^"]+)".+>(.+)</a>,\2 \1,' >$tmp/win.list # 提取文件名和链接
+            tr -d '\n' | sed -e 's,<a ,\n<a ,g' -e 's,</a>,</a>\n,g' |       # 使每个 <a></a> 占一行
+            grep -Ei '\.(iso|img)</a>$' |                                    # 找出是 iso 或 img 的行
+            sed -E 's,<a href="?([^" ]+)"?.+>(.+)</a>,\2 \1,' >$tmp/win.list # 提取文件名和链接
 
         # 如果不是 ltsc ，应该先去除 ltsc 链接，否则最终链接有 ltsc 的
         # 例如查找 windows 10 iot enterprise，会得到
