@@ -1662,20 +1662,18 @@ Continue with DD?
                 fi
             fi
         else
-            iso=$(curl -L https://fnnas.com/ | grep -o -m1 'https://[^"]*\.iso')
+    # === 修复开始 ===
+    raw_iso="https://iso.liveupdate.fnnas.com/x86_64/trim/fnos-1.1.19-1566.iso"
+    iso=$(curl -L \
+        -d '{"url":"'$raw_iso'"}' \
+        -H 'Content-Type: application/json' \
+        https://www.fnnas.com/api/download-sign |
+        grep -o 'https://[^"]*' | head -n1)
+    # === 修复结束 ===
+fi
 
-            # curl 7.82.0+
-            # curl -L --json '{"url":"'$iso'"}' https://www.fnnas.com/api/download-sign
-
-            iso=$(curl -L \
-                -d '{"url":"'$iso'"}' \
-                -H 'Content-Type: application/json' \
-                https://www.fnnas.com/api/download-sign |
-                grep -o 'https://[^"]*')
-        fi
-
-        test_url "$iso" iso
-        eval "${step}_iso='$iso'"
+test_url "$iso" iso
+eval "${step}_iso='$iso'"
     }
 
     setos_aosc() {
