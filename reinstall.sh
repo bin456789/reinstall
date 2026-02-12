@@ -3746,6 +3746,22 @@ This script is outdated, please download reinstall.sh again.
         cat "$frpc_config" >$initrd_dir/configs/frpc.toml
     fi
 
+    # 收集 cloud-data 打包进 initrd
+    if [ -n "$cloud_data" ]; then
+        mkdir -p $initrd_dir/configs/cloud-data
+        if [ -d "$cloud_data" ]; then
+            # 本地目录：直接复制
+            cp "$cloud_data"/* $initrd_dir/configs/cloud-data/
+        else
+            # URL：在 host 下载
+            for f in user-data meta-data network-config; do
+                curl -fsSL "$cloud_data/$f" -o "$initrd_dir/configs/cloud-data/$f" 2>/dev/null || true
+            done
+        fi
+        # 校验：至少要有 user-data
+        [ -f $initrd_dir/configs/cloud-data/user-data ] || error_and_exit "--cloud-data must contain user-data"
+    fi
+
     if is_distro_like_debian $nextos_distro; then
         mod_initrd_debian_kali
     else
@@ -3912,6 +3928,7 @@ for o in ci installer debug minimal allow-ping force-cn help \
     image-name: \
     boot-wim: \
     img: \
+    cloud-data: \
     lang: \
     passwd: password: \
     ssh-port: \
@@ -4145,6 +4162,10 @@ EOF
         ;;
     --img)
         img=$2
+        shift 2
+        ;;
+    --cloud-data)
+        cloud_data=$2
         shift 2
         ;;
     --iso)

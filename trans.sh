@@ -3793,14 +3793,40 @@ EOF
     rm -f $os_dir/swapfile
 }
 
+setup_nocloud() {
+    os_dir=$1
+    info "Setup NoCloud"
+
+    # 1. 配置 NoCloud-only datasource
+    mkdir -p "$os_dir/etc/cloud/cloud.cfg.d"
+    cat > "$os_dir/etc/cloud/cloud.cfg.d/99-datasource.cfg" << 'EOF'
+datasource_list: [ NoCloud, None ]
+datasource:
+  NoCloud:
+    seedfrom: /var/lib/cloud/seed/nocloud/
+    fs_label: null
+EOF
+
+    # 2. 复制 seed 文件（已在 host 上准备好，打包在 initrd 中）
+    mkdir -p "$os_dir/var/lib/cloud/seed/nocloud"
+    cp /configs/cloud-data/* "$os_dir/var/lib/cloud/seed/nocloud/"
+
+    # 3. 确保 cloud-init 没有被禁用
+    rm -f "$os_dir/etc/cloud/cloud-init.disabled"
+
+    # 4. 清除 cloud-init 旧状态，确保首次启动重新执行
+    rm -rf "$os_dir/var/lib/cloud/instance"
+    rm -rf "$os_dir/var/lib/cloud/instances"
+}
+
 modify_os_on_disk() {
     only_process=$1
     info "Modify disk if is $only_process"
 
     update_part
 
-    # dd linux 的时候不用修改硬盘内容
-    if [ "$distro" = "dd" ] && ! lsblk -f /dev/$xda | grep ntfs; then
+    # dd linux 的时候不用修改硬盘内容（nocloud 模式除外）
+    if [ "$distro" = "dd" ] && [ "$only_process" != "nocloud" ] && ! lsblk -f /dev/$xda | grep ntfs; then
         return
     fi
 
@@ -3810,12 +3836,16 @@ modify_os_on_disk() {
         # btrfs挂载的是默认子卷，如果没有默认子卷，挂载的是根目录
         # fedora 云镜像没有默认子卷，且系统在root子卷中
         if mount -o ro /dev/$part /os; then
-            if [ "$only_process" = linux ]; then
+            if [ "$only_process" = linux ] || [ "$only_process" = nocloud ]; then
                 if etc_dir=$({ ls -d /os/etc/ || ls -d /os/*/etc/; } 2>/dev/null); then
                     os_dir=$(dirname $etc_dir)
                     # 重新挂载为读写
                     mount -o remount,rw /os
-                    modify_linux $os_dir
+                    if [ "$only_process" = nocloud ]; then
+                        setup_nocloud $os_dir
+                    else
+                        modify_linux $os_dir
+                    fi
                     return
                 fi
             elif [ "$only_process" = windows ]; then
@@ -7229,7 +7259,11 @@ trans() {
                 # windows 扩容在 windows 下完成
                 resize_after_install_cloud_image
             fi
-            modify_os_on_disk windows
+            if [ -d /configs/cloud-data ]; then
+                modify_os_on_disk nocloud
+            else
+                modify_os_on_disk windows
+            fi
             ;;
         qemu) # dd qemu 不可能到这里，因为上面已处理
             ;;
