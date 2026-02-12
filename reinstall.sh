@@ -1662,16 +1662,22 @@ Continue with DD?
                 fi
             fi
         else
-            iso=$(curl -L https://fnnas.com/ | grep -o -m1 'https://[^"]*\.iso')
+            # 手动指定从浏览器抓包获得的原始 ISO 链接
+            raw_iso="https://iso.liveupdate.fnnas.com/x86_64/trim/fnos-1.1.19-1566.iso"
 
-            # curl 7.82.0+
-            # curl -L --json '{"url":"'$iso'"}' https://www.fnnas.com/api/download-sign
+            # 调用签名接口，添加完整请求头（关键！）
+            iso=$(curl -sL \
+                -H "Content-Type: application/json" \
+                -H "Referer: https://fnnas.com/download" \
+                -H "User-Agent: Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0 Safari/537.36" \
+                -d "{\"url\":\"$raw_iso\"}" \
+                https://fnnas.com/api/download-sign | \
+                grep -o 'https://[^"]*\.iso' | head -n1)
 
-            iso=$(curl -L \
-                -d '{"url":"'$iso'"}' \
-                -H 'Content-Type: application/json' \
-                https://www.fnnas.com/api/download-sign |
-                grep -o 'https://[^"]*')
+            # 如果 API 返回空，报错退出
+            if [ -z "$iso" ]; then
+                error_and_exit "Failed to get signed download URL from fnnas.com API"
+            fi
         fi
 
         test_url "$iso" iso
