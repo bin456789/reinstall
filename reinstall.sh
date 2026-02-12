@@ -882,8 +882,14 @@ find_windows_iso() {
     full_lang=$(english)
 
     case "$basearch" in
-    x86_64) arch_win=x64 ;;
-    aarch64) arch_win=arm64 ;;
+    x86_64)
+        arch_win=x64
+        arch_win_vlsc=64bit
+        ;;
+    aarch64)
+        arch_win=arm64
+        arch_win_vlsc=arm64
+        ;;
     esac
 
     get_windows_iso_link
@@ -1008,6 +1014,9 @@ get_windows_iso_link() {
             case "$edition" in
             pro | education | enterprise | 'pro education' | 'pro for workstations') echo pro ;;
             esac
+            ;;
+        2025)
+            echo SrvSTDCORE
             ;;
         esac
     }
@@ -1136,8 +1145,11 @@ get_windows_iso_link_inner() {
     fi
 
     # vlsc
+    # SW_DVD5_Win_10_IOT_Enterprise_2015_LTSB_64Bit_EMB_English_OEM_X20-20063.IMG
+    # SW_DVD9_Win_Pro_10_22H2.15_Arm64_English_Pro_Ent_EDU_N_MLF_X23-67223.ISO
+    # SWDVD9_WinSrvSTDCORE2025_24H2.16_64Bit_English_DC_STD_MLF_RTMUpdJan26_X24-26760.iso
     if [ -n "$label_vlsc" ]; then
-        regex="sw_dvd[59]_win_${label_vlsc}_${version}.*${arch_win}_${full_lang}.*.(iso|img)"
+        regex="sw_?dvd[59]_win_?${label_vlsc}_?${version}.*${arch_win_vlsc}_${full_lang}.*.(iso|img)"
         regexs+=("$regex")
     fi
 
