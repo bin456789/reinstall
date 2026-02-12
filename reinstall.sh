@@ -305,6 +305,10 @@ get_host_by_url() {
     cut -d/ -f3 <<<$1
 }
 
+get_scheme_and_host_by_url() {
+    cut -d/ -f1-3 <<<$1
+}
+
 get_function() {
     declare -f "$1"
 }
@@ -1095,10 +1099,17 @@ get_windows_iso_link() {
     if [ -n "$label_msdl" ]; then
         iso=$(curl -L "$page_url" | grep -ioP 'https://[^ ]+?#[0-9]+' | head -1 | grep .)
     else
+        http_to_host=$(get_scheme_and_host_by_url "$page_url")
+        http_to_current_dir=$(dirname "$page_url")
         curl -L "$page_url" |
-            tr -d '\n' | sed -e 's,<a ,\n<a ,g' -e 's,</a>,</a>\n,g' |       # 使每个 <a></a> 占一行
-            grep -Ei '\.(iso|img)</a>$' |                                    # 找出是 iso 或 img 的行
-            sed -E 's,<a href="?([^" ]+)"?.+>(.+)</a>,\2 \1,' >$tmp/win.list # 提取文件名和链接
+            tr -d '\n' | sed -e 's,<a ,\n<a ,g' -e 's,</a>,</a>\n,g' | # 使每个 <a></a> 占一行
+            grep -Ei '\.(iso|img)</a>$' |                              # 找出是 iso 或 img 的行
+            # 提取文件名和链接
+            # 如果链接是 / 开头，则补全域名
+            # 如果链接非 https:// 开头，则补全域名和目录
+            sed -E -e 's,<a href="?([^" ]+)"?.+>(.+)</a>,\2 \1,' \
+                -e "s, (/), $http_to_host\1," |
+            awk '{if ($2 !~ /^https?:\/\//) $2 = "'$http_to_current_dir/'" $2; print}' >$tmp/win.list
 
         # 如果不是 ltsc ，应该先去除 ltsc 链接，否则最终链接有 ltsc 的
         # 例如查找 windows 10 iot enterprise，会得到
