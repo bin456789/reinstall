@@ -15,6 +15,8 @@ SCRIPT_VERSION=4BACD833-A585-23BA-6CBB-9AA4E08E0004
 TRUE=0
 FALSE=1
 EFI_UUID=C12A7328-F81F-11D2-BA4B-00A0C93EC93B
+DEFAULT_CONFHOME=https://raw.githubusercontent.com/bin456789/reinstall/main
+DEFAULT_CONFHOME_CN=https://cnb.cool/bin456789/reinstall/-/git/raw/main
 
 error() {
     color='\e[31m'
@@ -64,7 +66,7 @@ trap_err() {
 }
 
 is_run_from_locald() {
-    [[ "$0" = "/etc/local.d/*" ]]
+    [[ "$0" = /etc/local.d/* ]]
 }
 
 add_community_repo() {
@@ -411,6 +413,31 @@ extract_env_from_cmdline() {
             fi
         done < <(xargs -n1 </proc/cmdline | grep "^${prefix}_" | sed "s/^${prefix}_//")
     done
+}
+
+fix_confhome_if_needed() {
+    case "$confhome" in
+    file://*)
+        local path=${confhome#file://}
+        if ! [ -d "$path" ]; then
+            warn "cmdline confhome not found in installer environment: $confhome"
+            if is_in_china; then
+                confhome=$DEFAULT_CONFHOME_CN
+            else
+                confhome=$DEFAULT_CONFHOME
+            fi
+            warn "fallback confhome: $confhome"
+        fi
+        ;;
+    esac
+}
+
+start_console_log_mirror() {
+    # local service 场景下日志默认只写 /reinstall.log，控制台看起来像“卡住”。
+    # 这里将日志同步到 /dev/console，便于观察进度，失败时也能看到最后一步。
+    if [ -c /dev/console ]; then
+        tail -fn+1 /reinstall.log >/dev/console 2>/dev/null &
+    fi
 }
 
 ensure_service_started() {
@@ -2482,6 +2509,29 @@ pipe_extract() {
     esac
 }
 
+handle_dd_write_error() {
+    # vhd 文件结尾有 512 字节额外信息，可以忽略
+    if grep -iq 'No space' /tmp/dd_stderr; then
+        apk add parted
+        disk_size=$(get_disk_size /dev/$xda)
+        disk_end=$((disk_size - 1))
+
+        # 如果报错，那大概是因为镜像比硬盘大
+        if last_part_end=$(parted -sf /dev/$xda 'unit b print' ---pretend-input-tty |
+            del_empty_lines | tail -1 | awk '{print $3}' | sed 's/B//' | grep .); then
+
+            echo "Last part end: $last_part_end"
+            echo "Disk end:      $disk_end"
+
+            if [ "$last_part_end" -le "$disk_end" ]; then
+                echo "Safely ignore no space error."
+                return
+            fi
+        fi
+    fi
+    error_and_exit "$(cat /tmp/dd_stderr)"
+}
+
 dd_raw_with_extract() {
     info "dd raw"
 
@@ -2489,26 +2539,7 @@ dd_raw_with_extract() {
     apk add wget
 
     if ! wget $img -O- | pipe_extract >/dev/$xda 2>/tmp/dd_stderr; then
-        # vhd 文件结尾有 512 字节额外信息，可以忽略
-        if grep -iq 'No space' /tmp/dd_stderr; then
-            apk add parted
-            disk_size=$(get_disk_size /dev/$xda)
-            disk_end=$((disk_size - 1))
-
-            # 如果报错，那大概是因为镜像比硬盘大
-            if last_part_end=$(parted -sf /dev/$xda 'unit b print' ---pretend-input-tty |
-                del_empty_lines | tail -1 | awk '{print $3}' | sed 's/B//' | grep .); then
-
-                echo "Last part end: $last_part_end"
-                echo "Disk end:      $disk_end"
-
-                if [ "$last_part_end" -le "$disk_end" ]; then
-                    echo "Safely ignore no space error."
-                    return
-                fi
-            fi
-        fi
-        error_and_exit "$(cat /tmp/dd_stderr)"
+        handle_dd_write_error
     fi
 }
 
@@ -3908,6 +3939,12 @@ EOF
 modify_os_on_disk() {
     only_process=$1
     info "Modify disk if is $only_process"
+
+    # Talos 是不可变系统，不应套用通用 Linux 挂载/改盘逻辑
+    if [ "$distro" = "talos" ] && [ "$only_process" = "linux" ]; then
+        info false "Skip linux post-processing for Talos."
+        return
+    fi
 
     update_part
 
@@ -5433,6 +5470,12 @@ fix_gpt_backup_partition_table_by_parted() {
 }
 
 resize_after_install_cloud_image() {
+    # Talos 使用固定分区布局，不做通用云镜像扩容
+    if [ "$distro" = "talos" ]; then
+        info false "Skip resize for Talos."
+        return
+    fi
+
     # 提前扩容
     # 1 修复 vultr 512m debian 11 generic/genericcloud 首次启动 kernel panic
     # 2 防止 gentoo 云镜像 websync 时空间不足
@@ -7456,8 +7499,13 @@ trans() {
         raw)
             # 暂时没用到 raw 格式的云镜像
             dd_raw_with_extract
-            resize_after_install_cloud_image
-            modify_os_on_disk linux
+            if [ "$distro" = "talos" ]; then
+                # Talos 是不可变系统，避免套用通用 Linux 后处理
+                :
+            else
+                resize_after_install_cloud_image
+                modify_os_on_disk linux
+            fi
             ;;
         esac
     elif [ "$distro" = "dd" ]; then
@@ -7539,6 +7587,12 @@ rm -f /etc/runlevels/default/local
 
 # 提取变量
 extract_env_from_cmdline
+fix_confhome_if_needed
+
+# 尽早开启日志，避免 local service 失败时没有有效报错信息
+# 仅重定向到文件，避免在 /bin/ash 下使用进程替换语法
+exec >>/reinstall.log 2>&1
+start_console_log_mirror
 
 # 带参数运行部分
 # 重新下载并 exec 运行新脚本
@@ -7559,7 +7613,7 @@ fi
 
 # 无参数运行部分
 # 允许 ramdisk 使用所有内存，默认是 50%
-mount / -o remount,size=100%
+mount / -o remount,size=100% || warn "Failed to remount / with size=100%, continue."
 
 # 同步时间
 # 1. 可以防止访问 https 出错
@@ -7609,16 +7663,14 @@ fi
 # shellcheck disable=SC2046,SC2194
 case 1 in
 1)
-    # ChatGPT 说这种性能最高
-    exec > >(exec tee $(get_ttys /dev/) /reinstall.log) 2>&1
     trans
     ;;
 2)
-    exec > >(tee $(get_ttys /dev/) /reinstall.log) 2>&1
     trans
     ;;
 3)
-    trans 2>&1 | tee $(get_ttys /dev/) /reinstall.log
+    # 已在前面重定向日志，这里保持调用一致
+    trans
     ;;
 esac
 
