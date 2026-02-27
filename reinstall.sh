@@ -2076,7 +2076,6 @@ verify_os_name() {
         'arch' \
         'gentoo' \
         'aosc' \
-        'talos' \
         'windows' \
         'dd' \
         'netboot.xyz' \
