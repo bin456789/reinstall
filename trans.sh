@@ -2110,7 +2110,26 @@ sync-uri = $mirror_long/binpackages/$profile_ver/$binpkg_type
 EOF
 
         # 下载公钥
-        chroot $os_dir getuto
+
+        # getuto 会判断是否有 ${TERM} 且 ${TERM} 不是 dumb
+        # 符合条件则 source /lib/gentoo/functions.sh 导入 ebegin 等方法
+        # 不符合条件则自行创建 ebegin 等方法
+
+        # /lib/gentoo/functions.sh 会判断是否有 ${RC_OPENRC_PID}
+        # 有的话就不会导入 /functions/openrc.sh，也就不会导入 ebegin 方法
+
+        # 在 ssh 里运行 /trans.sh 时，没有 ${RC_OPENRC_PID}，${TERM} 是 xterm
+        # 因此 chroot $os_dir getuto 时不会报错
+
+        # 在 locald 里运行 /trans.sh 时，有 ${RC_OPENRC_PID}，${TERM} 是 linux
+        # 因此 chroot $os_dir getuto 时会报错说 ebegin: command not found
+
+        # 有两个解决方法
+        if true; then
+            TERM=dumb chroot $os_dir getuto
+        else
+            env -u RC_OPENRC_PID chroot $os_dir getuto
+        fi
 
         set_locale
 
