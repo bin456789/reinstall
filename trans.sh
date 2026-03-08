@@ -1121,6 +1121,16 @@ EOF
     post-up ip route add default via $ipv6_gateway dev $ethx
 EOF
             fi
+
+            # 额外的 IPv6 地址（子网不含网关的地址）
+            get_netconf_to ipv6_extra_addrs
+            if [ -n "$ipv6_extra_addrs" ]; then
+                _old_ifs=$IFS; IFS=','
+                for _addr in $ipv6_extra_addrs; do
+                    echo "    post-up ip -6 addr add $_addr dev $ethx" >>$conf_file
+                done
+                IFS=$_old_ifs
+            fi
         fi
 
         # dns
