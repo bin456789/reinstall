@@ -6878,36 +6878,48 @@ EOF
 
     add_driver_vmd() {
         # RST v20 不支持 11代 PCI\VEN_8086&DEV_9A0B
-        is_gen11=false
+        support_v19=false
+        support_v20=false
         for d in /sys/bus/pci/devices/*; do
             vendor=$(cat "$d/vendor" 2>/dev/null)
             device=$(cat "$d/device" 2>/dev/null)
-            if [ "$vendor" = "0x8086" ] && [ "$device" = "0x9a0b" ]; then
-                is_gen11=true
-                break
+            if [ "$vendor" = "0x8086" ]; then
+                case "$device" in
+                "0x9a0b") support_v19=true && support_v20=false && break ;;
+                "0x467f") support_v19=true && support_v20=true && break ;;
+                "0xa77f") support_v19=true && support_v20=true && break ;;
+                "0x7d0b") support_v19=false && support_v20=true && break ;;
+                "0xad0b") support_v19=false && support_v20=true && break ;;
+                esac
             fi
         done
 
-        if ! $is_gen11 && [ "$build_ver" -ge 19041 ]; then
-            # RST v20
-            local page=https://www.intel.com/content/www/us/en/download/849936.html
-        elif [ "$build_ver" -ge 15063 ]; then
-            # RST v19
-            local page=https://www.intel.com/content/www/us/en/download/849933.html
-        else
-            error_and_exit "can't find suitable vmd driver"
+        local page=
+        if $support_v20 && [ "$build_ver" -ge 19041 ]; then
+            page=https://www.intel.com/content/www/us/en/download/849936.html
+        elif $support_v19 && [ "$build_ver" -ge 15063 ]; then
+            page=https://www.intel.com/content/www/us/en/download/849933.html
         fi
-        local url
-        url=$(wget -U curl/7.54.1 "$page" -O- |
-            grep -Eio -m1 "\"https://.+/SetupRST\.exe\"" | tr -d '"' | grep .)
 
-        # 注意 intel 禁止了 aria2 下载
-        download $url $drv/SetupRST.exe
-        apk add 7zip
-        7z x $drv/SetupRST.exe -o$drv/SetupRST -i!.text
-        7z x $drv/SetupRST/.text -o$drv/vmd
-        apk del 7zip
-        cp_drivers $drv/vmd
+        if [ -n "$page" ]; then
+            # intel 禁止了 wget 下载网页
+            local url
+            url=$(wget -U curl/7.54.1 "$page" -O- |
+                grep -Eio -m1 "\"https://.+/SetupRST\.exe\"" | tr -d '"' | grep .)
+
+            # 注意 intel 禁止了 aria2 下载
+            download $url $drv/SetupRST.exe
+            apk add 7zip
+            7z x $drv/SetupRST.exe -o$drv/SetupRST -i!.text
+            7z x $drv/SetupRST/.text -o$drv/vmd
+            apk del 7zip
+            cp_drivers $drv/vmd
+        else
+            # 如果开启了 vmd 但硬盘不在 vmd 上，linux 会自动加载 vmd 模块?
+            # 还要判断主硬盘是否在 vmd 上，如果不在，即使没有 vmd 驱动也可继续安装
+            # 因此目前先不中止脚本
+            : error_and_exit "can't find suitable vmd driver"
+        fi
     }
 
     # 脚本自动检测驱动可能有问题
