@@ -235,7 +235,7 @@ bash reinstall.sh ubuntu --installer
 
 - 支持 `raw` 和固定大小的 `vhd` 镜像。未压缩或者压缩成 `.gz` `.xz` `.zst` `.tar` `.tar.gz` `.tar.xz` `.tar.zst`
 - DD Windows 镜像时，会自动扩展系统盘，静态 IP 的机器会配置好 IP，可能首次开机几分钟后才生效
-- DD Linux 镜像时，**不会**修改镜像的任何内容
+- DD Linux 镜像时，默认**不会**修改镜像的任何内容，可通过 `--reset-machine-id` 参数选择清除 machine-id 并禁用 MAC 地址派生
 
 ```bash
 bash reinstall.sh dd --img "https://example.com/xxx.xz"
@@ -251,6 +251,7 @@ bash reinstall.sh dd --img "https://example.com/xxx.xz"
 - `--cloud-data PATH_OR_URL` 为 DD Linux 镜像注入 cloud-init NoCloud 配置（仅限 DD Linux）
 - `--hold 1` 仅重启到安装环境，不运行安装，用于 SSH 登录验证网络连通性
 - `--hold 2` DD 结束后不重启，用于 SSH 登录修改系统内容，Windows 系统会挂载在 `/os`，Linux 系统**不会**自动挂载
+- `--reset-machine-id` 清除 machine-id 并禁用 systemd MAC 地址派生，防止 DD 后因 MAC 变化导致网络失联（仅限 DD Linux）
 
 > [!TIP]
 >

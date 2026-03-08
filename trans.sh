@@ -3844,8 +3844,59 @@ modify_os_on_disk() {
 
     update_part
 
-    # dd linux 的时候不用修改硬盘内容（nocloud 模式除外）
+    # DD linux 时，默认不修改硬盘内容（nocloud 模式除外）
+    # 使用 --reset-machine-id 参数可清除 machine-id 并禁用 MAC 地址派生
+    #
+    # 问题背景 / Background:
+    # systemd 默认的 MACAddressPolicy=persistent 会根据 machine-id 和网卡名
+    # 派生出一个稳定的 MAC 地址，覆盖硬件真实 MAC。DD 镜像携带了源机器的
+    # machine-id，导致目标机器的网卡 MAC 被改变。
+    # systemd's default MACAddressPolicy=persistent derives a stable MAC address
+    # from machine-id + interface name, overriding the hardware MAC. A DD image
+    # carries the source machine's machine-id, causing the NIC MAC to change.
+    #
+    # 影响 / Impact:
+    # 使用 ebtables/MAC 绑定的 VPS 商家会因为 MAC 地址变化而导致 DD 后失联。
+    # 即使没有 MAC 绑定，错误的 machine-id 也会导致 DHCPv6 DUID 和 IPv6 SLAAC
+    # 地址异常。
+    # VPS providers using ebtables/MAC binding will lose connectivity after DD
+    # because the MAC address changed. Even without MAC binding, a wrong
+    # machine-id causes incorrect DHCPv6 DUID and IPv6 SLAAC addresses.
+    #
+    # 修复 / Fix (需要 --reset-machine-id 参数):
+    # 1. 清除 machine-id（设为 uninitialized），让 systemd 首次启动时重新生成
+    # 2. 创建 99-default.link 设置 MACAddressPolicy=none，禁止派生 MAC 地址
+    # 1. Clear machine-id (set to "uninitialized") so systemd regenerates it on first boot
+    # 2. Create 99-default.link with MACAddressPolicy=none to prevent MAC derivation
     if [ "$distro" = "dd" ] && [ "$only_process" != "nocloud" ] && ! lsblk -f /dev/$xda | grep ntfs; then
+        if [ -n "$reset_machine_id" ]; then
+            mkdir -p /os
+            for part in $(lsblk /dev/$xda*[0-9] --sort SIZE -no NAME | tac); do
+                if mount /dev/$part /os 2>/dev/null; then
+                    if etc_dir=$({ ls -d /os/etc/ || ls -d /os/*/etc/; } 2>/dev/null | head -n1); then
+                        os_dir=$(dirname "$etc_dir")
+                        clear_machine_id $os_dir
+
+                        # 创建 99-default.link 禁止 systemd 派生 MAC 地址
+                        # MACAddressPolicy=none: 保持硬件原始 MAC，不做任何派生
+                        # Create 99-default.link to prevent systemd from deriving MAC addresses
+                        # MACAddressPolicy=none: keep the hardware MAC as-is, no derivation
+                        mkdir -p $os_dir/etc/systemd/network
+                        cat >$os_dir/etc/systemd/network/99-default.link <<LINK
+[Match]
+OriginalName=*
+
+[Link]
+MACAddressPolicy=none
+LINK
+
+                        umount /os
+                        break
+                    fi
+                    umount /os
+                fi
+            done
+        fi
         return
     fi
 

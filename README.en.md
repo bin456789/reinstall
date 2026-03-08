@@ -235,7 +235,7 @@ bash reinstall.sh ubuntu --installer
 
 - Supports `raw` and fixed-size `vhd` image formats. Either uncompressed or compressed as `.gz`, `.xz`, `.zst`, `.tar`, `.tar.gz`, `.tar.xz`, `.tar.zst`.
 - When deploy a Windows image, the system disk will be automatically expanded, and machines with a static IP will have their IP configured, and may take a few minutes after the first boot for the configuration to take effect.
-- When deploy a Linux image, will **NOT** modify any contents of the image.
+- When deploy a Linux image, will **NOT** modify any contents of the image by default. Use `--reset-machine-id` to optionally clear machine-id and disable MAC address derivation.
 
 ```bash
 bash reinstall.sh dd --img "https://example.com/xxx.xz"
@@ -251,6 +251,7 @@ bash reinstall.sh dd --img "https://example.com/xxx.xz"
 - `--cloud-data PATH_OR_URL` Inject cloud-init NoCloud configuration into the DD'd Linux image (DD Linux only)
 - `--hold 1` Reboot only into install environment, without running installer, only for SSH connect to test network connection.
 - `--hold 2` Prevent reboot after the DD process finishes. For SSH login to modify system content. The Windows system will be mounted at `/os`, but Linux systems will **NOT** be automatically mounted.
+- `--reset-machine-id` Clear machine-id and disable systemd MAC address derivation, preventing network loss caused by MAC changes after DD (DD Linux only)
 
 > [!TIP]
 >
