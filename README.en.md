@@ -181,7 +181,7 @@ bash reinstall.sh anolis      7|8|23
 - `--ssh-key KEY` Set up SSH login public key, [formatted as follows](#--ssh-key). When using public key, password is empty.
 - `--ssh-port PORT` Change the SSH port (for log observation during installation and for the new system)
 - `--web-port PORT` Change the Web port (for log observation during installation only)
-- `--frpc-toml PATH` Add frpc for intranet tunneling. Parameter can be local filepath or HTTP URL
+- `--frpc-config PATH` Add frpc for intranet tunneling. Parameter can be local filepath or HTTP URL of the configuration file.
 - `--hold 1` Reboot only into install environment, without running installer, only for SSH connect to test network connection.
 - `--hold 2` Prevent reboot after installation completes, allowing SSH login to modify system content; the system is mounted at `/target` for Debian/Kali and `/os` for other distros.
 
@@ -247,7 +247,7 @@ bash reinstall.sh dd --img "https://example.com/xxx.xz"
 - `--rdp-port PORT` Change RDP port (DD Windows only)
 - `--ssh-port PORT` Change SSH port (for log observation during installation)
 - `--web-port PORT` Change Web port (for log observation during installation)
-- `--frpc-toml PATH` Add frpc for intranet tunneling (DD Windows only). Parameter can be local filepath or HTTP URL
+- `--frpc-config PATH` Add frpc for intranet tunneling (DD Windows only). Parameter can be local filepath or HTTP URL of the configuration file.
 - `--cloud-data PATH_OR_URL` Inject cloud-init NoCloud configuration into the DD'd Linux image (DD Linux only)
 - `--hold 1` Reboot only into install environment, without running installer, only for SSH connect to test network connection.
 - `--hold 2` Prevent reboot after the DD process finishes. For SSH login to modify system content. The Windows system will be mounted at `/os`, but Linux systems will **NOT** be automatically mounted.
@@ -298,7 +298,7 @@ bash reinstall.sh alpine --hold 1
 - `--password PASSWORD` Set password
 - `--ssh-port PORT` Change SSH port
 - `--ssh-key KEY` Set up SSH login public key, [formatted as follows](#--ssh-key). When using public key, password is empty.
-- `--frpc-toml PATH` Add frpc for intranet tunneling. Parameter can be local filepath or HTTP URL
+- `--frpc-config PATH` Add frpc for intranet tunneling. Parameter can be local filepath or HTTP URL of the configuration file.
 
 ### Feature 4: Reboot to <img width="16" height="16" src="https://netboot.xyz/img/favicon.ico" /> netboot.xyz
 
@@ -453,7 +453,7 @@ bash reinstall.sh windows \
 - `--add-driver INF_OR_DIR` Add additional driver, specifying .inf path, or the folder contains .inf file.
   - The driver must be downloaded to current system first.
   - This parameter can be set multiple times to add different driver.
-- `--frpc-toml PATH` Add frpc for intranet tunneling. Parameter can be local filepath or HTTP URL
+- `--frpc-config PATH` Add frpc for intranet tunneling. Parameter can be local filepath or HTTP URL of the configuration file.
 - `--hold 1` Reboot only into install environment, without running installer, only for SSH connect to test network connection.
 - `--hold 2` Allow SSH connections for modifying `boot.wim`, `install.wim` or other contents before rebooting into the official Windows installation program, with the disk mounted at `/os`.
 

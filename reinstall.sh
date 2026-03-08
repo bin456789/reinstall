@@ -83,16 +83,16 @@ Usage: $reinstall_____ anolis      7|8|23
                        netboot.xyz
 
        Options:        For Linux/Windows:
-                       [--password  PASSWORD]
-                       [--ssh-key   KEY]
-                       [--ssh-port  PORT]
-                       [--web-port  PORT]
-                       [--frpc-toml PATH]
+                       [--password    PASSWORD]
+                       [--ssh-key     KEY]
+                       [--ssh-port    PORT]
+                       [--web-port    PORT]
+                       [--frpc-config PATH]
 
                        For Windows Only:
                        [--allow-ping]
-                       [--rdp-port   PORT]
-                       [--add-driver INF_OR_DIR]
+                       [--rdp-port    PORT]
+                       [--add-driver  INF_OR_DIR]
 
 Manual: https://github.com/bin456789/reinstall
 
@@ -3779,7 +3779,7 @@ This script is outdated, please download reinstall.sh again.
         save_password $initrd_dir/configs
     fi
     if [ -n "$frpc_config" ]; then
-        cat "$frpc_config" >$initrd_dir/configs/frpc.toml
+        cat "$frpc_config" >$initrd_dir/configs/frpc.conf
     fi
 
     # 收集 cloud-data 打包进 initrd
@@ -3974,7 +3974,7 @@ for o in ci installer debug minimal allow-ping force-cn help \
     web-port: http-port: \
     allow-ping: \
     commit: \
-    frpc-conf: frpc-config: frpc-toml: \
+    frpc-conf: frpc-config: \
     force-boot-mode: \
     force-old-windows-setup:; do
     [ -n "$long_opts" ] && long_opts+=,
@@ -3986,9 +3986,7 @@ if ! opts=$(getopt -n $0 -o "h,x" --long "$long_opts" -- "$@"); then
     exit
 fi
 
-# /tmp 挂载在内存的话，可能不够空间
-# 处理 --frpc--toml 时会下载文件，因此在处理参数前就创建临时目录
-tmp=/reinstall-tmp
+# 处理 --frpc-config 时会下载文件，因此在处理参数前就创建临时目录
 mkdir_clear "$tmp"
 
 eval set -- "$opts"
@@ -4036,13 +4034,14 @@ while true; do
         hold=$2
         shift 2
         ;;
-    --frpc-conf | --frpc-config | --frpc-toml)
+    --frpc-conf | --frpc-config)
         [ -n "$2" ] || error_and_exit "Need value for $1"
 
         case "$(to_lower <<<"$2")" in
         http://* | https://*)
             frpc_config_url=$2
-            frpc_config=$tmp/frpc_config
+            frpc_config=$tmp/frpc.conf
+            # 用 file 识别文件类型？
             if ! curl -L "$frpc_config_url" -o "$frpc_config"; then
                 error_and_exit "Can't get frpc config from $frpc_config_url"
             fi

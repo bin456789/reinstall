@@ -181,7 +181,7 @@ bash reinstall.sh anolis      7|8|23
 - `--ssh-key KEY` 设置 SSH 登录公钥，[格式如下](#--ssh-key)。当使用公钥时，密码为空
 - `--ssh-port PORT` 修改 SSH 端口（安装期间观察日志用，也作用于新系统）
 - `--web-port PORT` 修改 Web 端口（安装期间观察日志用）
-- `--frpc-toml PATH` 添加 frpc 内网穿透，参数填本地路径或 HTTP 链接
+- `--frpc-config PATH` 添加 frpc 内网穿透，参数填配置文件的本地路径或 HTTP 链接
 - `--hold 1` 仅重启到安装环境，不运行安装，用于 SSH 登录验证网络连通性
 - `--hold 2` 安装结束后不重启，用于 SSH 登录修改系统内容，Debian/Kali 会挂载在 `/target`，其它系统会挂载在 `/os`
 
@@ -247,7 +247,7 @@ bash reinstall.sh dd --img "https://example.com/xxx.xz"
 - `--rdp-port PORT` 修改 RDP 端口 (仅限 DD Windows)
 - `--ssh-port PORT` 修改 SSH 端口（安装期间观察日志用）
 - `--web-port PORT` 修改 Web 端口（安装期间观察日志用）
-- `--frpc-toml PATH` 添加 frpc 内网穿透（仅限 DD Windows），参数填本地路径或 HTTP 链接
+- `--frpc-config PATH` 添加 frpc 内网穿透（仅限 DD Windows），参数填配置文件的本地路径或 HTTP 链接
 - `--cloud-data PATH_OR_URL` 为 DD Linux 镜像注入 cloud-init NoCloud 配置（仅限 DD Linux）
 - `--hold 1` 仅重启到安装环境，不运行安装，用于 SSH 登录验证网络连通性
 - `--hold 2` DD 结束后不重启，用于 SSH 登录修改系统内容，Windows 系统会挂载在 `/os`，Linux 系统**不会**自动挂载
@@ -298,7 +298,7 @@ bash reinstall.sh alpine --hold 1
 - `--password PASSWORD` 设置密码
 - `--ssh-port PORT` 修改 SSH 端口
 - `--ssh-key KEY` 设置 SSH 登录公钥，[格式如下](#--ssh-key)。当使用公钥时，密码为空
-- `--frpc-toml PATH` 添加 frpc 内网穿透，参数填本地路径或 HTTP 链接
+- `--frpc-config PATH` 添加 frpc 内网穿透，参数填配置文件的本地路径或 HTTP 链接
 
 ### 功能 4: 重启到 <img width="16" height="16" src="https://netboot.xyz/img/favicon.ico" /> netboot.xyz
 
@@ -453,7 +453,7 @@ bash reinstall.sh windows \
 - `--add-driver INF_OR_DIR` 添加额外驱动，填写 .inf 路径，或者 .inf 所在的文件夹
   - 需先下载驱动到当前系统
   - 可多次设置该参数以添加不同的驱动
-- `--frpc-toml PATH` 添加 frpc 内网穿透，参数填本地路径或 HTTP 链接
+- `--frpc-config PATH` 添加 frpc 内网穿透，参数填配置文件的本地路径或 HTTP 链接
 - `--hold 1` 仅重启到安装环境，不运行安装，用于 SSH 登录验证网络连通性
 - `--hold 2` 用于在进入 Windows 官方安装程序之前，SSH 登录修改 `boot.wim`、`install.wim` 或者其它内容，硬盘挂载在 `/os`
 

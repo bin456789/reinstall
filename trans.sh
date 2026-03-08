@@ -1539,12 +1539,12 @@ install_alpine() {
     chroot /os rc-update add fix-eth-name boot
 
     # 安装 frpc
-    if [ -s /configs/frpc.toml ]; then
+    if ls /configs/frpc.* >/dev/null 2>&1; then
         chroot /os apk add frp
         # chroot rc-update add 默认添加到 sysinit
         # 但不加 chroot 默认添加到 default
         chroot /os rc-update add frpc boot
-        cp /configs/frpc.toml /os/etc/frp/frpc.toml
+        cp -f /configs/frpc.* /os/etc/frp/
     fi
 
     # setup-disk 会自动选择固件，但不包括微码？
@@ -1770,19 +1770,40 @@ $(del_comment_lines </configs/ssh_keys | del_empty_lines | quote_line | add_spac
         nix_ssh_ports="services.openssh.ports = [ $ssh_port ];"
     fi
 
-    # 虽然是原始 frpc.toml (string) 转成 toml 类型，再转成最终使用的 frpc.toml (string)
-    # 但是可以避免原始 frpc.toml 有错误导致失联
-    if [ -s /configs/frpc.toml ]; then
+    if ls /configs/frpc.* >/dev/null 2>&1; then
         nix_frpc=$(
-            cat <<EOF
+            if false; then
+                # 原始 frpc.toml 转 toml 对象 ，再转成最终使用的 frpc.toml
+                # 可以避免原始 frpc.toml 有错误导致失联
+                # 但是 frpc 配置还支持 ini json yaml
+                # 因此不使用这个方法
+                cat <<EOF
 services.frp = {
   enable = true;
   role = "client";
   settings = builtins.fromTOML ''
-$(del_comment_lines </configs/frpc.toml | add_space 4)
+$(cat /configs/frpc.* | add_space 4)
   '';
 };
 EOF
+            else
+                # 直接使用原始文件
+                (
+                    umask 077
+                    cp /configs/frpc.* /os/etc/nixos/
+                )
+                ext=$(basename /configs/frpc.* | awk -F. '{print $NF}')
+                cat <<EOF
+services.frp = {
+  enable = true;
+  role = "client";
+};
+systemd.services.frp.serviceConfig = {
+  LoadCredential = "frpc.$ext:/etc/nixos/frpc.$ext";
+  ExecStart = lib.mkForce "\${pkgs.frp}/bin/frpc -c \\\${CREDENTIALS_DIRECTORY}/frpc.$ext";
+};
+EOF
+            fi
         )
     fi
 
@@ -1915,7 +1936,7 @@ get_frpc_url() {
 add_frpc_systemd_service_if_need() {
     local os_dir=$1
 
-    if [ -s /configs/frpc.toml ]; then
+    if ls /configs/frpc.* >/dev/null 2>&1; then
         mkdir -p "$os_dir/usr/local/bin"
         mkdir -p "$os_dir/usr/local/etc/frpc"
 
@@ -1931,7 +1952,7 @@ add_frpc_systemd_service_if_need() {
         chmod a+x "$os_dir/usr/local/bin/frpc"
 
         # frpc conf
-        cp /configs/frpc.toml "$os_dir/usr/local/etc/frpc/frpc.toml"
+        cp -f /configs/frpc.* "$os_dir/usr/local/etc/frpc/"
 
         # 添加服务
         add_systemd_service "$os_dir" frpc
@@ -3092,24 +3113,23 @@ modify_windows() {
     done
 
     # 5 frp
-    if [ -s /configs/frpc.toml ]; then
-        # 好像 win7 无法运行 frpc，暂时不管
-        windows_arch=$(get_windows_arch_from_windows_drive "$os_dir" | to_lower)
-        if [ "$windows_arch" = amd64 ] || [ "$windows_arch" = arm64 ]; then
-            mkdir -p "$os_dir/frpc/"
-            url=$(get_frpc_url windows "$nt_ver")
-            download "$url" $os_dir/frpc/frpc.zip
-            # -j 去除文件夹
-            # -C 筛选文件时不区分大小写，但 busybox zip 不支持
-            unzip -o -j "$os_dir/frpc/frpc.zip" '*/frpc.exe' -d "$os_dir/frpc/"
-            rm -f "$os_dir/frpc/frpc.zip"
-            cp -f /configs/frpc.toml "$os_dir/frpc/frpc.toml"
-            download "$confhome/windows-frpc.xml" "$os_dir/frpc/frpc.xml"
-            download "$confhome/windows-frpc.bat" "$os_dir/frpc/frpc.bat"
-            bats="$bats frpc\frpc.bat"
+    if ls /configs/frpc.* >/dev/null 2>&1; then
+        if [ "$(get_windows_arch_from_windows_drive "$os_dir" | to_lower)" = x86 ]; then
+            os_bit=32
         else
-            warn "$windows_arch Not Support frpc"
+            os_bit=64
         fi
+        mkdir -p "$os_dir/frpc/"
+        url=$(get_frpc_url windows "$nt_ver" "$os_bit")
+        download "$url" $os_dir/frpc/frpc.zip
+        # -j 去除文件夹
+        # -C 筛选文件时不区分大小写，但 busybox zip 不支持
+        unzip -o -j "$os_dir/frpc/frpc.zip" '*/frpc.exe' -d "$os_dir/frpc/"
+        rm -f "$os_dir/frpc/frpc.zip"
+        cp -f /configs/frpc.* "$os_dir/frpc/"
+        download "$confhome/windows-frpc.xml" "$os_dir/frpc/frpc.xml"
+        download "$confhome/windows-frpc.bat" "$os_dir/frpc/frpc.bat"
+        bats="$bats frpc\frpc.bat"
     fi
 
     if $use_gpo; then
@@ -7565,12 +7585,12 @@ fi
 
 # 设置 frpc
 # 并防止重复运行
-if [ -s /configs/frpc.toml ] && ! pidof frpc >/dev/null; then
+if ls /configs/frpc.* >/dev/null 2>&1 && ! pidof frpc >/dev/null; then
     info 'run frpc'
     add_community_repo
     apk add frp
     while true; do
-        frpc -c /configs/frpc.toml || true
+        frpc -c /configs/frpc.* || true
         sleep 5
     done &
 fi
