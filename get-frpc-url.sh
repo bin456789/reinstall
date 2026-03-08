@@ -17,14 +17,41 @@ get_frpc_url() {
     # 传入 windows 或者 linux
     local os_type=$1
     local nt_ver=$2
+    local os_bit=${3:-64}
+
+    get_old_version() {
+        # 脚本不支持安装 32 位 linux 系统，因此不用管
+        if [ "$os_type" = windows ]; then
+            # 最早支持 toml 的版本是 0.52.0
+
+            # 最后支持 vista 的版本是 0.29.0
+            # 最后支持 32 位的版本是 0.51.3
+            # 最后支持 win7 的版本是 0.54.0
+            case "$os_bit" in
+            32)
+                case "$nt_ver" in
+                6.0) echo 0.29.0 ;; # vista
+                *) echo 0.51.3 ;;   # win7+
+                esac
+                ;;
+            64)
+                case "$nt_ver" in
+                6.0) echo 0.29.0 ;; # vista
+                6.1) echo 0.54.0 ;; # win7
+                # 目前最新版本 v0.66.0 依然可以在 win8 上运行
+                esac
+                ;;
+            esac
+        fi
+    }
 
     is_need_old_version() {
-        [ "$nt_ver" = "6.0" ] || [ "$nt_ver" = "6.1" ]
+        [ -n "$(get_old_version)" ]
     }
 
     version=$(
         if is_need_old_version; then
-            echo 0.54.0
+            get_old_version
         else
             # debian 11 initrd 没有 xargs awk
             # debian 12 initrd 没有 xargs
@@ -46,7 +73,7 @@ get_frpc_url() {
     )
 
     if [ -z "$version" ]; then
-        echo 'cannot find version'
+        echo 'cannot find version' >&2
         return 1
     fi
 
@@ -64,7 +91,7 @@ get_frpc_url() {
         # jsdelivr 不支持 github releases 文件
         if is_ipv6_only; then
             if is_need_old_version; then
-                echo 'NOT_SUPPORT'
+                echo 'NOT_SUPPORT' >&2
                 return 1
             else
                 echo https://mirrors.nju.edu.cn/github-release/fatedier/frp
@@ -84,7 +111,12 @@ get_frpc_url() {
 
     arch=$(
         case "$(uname -m)" in
-        x86_64) echo amd64 ;;
+        x86_64)
+            case "$os_bit" in
+            32) echo 386 ;;
+            64) echo amd64 ;;
+            esac
+            ;;
         aarch64) echo arm64 ;;
         esac
     )
