@@ -779,16 +779,52 @@ is_windows_support_rdnss() {
 get_windows_version_from_windows_drive() {
     local os_dir=$1
 
-    apk add hivex pev
-    ntoskrnl_exe=$(find_file_ignore_case $os_dir/Windows/System32/ntoskrnl.exe)
+    # https://wiki.tcl-lang.org/page/Windows+OS+name
+    # https://nsis.sourceforge.io/Get_Windows_version
+
+    # win10+ 才有 CurrentMajorVersionNumber 和 CurrentMinorVersionNumber
+    # CurrentVersion            6.3
+    # CurrentMajorVersionNumber  10
+    # CurrentMinorVersionNumber   0
+
+    apk add hivex
     hive=$(find_file_ignore_case $os_dir/Windows/System32/config/SOFTWARE)
-    IFS=. read -r nt_ver_major nt_ver_minor _ rev_ver _ \
-        < <(peres -v "$ntoskrnl_exe" | grep 'Product Version:' | awk '{print $NF}')
-    nt_ver="$nt_ver_major.$nt_ver_minor"
+
+    get_current_version_key() {
+        hivexget "$hive" "Microsoft\Windows NT\CurrentVersion" "$1"
+    }
+
+    # nt_ver
+    if { nt_ver_major=$(get_current_version_key CurrentMajorVersionNumber) &&
+        nt_ver_minor=$(get_current_version_key CurrentMinorVersionNumber); } 2>/dev/null; then
+        nt_ver="$nt_ver_major.$nt_ver_minor"
+    else
+        # en_windows_vista_sp2_x64_dvd_342267.iso
+        # 安装前 CurrentVersion 是 6.0
+        # 安装后 CurrentVersion 是 6.0
+
+        # en_windows_vista_sp2_with_update_6003.23713_aio_7in1_x64_v26.01.13_by_adguard.iso
+        # 安装前 CurrentVersion 是 6.0.6002.18005
+        # 安装后 CurrentVersion 是 6.0
+
+        # 添加 cut 用于兼容这两种情况
+        nt_ver=$(get_current_version_key CurrentVersion | cut -d. -f1-2)
+    fi
+
+    # build_ver
     # win10 22h2 19045 的 exe/dll 版本还是 19041 的，因此要从注册表获取
-    build_ver=$(hivexget $hive 'Microsoft\Windows NT\CurrentVersion' CurrentBuildNumber)
-    echo "Version: $nt_ver_major.$nt_ver_minor.$build_ver.$rev_ver" >&2
-    apk del hivex pev
+    # vista sp2 iso 安装 KB4474419 后, CurrentBuild 是 6002, CurrentBuildNumber 是 6003
+    build_ver=$(get_current_version_key CurrentBuildNumber)
+
+    # rev_ver
+    # 实测 win10 winver 是从 UBR 读取 revision 版本
+    # vista sp2 iso 没有 UBR，后期有月度汇总更新包时才有 UBR
+    if ! rev_ver=$(get_current_version_key UBR 2>/dev/null); then
+        rev_ver=$(get_current_version_key BuildLabEx | cut -d. -f2)
+    fi
+
+    echo "Version: $nt_ver.$build_ver.$rev_ver" >&2
+    apk del hivex
 }
 
 is_elts() {
@@ -5676,8 +5712,8 @@ get_windows_type_from_windows_drive() {
     apk add hivex
     software_hive=$(find_file_ignore_case $os_dir/Windows/System32/config/SOFTWARE)
     system_hive=$(find_file_ignore_case $os_dir/Windows/System32/config/SYSTEM)
-    installation_type=$(hivexget $software_hive '\Microsoft\Windows NT\CurrentVersion' InstallationType || true)
-    product_type=$(hivexget $system_hive '\ControlSet001\Control\ProductOptions' ProductType || true)
+    installation_type=$(hivexget $software_hive '\Microsoft\Windows NT\CurrentVersion' InstallationType 2>/dev/null || true)
+    product_type=$(hivexget $system_hive '\ControlSet001\Control\ProductOptions' ProductType 2>/dev/null || true)
     apk del hivex
 
     # 根据 win11 multi-session 的情况
@@ -5869,7 +5905,10 @@ install_windows() {
     wimmount "$iso_install_wim" "$image_index" /wim/ \
         $($is_swm && echo --ref=$(dirname "$iso_install_wim")/$swm_ref)
 
+    # 获取版本号
     get_windows_version_from_windows_drive /wim
+
+    # 检测 client/server，并转换成标准版 windows 名称
     windows_type=$(get_windows_type_from_windows_drive /wim)
     {
         find_file_ignore_case /wim/Windows/System32/sacsess.exe && has_sac=true || has_sac=false
@@ -5902,10 +5941,12 @@ install_windows() {
     echo "Windows Type: $windows_type"
     echo "NT Version: $nt_ver"
     echo "Build Version: $build_ver"
+    echo "Revision Version: $rev_ver"
     echo "-------------------------"
     echo "Has SAC: $has_sac"
     echo "Has StorNVMe: $has_stornvme"
     echo "Support SHA256: $support_sha256"
+    echo "-------------------------"
     echo
 
     # 复制 boot.wim 到 /os，用于临时编辑
