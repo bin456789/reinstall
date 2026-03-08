@@ -5910,30 +5910,107 @@ install_windows() {
 
     # 检测 client/server，并转换成标准版 windows 名称
     windows_type=$(get_windows_type_from_windows_drive /wim)
-    {
-        find_file_ignore_case /wim/Windows/System32/sacsess.exe && has_sac=true || has_sac=false
-        find_file_ignore_case /wim/Windows/INF/stornvme.inf && has_stornvme=true || has_stornvme=false
-    } >/dev/null 2>&1
-    wimunmount /wim/
-
-    # https://www.hummingheads.co.jp/press/info-certificates.html
-    # https://support.microsoft.com/kb/KB3033929
-    # https://support.microsoft.com/kb/KB4474419
-    # Windows Vista SP2 ldr_escrow   6.0.6003 + KB4474419
-    # Windows 7     SP1              6.1.7601 + KB3033929
-    support_sha256=false
-    if is_nt_ver_ge 6.2 ||
-        { [ "$nt_ver" = 6.1 ] && [ "$build_ver" -ge 7601 ] && [ "$rev_ver" -ge 18741 ]; } ||
-        { [ "$nt_ver" = 6.0 ] && [ "$build_ver" -ge 6003 ] && [ "$rev_ver" -ge 20555 ]; }; then
-        support_sha256=true
-    fi
-
     product_ver=$(
         case "$windows_type" in
         client) get_client_name_by_build_ver "$build_ver" ;;
         server) get_server_name_by_build_ver "$build_ver" ;;
         esac
     )
+
+    # 检测 sac 和 nvme
+    {
+        find_file_ignore_case /wim/Windows/System32/sacsess.exe && has_sac=true || has_sac=false
+        find_file_ignore_case /wim/Windows/INF/stornvme.inf && has_stornvme=true || has_stornvme=false
+    } >/dev/null 2>&1
+
+    # 检测是否支持 sha256 签名的驱动
+    support_sha256=false
+    if is_nt_ver_ge 6.2; then
+        support_sha256=true
+    else
+        # 安装环境下 drvload.exe 不会验证签名，能安装 sha256 的驱动
+        # 但重启后提示 Windows cannot verify the digital signature for this file.
+
+        # winload.exe/efi 有这串字符
+        # Windows cannot verify the digital signature for this file.
+        # strings -e l winload.exe | grep -i signature
+        # strings -e l winload.efi | grep -i signature
+
+        # 硬盘控制器驱动是 boot-start 驱动，由 winload.exe/efi 验证签名
+        # 网卡驱动不是 boot-start 驱动，由 ci.dll 验证签名
+
+        # win7 sp1 iso 不支持 sha256 的驱动，但是
+        # ci.dll      能找到 8+64 个常量和 oid 0609608648016503040201 0102040365014886600906
+        # winload.exe 能找到 8+64 个常量和 oid 0609608648016503040201 0102040365014886600906
+        # winload.efi 能找到 8+64 个常量和 oid     608648016503040201
+
+        # 官网有提到 KB3033929 和 KB4039648, 应该分别是 2008r2 和 2008 最早支持 sha256 的补丁
+        # https://support.microsoft.com/kb/4472027#:~:text=KB3033929%20%E5%92%8C%20KB4039648
+        # https://support.drweb.cn/sha2
+        # https://support.kaspersky.com/common/compatibility/15761
+        # https://www.internetdownloadmanager.com/register/new_faq/sha256-support-for-outdated-versions-of-Windows.html
+        # https://www.catalog.update.microsoft.com/
+
+        # vista sp2 iso
+        # 用 KB4039648 和 KB4090450 做测试，独立安装时，注册表没有发现另一个 KB 的痕迹
+        # 后续很多补丁如果包含 winload.exe/efi，都是支持 sha256 的新版，因此不能通过检测 KB 编号来判断
+        # HKEY_LOCAL_MACHINE\Microsoft\Windows\CurrentVersion\Component Based Servicing\Package
+        # HKEY_LOCAL_MACHINE\Microsoft\Windows\CurrentVersion\Component Based Servicing\PackageDetect
+
+        # vista sp2 iso 独立安装以下补丁时
+        # 补丁          发布日期   BuildLabEx          ubr    winload.exe   winload.efi   ci.dll
+        # KB4039648 旧  2018/2/21  6002.18005(没改变)  没有   6002.24259    6002.24283    6002.24259
+        # KB4039648 新  2018/3/22  6002.18005(没改变)  没有   6002.24259    6002.24298    6002.24259
+        # KB4039648-v2  2018/6/12  6002.24381          没有   6002.24362    6002.24381    6002.24259
+        # KB4474419-v4  2019/10/8  6003.20555          没有   6003.20505    6003.20555    6003.20593
+
+        # win7 sp1 iso 独立安装以下补丁时
+        # KB3033929     2015/3/10  7601.18741          没有   18649/22854  18741/22948    18519/22730
+        # KB4474419-v3  2019/9/10  7601.24384          没有         24149        24384          24158
+
+        # 最早的 KB4039648 KB3033929 都支持 sha256
+        # winload.exe/efi 版本号 >= ci.dll
+        # 因此用 winload.exe/efi 的版本号来判断是否支持 sha256
+
+        apk add pev
+        local maj min build rev
+        winload=$(find_file_ignore_case "/wim/Windows/System32/winload.$(is_efi && echo efi || echo exe)")
+        IFS=. read -r maj min build rev \
+            < <(peres -v "$winload" | grep 'Product Version:' | awk '{print $NF}')
+        apk del pev
+
+        # vista/2008
+        # https://support.microsoft.com/kb/KB4039648
+        # https://catalog.update.microsoft.com/Search.aspx?q=KB4039648
+
+        # win7/2008r2 网页有列出文件版本号
+        # https://support.microsoft.com/kb/KB3033929
+        # https://catalog.update.microsoft.com/Search.aspx?q=KB3033929
+
+        # rev 1xxxx 是 GDR 分支
+        # rev 2xxxx 是 LDR 分支
+
+        # vista/2008 版本从 6002 到 6003, rev 减少 4000
+        # https://support.microsoft.com/topic/1335e4d4-c155-52eb-4a45-b85bd1909ca8
+
+        if is_efi; then
+            if { [ "$maj.$min" = 6.1 ] && [ "$build" -eq 7601 ] && [ "$rev" -ge 22948 ]; } ||
+                { [ "$maj.$min" = 6.1 ] && [ "$build" -eq 7601 ] && [ "$rev" -ge 18741 ] && [ "$rev" -lt 20000 ]; } ||
+                { [ "$maj.$min" = 6.0 ] && [ "$build" -eq 6003 ] && [ "$rev" -ge 20283 ]; } ||
+                { [ "$maj.$min" = 6.0 ] && [ "$build" -eq 6002 ] && [ "$rev" -ge 24283 ]; }; then
+                support_sha256=true
+            fi
+        else
+            if { [ "$maj.$min" = 6.1 ] && [ "$build" -eq 7601 ] && [ "$rev" -ge 22854 ]; } ||
+                { [ "$maj.$min" = 6.1 ] && [ "$build" -eq 7601 ] && [ "$rev" -ge 18649 ] && [ "$rev" -lt 20000 ]; } ||
+                { [ "$maj.$min" = 6.0 ] && [ "$build" -eq 6003 ] && [ "$rev" -ge 20259 ]; } ||
+                { [ "$maj.$min" = 6.0 ] && [ "$build" -eq 6002 ] && [ "$rev" -ge 24259 ]; }; then
+                support_sha256=true
+            fi
+        fi
+    fi
+
+    wimunmount /wim/
 
     info "Selected image info"
     echo "Image Name: $image_name"
