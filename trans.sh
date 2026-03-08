@@ -5741,12 +5741,24 @@ install_windows() {
 
     # 一般镜像是 install.wim
     # en_server_install_disc_windows_home_server_2011_x64_dvd_658487.iso 是 Install.wim
+    # en_windows_vista_sp2_with_update_6003.23713_aio_7in1_x64_v26.01.13_by_adguard.iso 是 swm
     source_install_wim=$(
         cd /iso
-        { find_file_ignore_case sources/install.wim ||
-            find_file_ignore_case sources/install.esd; } 2>/dev/null ||
-            error_and_exit "can't find install.wim or install.esd"
+        {
+            find_file_ignore_case sources/install.wim ||
+                find_file_ignore_case sources/install.esd ||
+                find_file_ignore_case sources/install.swm
+        } 2>/dev/null || error_and_exit "can't find install.wim, install.esd or install.swm"
     )
+
+    is_swm=false
+    if [[ $(echo "$source_install_wim" | to_lower) = '*.swm' ]]; then
+        is_swm=true
+        swm_ref=$(
+            IFS=. read -r name ext < <(basename "$source_install_wim")
+            echo "$name*.$ext"
+        )
+    fi
 
     # 防止用了不兼容架构的 iso
     boot_index=$(get_wim_prop "/iso/$sources_boot_wim" 'Boot Index')
@@ -5853,7 +5865,10 @@ install_windows() {
     # 2. 是否自带 nvme 驱动
     # 3. 是否支持 sha256
     # 4. Installation Type
-    wimmount "$iso_install_wim" "$image_index" /wim/
+    # shellcheck disable=SC2046
+    wimmount "$iso_install_wim" "$image_index" /wim/ \
+        $($is_swm && echo --ref=$(dirname "$iso_install_wim")/$swm_ref)
+
     get_windows_version_from_windows_drive /wim
     windows_type=$(get_windows_type_from_windows_drive /wim)
     {
@@ -5926,6 +5941,7 @@ install_windows() {
             --exclude=/sources/boot.wim \
             --exclude=/sources/install.wim \
             --exclude=/sources/install.esd \
+            --exclude='/sources/install*.swm' \
             /iso/* /os/installer/
     else
         (
@@ -5934,16 +5950,27 @@ install_windows() {
                 -not -iname boot.wim \
                 -not -iname install.wim \
                 -not -iname install.esd \
+                -not -iname 'install*.swm' \
                 -exec cp -r --parents {} /os/installer/ \;
         )
     fi
 
-    # 优化 install.wim
-    # 优点: 可以节省 200M~600M 空间，用来创建虚拟内存
-    #       （意义不大，因为已经删除了 boot.wim 用来创建虚拟内存，vista 除外）
-    # 缺点: 如果 install.wim 只有一个镜像，则只能缩小 10M+
-    if false; then
+    # 如果是 swm，要先合并成 wim 才能编辑
+    if $is_swm; then
+        install_wim=$(echo "$install_wim" | sed 's/\.swm$/.wim/i')
+        # 防止不格盘二次运行时报错：文件已存在
+        rm -f "$install_wim"
+        wimexport --ref="$(dirname "$iso_install_wim")/$swm_ref" "$iso_install_wim" "$image_index" "$install_wim"
+        # 只导出了要安装的镜像，因此 image_index 变为 1
+        image_index=1
+    elif false; then
+        # 优化 install.wim
+        # 优点: 可以节省 200M~600M 空间，用来创建虚拟内存
+        #       （意义不大，因为已经删除了 boot.wim 用来创建虚拟内存，vista 除外）
+        # 缺点: 如果 install.wim 只有一个镜像，则只能缩小 10M+
         time wimexport --threads "$(get_build_threads 512)" "$iso_install_wim" "$image_index" "$install_wim"
+        # 只导出了要安装的镜像，因此 image_index 变为 1
+        image_index=1
         info "install.wim size"
         echo "Original:  $(get_filesize_mb "$iso_install_wim")"
         echo "Optimized: $(get_filesize_mb "$install_wim")"
@@ -6959,6 +6986,8 @@ EOF
         images=all
     fi
     mkdir -p "$(get_path_in_correct_case "$(dirname $boot_dir/$sources_boot_wim)")"
+    # 防止不格盘二次运行时报错：文件已存在
+    rm -f $boot_dir/$sources_boot_wim
     wimexport --boot /os/boot.wim "$images" $boot_dir/$sources_boot_wim
     info "boot.wim size"
     echo "Original:      $(get_filesize_mb /iso/$sources_boot_wim)"
