@@ -6063,13 +6063,14 @@ install_windows() {
         boot_dir=/os
     fi
 
-    # 复制启动相关的文件
-    # efi 额外复制efi目录
+    # 复制 iso 根目录 boot 开头的文件
     echo 'Copying boot files...'
-    cp -r "$(get_path_in_correct_case /iso/boot)"* $boot_dir
+    find /iso -maxdepth 1 -iname 'boot*' -exec cp -r {} "$boot_dir" \;
+
+    # efi 额外复制 iso 根目录 efi 文件夹
     if is_efi; then
         echo 'Copying efi files...'
-        cp -r "$(get_path_in_correct_case /iso/efi)" $boot_dir
+        find /iso -maxdepth 1 -type d -iname efi -exec cp -r {} "$boot_dir" \;
     fi
 
     # 复制iso全部文件(除了boot.wim)到installer分区
@@ -7185,12 +7186,12 @@ EOF
         # 或者用 ms-sys
         apk add grub-bios
         # efi 下，强制安装 mbr 引导，需要添加 --target i386-pc
-        grub-install --target i386-pc --boot-directory=/os/boot /dev/$xda
-        cat <<EOF >/os/boot/grub/grub.cfg
+        grub-install --target i386-pc --boot-directory="$(get_path_in_correct_case /os/boot)" /dev/$xda
+        cat <<EOF >"$(get_path_in_correct_case /os/boot/grub/grub.cfg)"
             set timeout=5
             menuentry "reinstall" {
                 search --no-floppy --label --set=root os
-                ntldr /bootmgr
+                ntldr /$(cd /os && get_path_in_correct_case bootmgr)
             }
 EOF
     fi
