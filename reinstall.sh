@@ -1687,18 +1687,20 @@ Continue with DD?
             fi
         done
 
-        # 对于同一行有多个成功匹配，grep -m1 无效
-        iso=$(curl -L "https://fnnas.com/download$([ "$basearch" = aarch64 ] && echo -arm)" |
-            grep -o 'https://[^"]*\.iso' | head -1 | grep .)
+        if [ -z "$iso" ]; then
+            # 对于同一行有多个成功匹配，grep -m1 无效
+            iso=$(curl -L "https://fnnas.com/download$([ "$basearch" = aarch64 ] && echo -arm)" |
+                grep -o 'https://[^"]*\.iso' | head -1 | grep .)
 
-        # curl 7.82.0+
-        # curl -L --json '{"url":"'$iso'"}' https://www.fnnas.com/api/download-sign
+            # curl 7.82.0+
+            # curl -L --json '{"url":"'$iso'"}' https://www.fnnas.com/api/download-sign
 
-        iso=$(curl -L \
-            -d '{"url":"'$iso'"}' \
-            -H 'Content-Type: application/json' \
-            https://www.fnnas.com/api/download-sign |
-            grep -o 'https://[^"]*')
+            iso=$(curl -L \
+                -d '{"url":"'$iso'"}' \
+                -H 'Content-Type: application/json' \
+                https://www.fnnas.com/api/download-sign |
+                grep -o 'https://[^"]*')
+        fi
 
         test_url "$iso" iso
         eval "${step}_iso='$iso'"
