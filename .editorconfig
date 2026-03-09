@@ -23,3 +23,6 @@ charset = utf-8-bom
 
 [*.{yml,yaml}]
 indent_size = 2
+
+[reinstall.sh]
+shell_variant = bash

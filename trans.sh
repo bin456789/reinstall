@@ -1161,11 +1161,12 @@ EOF
             # 额外的 IPv6 地址（子网不含网关的地址）
             get_netconf_to ipv6_extra_addrs
             if [ -n "$ipv6_extra_addrs" ]; then
-                _old_ifs=$IFS; IFS=','
-                for _addr in $ipv6_extra_addrs; do
-                    echo "    post-up ip -6 addr add $_addr dev $ethx" >>$conf_file
-                done
-                IFS=$_old_ifs
+                (
+                    IFS=','
+                    for _addr in $ipv6_extra_addrs; do
+                        echo "    post-up ip -6 addr add $_addr dev $ethx" >>$conf_file
+                    done
+                )
             fi
         fi
 
@@ -3544,8 +3545,8 @@ EOF
             wget https://deb.freexian.com/extended-lts/archive-key.gpg \
                 -O $os_dir/etc/apt/trusted.gpg.d/freexian-archive-extended-lts.gpg
 
-            codename=$(grep '^VERSION_CODENAME=' $os_dir/etc/os-release | cut -d= -f2)
-            # shellcheck disable=SC2154
+            # shellcheck disable=SC1091
+            codename=$({ . "$os_dir/etc/os-release" && echo "$VERSION_CODENAME"; })
             if [ -f $os_dir/etc/apt/sources.list.d/debian.sources ]; then
                 cat <<EOF >$os_dir/etc/apt/sources.list.d/debian.sources
 Types: deb
@@ -3884,7 +3885,7 @@ setup_nocloud() {
 
     # 1. 配置 NoCloud-only datasource
     mkdir -p "$os_dir/etc/cloud/cloud.cfg.d"
-    cat > "$os_dir/etc/cloud/cloud.cfg.d/99-datasource.cfg" << 'EOF'
+    cat >"$os_dir/etc/cloud/cloud.cfg.d/99-datasource.cfg" <<'EOF'
 datasource_list: [ NoCloud, None ]
 datasource:
   NoCloud:

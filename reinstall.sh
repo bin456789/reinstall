@@ -1,6 +1,9 @@
-#!/usr/bin/env bash
-# nixos 默认的配置不会生成 /bin/bash
+#!/usr/bin/env sh
+# shellcheck shell=bash
 # shellcheck disable=SC2086
+
+# nixos 默认的配置不会生成 /bin/bash，因此需要用 /usr/bin/env
+# alpine 默认没有 bash，因此 shebang 用 sh，再 exec 切换到 bash
 
 set -eE
 confhome=https://raw.githubusercontent.com/bin456789/reinstall/main
@@ -24,18 +27,18 @@ export PATH=/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin:$PATH
 
 # 如果不是 bash 的话，继续执行会有语法错误，因此在这里判断是否 bash
 if [ -z "$BASH" ]; then
-    if [ -f /etc/alpine-release ]; then
-        if ! apk add bash; then
-            echo "Error while install bash." >&2
+    if ! command -v bash >/dev/null; then
+        if [ -f /etc/alpine-release ]; then
+            if ! apk add bash; then
+                echo "Error while install bash." >&2
+                exit 1
+            fi
+        else
+            echo "Please run this script with bash." >&2
             exit 1
         fi
     fi
-    if command -v bash >/dev/null; then
-        exec bash "$0" "$@"
-    else
-        echo "Please run this script with bash." >&2
-        exit 1
-    fi
+    exec bash "$0" "$@"
 fi
 
 # 记录日志，过滤含有 password 的行
@@ -469,10 +472,11 @@ fix_file_type() {
         -e 's/[,;#]//g' \
         -e 's/^[[:space:]]*//' \
         -e 's/(POSIX|Unicode|UTF-8|ASCII)//gi' \
-        -e 's/DOS\/MBR boot sector/raw/i' \
-        -e 's/x86 boot sector/raw/i' \
-        -e 's/Zstandard/zstd/i' \
-        -e 's/Windows imaging \(WIM\) image/wim/i' |
+        -e 's/^DOS\/MBR boot sector/raw/i' \
+        -e 's/^x86 boot sector/raw/i' \
+        -e 's/^Zstandard/zstd/i' \
+        -e 's/^UDF/iso/i' \
+        -e 's/^Windows imaging \(WIM\) image/wim/i' |
         awk '{print $1}' | to_lower
 }
 
@@ -1159,7 +1163,10 @@ get_windows_iso_link_inner() {
     # SW_DVD5_Win_10_IOT_Enterprise_2015_LTSB_64Bit_EMB_English_OEM_X20-20063.IMG
     # SW_DVD9_Win_Pro_10_22H2.15_Arm64_English_Pro_Ent_EDU_N_MLF_X23-67223.ISO
     # SWDVD9_WinSrvSTDCORE2025_24H2.16_64Bit_English_DC_STD_MLF_RTMUpdJan26_X24-26760.iso
-    if [ -n "$label_vlsc" ]; then
+
+    # 先判断 full_lang 是否为空
+    # 因为假如用户输入的 lang 不正确，full_lang 就为空，正则表达式就无法只匹配当前语言
+    if [ -n "$label_vlsc" ] && [ -n "$full_lang" ]; then
         regex="sw_?dvd[59]_win_?${label_vlsc}_?${version}.*${arch_win_vlsc}_${full_lang}.*.(iso|img)"
         regexs+=("$regex")
     fi
@@ -4166,7 +4173,7 @@ EOF
 
         if ! [ -d "$inf_or_dir" ] &&
             ! { [ -f "$inf_or_dir" ] && [[ "$inf_or_dir" =~ \.[iI][nN][fF]$ ]]; }; then
-            ssh_key_error_and_exit "Not a inf or dir: $2"
+            error_and_exit "Not a inf or dir: $2"
         fi
 
         # 转为绝对路径
