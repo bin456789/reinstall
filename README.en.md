@@ -38,6 +38,7 @@ If this helped you, you can buy me a milk tea.
 - [Feature 3. One-click reboot to Alpine Live OS](#feature-3-reboot-to--alpine-live-os)
 - [Feature 4. One-click reboot to netboot.xyz](#feature-4-reboot-to--netbootxyz)
 - [Feature 5. One-click reinstallation to Windows](#feature-5-install--windows-iso)
+- [Cancel the reinstallation](#cancel-the-reinstallation)
 
 ## System Requirements
 
@@ -144,7 +145,7 @@ certutil -urlcache -f -split https://cnb.cool/bin456789/reinstall/-/git/raw/main
 >
 > This feature will erase **the entire hard disk** of the current system (including other partitions)!
 >
-> Data is priceless — please think twice before proceeding!
+> If the script was run by mistake, you can run `bash reinstall.sh reset` before rebooting to cancel the reinstallation operation.
 
 - Username `root`. The script prompts for a password. If left blank, a random one is generated.
 - When installing the latest version, the version number does not need to be specified.
@@ -231,7 +232,7 @@ bash reinstall.sh ubuntu --installer
 >
 > This feature will erase **the entire hard disk** of the current system (including other partitions)!
 >
-> Data is priceless — please think twice before proceeding!
+> If the script was run by mistake, you can run `bash reinstall.sh reset` before rebooting to cancel the reinstallation operation.
 
 - Supports `raw` and fixed-size `vhd` image formats. Either uncompressed or compressed as `.gz`, `.xz`, `.zst`, `.tar`, `.tar.gz`, `.tar.xz`, `.tar.zst`.
 - When deploy a Windows image, the system disk will be automatically expanded, and machines with a static IP will have their IP configured, and may take a few minutes after the first boot for the configuration to take effect.
@@ -324,7 +325,7 @@ bash reinstall.sh netboot.xyz
 >
 > This feature will erase **the entire hard disk** of the current system (including other partitions)!
 >
-> Data is priceless — please think twice before proceeding!
+> If the script was run by mistake, you can run `bash reinstall.sh reset` before rebooting to cancel the reinstallation operation.
 
 - Username `administrator`. The script prompts for a password. If left blank, a random one is generated.
 - If remote login fails, try using the username `.\administrator`.
@@ -554,6 +555,15 @@ During the installation process, you might encounter a black screen, and the ser
 | ❔            | Alibaba Cloud  | g6r, c6r, g8y, c8y, r8y | Might hanging at the boot logo during restart; forced reboot will resolve it.       |
 | ❔            | Oracle Cloud   | A1.Flex                 | Installation success is not guaranteed; newer instances are more likely to succeed. |
 | ❌            | Google Cloud   | t2a                     | Missing network card drivers                                                        |
+
+### Cancel the reinstallation
+
+- If the script was run by mistake, you can run this command to cancel the reinstallation operation.
+- Must be run before rebooting.
+
+```bash
+bash reinstall.sh reset
+```
 
 ## Parameter Format
 

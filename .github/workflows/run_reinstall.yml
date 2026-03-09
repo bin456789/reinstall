@@ -39,6 +39,8 @@ jobs:
           ${{ matrix.command }} dd --img=https://download.opensuse.org/tumbleweed/appliances/openSUSE-MicroOS.x86_64-SelfInstall.raw.xz
           ${{ matrix.command }} windows --image-name='Windows Server blah' --iso https://aka.ms/HCIReleaseImage
 
+          ${{ matrix.command }} reset
+
           # 测试失败例子
           # ${{ matrix.command }} wrong-os
           # ${{ matrix.command }} dd --img=https://github.com/

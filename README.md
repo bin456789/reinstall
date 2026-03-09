@@ -38,6 +38,7 @@
 - [功能 3. 一键引导到 Alpine Live OS 内存系统](#功能-3-重启到--alpine-live-os内存系统)
 - [功能 4. 一键引导到 netboot.xyz](#功能-4-重启到--netbootxyz)
 - [功能 5. 一键重装到 Windows](#功能-5-安装--windows-iso)
+- [取消重装](#取消重装)
 
 ## 系统要求
 
@@ -144,7 +145,7 @@ certutil -urlcache -f -split https://cnb.cool/bin456789/reinstall/-/git/raw/main
 >
 > 此功能会清除当前系统**整个硬盘**的全部数据（包含其它分区）！
 >
-> 数据无价，请三思而后行！
+> 如果不小心运行了脚本，可以在重启前运行 `bash reinstall.sh reset` 取消重装
 
 - 用户名为 `root`，脚本会提示输入密码，不输入则使用随机密码
 - 安装最新版可不输入版本号
@@ -231,7 +232,7 @@ bash reinstall.sh ubuntu --installer
 >
 > 此功能会清除当前系统**整个硬盘**的全部数据（包含其它分区）！
 >
-> 数据无价，请三思而后行！
+> 如果不小心运行了脚本，可以在重启前运行 `bash reinstall.sh reset` 取消重装
 
 - 支持 `raw` 和固定大小的 `vhd` 镜像。未压缩或者压缩成 `.gz` `.xz` `.zst` `.tar` `.tar.gz` `.tar.xz` `.tar.zst`
 - DD Windows 镜像时，会自动扩展系统盘，静态 IP 的机器会配置好 IP，可能首次开机几分钟后才生效
@@ -324,7 +325,7 @@ bash reinstall.sh netboot.xyz
 >
 > 此功能会清除当前系统**整个硬盘**的全部数据（包含其它分区）！
 >
-> 数据无价，请三思而后行！
+> 如果不小心运行了脚本，可以在重启前运行 `bash reinstall.sh reset` 取消重装
 
 - 用户名为 `administrator`，脚本会提示输入密码，不输入则使用随机密码
 - 如果远程登录失败，可以尝试使用用户名 `.\administrator`
@@ -554,6 +555,15 @@ Windows Server 2025 SERVERDATACENTER
 | ❔     | 阿里云   | g6r, c6r, g8y, c8y, r8y | 有几率重启时卡开机 Logo，强制重启即可      |
 | ❔     | 甲骨文云 | A1.Flex                 | 不一定能安装成功，越新创建的实例越容易成功 |
 | ❌     | 谷歌云   | t2a                     | 缺少网卡驱动                               |
+
+### 取消重装
+
+- 如果不小心运行了脚本，可以运行以下命令取消重装
+- 需要在重启前运行
+
+```bash
+bash reinstall.sh reset
+```
 
 ## 参数格式
 

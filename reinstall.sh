@@ -16,6 +16,13 @@ SCRIPT_VERSION=4BACD833-A585-23BA-6CBB-9AA4E08E0004
 # 记录要用到的 windows 程序，运行时输出删除 \r
 WINDOWS_EXES='cmd powershell wmic reg diskpart netsh bcdedit mountvol'
 
+BOOT_ENTEY_START_MARK='### BEGIN reinstall.sh ###'
+BOOT_ENTEY_END_MARK='### END reinstall.sh ###'
+
+# 临时目录
+# 不用 /tmp，因为 /tmp 挂载在内存的话，可能不够空间
+tmp=/reinstall-tmp
+
 # 强制 linux 程序输出英文，防止 grep 不到想要的内容
 # https://www.gnu.org/software/gettext/manual/html_node/The-LANGUAGE-variable.html
 export LC_ALL=C
@@ -41,8 +48,9 @@ if [ -z "$BASH" ]; then
     exec bash "$0" "$@"
 fi
 
+# 好像跟 trap SIGINT 有冲突
 # 记录日志，过滤含有 password 的行
-exec > >(tee >(grep -iv password >>/reinstall.log)) 2>&1
+# exec > >(tee >(grep -iv password >>/reinstall.log)) 2>&1
 THIS_SCRIPT=$(readlink -f "$0")
 trap 'trap_err $LINENO $?' ERR
 
@@ -54,12 +62,17 @@ trap_err() {
     sed -n "$line_no"p "$THIS_SCRIPT"
 }
 
+is_in_windows() {
+    [ "$(uname -o)" = Cygwin ] || [ "$(uname -o)" = Msys ]
+}
+
+if is_in_windows; then
+    reinstall_____='.\reinstall.bat'
+else
+    reinstall_____='sh reinstall.sh'
+fi
+
 usage_and_exit() {
-    if is_in_windows; then
-        reinstall_____='.\reinstall.bat'
-    else
-        reinstall_____=' ./reinstall.sh'
-    fi
     cat <<EOF
 Usage: $reinstall_____ anolis      7|8|23
                        opencloudos 8|9|23
@@ -84,6 +97,7 @@ Usage: $reinstall_____ anolis      7|8|23
                        windows     --image-name="windows xxx yyy" --lang=xx-yy
                        windows     --image-name="windows xxx yyy" --iso="http://xxx.com/xxx.iso"
                        netboot.xyz
+                       reset
 
        Options:        For Linux/Windows:
                        [--password    PASSWORD]
@@ -531,22 +545,10 @@ add_community_repo_for_alpine() {
     fi
 }
 
-assert_not_in_container() {
-    _error_and_exit() {
-        error_and_exit "Not Supported OS in Container.\nPlease use https://github.com/LloydAsp/OsMutation"
-    }
-
-    is_in_windows && return
-
-    if is_have_cmd systemd-detect-virt; then
-        if systemd-detect-virt -qc; then
-            _error_and_exit
-        fi
-    else
-        if [ -d /proc/vz ] || grep -q container=lxc /proc/1/environ; then
-            _error_and_exit
-        fi
-    fi
+is_in_container() {
+    { is_have_cmd systemd-detect-virt && systemd-detect-virt -qc; } ||
+        [ -d /proc/vz ] ||
+        { [ -f /proc/1/environ ] && grep -q container=lxc /proc/1/environ; }
 }
 
 # 使用 | del_br ，但返回 del_br 之前返回值
@@ -611,6 +613,7 @@ wmic() {
         class=$2
         shift 2
     else
+        # wmic alias list brief
         case "$(to_lower <<<"$1")" in
         nicconfig) class=Win32_NetworkAdapterConfiguration ;;
         memorychip) class=Win32_PhysicalMemory ;;
@@ -1979,7 +1982,8 @@ verify_os_name() {
         'aosc' \
         'windows' \
         'dd' \
-        'netboot.xyz'; do
+        'netboot.xyz' \
+        'reset'; do
         read -r ds vers <<<"$os"
         vers_=${vers//\./\\\.}
         finalos=$(echo "$@" | to_lower | sed -n -E "s,^($ds)[ :-]?(|$vers_)$,\1 \2,p")
@@ -2345,13 +2349,13 @@ is_secure_boot_enabled() {
     fi
 }
 
-is_need_grub_extlinux() {
+is_need_boot_vmlinuz() {
     ! { is_netboot_xyz && is_efi; }
 }
 
 # 只有 linux bios 是用本机的 grub/extlinux
 is_use_local_grub_extlinux() {
-    is_need_grub_extlinux && ! is_in_windows && ! is_efi
+    is_need_boot_vmlinuz && ! is_in_windows && ! is_efi
 }
 
 is_use_local_grub() {
@@ -2362,6 +2366,7 @@ is_use_local_extlinux() {
     is_use_local_grub_extlinux && ! is_mbr_using_grub
 }
 
+# 软 raid 时 xda 可能不是引导盘，以后再修正
 is_mbr_using_grub() {
     find_main_disk
     # 各发行版不一定自带 strings hexdump xxd od 命令
@@ -2514,28 +2519,56 @@ find_main_disk() {
         main_disk=$(printf "%s\n%s" "select volume $c" "uniqueid disk" | diskpart |
             tail -1 | awk '{print $NF}' | sed 's,[{}],,g')
     else
-        # centos7下测试     lsblk --inverse $mapper | grep -w disk     grub2-probe -t disk /
-        # 跨硬盘btrfs       只显示第一个硬盘                            显示两个硬盘
-        # 跨硬盘lvm         显示两个硬盘                                显示/dev/mapper/centos-root
-        # 跨硬盘软raid      显示两个硬盘                                显示/dev/md127
+        if [ -z "$xda" ]; then
+            # centos7下测试     lsblk --inverse $mapper | grep -w disk     grub2-probe -t disk /
+            # 跨硬盘btrfs       只显示第一个硬盘                            显示两个硬盘
+            # 跨硬盘lvm         显示两个硬盘                                显示/dev/mapper/centos-root
+            # 跨硬盘软raid      显示两个硬盘                                显示/dev/md127
 
-        # 还有 findmnt
+            # 还有 findmnt
 
-        # 改成先检测 /boot/efi /efi /boot 分区？
+            # 理论上 /boot/efi /efi /boot 可以不在主硬盘上
+            # 因此只查找 / 分区
 
-        install_pkg lsblk
-        # 查找主硬盘时，优先查找 /boot 分区，再查找 / 分区
-        # lvm 显示的是 /dev/mapper/xxx-yyy，再用第二条命令得到sda
-        mapper=$(mount | awk '$3=="/boot" {print $1}' | grep . || mount | awk '$3=="/" {print $1}')
-        xda=$(lsblk -rn --inverse $mapper | grep -w disk | awk '{print $1}' | sort -u)
+            install_pkg lsblk
+            # lvm 显示的是 /dev/mapper/xxx-yyy，再用第二条命令得到sda
+            mapper=$(mount | awk '$3=="/" {print $1}' | grep .)
+            xdas=$(lsblk -rn --inverse $mapper | grep -w disk | awk '{print $1}' | sort -u | grep .)
 
-        # 检测主硬盘是否横跨多个磁盘
-        os_across_disks_count=$(wc -l <<<"$xda")
-        if [ $os_across_disks_count -eq 1 ]; then
-            info "Main disk: $xda"
-        else
-            error_and_exit "OS across $os_across_disks_count disk: $xda"
+            # 注意 wc -l 的坑
+            # wc -l <<<"" 输出 1
+
+            # 检测主硬盘是否横跨多个磁盘
+            if [ "$(wc -l <<<"$xdas")" -eq 1 ]; then
+                xda=$xdas
+            else
+                # vultr 官网新建数据盘时有写，部分地区的实例，不能从数据盘启动
+                # 实测 nvram 可写入数据盘的条目但不生效，手动安装 debian 到此硬盘，nvram 也不生效
+                # 从 bios 手动选择数据盘的 efi 文件才能启动
+                # 但是 nvram BootNext 数据盘的条目却可以生效
+
+                # vultr 从软 raid 0 debian 下用本脚本安装 debian ，进入 grub efi 时，无法识别系统分区 md1 的文件系统，也少了 hd1
+                # 但是从 bios 手动选择 reinstall 的 grub efi 时却可以识别
+                # 后期应该将 vmlinux/initrd 放到 efi/boot 分区
+
+                # Gemini 说:
+                # 使用 efibootmgr 的 BootNext 时，固件走的是“快速路径”：
+                # 它只初始化存放 EFI 引导文件（grubx64.efi）的那块硬盘（hd0），然后直接把控制权交给 GRUB。
+                # 因为 hd1 还没“醒”，GRUB 自然无法拼凑出完整的 md1 阵列，导致无法识别文件系统。
+
+                # 使用 nativedisk 可以强制 grub 识别所有硬盘?
+                info false "Multiple disks found for root partition:"
+                echo '-----'
+                printf "%s\n" "$xdas"
+                echo '-----'
+                read -r -p "Select a disk to install: " xda
+                if ! grep -Fqx "$xda" <<<"$xdas"; then
+                    error_and_exit "Invalid Input."
+                fi
+            fi
         fi
+
+        info "Main disk: $xda"
 
         # 可以用 dd 找出 guid?
 
@@ -2764,9 +2797,7 @@ collect_netconf() {
     echo
 }
 
-add_efi_entry_in_windows() {
-    source=$1
-
+get_efi_dir_in_windows() {
     # 挂载
     if result=$(find /cygdrive/?/EFI/Microsoft/Boot/bootmgfw.efi 2>/dev/null); then
         # 已经挂载
@@ -2776,14 +2807,23 @@ add_efi_entry_in_windows() {
         for x in {a..z}; do
             [ ! -e /cygdrive/$x ] && break
         done
-        mountvol $x: /s
+        if ! mountvol $x: /s >&2; then
+            error_and_exit "Can't mount efi partition in windows."
+        fi
     fi
+    echo "/cygdrive/$x"
+}
+
+add_efi_entry_in_windows() {
+    info "Add efi entry in windows"
+
+    local source=$1
 
     # 文件夹命名为reinstall而不是grub，因为可能机器已经安装了grub，bcdedit名字同理
-    dist_dir=/cygdrive/$x/EFI/reinstall
+    dist_dir="$(get_efi_dir_in_windows)/EFI/reinstall"
+    efi_drive=$(echo "$dist_dir" | cut -d/ -f3)
     basename=$(basename $source)
-    mkdir -p $dist_dir
-    cp -f "$source" "$dist_dir/$basename"
+    download_or_copy_file "$source" "$dist_dir/$basename"
 
     # 如果 {fwbootmgr} displayorder 为空
     # 执行 bcdedit /copy '{bootmgr}' 会报错
@@ -2794,16 +2834,36 @@ add_efi_entry_in_windows() {
 
     # 添加启动项
     id=$(bcdedit /copy '{bootmgr}' /d "$(get_entry_name)" | grep -o '{.*}')
-    bcdedit /set $id device partition=$x:
+    bcdedit /set $id device partition=$efi_drive:
     bcdedit /set $id path \\EFI\\reinstall\\$basename
     bcdedit /set '{fwbootmgr}' bootsequence $id
 }
 
 get_maybe_efi_dirs_in_linux() {
-    # arch云镜像efi分区挂载在/efi，且使用 autofs，挂载后会有两个 /efi 条目
-    # openEuler 云镜像 boot 分区是 vfat 格式，但 vfat 可以当 efi 分区用
-    # TODO: 最好通过 lsblk/blkid 检查是否为 efi 分区类型
-    mount | awk '$5=="vfat" || $5=="autofs" {print $3}' | grep -E '/boot|/efi' | sort -u
+    # 不从 fstab 查找，因为极端情况下可能只用 systemd mount
+    # arch云镜像efi分区挂载在/efi，且使用 autofs，mount 命令会有两个 /efi 条目
+
+    install_pkg findmnt >&2
+
+    # 寻找 efi 分区，并输出根目录
+    # root_dirs=$(mount | awk '$5=="vfat" || $5=="autofs" {print $3}' | grep -Ex '/efi|/boot/efi|/boot' | sort -u)
+    root_dirs=$(findmnt -t fat,vfat -n -o TARGET | grep -Ex '/efi|/boot/efi|/boot' | sort -u)
+
+    efi_dirs=$(
+        for dir in $root_dirs; do
+            # 只显示有 efi 文件的
+            # -quit 表示找到第一个 *.efi 就立即退出 find
+            if [ -d "$dir" ]; then
+                find "$dir" -type f -iname "*.efi" -exec printf '%s\n' "$dir" \; -quit
+            fi
+        done
+    )
+
+    if [ -z "$efi_dirs" ]; then
+        error_and_exit "Can't find efi partition."
+    fi
+
+    echo "$efi_dirs"
 }
 
 get_disk_by_part() {
@@ -2839,46 +2899,58 @@ grep_efi_index() {
     awk '{print $1}' | sed -e 's/Boot//' -e 's/\*//'
 }
 
+download_or_copy_file() {
+    local source=$1
+    local dist=$2
+
+    mkdir -p "$(dirname $dist)"
+
+    if [[ "$source" = http* ]]; then
+        curl -Lo "$dist" "$source"
+    else
+        cp -f "$source" "$dist"
+    fi
+}
+
 add_efi_entry_in_linux() {
-    source=$1
+    local source=$1
+
+    info "Add efi entry in linux"
 
     install_pkg efibootmgr
 
-    for efi_part in $(get_maybe_efi_dirs_in_linux); do
-        if find $efi_part -iname "*.efi" >/dev/null; then
-            dist_dir=$efi_part/EFI/reinstall
-            basename=$(basename $source)
-            mkdir -p $dist_dir
+    # 只取第一个
+    # 因为不用关心是否为 efi 分区，只要是 fat/vfat 格式的分区即可添加到引导
+    # 这里用了管道导致 get_maybe_efi_dirs_in_linux 里面的 error_and_exit 不生效
+    efi_part=$(get_maybe_efi_dirs_in_linux | head -1 | grep .)
+    dist_dir=$efi_part/EFI/reinstall
+    basename=$(basename $source)
+    download_or_copy_file "$source" "$dist_dir/$basename"
 
-            if [[ "$source" = http* ]]; then
-                curl -Lo "$dist_dir/$basename" "$source"
-            else
-                cp -f "$source" "$dist_dir/$basename"
-            fi
+    # 原系统可能不是用 grub 引导，因此不一定有 grub-probe
+    if false; then
+        grub_probe="$(command -v grub-probe grub2-probe | head -1)"
+        dev_part="$("$grub_probe" -t device "$dist_dir")"
+    else
+        install_pkg findmnt
+        # arch findmnt 会得到
+        # systemd-1
+        # /dev/sda2
+        dev_part=$(findmnt -T "$dist_dir" -no SOURCE | grep '^/dev/')
+    fi
 
-            if false; then
-                grub_probe="$(command -v grub-probe grub2-probe)"
-                dev_part="$("$grub_probe" -t device "$dist_dir")"
-            else
-                install_pkg findmnt
-                # arch findmnt 会得到
-                # systemd-1
-                # /dev/sda2
-                dev_part=$(findmnt -T "$dist_dir" -no SOURCE | grep '^/dev/')
-            fi
-
-            id=$(efibootmgr --create-only \
-                --disk "/dev/$(get_disk_by_part $dev_part)" \
-                --part "$(get_part_num_by_part $dev_part)" \
-                --label "$(get_entry_name)" \
-                --loader "\\EFI\\reinstall\\$basename" |
-                grep_efi_entry | tail -1 | grep_efi_index)
-            efibootmgr --bootnext $id
-            return
-        fi
-    done
-
-    error_and_exit "Can't find efi partition."
+    if ! {
+        res=$(efibootmgr --create-only \
+            --disk "/dev/$(get_disk_by_part $dev_part)" \
+            --part "$(get_part_num_by_part $dev_part)" \
+            --label "$(get_entry_name)" \
+            --loader "\\EFI\\reinstall\\$basename") &&
+            id=$(echo "$res" | grep_efi_entry | tail -1 | grep_efi_index | grep .) &&
+            efibootmgr --bootnext "$id"
+    }; then
+        echo "$res"
+        error_and_exit "Could not add efi entry."
+    fi
 }
 
 get_grub_efi_filename() {
@@ -2954,9 +3026,14 @@ download_and_extract_apk() {
 install_grub_win() {
     # 下载 grub
     info download grub
+
+    # arm64 模块要单独下载，要注意版本匹配
     grub_ver=2.06
+
     # ftpmirror.gnu.org 是 geoip 重定向，不是 cdn
     # 有可能重定义到一个拉黑了部分 IP 的服务器
+
+    # 换成 ftp.gnu.org?
     is_in_china && grub_url=https://mirror.nju.edu.cn/gnu/grub/grub-$grub_ver-for-windows.zip ||
         grub_url=https://mirrors.kernel.org/gnu/grub/grub-$grub_ver-for-windows.zip
     curl -Lo $tmp/grub.zip $grub_url
@@ -2989,6 +3066,7 @@ install_grub_win() {
         esac
 
         # 下载 grub arm64 模块
+        # 注意要匹配 grub-for-windows 版本
         if ! [ -d $grub_dir/grub/$grub_arch-efi ]; then
             # 3.20 是 grub 2.12，可能会有问题
             alpine_ver=3.19
@@ -3011,7 +3089,7 @@ install_grub_win() {
             # g2ldr.mbr
             # 部分国内机无法访问 ftp.cn.debian.org
             is_in_china && host=mirror.nju.edu.cn || host=deb.debian.org
-            curl -LO http://$host/debian/tools/win32-loader/stable/win32-loader.exe
+            curl -LO http://$host/debian/tools/win32-loader/oldstable/win32-loader.exe
             7z x win32-loader.exe 'g2ldr.mbr' -o$tmp/win32-loader -r -y -bso0
             find $tmp/win32-loader -name 'g2ldr.mbr' -exec cp {} /cygdrive/$c/ \;
 
@@ -3677,7 +3755,7 @@ mod_initrd_alpine() {
     # udhcpc:  bound
     # udhcpc6: deconfig
     # udhcpc6: bound
-    # shellcheck disable=SC2317
+    # shellcheck disable=SC2329
     udhcpc() {
         if [ "$1" = deconfig ]; then
             return
@@ -3920,12 +3998,275 @@ get_unix_path() {
     fi
 }
 
+init_basearch() {
+    # 设置 basearch
+    if is_in_windows; then
+        # x86-based PC
+        # x64-based PC
+        # ARM-based PC
+        # ARM64-based PC
+
+        # 三种方法都不需要管理员运行
+        if false; then
+            # 如果机器没有 wmic 则需要下载 wmic.ps1，但此时未判断国内外，还是用国外源
+            basearch=$(wmic ComputerSystem get SystemType | grep '=' | cut -d= -f2 | cut -d- -f1)
+        elif true; then
+            basearch=$(reg query "HKLM\SYSTEM\CurrentControlSet\Control\Session Manager\Environment" /v PROCESSOR_ARCHITECTURE |
+                grep . | tail -1 | awk '{print $NF}')
+        else
+            # 也可以用
+            basearch=$(cmd /c "if defined PROCESSOR_ARCHITEW6432 (echo %PROCESSOR_ARCHITEW6432%) else (echo %PROCESSOR_ARCHITECTURE%)")
+        fi
+    else
+        # archlinux 云镜像没有 arch 命令
+        # https://en.wikipedia.org/wiki/Uname
+        basearch=$(uname -m)
+    fi
+
+    # 统一架构名称，并强制 64 位
+    case "$(echo $basearch | to_lower)" in
+    i?86 | x64 | x86* | amd64)
+        basearch=x86_64
+        basearch_alt=amd64
+        ;;
+    arm* | aarch64)
+        basearch=aarch64
+        basearch_alt=arm64
+        ;;
+    *) error_and_exit "Unsupported arch: $basearch" ;;
+    esac
+}
+
+init_confhome() {
+    # 设置 confhome
+    # 未测试
+    if false && [[ "$confhome" = http*://raw.githubusercontent.com/* ]]; then
+        repo=$(echo $confhome | cut -d/ -f4,5)
+        branch=$(echo $confhome | cut -d/ -f6)
+        # 避免脚本更新时，文件不同步造成错误
+        if [ -z "$commit" ]; then
+            commit=$(curl -L https://api.github.com/repos/$repo/git/refs/heads/$branch |
+                grep '"sha"' | grep -Eo '[0-9a-f]{40}')
+        fi
+        # shellcheck disable=SC2001
+        confhome=$(echo "$confhome" | sed "s/main$/$commit/")
+    fi
+
+    # 设置国内代理
+    # 要在使用 wmic 前设置，否则国内机器会从国外源下载 wmic.ps1
+    # gitee 不支持ipv6
+    # jsdelivr 有12小时缓存
+    # https://github.com/XIU2/UserScript/blob/master/GithubEnhanced-High-Speed-Download.user.js#L31
+    if is_in_china; then
+        if [ -n "$confhome_cn" ]; then
+            confhome=$confhome_cn
+        elif [ -n "$github_proxy" ] && [[ "$confhome" = http*://raw.githubusercontent.com/* ]]; then
+            confhome=${confhome/http:\/\//https:\/\/}
+            confhome=${confhome/https:\/\/raw.githubusercontent.com/$github_proxy}
+        fi
+    fi
+}
+
+remove_exist_reinstall_efi_dir() {
+    info "remove exist reinstall efi dir"
+
+    local dir='' dirs=''
+    if is_in_windows; then
+        dirs=$(get_efi_dir_in_windows)
+    else
+        dirs=$(get_maybe_efi_dirs_in_linux)
+    fi
+    # 后期可能会将 reinstall-vmlinuz 和 reinstall-initrd 放到 efi 分区下
+    # 因此也删除它们
+    for dir in $dirs; do
+        rm -f "$dir/reinstall-vmlinuz"
+        rm -f "$dir/reinstall-initrd"
+    done
+    find $dirs -type f \
+        \( -ipath '*/EFI/reinstall/grubx64.efi' \
+        -o -ipath '*/EFI/reinstall/grubaa64.efi' \
+        -o -ipath '*/EFI/reinstall/netboot.xyz.efi' \
+        -o -ipath '*/EFI/reinstall/netboot.xyz-arm64.efi' \) |
+        while IFS= read -r efi_file; do
+            reinstall_dir=$(dirname "$efi_file")
+            echo "removing $reinstall_dir"
+            rm -rf "$reinstall_dir"
+        done
+}
+
+#             linux                                      windows
+# bios        /boot/grub*/custom.cfg                     /cygdrive/c/grub/grub.cfg
+# efi         efi分区的/EFI/reinstall/grub.cfg           /cygdrive/c/grub.cfg
+# efi文件夹    efi分区的/EFI/reinstall/                  /cygdrive/a/EFI/reinstall/
+
+init_bootloader_facts() {
+    if is_in_windows; then
+        # windows
+        if is_efi; then
+            _grub_cfg=/cygdrive/$c/grub.cfg
+        else
+            _grub_cfg=/cygdrive/$c/grub/grub.cfg
+        fi
+        target_cfg=$_grub_cfg
+    else
+        # linux
+        if is_efi; then
+            efi_dir=$(get_maybe_efi_dirs_in_linux | head -1)
+            _grub_cfg=$efi_dir/EFI/reinstall/grub.cfg
+            target_cfg=$_grub_cfg
+        else
+            if is_mbr_using_grub; then
+                if is_have_cmd update-grub; then
+                    # alpine debian ubuntu
+                    _grub_cfg=$(grep -o '[^ ]*grub.cfg' "$(get_cmd_path update-grub)" | head -1)
+                else
+                    # 找出主配置文件（含有menuentry|blscfg）
+                    # 有没有可能在 efi 目录?
+                    _grub_cfg=$(find_grub_extlinux_cfg '/boot/grub*' grub.cfg 'menuentry|blscfg')
+                fi
+                target_cfg=$(dirname $_grub_cfg)/custom.cfg
+
+                if is_have_cmd grub2-mkconfig; then
+                    grub=grub2
+                elif is_have_cmd grub-mkconfig; then
+                    grub=grub
+                else
+                    error_and_exit "grub not found"
+                fi
+            else
+                # extlinux
+                _extlinux_cfg=$(find_grub_extlinux_cfg /boot extlinux.conf LINUX)
+                target_cfg=$_extlinux_cfg
+            fi
+        fi
+    fi
+}
+
+# 重新生成 grub.cfg
+# 因为有些机子例如hython debian的grub.cfg少了40_custom 41_custom 部分
+recreate_grub_or_extlinux_cfg() {
+    # 没用到原机的 grub 和 extlinux
+    # 因此不需要重新生成 grub.cfg 或 extlinux.conf
+    if is_efi || is_in_windows; then
+        return
+    fi
+
+    if is_mbr_using_grub; then
+        info "recreate grub.cfg"
+
+        # nixos 手动执行 grub-mkconfig -o /boot/grub/grub.cfg 会丢失系统启动条目
+        # 正确的方法是修改 configuration.nix 的 boot.loader.grub.extraEntries
+        # 但是修改 configuration.nix 不是很好，因此改成修改 grub.cfg
+        if [ -x /nix/var/nix/profiles/system/bin/switch-to-configuration ]; then
+            # 生成 grub.cfg
+            /nix/var/nix/profiles/system/bin/switch-to-configuration boot
+            # 手动启用 41_custom
+            nixos_grub_home="$(dirname "$(readlink -f "$(get_cmd_path grub-mkconfig)")")/.."
+            $nixos_grub_home/etc/grub.d/41_custom >>$target_cfg
+        elif is_have_cmd update-grub; then
+            update-grub
+        else
+            $grub-mkconfig -o $target_cfg
+        fi
+    elif is_have_cmd update-extlinux; then
+        # alpine 才有 update-extlinux
+        info "recreate extlinux.conf"
+        update-extlinux
+    else
+        error_and_exit "unsupported bootloader."
+    fi
+}
+
+# 删除之前的 reinstall 启动项
+remove_exist_reinstall() {
+    info "remove exist reinstall"
+
+    rm -f /reinstall-vmlinuz /reinstall-initrd
+    rm -f /boot/reinstall-vmlinuz /boot/reinstall-initrd
+    if is_in_windows; then
+        rm -f /cygdrive/$c/reinstall-vmlinuz /cygdrive/$c/reinstall-initrd
+    fi
+
+    # 使用外部 grub 时，删除外部 grub.cfg
+    if ! is_use_local_grub_extlinux; then
+        rm -f "$target_cfg"
+    fi
+
+    if is_in_windows; then
+        if is_efi; then
+            # efi
+            remove_exist_reinstall_efi_dir
+
+            bcdedit /set '{fwbootmgr}' bootsequence '{bootmgr}'
+            bcdedit /enum bootmgr | grep --text -B3 'reinstall' | awk '{print $2}' | grep '{.*}' |
+                xargs -I {} cmd /c bcdedit /delete {}
+        else
+            # bios
+            id='{1c41f649-1637-52f1-aea8-f96bfebeecc8}'
+            if bcdedit /enum all | grep --text "$id"; then
+                bcdedit /delete "$id"
+            fi
+        fi
+    else
+        if is_efi; then
+            # efi
+
+            # 题外话
+            # 1. 如果用本机的 grub，则 custom.cfg 可能在 efi 分区，也可能在 /boot 分区
+            # 2. 有可能没有 /boot 文件夹
+            #    如果 nixos 的 efi 挂载到 /efi，则不会生成 /boot 文件夹
+            # 3. find 不存在的路径会报错
+            remove_exist_reinstall_efi_dir
+
+            install_pkg efibootmgr
+            efibootmgr | grep -q 'BootNext:' && efibootmgr --quiet --delete-bootnext
+            efibootmgr | grep_efi_entry | grep 'reinstall' | grep_efi_index |
+                xargs -I {} efibootmgr --quiet --bootnum {} --delete-bootnum
+        else
+            # bios
+
+            # 删除 reinstall 条目
+            if [ -f "$target_cfg" ]; then
+                sed -i "/^$BOOT_ENTEY_START_MARK/,/^$BOOT_ENTEY_END_MARK/d" "$target_cfg"
+            fi
+
+            # 清除 next entry
+            if is_use_local_grub; then
+                $grub-editenv - unset next_entry
+            elif is_use_local_extlinux; then
+                extlinux --clear-once "$(dirname "$target_cfg")"
+            fi
+
+            # 重新创建 grub.cfg / extlinux.conf
+            recreate_grub_or_extlinux_cfg
+        fi
+    fi
+}
+
+reset_and_exit() {
+    from_ctrl_c=${1:-false}
+
+    # info
+    if $from_ctrl_c; then
+        info "Caught Ctrl+C, reseting..."
+    fi
+
+    # 清除
+    remove_exist_reinstall
+    rm -rf "$tmp"
+    echo "reset done."
+
+    # 退出
+    if $from_ctrl_c; then
+        exit 1
+    else
+        exit 0
+    fi
+}
+
 # 脚本入口
 
-if mount | grep -q 'tmpfs on / type tmpfs'; then
-    error_and_exit "Can't run this script in Live OS."
-fi
-
+# windows 环境下的额外初始化
 if is_in_windows; then
     # win系统盘
     c=$(echo $SYSTEMDRIVE | cut -c1)
@@ -3964,6 +4305,22 @@ else
     fi
 fi
 
+# 不支持 Live OS 下运行
+if mount | grep -q 'tmpfs on / type tmpfs'; then
+    error_and_exit "Can't run this script in Live OS."
+fi
+
+# 不支持容器虚拟化
+if is_in_container; then
+    error_and_exit "Not Supported OS in Container.\nPlease use https://github.com/LloydAsp/OsMutation"
+fi
+
+# 不支持安全启动
+if is_secure_boot_enabled; then
+    error_and_exit "Please disable secure boot first."
+fi
+
+# 整理参数
 long_opts=
 for o in ci installer debug minimal allow-ping force-cn help \
     add-driver: \
@@ -3982,34 +4339,69 @@ for o in ci installer debug minimal allow-ping force-cn help \
     allow-ping: \
     commit: \
     frpc-conf: frpc-config: \
+    target-disk: \
     force-boot-mode: \
     force-old-windows-setup:; do
     [ -n "$long_opts" ] && long_opts+=,
     long_opts+=$o
 done
 
-# 整理参数
-if ! opts=$(getopt -n $0 -o "h,x" --long "$long_opts" -- "$@"); then
-    exit
+# 使用 getopt 解析参数
+if ! ORIGINAL_OPTS=$(getopt -n $0 -o "h,x" --long "$long_opts" -- "$@"); then
+    exit 1
 fi
 
+# 第一遍扫描，验证要安装的系统和版本
+eval set -- "$ORIGINAL_OPTS"
+while true; do
+    case "$1" in
+    -x | --debug)
+        set -x
+        shift
+        ;;
+    --)
+        shift
+        verify_os_name "$@"
+        break
+        ;;
+    *)
+        shift
+        ;;
+    esac
+done
+
+# 初始化重要变量
+# wmic 随时会用到
+# wmic 需要下载 wmic.ps1，需要从 confhome 得到，要先将 confhome 改成国内
+# 而 wmic.ps1 又放在 $tmp 目录，因此要先创建临时目录
 # 处理 --frpc-config 时会下载文件，因此在处理参数前就创建临时目录
 mkdir_clear "$tmp"
+init_basearch
+init_confhome
+init_bootloader_facts
 
-eval set -- "$opts"
+if [ "$distro" = reset ]; then
+    reset_and_exit
+fi
+
+# 安装必备组件
+install_pkg curl grep
+
+# 第二遍扫描，处理参数
+eval set -- "$ORIGINAL_OPTS"
 # shellcheck disable=SC2034
 while true; do
     case "$1" in
+    -x | --debug)
+        # 第一遍扫描已处理
+        shift
+        ;;
     -h | --help)
         usage_and_exit
         ;;
     --commit)
         commit=$2
         shift 2
-        ;;
-    -x | --debug)
-        set -x
-        shift
         ;;
     --ci)
         cloud_image=1
@@ -4203,6 +4595,13 @@ EOF
         force_old_windows_setup=$2
         shift 2
         ;;
+    --target-disk)
+        xda=${2##*/dev/}
+        if ! [ -b "/dev/$xda" ]; then
+            error_and_exit "Can't not find Disk $2."
+        fi
+        shift 2
+        ;;
     --img)
         img=$2
         shift 2
@@ -4238,19 +4637,8 @@ EOF
     esac
 done
 
-# 检查目标系统名
-verify_os_name "$@"
-
 # 检查必须的参数
 verify_os_args
-
-# 不支持容器虚拟化
-assert_not_in_container
-
-# 不支持安全启动
-if is_secure_boot_enabled; then
-    error_and_exit "Please disable secure boot first."
-fi
 
 # 密码
 if ! is_netboot_xyz && [ -z "$ssh_keys" ] && [ -z "$password" ]; then
@@ -4259,9 +4647,6 @@ if ! is_netboot_xyz && [ -z "$ssh_keys" ] && [ -z "$password" ]; then
     fi
     prompt_password
 fi
-
-# 必备组件
-install_pkg curl grep
 
 # 强制忽略/强制添加 --ci 参数
 # debian 不强制忽略 ci 留作测试
@@ -4283,70 +4668,6 @@ redhat | centos | almalinux | rocky | fedora | ubuntu)
     fi
     ;;
 esac
-
-# 检查硬件架构
-if is_in_windows; then
-    # x86-based PC
-    # x64-based PC
-    # ARM-based PC
-    # ARM64-based PC
-
-    if false; then
-        # 如果机器没有 wmic 则需要下载 wmic.ps1，但此时未判断国内外，还是用国外源
-        basearch=$(wmic ComputerSystem get SystemType | grep '=' | cut -d= -f2 | cut -d- -f1)
-    elif true; then
-        # 可以用
-        basearch=$(reg query "HKLM\SYSTEM\CurrentControlSet\Control\Session Manager\Environment" /v PROCESSOR_ARCHITECTURE |
-            grep . | tail -1 | awk '{print $NF}')
-    else
-        # 也可以用
-        basearch=$(cmd /c "if defined PROCESSOR_ARCHITEW6432 (echo %PROCESSOR_ARCHITEW6432%) else (echo %PROCESSOR_ARCHITECTURE%)")
-    fi
-else
-    # archlinux 云镜像没有 arch 命令
-    # https://en.wikipedia.org/wiki/Uname
-    basearch=$(uname -m)
-fi
-
-# 统一架构名称，并强制 64 位
-case "$(echo $basearch | to_lower)" in
-i?86 | x64 | x86* | amd64)
-    basearch=x86_64
-    basearch_alt=amd64
-    ;;
-arm* | aarch64)
-    basearch=aarch64
-    basearch_alt=arm64
-    ;;
-*) error_and_exit "Unsupported arch: $basearch" ;;
-esac
-
-# 未测试
-if false && [[ "$confhome" = http*://raw.githubusercontent.com/* ]]; then
-    repo=$(echo $confhome | cut -d/ -f4,5)
-    branch=$(echo $confhome | cut -d/ -f6)
-    # 避免脚本更新时，文件不同步造成错误
-    if [ -z "$commit" ]; then
-        commit=$(curl -L https://api.github.com/repos/$repo/git/refs/heads/$branch |
-            grep '"sha"' | grep -Eo '[0-9a-f]{40}')
-    fi
-    # shellcheck disable=SC2001
-    confhome=$(echo "$confhome" | sed "s/main$/$commit/")
-fi
-
-# 设置国内代理
-# 要在使用 wmic 前设置，否则国内机器会从国外源下载 wmic.ps1
-# gitee 不支持ipv6
-# jsdelivr 有12小时缓存
-# https://github.com/XIU2/UserScript/blob/master/GithubEnhanced-High-Speed-Download.user.js#L31
-if is_in_china; then
-    if [ -n "$confhome_cn" ]; then
-        confhome=$confhome_cn
-    elif [ -n "$github_proxy" ] && [[ "$confhome" = http*://raw.githubusercontent.com/* ]]; then
-        confhome=${confhome/http:\/\//https:\/\/}
-        confhome=${confhome/https:\/\/raw.githubusercontent.com/$github_proxy}
-    fi
-fi
 
 # 检查内存
 # 会用到 wmic，因此要在设置国内 confhome 后使用
@@ -4373,45 +4694,25 @@ else
     setos nextos alpine $alpine_ver_for_trans
 fi
 
-# 删除之前的条目
-# 防止第一次运行 netboot.xyz，第二次运行其他，但还是进入 netboot.xyz
-# 防止第一次运行其他，第二次运行 netboot.xyz，但还有第一次的菜单
-# bios 无论什么情况都用到 grub，所以不用处理
-if is_efi; then
-    if is_in_windows; then
-        rm -f /cygdrive/$c/grub.cfg
-
-        bcdedit /set '{fwbootmgr}' bootsequence '{bootmgr}'
-        bcdedit /enum bootmgr | grep --text -B3 'reinstall' | awk '{print $2}' | grep '{.*}' |
-            xargs -I {} cmd /c bcdedit /delete {}
-    else
-        # shellcheck disable=SC2046
-        # 如果 nixos 的 efi 挂载到 /efi，则不会生成 /boot 文件夹
-        # find 不存在的路径会报错退出
-        find $(get_maybe_efi_dirs_in_linux) $([ -d /boot ] && echo /boot) \
-            -type f -name 'custom.cfg' -exec rm -f {} \;
-
-        install_pkg efibootmgr
-        efibootmgr | grep -q 'BootNext:' && efibootmgr --quiet --delete-bootnext
-        efibootmgr | grep_efi_entry | grep 'reinstall' | grep_efi_index |
-            xargs -I {} efibootmgr --quiet --bootnum {} --delete-bootnum
-    fi
-fi
-
 # 有的机器开启了 kexec，例如腾讯云轻量 debian，要禁用
 if [ -f /etc/default/kexec ]; then
     sed -i 's/LOAD_KEXEC=true/LOAD_KEXEC=false/' /etc/default/kexec
 fi
 
+# 一切就绪，正式下载内核和添加引导项
+# 先删除之前的启动项，再设置 trap
+# 暂时不用 trap，因为 bat 下无效
+remove_exist_reinstall
+# trap 'reset_and_exit true' SIGINT
+
 # 下载 netboot.xyz / 内核
 # shellcheck disable=SC2154
 if is_netboot_xyz; then
     if is_efi; then
-        curl -Lo /netboot.xyz.efi $nextos_efi
         if is_in_windows; then
-            add_efi_entry_in_windows /netboot.xyz.efi
+            add_efi_entry_in_windows $nextos_efi
         else
-            add_efi_entry_in_linux /netboot.xyz.efi
+            add_efi_entry_in_linux $nextos_efi
         fi
     else
         curl -Lo /reinstall-vmlinuz $nextos_vmlinuz
@@ -4432,7 +4733,7 @@ if [ "$nextos_distro" = alpine ] || is_distro_like_debian "$nextos_distro"; then
 fi
 
 # 将内核/netboot.xyz.lkrn 放到正确的位置
-if false && is_need_grub_extlinux; then
+if false && is_need_boot_vmlinuz; then
     if is_in_windows; then
         cp -f /reinstall-vmlinuz /cygdrive/$c/
         is_have_initrd && cp -f /reinstall-initrd /cygdrive/$c/
@@ -4444,8 +4745,8 @@ if false && is_need_grub_extlinux; then
     fi
 fi
 
-# grub / extlinux
-if is_need_grub_extlinux; then
+# 需要使用 vmlinuz/initrd 引导的情况
+if is_need_boot_vmlinuz; then
     # win 使用外部 grub
     if is_in_windows; then
         install_grub_win
@@ -4456,93 +4757,6 @@ if is_need_grub_extlinux; then
         if is_efi; then
             install_grub_linux_efi
         fi
-    fi
-
-    # 寻找 grub.cfg / extlinux.conf
-    if is_in_windows; then
-        if is_efi; then
-            grub_cfg=/cygdrive/$c/grub.cfg
-        else
-            grub_cfg=/cygdrive/$c/grub/grub.cfg
-        fi
-    else
-        # linux
-        if is_efi; then
-            # 现在 linux-efi 是使用 reinstall 目录下的 grub
-            # shellcheck disable=SC2046
-            efi_reinstall_dir=$(find $(get_maybe_efi_dirs_in_linux) -type d -name "reinstall" | head -1)
-            grub_cfg=$efi_reinstall_dir/grub.cfg
-        else
-            if is_mbr_using_grub; then
-                if is_have_cmd update-grub; then
-                    # alpine debian ubuntu
-                    grub_cfg=$(grep -o '[^ ]*grub.cfg' "$(get_cmd_path update-grub)" | head -1)
-                else
-                    # 找出主配置文件（含有menuentry|blscfg）
-                    # 现在 efi 用下载的 grub，因此不需要查找 efi 目录
-                    grub_cfg=$(find_grub_extlinux_cfg '/boot/grub*' grub.cfg 'menuentry|blscfg')
-                fi
-            else
-                # extlinux
-                extlinux_cfg=$(find_grub_extlinux_cfg /boot extlinux.conf LINUX)
-            fi
-        fi
-    fi
-
-    # 判断用 linux 还是 linuxefi（主要是红帽系）
-    # 现在 efi 用下载的 grub，因此不需要判断 linux 或 linuxefi
-    if false && is_use_local_grub_extlinux; then
-        # 在x86 efi机器上，不同版本的 grub 可能用 linux 或 linuxefi 加载内核
-        # 通过检测原有的条目有没有 linuxefi 字样就知道当前 grub 用哪一种
-        # 也可以检测 /etc/grub.d/10_linux
-        if [ -d /boot/loader/entries/ ]; then
-            entries="/boot/loader/entries/"
-        fi
-        if grep -q -r -E '^[[:space:]]*linuxefi[[:space:]]' $grub_cfg $entries; then
-            efi=efi
-        fi
-    fi
-
-    # 找到 grub 程序的前缀
-    # 并重新生成 grub.cfg
-    # 因为有些机子例如hython debian的grub.cfg少了40_custom 41_custom
-    if is_use_local_grub; then
-        if is_have_cmd grub2-mkconfig; then
-            grub=grub2
-        elif is_have_cmd grub-mkconfig; then
-            grub=grub
-        else
-            error_and_exit "grub not found"
-        fi
-
-        # nixos 手动执行 grub-mkconfig -o /boot/grub/grub.cfg 会丢失系统启动条目
-        # 正确的方法是修改 configuration.nix 的 boot.loader.grub.extraEntries
-        # 但是修改 configuration.nix 不是很好，因此改成修改 grub.cfg
-        if [ -x /nix/var/nix/profiles/system/bin/switch-to-configuration ]; then
-            # 生成 grub.cfg
-            /nix/var/nix/profiles/system/bin/switch-to-configuration boot
-            # 手动启用 41_custom
-            nixos_grub_home="$(dirname "$(readlink -f "$(get_cmd_path grub-mkconfig)")")/.."
-            $nixos_grub_home/etc/grub.d/41_custom >>$grub_cfg
-        elif is_have_cmd update-grub; then
-            update-grub
-        else
-            $grub-mkconfig -o $grub_cfg
-        fi
-    fi
-
-    # 重新生成 extlinux.conf
-    if is_use_local_extlinux; then
-        if is_have_cmd update-extlinux; then
-            update-extlinux
-        fi
-    fi
-
-    # 选择用 custom.cfg (linux-bios) 还是 grub.cfg (linux-efi / win)
-    if is_use_local_grub; then
-        target_cfg=$(dirname $grub_cfg)/custom.cfg
-    else
-        target_cfg=$grub_cfg
     fi
 
     # 找到 /reinstall-vmlinuz /reinstall-initrd 的绝对路径
@@ -4582,8 +4796,8 @@ if is_need_grub_extlinux; then
             linux_cmd=linux16
             initrd_cmd=initrd16
         else
-            linux_cmd="linux$efi"
-            initrd_cmd="initrd$efi"
+            linux_cmd=linux
+            initrd_cmd=initrd
         fi
     fi
 
@@ -4600,21 +4814,23 @@ if is_need_grub_extlinux; then
 
     if is_use_local_extlinux; then
         info extlinux
-        echo $extlinux_cfg
-        extlinux_dir="$(dirname $extlinux_cfg)"
+        echo "$target_cfg"
+        extlinux_dir="$(dirname "$target_cfg")"
 
         # 不起作用
         # 好像跟 extlinux --once 有冲突
-        sed -i "/^MENU HIDDEN/d" $extlinux_cfg
-        sed -i "/^TIMEOUT /d" $extlinux_cfg
+        sed -i "/^MENU HIDDEN/d" "$target_cfg"
+        sed -i "/^TIMEOUT /d" "$target_cfg"
 
-        del_empty_lines <<EOF | tee -a $extlinux_cfg
+        del_empty_lines <<EOF | tee -a "$target_cfg"
+$BOOT_ENTEY_START_MARK
 TIMEOUT 5
 LABEL reinstall
   MENU LABEL $(get_entry_name)
   $linux_cmd $vmlinuz
   $([ -n "$initrds" ] && echo "$initrd_cmd $initrds")
   $([ -n "$cmdline" ] && echo "APPEND $cmdline")
+$BOOT_ENTEY_END_MARK
 EOF
         # 设置重启引导项
         extlinux --once=reinstall $extlinux_dir
@@ -4668,7 +4884,9 @@ EOF
         info grub
         echo $target_cfg
 
-        get_function_content load_grubenv_if_not_loaded >$target_cfg
+        echo '### BEGIN reinstall.sh ###' >$target_cfg
+
+        get_function_content load_grubenv_if_not_loaded >>$target_cfg
 
         # 原系统为 openeuler 云镜像，需要添加 --unrestricted，否则要输入密码
         del_empty_lines <<EOF | del_comment_lines | tee -a $target_cfg
@@ -4688,6 +4906,7 @@ menuentry "$(get_entry_name)" --unrestricted {
     $([ -n "$initrds" ] && echo "$initrd_cmd $initrds")
 }
 EOF
+        echo '### END reinstall.sh ###' >>$target_cfg
 
         # 设置重启引导项
         if is_use_local_grub; then
@@ -4743,3 +4962,7 @@ if is_in_windows; then
     echo 'You can run this command to reboot:'
     echo 'shutdown /r /t 0'
 fi
+
+echo
+echo "If you want to revert all changes made by this script, run \"$reinstall_____ reset\""
+echo
