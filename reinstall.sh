@@ -3918,7 +3918,7 @@ This script is outdated, please download reinstall.sh again.
     # -c    Identical to "-H newc", use the new (SVR4)
     #       portable format.If you wish the old portable
     #       (ASCII) archive format, use "-H odc" instead.
-    find . | cpio --quiet -o -H newc | gzip -1 >/reinstall-initrd
+    find . | cpio --quiet -o -H newc -R 0:0 | gzip -1 >/reinstall-initrd
     cd - >/dev/null
 }
 
