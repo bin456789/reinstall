@@ -2321,7 +2321,7 @@ check_ram() {
 is_efi() {
     if is_in_windows; then
         # bcdedit | grep -qi '^path.*\.efi'
-        mountvol | grep -q --text 'EFI'
+        mountvol | grep -q -a 'EFI'
     else
         [ -d /sys/firmware/efi ]
     fi
@@ -2372,7 +2372,7 @@ is_use_local_extlinux() {
 is_mbr_using_grub() {
     find_main_disk
     # 各发行版不一定自带 strings hexdump xxd od 命令
-    head -c 440 /dev/$xda | grep --text -iq 'GRUB'
+    head -c 440 /dev/$xda | grep -a -iq 'GRUB'
 }
 
 to_upper() {
@@ -3116,7 +3116,7 @@ install_grub_win() {
         # 添加引导
         # 脚本可能不是首次运行，所以先删除原来的
         id='{1c41f649-1637-52f1-aea8-f96bfebeecc8}'
-        bcdedit /enum all | grep --text $id && bcdedit /delete $id
+        bcdedit /enum all | grep -a $id && bcdedit /delete $id
         bcdedit /create $id /d "$(get_entry_name)" /application bootsector
         bcdedit /set $id device partition=$c:
         bcdedit /set $id path \\g2ldr
@@ -4200,12 +4200,12 @@ remove_exist_reinstall() {
             remove_exist_reinstall_efi_dir
 
             bcdedit /set '{fwbootmgr}' bootsequence '{bootmgr}'
-            bcdedit /enum bootmgr | grep --text -B3 'reinstall' | awk '{print $2}' | grep '{.*}' |
+            bcdedit /enum bootmgr | grep -a -B3 'reinstall' | awk '{print $2}' | grep '{.*}' |
                 xargs -I {} cmd /c bcdedit /delete {}
         else
             # bios
             id='{1c41f649-1637-52f1-aea8-f96bfebeecc8}'
-            if bcdedit /enum all | grep --text "$id"; then
+            if bcdedit /enum all | grep -a "$id"; then
                 bcdedit /delete "$id"
             fi
         fi
