@@ -5852,7 +5852,7 @@ install_windows() {
         while true; do
             # 匹配成功
             # 改成正确的大小写
-            if matched_image_name=$(echo "$all_image_names" | grep -ix "$image_name"); then
+            if matched_image_name=$(printf '%s\n' "$all_image_names" | grep -Fix "$image_name"); then
                 image_name=$matched_image_name
                 image_index=$(wiminfo "$iso_install_wim" "$image_name" | grep 'Index:' | awk '{print $NF}')
                 break
