@@ -337,15 +337,15 @@ bash reinstall.sh netboot.xyz
 
 - Windows (Vista ~ 11)
 - Windows Server (2008 ~ 2025)
-  - Windows Server Essentials \*
-  - Windows Server (Semi) Annual Channel \*
-  - Hyper-V Server \*
-  - Azure Local (Azure Stack HCI) \*
+  - Windows Server Essentials
+  - Windows Server (Semi) Annual Channel
+  - Hyper-V Server
+  - Azure Local (Azure Stack HCI)
 
 #### Method 1: Let the Script Automatically Search for ISO
 
 - The script will search for ISOs from <https://massgrave.dev/genuine-installation-media>, a site that collects official ISOs.
-- Systems marked with \* do not support automatic ISO searching.
+- Only supports ISOs searching for Windows 10, 11, Server 2019, 2022, 2025.
 
 ```bash
 bash reinstall.sh windows \

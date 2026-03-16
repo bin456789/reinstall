@@ -910,17 +910,7 @@ get_windows_iso_link() {
     get_label_msdn() {
         if [ -n "$server" ]; then
             case "$version" in
-            2008 | '2008 r2')
-                case "$edition" in
-                serverweb | serverwebcore) echo _ ;;
-                serverstandard | serverstandardcore) echo _ ;;
-                serverenterprise | serverenterprisecore) echo _ ;;
-                serverdatacenter | serverdatacentercore) echo _ ;;
-                esac
-                ;;
-            # massgrave 不提供 2012 下载
-            '2012 r2' | \
-                2016 | 2019 | 2022 | 2025)
+            2019 | 2022 | 2025)
                 case "$edition" in
                 serverstandard | serverstandardcore) echo _ ;;
                 serverdatacenter | serverdatacentercore) echo _ ;;
@@ -929,39 +919,6 @@ get_windows_iso_link() {
             esac
         else
             case "$version" in
-            vista)
-                case "$edition" in
-                starter)
-                    case "$arch_win" in
-                    x86) echo _ ;;
-                    esac
-                    ;;
-                homebasic | homepremium | ultimate) echo _ ;;
-                business | enterprise) echo "$edition" ;;
-                esac
-                ;;
-            7)
-                case "$edition" in
-                starter)
-                    case "$arch_win" in
-                    x86) echo starter ;;
-                    esac
-                    ;;
-                homebasic)
-                    case "$arch_win" in
-                    x86) echo "home basic" ;;
-                    esac
-                    ;;
-                homepremium) echo "home premium" ;;
-                professional | enterprise | ultimate) echo "$edition" ;;
-                esac
-                ;;
-            8 | 8.1)
-                case "$edition" in
-                '') echo _ ;; # windows 8.x core
-                pro | enterprise) echo "$edition" ;;
-                esac
-                ;;
             10)
                 case "$edition" in
                 home | 'home single language') echo consumer ;;
@@ -975,9 +932,8 @@ get_windows_iso_link() {
                 # iot
                 'iot enterprise') echo 'iot enterprise' ;;
                 # iot ltsc
-                'iot enterprise ltsc 2019' | 'iot enterprise ltsc 2021') echo "$edition" ;;
+                'iot enterprise ltsc 2021') echo "$edition" ;;
                 # ltsc
-                'enterprise 2015 ltsb' | 'enterprise 2016 ltsb' | 'enterprise ltsc 2019') echo "$edition" ;;
                 'enterprise ltsc 2021')
                     # arm64 的 enterprise ltsc 2021 要下载 iot enterprise ltsc 2021 iso
                     case "$arch_win" in
@@ -1038,13 +994,7 @@ get_windows_iso_link() {
     # win10 22h2 arm 有每月发布的 iso，因此不从 msdl 下载
     # win10/11 ltsc 没有每月发布的 iso，但是 msdl 没有 ltsc 版本
     get_label_msdl() {
-        case "$version" in
-        8.1)
-            case "$edition" in
-            '' | pro) echo _ ;;
-            esac
-            ;;
-        esac
+        :
     }
 
     get_page() {
@@ -1056,7 +1006,7 @@ get_windows_iso_link() {
             echo server
         else
             case "$version" in
-            vista | 7 | 8 | 8.1 | 10 | 11)
+            10 | 11)
                 echo "$version"
                 ;;
             esac
@@ -1073,9 +1023,7 @@ get_windows_iso_link() {
     label_vlsc=$(get_label_vlsc)
     page=$(get_page)
 
-    if [ "$page" = vista ]; then
-        page_url=https://massgrave.dev/windows_vista__links
-    elif [ "$page" = server ]; then
+    if [ "$page" = server ]; then
         page_url=https://massgrave.dev/windows-server-links
     else
         page_url=https://massgrave.dev/windows_${page}_links

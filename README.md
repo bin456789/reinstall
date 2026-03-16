@@ -337,15 +337,15 @@ bash reinstall.sh netboot.xyz
 
 - Windows (Vista ~ 11)
 - Windows Server (2008 ~ 2025)
-  - Windows Server Essentials \*
-  - Windows Server (Semi) Annual Channel \*
-  - Hyper-V Server \*
-  - Azure Local (Azure Stack HCI) \*
+  - Windows Server Essentials
+  - Windows Server (Semi) Annual Channel
+  - Hyper-V Server
+  - Azure Local (Azure Stack HCI)
 
 #### 方法 1: 让脚本自动查找 ISO
 
 - 脚本会从 <https://massgrave.dev/genuine-installation-media> 查找 ISO，该网站专门提供官方 ISO 下载
-- 上面带 \* 的系统不支持自动查找 ISO
+- 只支持查找 Windows 10, 11, Server 2019, 2022, 2025 的 ISO
 
 ```bash
 bash reinstall.sh windows \
