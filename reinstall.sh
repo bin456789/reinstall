@@ -2914,7 +2914,7 @@ install_grub_linux_efi() {
     info 'download grub efi'
 
     # fedora 39 的 efi 无法识别 opensuse tumbleweed 的 xfs
-    efi_distro=opensuse
+    efi_distro=fedora
 
     grub_efi=$(get_grub_efi_filename)
 
