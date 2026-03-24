@@ -6495,9 +6495,9 @@ EOF
 
         apk add msitools
 
-        # 8.4.3 的 xenbus 挑创建实例时的初始系统
-        # 初始系统为 windows 的实例支持 8.4.3
-        # 初始系统为 linux 的实例不支持 8.4.3
+        # 8.4.3+ 的 xenbus 驱动挑创建实例时的初始系统
+        # 初始系统为 windows 的实例支持 8.4.3+
+        # 初始系统为 linux 的实例不支持 8.4.3+
 
         # 初始系统为 linux + 安装 8.4.3
         # 如果用 msi 安装，则不会启用 xenbus，结果是能启动但无法上网
@@ -6512,11 +6512,16 @@ EOF
             6.1) $support_sha256 && echo 8.3.5 || echo 8.3.2 ;;
             6.2 | 6.3)
                 case "$hypervisor_vendor" in
-                Microsoft) echo 8.4.3 ;; # 实例初始系统为 Windows，能使用 8.4.3
-                Xen) echo 8.3.5 ;;       # 实例初始系统为 Linux，不能使用 8.4.3
+                Xen) echo 8.3.5 ;;       # 实例初始系统为 Linux
+                Microsoft) echo 8.4.3 ;; # 实例初始系统为 Windows
                 esac
                 ;;
-            *) echo Latest ;;
+            *)
+                case "$hypervisor_vendor" in
+                Xen) echo 8.3.5 ;;        # 实例初始系统为 Linux
+                Microsoft) echo Latest ;; # 实例初始系统为 Windows
+                esac
+                ;;
             esac
         )
 
