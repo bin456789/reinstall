@@ -1,6 +1,6 @@
 #!/bin/ash
 # shellcheck shell=dash
-# shellcheck disable=SC2086,SC3047,SC3036,SC3010,SC3001,SC3060
+# shellcheck disable=SC2086,SC3047,SC3036,SC3010,SC3001,SC3060,SC3015
 # alpine 默认使用 busybox ash
 # 注意 bash 和 ash 以下语句结果不同
 # [[ a = '*a' ]] && echo 1
@@ -2535,6 +2535,22 @@ is_xda_gt_2t() {
     [ "$disk_size" -gt "$disk_2t" ]
 }
 
+is_ends_with_digit() {
+    [[ "$1" =~ [0-9]$ ]]
+}
+
+xda() {
+    if [ -n "$1" ]; then
+        if is_ends_with_digit "$xda"; then
+            echo "${xda}p$1"
+        else
+            echo "${xda}$1"
+        fi
+    else
+        echo "$xda"
+    fi
+}
+
 create_part() {
     # 除了 dd 都会用到
     info "Create Part"
@@ -2549,7 +2565,6 @@ create_part() {
     # TODO: 先检测iso链接/各种链接
     # wipefs -a /dev/$xda
 
-    # xda*1 星号用于 nvme0n1p1 的字母 p
     # shellcheck disable=SC2154
     if [ "$distro" = windows ]; then
         if ! size_bytes=$(get_link_file_size "$iso"); then
@@ -2582,10 +2597,10 @@ create_part() {
                 set 3 msftdata on
             update_part
 
-            mkfs.fat -n efi /dev/$xda*1                           #1 efi
-            dd if=/dev/zero of="$(ls /dev/$xda*2)" bs=1M count=16 #2 msr
-            mkfs.ntfs -f -F -L os /dev/$xda*3                     #3 os
-            mkfs.ntfs -f -F -L installer /dev/$xda*4              #4 installer
+            mkfs.fat -n efi "/dev/$(xda 1)"                   #1 efi
+            dd if=/dev/zero of="/dev/$(xda 2)" bs=1M count=16 #2 msr
+            mkfs.ntfs -f -F -L os "/dev/$(xda 3)"             #3 os
+            mkfs.ntfs -f -F -L installer "/dev/$(xda 4)"      #4 installer
         else
             # bios + mbr 启动盘最大可用 2t
             if is_xda_gt_2t; then
@@ -2602,8 +2617,8 @@ create_part() {
                 set 1 boot on
             update_part
 
-            mkfs.ntfs -f -F -L os /dev/$xda*1        #1 os
-            mkfs.ntfs -f -F -L installer /dev/$xda*2 #2 installer
+            mkfs.ntfs -f -F -L os "/dev/$(xda 1)"        #1 os
+            mkfs.ntfs -f -F -L installer "/dev/$(xda 2)" #2 installer
         fi
     elif [ "$distro" = fnos ]; then
         # 先用 100% 分区安装后再缩小没意义，因为小硬盘用 100% 还是装不了
@@ -2656,8 +2671,8 @@ create_part() {
                 set 1 esp on
             update_part
 
-            mkfs.fat /dev/$xda*1                #1 efi
-            mkfs.ext4 -F $ext4_opts /dev/$xda*2 #2 os + installer
+            mkfs.fat "/dev/$(xda 1)"                #1 efi
+            mkfs.ext4 -F $ext4_opts "/dev/$(xda 2)" #2 os + installer
         elif is_xda_gt_2t; then
             # bios > 2t
             # 官方安装器是 mkpart BOOT 1M 100M，无论 esp 或者 bios_grub 都用这个分区和大小
@@ -2668,8 +2683,8 @@ create_part() {
                 set 1 bios_grub on
             update_part
 
-            echo                                #1 bios_boot
-            mkfs.ext4 -F $ext4_opts /dev/$xda*2 #2 os + installer
+            echo                                    #1 bios_boot
+            mkfs.ext4 -F $ext4_opts "/dev/$(xda 2)" #2 os + installer
         else
             # bios
             parted /dev/$xda -s -- \
@@ -2679,8 +2694,8 @@ create_part() {
                 set 2 boot on
             update_part
 
-            echo                                #1 官方安装有这个分区
-            mkfs.ext4 -F $ext4_opts /dev/$xda*2 #2 os + installer
+            echo                                    #1 官方安装有这个分区
+            mkfs.ext4 -F $ext4_opts "/dev/$(xda 2)" #2 os + installer
         fi
     elif is_use_cloud_image; then
         installer_part_size="$(get_cloud_image_part_size)"
@@ -2700,9 +2715,9 @@ create_part() {
                     set 1 esp on
                 update_part
 
-                mkfs.fat -n efi /dev/$xda*1           #1 efi
-                echo                                  #2 os 用目标系统的格式化工具
-                mkfs.ext4 -F -L installer /dev/$xda*3 #3 installer
+                mkfs.fat -n efi "/dev/$(xda 1)"           #1 efi
+                echo                                      #2 os 用目标系统的格式化工具
+                mkfs.ext4 -F -L installer "/dev/$(xda 3)" #3 installer
             else
                 parted /dev/$xda -s -- \
                     mklabel gpt \
@@ -2712,9 +2727,9 @@ create_part() {
                     set 1 bios_grub on
                 update_part
 
-                echo                                  #1 bios_boot
-                echo                                  #2 os 用目标系统的格式化工具
-                mkfs.ext4 -F -L installer /dev/$xda*3 #3 installer
+                echo                                      #1 bios_boot
+                echo                                      #2 os 用目标系统的格式化工具
+                mkfs.ext4 -F -L installer "/dev/$(xda 3)" #3 installer
             fi
         else
             # 使用 dd qcow2
@@ -2725,8 +2740,8 @@ create_part() {
                 mkpart '" "' ext4 -$installer_part_size 100%
             update_part
 
-            mkfs.ext4 -F -L os /dev/$xda*1        #1 os
-            mkfs.ext4 -F -L installer /dev/$xda*2 #2 installer
+            mkfs.ext4 -F -L os "/dev/$(xda 1)"        #1 os
+            mkfs.ext4 -F -L installer "/dev/$(xda 2)" #2 installer
         fi
     elif [ "$distro" = alpine ] || [ "$distro" = arch ] || [ "$distro" = gentoo ] ||
         [ "$distro" = nixos ] || [ "$distro" = aosc ]; then
@@ -2743,8 +2758,8 @@ create_part() {
                 set 1 boot on
             update_part
 
-            mkfs.fat /dev/$xda*1                #1 efi
-            mkfs.ext4 -F $ext4_opts /dev/$xda*2 #2 os
+            mkfs.fat "/dev/$(xda 1)"                #1 efi
+            mkfs.ext4 -F $ext4_opts "/dev/$(xda 2)" #2 os
         elif is_xda_gt_2t; then
             # bios > 2t
             parted /dev/$xda -s -- \
@@ -2754,8 +2769,8 @@ create_part() {
                 set 1 bios_grub on
             update_part
 
-            echo                                #1 bios_boot
-            mkfs.ext4 -F $ext4_opts /dev/$xda*2 #2 os
+            echo                                    #1 bios_boot
+            mkfs.ext4 -F $ext4_opts "/dev/$(xda 2)" #2 os
         else
             # bios
             parted /dev/$xda -s -- \
@@ -2764,7 +2779,7 @@ create_part() {
                 set 1 boot on
             update_part
 
-            mkfs.ext4 -F $ext4_opts /dev/$xda*1 #1 os
+            mkfs.ext4 -F $ext4_opts "/dev/$(xda 1)" #1 os
         fi
     else
         # 安装红帽系或ubuntu
@@ -2797,9 +2812,9 @@ create_part() {
                 set 1 boot on
             update_part
 
-            mkfs.fat -n efi /dev/$xda*1                      #1 efi
-            mkfs.ext4 -F -L os /dev/$xda*2                   #2 os
-            mkfs.ext4 -F -L installer $ext4_opts /dev/$xda*3 #2 installer
+            mkfs.fat -n efi "/dev/$(xda 1)"                      #1 efi
+            mkfs.ext4 -F -L os "/dev/$(xda 2)"                   #2 os
+            mkfs.ext4 -F -L installer $ext4_opts "/dev/$(xda 3)" #2 installer
         elif is_xda_gt_2t; then
             # bios > 2t
             parted /dev/$xda -s -- \
@@ -2810,9 +2825,9 @@ create_part() {
                 set 1 bios_grub on
             update_part
 
-            echo                                             #1 bios_boot
-            mkfs.ext4 -F -L os /dev/$xda*2                   #2 os
-            mkfs.ext4 -F -L installer $ext4_opts /dev/$xda*3 #3 installer
+            echo                                                 #1 bios_boot
+            mkfs.ext4 -F -L os "/dev/$(xda 2)"                   #2 os
+            mkfs.ext4 -F -L installer $ext4_opts "/dev/$(xda 3)" #3 installer
         else
             # bios
             parted /dev/$xda -s -- \
@@ -2822,8 +2837,8 @@ create_part() {
                 set 1 boot on
             update_part
 
-            mkfs.ext4 -F -L os /dev/$xda*1                   #1 os
-            mkfs.ext4 -F -L installer $ext4_opts /dev/$xda*2 #2 installer
+            mkfs.ext4 -F -L os "/dev/$(xda 1)"                   #1 os
+            mkfs.ext4 -F -L installer $ext4_opts "/dev/$(xda 2)" #2 installer
         fi
         update_part
     fi
@@ -3918,7 +3933,9 @@ modify_os_on_disk() {
 
     mkdir -p /os
     # 按分区容量大到小，依次寻找系统分区
-    for part in $(lsblk /dev/$xda*[0-9] --sort SIZE -no NAME | tac); do
+    # lsblk /dev/mmcblk0* 会列出 mmcblk0boot0 mmcblk0boot1
+    # lsblk /dev/mmcblk0  不会列出 mmcblk0boot0 mmcblk0boot1
+    for part in $(lsblk /dev/$xda --filter 'TYPE == "part"' --sort SIZE -no NAME | tac); do
         # btrfs挂载的是默认子卷，如果没有默认子卷，挂载的是根目录
         # fedora 云镜像没有默认子卷，且系统在root子卷中
         if mount -o ro /dev/$part /os; then
@@ -4448,7 +4465,7 @@ install_fnos() {
 
     # 挂载 /os
     mkdir -p /os
-    mount /dev/$xda*2 /os
+    mount "/dev/$(xda 2)" /os
 
     # 下载并挂载 iso
     mkdir -p /os/installer /iso
@@ -4489,7 +4506,7 @@ install_fnos() {
     # 挂载 /os/boot/efi
     if is_efi; then
         mkdir -p /os/boot/efi
-        mount -o "$(echo "$fstab_line_efi" | awk '{print $4}')" /dev/$xda*1 /os/boot/efi
+        mount -o "$(echo "$fstab_line_efi" | awk '{print $4}')" "/dev/$(xda 1)" /os/boot/efi
     fi
 
     # 复制系统
@@ -4520,7 +4537,7 @@ install_fnos() {
     # fstab
     {
         # /
-        uuid=$(lsblk /dev/$xda*2 -no UUID)
+        uuid=$(lsblk "/dev/$(xda 2)" -no UUID)
         echo "$fstab_line_os" | sed "s/%s/$uuid/"
 
         # swapfile
@@ -4529,7 +4546,7 @@ install_fnos() {
 
         # /boot/efi
         if is_efi; then
-            uuid=$(lsblk /dev/$xda*1 -no UUID)
+            uuid=$(lsblk "/dev/$(xda 1)" -no UUID)
             echo "$fstab_line_efi" | sed "s/%s/$uuid/"
         fi
     } >$os_dir/etc/fstab
@@ -4655,7 +4672,7 @@ install_qcow_by_copy() {
         if is_efi; then
             # centos/oracle 要创建efi条目
             if ! grep /boot/efi /os/etc/fstab; then
-                efi_part_uuid=$(lsblk /dev/$xda*1 -no UUID)
+                efi_part_uuid=$(lsblk "/dev/$(xda 1)" -no UUID)
                 echo "UUID=$efi_part_uuid /boot/efi vfat $efi_mount_opts 0 0" >>/os/etc/fstab
             fi
         else
@@ -4990,7 +5007,7 @@ EOF
         # 因为 24.04 fsuuid 对应 boot 分区
         efi_grub_cfg=$os_dir/boot/efi/EFI/ubuntu/grub.cfg
         if is_efi; then
-            os_uuid=$(lsblk -rno UUID /dev/$xda*2)
+            os_uuid=$(lsblk -rno UUID "/dev/$(xda 2)")
             sed -Ei "s|[0-9a-f-]{36}|$os_uuid|i" $efi_grub_cfg
 
             # 24.04 移除 boot 分区后，需要添加 /boot 路径
@@ -5004,7 +5021,7 @@ EOF
         if [ -e $force_partuuid_cfg ]; then
             if is_virt; then
                 # 更改写死的 partuuid
-                os_part_uuid=$(lsblk -rno PARTUUID /dev/$xda*2)
+                os_part_uuid=$(lsblk -rno PARTUUID "/dev/$(xda 2)")
                 sed -i "s/^GRUB_FORCE_PARTUUID=.*/GRUB_FORCE_PARTUUID=$os_part_uuid/" $force_partuuid_cfg
             else
                 # 独服不应该使用 initrdless boot
@@ -5155,8 +5172,8 @@ EOF
     mount_nouuid /dev/$os_part /nbd/
     mount_pseudo_fs /nbd/
     case "$os_part_fstype" in
-    ext4) chroot /nbd mkfs.ext4 -F -L "$os_part_label" -U "$os_part_uuid" /dev/$xda*2 ;;
-    xfs) chroot /nbd mkfs.xfs -f -L "$os_part_label" -m uuid=$os_part_uuid /dev/$xda*2 ;;
+    ext4) chroot /nbd mkfs.ext4 -F -L "$os_part_label" -U "$os_part_uuid" "/dev/$(xda 2)" ;;
+    xfs) chroot /nbd mkfs.xfs -f -L "$os_part_label" -m uuid=$os_part_uuid "/dev/$(xda 2)" ;;
     esac
     umount -R /nbd/
 
@@ -5164,7 +5181,7 @@ EOF
 
     # 创建并挂载 /os
     mkdir -p /os
-    mount -o noatime /dev/$xda*2 /os/
+    mount -o noatime "/dev/$(xda 2)" /os/
 
     # 如果是 efi 则创建 /os/boot/efi
     # 如果镜像有 efi 分区也创建 /os/boot/efi，用于复制 efi 分区的文件
@@ -5175,7 +5192,7 @@ EOF
         # 预先挂载 /os/boot/efi 因为可能 boot 和 efi 在同一个分区（openeuler 24.03 arm）
         # 复制 boot 时可以会复制 efi 的文件
         if is_efi; then
-            mount -o $efi_mount_opts /dev/$xda*1 /os/boot/efi/
+            mount -o $efi_mount_opts "/dev/$(xda 1)" /os/boot/efi/
         fi
     fi
 
@@ -5226,7 +5243,7 @@ EOF
     if is_efi && [ -n "$efi_part_uuid" ] && ! [ "$efi_part" = "$os_part" ]; then
         info "Copy efi partition uuid"
         apk add mtools
-        mlabel -N "$(echo $efi_part_uuid | sed 's/-//')" -i /dev/$xda*1 ::$efi_part_label
+        mlabel -N "$(echo $efi_part_uuid | sed 's/-//')" -i "/dev/$(xda 1)" ::$efi_part_label
         apk del mtools
         update_part
     fi
@@ -5240,9 +5257,9 @@ EOF
 
     # 重新挂载 /os /boot/efi
     info "Re-mount disk"
-    mount -o noatime /dev/$xda*2 /os/
+    mount -o noatime "/dev/$(xda 2)" /os/
     if is_efi; then
-        mount -o $efi_mount_opts /dev/$xda*1 /os/boot/efi/
+        mount -o $efi_mount_opts "/dev/$(xda 1)" /os/boot/efi/
     fi
 
     # 创建 swap
@@ -5462,22 +5479,22 @@ resize_after_install_cloud_image() {
         ext4)
             # debian ci
             apk add e2fsprogs-extra
-            e2fsck -p -f /dev/$xda*$last_part_num
-            resize2fs /dev/$xda*$last_part_num
+            e2fsck -p -f "/dev/$(xda $last_part_num)"
+            resize2fs "/dev/$(xda $last_part_num)"
             apk del e2fsprogs-extra
             ;;
         xfs)
             # opensuse ci
             apk add xfsprogs-extra
-            mount /dev/$xda*$last_part_num /os
-            xfs_growfs /dev/$xda*$last_part_num
+            mount "/dev/$(xda $last_part_num)" /os
+            xfs_growfs "/dev/$(xda $last_part_num)"
             umount /os
             apk del xfsprogs-extra
             ;;
         btrfs)
             # fedora ci
             apk add btrfs-progs
-            mount /dev/$xda*$last_part_num /os
+            mount "/dev/$(xda $last_part_num)" /os
             btrfs filesystem resize max /os
             umount /os
             apk del btrfs-progs
@@ -5485,8 +5502,8 @@ resize_after_install_cloud_image() {
         ntfs)
             # windows dd
             apk add ntfs-3g-progs
-            echo y | ntfsresize /dev/$xda*$last_part_num
-            ntfsfix -d /dev/$xda*$last_part_num
+            echo y | ntfsresize "/dev/$(xda $last_part_num)"
+            ntfsfix -d "/dev/$(xda $last_part_num)"
             apk del ntfs-3g-progs
             ;;
         esac
@@ -5507,12 +5524,12 @@ mount_part_basic_layout() {
 
     # 挂载系统分区
     mkdir -p $os_dir
-    mount -t ext4 /dev/${xda}*${os_part_num} $os_dir
+    mount -t ext4 "/dev/$(xda $os_part_num)" $os_dir
 
     # 挂载 efi 分区
     if is_efi; then
         mkdir -p $efi_dir
-        mount -t vfat -o umask=077 /dev/${xda}*1 $efi_dir
+        mount -t vfat -o umask=077 "/dev/$(xda 1)" $efi_dir
     fi
 }
 

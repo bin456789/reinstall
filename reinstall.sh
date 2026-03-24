@@ -3912,7 +3912,6 @@ remove_useless_initrd_files() {
             net/wireless \
             net/bluetooth \
             drivers/hid \
-            drivers/mmc \
             drivers/mtd \
             drivers/usb \
             drivers/ssb \
