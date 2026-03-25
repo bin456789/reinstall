@@ -1263,6 +1263,13 @@ networking = {
 EOF
 
     for ethx in $(get_eths); do
+        # ipv4 使用 DHCP 时显式开启 useDHCP
+        if is_dhcpv4; then
+            cat <<EOF >>$conf_file
+  interfaces.$ethx.useDHCP = true;
+EOF
+        fi
+
         # ipv4
         if is_staticv4; then
             get_netconf_to ipv4_addr
@@ -1811,6 +1818,16 @@ EOF
     # TODO: 准确匹配网卡，添加 udev 或者直接配置 networkd 匹配 mac
     create_nixos_network_config /tmp/nixos_network_config.nix
 
+    # 优先替换已有的 networkmanager 设置，避免重复定义
+    nix_networkmanager_disable=
+    if grep -q 'networking.networkmanager.enable' /os/etc/nixos/configuration.nix; then
+        sed -i -E 's/^([[:space:]]*)networking.networkmanager.enable[[:space:]]*=.*/\1networking.networkmanager.enable = false;/' \
+            /os/etc/nixos/configuration.nix
+    else
+        # 若配置不存在则追加一行禁用
+        nix_networkmanager_disable='networking.networkmanager.enable = false;'
+    fi
+
     del_empty_lines <<EOF | add_space 2 | add_newline both |
 ############### Add by reinstall.sh ###############
 $nix_bootloader
@@ -1821,6 +1838,7 @@ services.openssh.enable = true;
 $nix_ssh_keys_or_PermitRootLogin
 $nix_ssh_ports
 $nix_frpc
+$nix_networkmanager_disable
 $(cat /tmp/nixos_network_config.nix)
 ###################################################
 EOF
