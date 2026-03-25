@@ -2621,9 +2621,6 @@ create_part() {
             mkfs.ntfs -f -F -L installer "/dev/$(xda 2)" #2 installer
         fi
     elif [ "$distro" = fnos ]; then
-        # 先用 100% 分区安装后再缩小没意义，因为小硬盘用 100% 还是装不了
-        # 因此直接用用户输入的分区大小
-
         # 1. 官方安装器对系统盘大小的定义包含引导分区大小
         # 2. 官方 efi 用的是 1MiB-100M，但我们用 1MiB-101MiB
 
@@ -2655,47 +2652,48 @@ create_part() {
         # The location 20480MiB is outside of the device /dev/vda.
         # 但是 100% 分区后 end 就是 20480MiB
 
-        os_part_end=${expect_m}MiB
         if [ "$expect_m" -ge "$max_can_use_m" ]; then
-            echo "Expect size is equal/greater than max size. Setting to 100%"
-            os_part_end=100%
+            warn "Expect size is equal/greater than max size. Uses max size."
+            NEED_SHRINK_FNOS_OS_PART=false
+            FNOS_OS_PART_END_M=$max_can_use_m
+        else
+            NEED_SHRINK_FNOS_OS_PART=true
+            FNOS_OS_PART_END_M=$expect_m
         fi
 
-        # 需关闭这几个特性，否则 grub 无法识别
-        ext4_opts="-O ^metadata_csum_seed,^orphan_file"
         if is_efi; then
             parted /dev/$xda -s -- \
                 mklabel gpt \
                 mkpart BOOT fat32 1MiB 101MiB \
-                mkpart SYSTEM ext4 101MiB $os_part_end \
+                mkpart SYSTEM ext4 101MiB 100% \
                 set 1 esp on
             update_part
 
-            mkfs.fat "/dev/$(xda 1)"                #1 efi
-            mkfs.ext4 -F $ext4_opts "/dev/$(xda 2)" #2 os + installer
+            mkfs.fat "/dev/$(xda 1)"     #1 efi
+            mkfs.ext4 -F "/dev/$(xda 2)" #2 os + installer
         elif is_xda_gt_2t; then
             # bios > 2t
             # 官方安装器是 mkpart BOOT 1M 100M，无论 esp 或者 bios_grub 都用这个分区和大小
             parted /dev/$xda -s -- \
                 mklabel gpt \
                 mkpart BOOT ext4 1MiB 101MiB \
-                mkpart SYSTEM ext4 101MiB $os_part_end \
+                mkpart SYSTEM ext4 101MiB 100% \
                 set 1 bios_grub on
             update_part
 
-            echo                                    #1 bios_boot
-            mkfs.ext4 -F $ext4_opts "/dev/$(xda 2)" #2 os + installer
+            echo                         #1 bios_boot
+            mkfs.ext4 -F "/dev/$(xda 2)" #2 os + installer
         else
             # bios
             parted /dev/$xda -s -- \
                 mklabel msdos \
                 mkpart primary 1MiB 101MiB \
-                mkpart primary 101MiB $os_part_end \
+                mkpart primary 101MiB 100% \
                 set 2 boot on
             update_part
 
-            echo                                    #1 官方安装有这个分区
-            mkfs.ext4 -F $ext4_opts "/dev/$(xda 2)" #2 os + installer
+            echo                         #1 官方安装有这个分区
+            mkfs.ext4 -F "/dev/$(xda 2)" #2 os + installer
         fi
     elif is_use_cloud_image; then
         installer_part_size="$(get_cloud_image_part_size)"
@@ -4517,6 +4515,36 @@ install_fnos() {
 
     # 删除 installer (trimfs.tgz)
     rm -rf /os/installer
+
+    # 缩小分区
+    if $NEED_SHRINK_FNOS_OS_PART; then
+        info "Shrink fnos os partition"
+
+        # 取消挂载
+        if is_efi; then
+            umount /os/boot/efi
+        fi
+        umount /os
+
+        # 101M 是 efi + bios_grub 分区，即使 bios 引导飞牛官方安装器也会生成一个 100M 预留分区
+        # 99M 是预留的文件系统和分区表的差值
+        # 一共 200M
+        apk add e2fsprogs-extra parted
+        e2fsck -p -f "/dev/$(xda 2)"
+        resize2fs "/dev/$(xda 2)" "$((FNOS_OS_PART_END_M - 200))M"
+        update_part
+        printf "yes" | parted /dev/$xda resizepart 2 "$((FNOS_OS_PART_END_M))MiB" ---pretend-input-tty
+        update_part
+        resize2fs "/dev/$(xda 2)"
+        update_part
+        apk del e2fsprogs-extra parted
+
+        # 重新挂载
+        mount "/dev/$(xda 2)" /os
+        if is_efi; then
+            mount -o "$(echo "$fstab_line_efi" | awk '{print $4}')" "/dev/$(xda 1)" /os/boot/efi
+        fi
+    fi
 
     # 挂载 proc sys dev
     mount_pseudo_fs /os
