@@ -1263,6 +1263,13 @@ networking = {
 EOF
 
     for ethx in $(get_eths); do
+        # ipv4 使用 DHCP 时显式开启 useDHCP
+        if is_dhcpv4; then
+            cat <<EOF >>$conf_file
+  interfaces.$ethx.useDHCP = true;
+EOF
+        fi
+
         # ipv4
         if is_staticv4; then
             get_netconf_to ipv4_addr
