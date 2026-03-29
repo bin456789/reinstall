@@ -64,6 +64,7 @@
 | <img width="16" height="16" src="https://www.gentoo.org/assets/img/logo/gentoo-g.png" /> Gentoo                                                                                                                                                                                                                                                                        | 滚动                                  | 512 MB    | 5 GB         |
 | <img width="16" height="16" src="https://aosc.io/distros/aosc-os.svg" /> 安同 OS                                                                                                                                                                                                                                                                                       | 滚动                                  | 512 MB    | 5 GB         |
 | <img width="16" height="16" src="https://www.fnnas.com/favicon.ico" /> 飞牛 fnOS                                                                                                                                                                                                                                                                                       | 1                                     | 512 MB    | 8 GB         |
+| <img width="16" height="16" src="https://www.talos.dev/favicon.ico" /> Talos                                                                                                                                                                                                                                                                                            | 最新, x.y.z                           | 1 ~ 2 GB † | 10 GB        |
 | <img width="16" height="16" src="https://blogs.windows.com/wp-content/uploads/prod/2022/09/cropped-Windows11IconTransparent512-32x32.png" /> Windows (DD)                                                                                                                                                                                                              | 任何                                  | 512 MB    | 取决于镜像   |
 | <img width="16" height="16" src="https://blogs.windows.com/wp-content/uploads/prod/2022/09/cropped-Windows11IconTransparent512-32x32.png" /> Windows (ISO)                                                                                                                                                                                                             | Vista, 7, 8.x (Server 2008 - 2012 R2) | 512 MB    | 25 GB        |
 | <img width="16" height="16" src="https://blogs.windows.com/wp-content/uploads/prod/2022/09/cropped-Windows11IconTransparent512-32x32.png" /> Windows (ISO)                                                                                                                                                                                                             | 10, 11 (Server 2016 - 2025)           | 1 GB      | 25 GB        |
@@ -71,6 +72,8 @@
 \* 表示使用云镜像安装，非传统网络安装
 
 ^ 表示需要 256 MB 内存 + 1.5 GB 硬盘，或 512 MB 内存 + 1 GB 硬盘
+
+† Talos 内存要求取决于节点角色：Control Plane 最低 2 GiB，Worker 最低 1 GiB
 
 > [!WARNING]
 >
@@ -147,7 +150,7 @@ certutil -urlcache -f -split https://cnb.cool/bin456789/reinstall/-/git/raw/main
 >
 > 如果不小心运行了脚本，可以在重启前运行 `bash reinstall.sh reset` 取消重装
 
-- 用户名为 `root`，脚本会提示输入密码，不输入则使用随机密码
+- 用户名为 `root`，脚本会提示输入密码，不输入则使用随机密码（Talos 除外）
 - 安装最新版可不输入版本号
 - 最大化利用磁盘空间：不含 boot 分区（Fedora 例外），不含 swap 分区
 - 自动根据机器类型选择不同的优化内核，例如 `Cloud`、`HWE` 内核
@@ -162,6 +165,7 @@ bash reinstall.sh anolis      7|8|23
                   opencloudos 8|9|23
                   centos      9|10
                   fnos        1
+                  talos       1.12.4
                   nixos       25.11
                   fedora      42|43
                   debian      9|10|11|12|13
@@ -175,6 +179,11 @@ bash reinstall.sh anolis      7|8|23
                   aosc
                   redhat      --img="http://access.cdn.redhat.com/xxx.qcow2"
 ```
+
+- 安装 Talos 时默认会先解析官方最新版本号（例如 `v1.12.4`），再使用固定版本链接下载官方 `metal-ARCH.raw.zst` 镜像（兼容回退 `raw.xz`）；默认不支持 SSH 登录，请使用 `talosctl` 管理节点
+- Talos 默认不会交互询问密码；当未传 `--password`/`--ssh-key` 时，会自动生成随机密码用于安装环境 SSH
+- Talos 仅支持安装环境参数：`--password`、`--ssh-key`、`--ssh-port`、`--web-port`、`--hold`、`--frpc-toml`
+- Talos 不支持：`--minimal`、`--installer`、`--allow-ping`、`--rdp-port`、`--add-driver`、`--img`、`--cloud-data`、`--iso`、`--boot-wim`、`--image-name`、`--lang`、`--force-old-windows-setup`
 
 #### 可选参数
 
