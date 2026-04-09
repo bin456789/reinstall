@@ -2758,7 +2758,9 @@ create_part() {
         # alpine 本身关闭了 64bit ext4
         # https://gitlab.alpinelinux.org/alpine/alpine-conf/-/blob/3.18.1/setup-disk.in?ref_type=tags#L908
         # 而且 alpine 的 extlinux 不兼容 64bit ext4
-        [ "$distro" = alpine ] && ext4_opts="-O ^64bit" || ext4_opts=
+        # -i 4096 将 bytes-per-inode 设为最小值(等于block size)，最大化 inode 数量
+        # -m 0 取消超级用户保留空间，最大化可用磁盘空间
+        [ "$distro" = alpine ] && ext4_opts="-O ^64bit -i 4096 -m 0" || ext4_opts=
         if is_efi; then
             # efi
             parted /dev/$xda -s -- \
