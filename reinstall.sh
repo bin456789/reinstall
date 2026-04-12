@@ -33,7 +33,9 @@ export LC_ALL=C
 export PATH=/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin:$PATH
 
 # 如果不是 bash 的话，继续执行会有语法错误，因此在这里判断是否 bash
-if [ -z "$BASH" ]; then
+if [ -z "$BASH" ] ||
+    # el 的 sh 是 bash 运行在 posix 模式，依然有 $BASH 和 $BASH_VERSION
+    { [ -n "$BASH" ] && [ -n "$POSIXLY_CORRECT" ]; }; then
     if ! command -v bash >/dev/null; then
         if [ -f /etc/alpine-release ]; then
             if ! apk add bash; then
