@@ -89,7 +89,7 @@ Usage: $reinstall_____ anolis      7|8|23
                        alpine      3.20|3.21|3.22|3.23
                        opensuse    15.6|16.0|tumbleweed
                        openeuler   20.03|22.03|24.03|25.09
-                       ubuntu      16.04|18.04|20.04|22.04|24.04|25.10 [--minimal]
+                       ubuntu      18.04|20.04|22.04|24.04|26.04 [--minimal]
                        kali
                        arch
                        gentoo
@@ -1309,12 +1309,11 @@ Continue?
 
     setos_ubuntu() {
         case "$releasever" in
-        16.04) codename=xenial ;;
         18.04) codename=bionic ;;
         20.04) codename=focal ;;
         22.04) codename=jammy ;;
         24.04) codename=noble ;;
-        25.10) codename=questing ;; # non-lts
+        26.04) codename=resolute ;;
         esac
 
         if is_use_cloud_image; then
@@ -1338,24 +1337,19 @@ Continue?
                 [ "$basearch_alt" = amd64 ] || [ "${releasever%.*}" -ge 24 ]
             }
 
-            get_suffix() {
-                if [ "$releasever" = 16.04 ]; then
-                    if is_efi; then
-                        echo -uefi1
-                    else
-                        echo -disk1
-                    fi
-                fi
-            }
+            basearch_img=$basearch_alt
+            if [ "$basearch_alt" = amd64 ] && [ "${releasever%.*}" -ge 26 ] && is_cpu_supports_x86_64_v3; then
+                basearch_img=amd64v3
+            fi
 
             if [ "$minimal" = 1 ]; then
                 if ! is_have_minimal_image; then
                     error_and_exit "Minimal cloud image is not available for $releasever $basearch_alt."
                 fi
-                eval ${step}_img="$ci_mirror/minimal/releases/$codename/release/ubuntu-$releasever-minimal-cloudimg-$basearch_alt$(get_suffix).img"
+                eval ${step}_img="$ci_mirror/minimal/releases/$codename/release/ubuntu-$releasever-minimal-cloudimg-$basearch_img.img"
             else
                 # 用 codename 而不是 releasever，可减少一次跳转
-                eval ${step}_img="$ci_mirror/releases/$codename/release/ubuntu-$releasever-server-cloudimg-$basearch_alt$(get_suffix).img"
+                eval ${step}_img="$ci_mirror/releases/$codename/release/ubuntu-$releasever-server-cloudimg-$basearch_img.img"
             fi
         else
             # 传统安装
@@ -1926,7 +1920,7 @@ verify_os_name() {
         'opensuse    15.6|16.0|tumbleweed' \
         'alpine      3.20|3.21|3.22|3.23' \
         'openeuler   20.03|22.03|24.03|25.09' \
-        'ubuntu      16.04|18.04|20.04|22.04|24.04|25.10' \
+        'ubuntu      18.04|20.04|22.04|24.04|26.04' \
         'redhat' \
         'kali' \
         'arch' \

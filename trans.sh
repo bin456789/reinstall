@@ -4402,23 +4402,19 @@ chroot_apt_autoremove() {
     change_confs() {
         action=$1
 
-        # 只有 16.04 有 01autoremove-kernels
-        # 16.04 结束支持后删除
-        for conf in 01autoremove 01autoremove-kernels; do
-            file=$os_dir/etc/apt/apt.conf.d/$conf
-            case "$action" in
-            change)
-                if [ -f $file ]; then
-                    sed -i.orig 's/VersionedKernelPackages/x/; s/NeverAutoRemove/x/' $file
-                fi
-                ;;
-            restore)
-                if [ -f $file.orig ]; then
-                    mv $file.orig $file
-                fi
-                ;;
-            esac
-        done
+        file=$os_dir/etc/apt/apt.conf.d/01autoremove
+        case "$action" in
+        change)
+            if [ -f $file ]; then
+                sed -i.orig 's/VersionedKernelPackages/x/; s/NeverAutoRemove/x/' $file
+            fi
+            ;;
+        restore)
+            if [ -f $file.orig ]; then
+                mv $file.orig $file
+            fi
+            ;;
+        esac
     }
 
     change_confs change
@@ -4927,19 +4923,6 @@ EOF
             done
         fi
 
-        # 16.04 arm64 镜像没有 grub 引导文件
-        if is_efi && ! [ -d $os_dir/boot/efi/EFI/ubuntu ]; then
-            chroot_apt_install $os_dir efibootmgr shim "grub-efi-$(get_axx64)"
-            # 创建 ubuntu 文件夹和 grubaa64.efi
-            DEBIAN_FRONTEND=noninteractive chroot $os_dir dpkg-reconfigure "grub-efi-$(get_axx64)"
-
-            cat <<EOF >"$os_dir/boot/efi/EFI/ubuntu/grub.cfg"
-search.fs_uuid $os_part_uuid root
-set prefix=(\$root)'/boot/grub'
-configfile \$prefix/grub.cfg
-EOF
-        fi
-
         # 避免 do-release-upgrade 时自动执行 dpkg-reconfigure grub-xx 但是 efi/biosgrub 分区不存在而导致报错
         # shellcheck disable=SC2046
         chroot_apt_remove $os_dir $(is_efi && echo 'grub-pc' || echo 'grub-efi*' 'shim*')
@@ -4995,43 +4978,31 @@ EOF
 
         # 网络配置
         # 18.04+ netplan
-        if is_have_cmd_on_disk $os_dir netplan; then
-            # 避免删除 cloud-init 后，minimal 镜像的 netplan.io 被 autoremove
-            chroot $os_dir apt-mark manual netplan.io
+        # 避免删除 cloud-init 后，minimal 镜像的 netplan.io 被 autoremove
+        chroot $os_dir apt-mark manual netplan.io
 
-            # 生成 cloud-init 网络配置
-            create_cloud_init_network_config $os_dir/net.cfg
+        # 生成 cloud-init 网络配置
+        create_cloud_init_network_config $os_dir/net.cfg
 
-            # ubuntu 18.04 cloud-init 版本 23.1.2，因此不用处理 onlink
+        # ubuntu 18.04 cloud-init 版本 23.1.2，因此不用处理 onlink
 
-            # 如果不是输出到 / 则不会生成 50-cloud-init.yaml
-            # 注意比较多了什么东西
-            if false; then
-                chroot $os_dir cloud-init devel net-convert \
-                    -p /net.cfg -k yaml -d /out -D ubuntu -O netplan
-                sed -Ei "/^[[:space:]]+set-name:/d" $os_dir/out/etc/netplan/50-cloud-init.yaml
-                cp $os_dir/out/etc/netplan/50-cloud-init.yaml $os_dir/etc/netplan/
+        # 如果不是输出到 / 则不会生成 50-cloud-init.yaml
+        # 注意比较多了什么东西
+        if false; then
+            chroot $os_dir cloud-init devel net-convert \
+                -p /net.cfg -k yaml -d /out -D ubuntu -O netplan
+            sed -Ei "/^[[:space:]]+set-name:/d" $os_dir/out/etc/netplan/50-cloud-init.yaml
+            cp $os_dir/out/etc/netplan/50-cloud-init.yaml $os_dir/etc/netplan/
 
-                # 清理
-                rm -rf $os_dir/net.cfg $os_dir/out
-            else
-                chroot $os_dir cloud-init devel net-convert \
-                    -p /net.cfg -k yaml -d / -D ubuntu -O netplan
-                sed -Ei "/^[[:space:]]+set-name:/d" $os_dir/etc/netplan/50-cloud-init.yaml
-
-                # 清理
-                rm -rf $os_dir/net.cfg
-            fi
+            # 清理
+            rm -rf $os_dir/net.cfg $os_dir/out
         else
-            # 避免删除 cloud-init 后 ifupdown 被 autoremove
-            chroot $os_dir apt-mark manual ifupdown
+            chroot $os_dir cloud-init devel net-convert \
+                -p /net.cfg -k yaml -d / -D ubuntu -O netplan
+            sed -Ei "/^[[:space:]]+set-name:/d" $os_dir/etc/netplan/50-cloud-init.yaml
 
-            # 16.04 镜像用 ifupdown/networking 管理网络
-            # 要安装 resolveconf，不然 /etc/resolv.conf 为空
-            chroot_apt_install $os_dir resolvconf
-            ln -sf /run/resolvconf/resolv.conf $os_dir/etc/resolv.conf.orig
-
-            create_ifupdown_config $os_dir/etc/network/interfaces
+            # 清理
+            rm -rf $os_dir/net.cfg
         fi
 
         # 自带的 60-cloudimg-settings.conf 禁止了 PasswordAuthentication
@@ -7337,32 +7308,25 @@ get_ubuntu_kernel_flavor() {
     # https://github.com/systemd/systemd/blob/main/src/basic/virt.c
     # https://github.com/canonical/cloud-init/blob/main/tools/ds-identify
     # http://git.annexia.org/?p=virt-what.git;a=blob;f=virt-what.in;hb=HEAD
-    if [ "$releasever" = 16.04 ]; then
+
+    # 这里有坑
+    # $(get_cloud_vendor) 调用了 cache_dmi_and_virt
+    # 但是 $(get_cloud_vendor) 运行在 subshell 里面
+    # subshell 运行结束后里面的变量就消失了
+    # 因此先运行 cache_dmi_and_virt
+    cache_dmi_and_virt
+    vendor="$(get_cloud_vendor)"
+    case "$vendor" in
+    aws | gcp | oracle | azure | ibm) echo $vendor ;;
+    *)
+        is_ubuntu_lts && suffix=-hwe-$releasever || suffix=
         if is_virt; then
-            echo virtual-hwe-$releasever
+            echo virtual$suffix
         else
-            echo generic-hwe-$releasever
+            echo generic$suffix
         fi
-    else
-        # 这里有坑
-        # $(get_cloud_vendor) 调用了 cache_dmi_and_virt
-        # 但是 $(get_cloud_vendor) 运行在 subshell 里面
-        # subshell 运行结束后里面的变量就消失了
-        # 因此先运行 cache_dmi_and_virt
-        cache_dmi_and_virt
-        vendor="$(get_cloud_vendor)"
-        case "$vendor" in
-        aws | gcp | oracle | azure | ibm) echo $vendor ;;
-        *)
-            is_ubuntu_lts && suffix=-hwe-$releasever || suffix=
-            if is_virt; then
-                echo virtual$suffix
-            else
-                echo generic$suffix
-            fi
-            ;;
-        esac
-    fi
+        ;;
+    esac
 }
 
 install_redhat_ubuntu() {
