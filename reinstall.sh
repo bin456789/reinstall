@@ -3480,8 +3480,15 @@ EOF
         for driver in $(get_disk_drivers $xda); do
             echo "using driver: $driver"
             case $driver in
-            nvme) extra_drivers+=" nvme nvme-core" ;;
-                # xen 的横杠特别不同
+            nvme)
+                extra_drivers+=" nvme nvme-core"
+                # debian 13+ / kali 有 nvme-auth 模块
+                # 添加后才能识别 nvme 硬盘
+                if grep -q nvme-auth lib/modules/$kver/modules.order; then
+                    extra_drivers+=" nvme-auth"
+                fi
+                ;;
+            # xen 的横杠特别不同
             xen_blkfront) extra_drivers+=" xen-blkfront" ;;
             xen_scsifront) extra_drivers+=" xen-scsifront" ;;
             virtio_blk | virtio_scsi | hv_storvsc | vmw_pvscsi) extra_drivers+=" $driver" ;;
