@@ -531,19 +531,22 @@ file_enhanced() {
     echo "$full_type" | sed 's/\.$//'
 }
 
+# trans.sh 有相同方法
 add_community_repo_for_alpine() {
-    local alpine_ver
+    local ver mirror
 
-    # 先检查原来的repo是不是egde
-    if grep -q '^http.*/edge/main$' /etc/apk/repositories; then
-        alpine_ver=edge
+    # 先检查原来的 repo 是不是 edge 或者 latest-stable
+    if grep -q "^http.*/edge/main$" /etc/apk/repositories; then
+        ver=edge
+    elif grep -q "^http.*/latest-stable/main$" /etc/apk/repositories; then
+        ver=latest-stable
     else
-        alpine_ver=v$(cut -d. -f1,2 </etc/alpine-release)
+        ver=v$(cut -d. -f1,2 </etc/alpine-release)
     fi
 
-    if ! grep -q "^http.*/$alpine_ver/community$" /etc/apk/repositories; then
+    if ! grep -q "^http.*/$ver/community$" /etc/apk/repositories; then
         mirror=$(grep '^http.*/main$' /etc/apk/repositories | sed 's,/[^/]*/main$,,' | head -1)
-        echo $mirror/$alpine_ver/community >>/etc/apk/repositories
+        echo $mirror/$ver/community >>/etc/apk/repositories
     fi
 }
 

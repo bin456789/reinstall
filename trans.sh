@@ -67,17 +67,22 @@ is_run_from_locald() {
     [[ "$0" = "/etc/local.d/*" ]]
 }
 
+# reinstall.sh 有相同方法 add_community_repo_for_alpine
 add_community_repo() {
-    # 先检查原来的repo是不是egde
-    if grep -q '^http.*/edge/main$' /etc/apk/repositories; then
-        alpine_ver=edge
+    local ver mirror
+
+    # 先检查原来的 repo 是不是 edge 或者 latest-stable
+    if grep -q "^http.*/edge/main$" /etc/apk/repositories; then
+        ver=edge
+    elif grep -q "^http.*/latest-stable/main$" /etc/apk/repositories; then
+        ver=latest-stable
     else
-        alpine_ver=v$(cut -d. -f1,2 </etc/alpine-release)
+        ver=v$(cut -d. -f1,2 </etc/alpine-release)
     fi
 
-    if ! grep -q "^http.*/$alpine_ver/community$" /etc/apk/repositories; then
-        alpine_mirror=$(grep '^http.*/main$' /etc/apk/repositories | sed 's,/[^/]*/main$,,' | head -1)
-        echo $alpine_mirror/$alpine_ver/community >>/etc/apk/repositories
+    if ! grep -q "^http.*/$ver/community$" /etc/apk/repositories; then
+        mirror=$(grep '^http.*/main$' /etc/apk/repositories | sed 's,/[^/]*/main$,,' | head -1)
+        echo $mirror/$ver/community >>/etc/apk/repositories
     fi
 }
 
