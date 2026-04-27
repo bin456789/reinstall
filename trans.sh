@@ -465,7 +465,7 @@ EOF
 }
 
 umount_all() {
-    dirs="/mnt /os /iso /wim /installer /nbd /nbd-boot /nbd-efi /nbd-test /root /nix"
+    dirs="/mnt /os /iso /wim /wim-tmp /installer /nbd /nbd-boot /nbd-efi /nbd-test /root /nix"
     regex=$(echo "$dirs" | sed 's, ,|,g')
     if mounts=$(mount | grep -Ew "on $regex" | awk '{print $3}' | tac); then
         for mount in $mounts; do
@@ -5760,6 +5760,23 @@ is_list_has() {
     echo "$list" | grep -qFx "$item"
 }
 
+# reinstall.sh 有同名方法
+get_drivers() {
+    (
+        cd "$(readlink -f $1)"
+        while ! [ "$(pwd)" = / ]; do
+            if [ -d driver ]; then
+                if [ -d driver/module ]; then
+                    basename "$(readlink -f driver/module)"
+                else
+                    basename "$(readlink -f driver)"
+                fi
+            fi
+            cd ..
+        done
+    )
+}
+
 get_windows_type_from_windows_drive() {
     local os_dir=$1
 
@@ -5950,14 +5967,21 @@ install_windows() {
         installation_type=$(get_selected_image_prop "Installation Type")
     fi
 
+    mount_iso_install_wim_to() {
+        local dir=$1
+
+        mkdir -p "$dir"
+        # shellcheck disable=SC2046
+        wimmount "$iso_install_wim" "$image_index" "$dir" \
+            $($is_swm && echo "--ref=$(dirname "$iso_install_wim")/$swm_ref")
+    }
+
     # 挂载 install.wim，检查
     # 1. 是否自带 sac 组件
     # 2. 是否自带 nvme 驱动
     # 3. 是否支持 sha256
     # 4. Installation Type
-    # shellcheck disable=SC2046
-    wimmount "$iso_install_wim" "$image_index" /wim/ \
-        $($is_swm && echo --ref=$(dirname "$iso_install_wim")/$swm_ref)
+    mount_iso_install_wim_to /wim
 
     # 获取版本号
     get_windows_version_from_windows_drive /wim
@@ -6252,6 +6276,26 @@ install_windows() {
         # RST v20 inf 要求 19041 或以上
         if [ -d /sys/module/vmd ] && [ "$build_ver" -ge 15063 ] && [ "$arch_wim" = x86_64 ]; then
             add_driver_vmd
+        fi
+
+        # 主网卡，有 IP 地址
+        # root@localhost:~# get_drivers /sys/class/net/eth0
+        # hv_netvsc
+
+        # 加速网卡，无 IP 地址
+        # root@localhost:~# get_drivers /sys/class/net/enP30832s1
+        # mana
+        # pci_hyperv
+
+        # vpci
+        # 对应 linux 的 pci_hyperv
+        # win10 ltsc 2021 boot.wim 没有 vpci.sys，导致找不到 azure nvme 硬盘
+        # 要从 install.wim 提取
+        # PE 下不用上网，因此不需要检测网卡是否用 pci_hyperv
+        if [ -d /sys/module/pci_hyperv ] &&
+            get_drivers "/sys/block/$xda" | grep -qx pci_hyperv &&
+            ! find_file_ignore_case /wim/Windows/System32/drivers/vpci.sys >/dev/null 2>&1; then
+            add_driver_vpci
         fi
 
         # 厂商驱动
@@ -6934,6 +6978,88 @@ EOF
         download https://aka.ms/manawindowsdrivers $drv/azure.zip
         unzip $drv/azure.zip -d $drv/azure/
         cp_drivers $drv/azure
+    }
+
+    # vpci
+    add_driver_vpci() {
+        info "Add drivers: vpci"
+
+        mount_iso_install_wim_to /wim-tmp
+
+        # 检查 install.wim 镜像是否有 vpci 驱动
+        if vpci_sys=$(find_file_ignore_case /wim-tmp/Windows/System32/drivers/vpci.sys) &&
+            wvpci_inf=$(find_file_ignore_case /wim-tmp/Windows/INF/wvpci.inf); then
+
+            # 注册表文件
+            from_system_hive="$(find_file_ignore_case /wim-tmp/Windows/System32/config/SYSTEM)"
+            from_software_hive="$(find_file_ignore_case /wim-tmp/Windows/System32/config/SOFTWARE)"
+            to_system_hive="$(find_file_ignore_case /wim/Windows/System32/config/SYSTEM)"
+            to_software_hive="$(find_file_ignore_case /wim/Windows/System32/config/SOFTWARE)"
+
+            # TODO: alpine 3.24 发布后删除
+            # hivex-perl 要从 edge/community 仓库下载
+            alpine_mirror=$(grep '^http.*/main$' /etc/apk/repositories | sed 's,/[^/]*/main$,,' | head -1)
+            apk add --repository "$alpine_mirror/edge/community" \
+                --force-non-repository \
+                --virtual edge \
+                hivex-perl
+
+            # 获取当前生效的 wvpci.inf 文件
+            # 得到 wvpci.inf_amd64_86afbe8940682d27 这样的文件名
+            wvpci_inf_filename_with_hash=$(hivexget "$from_system_hive" 'DriverDatabase\DriverInfFiles\wvpci.inf' Active)
+
+            # .inf .sys
+            cp -fv "$vpci_sys" "$(get_path_in_correct_case /wim/Windows/System32/drivers/)"
+            cp -fv "$wvpci_inf" "$(get_path_in_correct_case /wim/Windows/INF/)"
+            cp -rfv "$(get_path_in_correct_case "/wim-tmp/Windows/System32/DriverStore/FileRepository/$wvpci_inf_filename_with_hash/")" \
+                "$(get_path_in_correct_case /wim/Windows/System32/DriverStore/FileRepository/)"
+
+            # .cat
+            apk add binutils
+            for file in "$(get_path_in_correct_case '/wim-tmp/Windows/System32/CatRoot/{F750E6C3-38EE-11D1-85E5-00C04FC295EE}/')"*; do
+                if strings -e l "$file" | grep -Fiq vpci.sys; then
+                    cp -fv "$file" "$(get_path_in_correct_case '/wim/Windows/System32/CatRoot/{F750E6C3-38EE-11D1-85E5-00C04FC295EE}/')"
+                fi
+            done
+            apk del binutils
+
+            mkdir -p "$drv/vpci"
+
+            # SOFTWARE
+            reg=$drv/vpci/software.reg
+            # shellcheck disable=SC2043
+            for key in \
+                "Microsoft\Windows\CurrentVersion\Setup\PnpLockdownFiles\%SystemRoot%/System32/drivers/vpci.sys"; do
+                hivexregedit --export "$from_software_hive" "$key" >>"$reg"
+            done
+            hivexregedit --merge "$to_software_hive" "$reg"
+
+            # SYSTEM
+            # 理论上要从 HKEY_LOCAL_MACHINE\SYSTEM\Select 的 Current/Default 获取 ControlSet 序号
+            reg=$drv/vpci/system.reg
+            for key in \
+                "ControlSet001\Services\EventLog\System\vpci" \
+                "ControlSet001\Services\vpci" \
+                "DriverDatabase\DeviceIds\VMBUS\{44C4F61D-4444-4400-9D52-802E27EDE19F}" \
+                "DriverDatabase\DriverInfFiles\wvpci.inf" \
+                "DriverDatabase\DriverPackages\\$wvpci_inf_filename_with_hash"; do
+                hivexregedit --export "$from_system_hive" "$key" >>"$reg"
+            done
+            # 这个注册表位置用 Tag 记录着驱动加载的顺序
+            # HKEY_LOCAL_MACHINE\System\ControlSet001\Control\GroupOrderList 的 System Bus Extender
+            # 因此要删除 vpci 的 tag，避免 tag 跟其他驱动重复，而导致错误
+            cat <<EOF >>"$reg"
+[\ControlSet001\Services\vpci]
+"Tag"=-
+EOF
+            hivexregedit --merge "$to_system_hive" "$reg"
+
+            apk del edge
+        else
+            error_and_exit "vpci driver not found."
+        fi
+
+        wimunmount /wim-tmp
     }
 
     add_driver_vmd() {
