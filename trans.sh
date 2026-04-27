@@ -5812,6 +5812,22 @@ get_windows_arch_from_windows_drive() {
     apk del hivex
 }
 
+get_intel_download_url() {
+    local id=$1
+    local file_regex=$2
+
+    if is_in_china; then
+        local url=https://www.intel.cn/content/www/cn/zh/download/$id.html
+    else
+        local url=https://www.intel.com/content/www/us/en/download/$id.html
+    fi
+
+    # 将双引号替换成换行符，使每个链接占一行
+    # intel 禁止了 wget 下载网页
+    wget -U curl/7.54.1 "$url" -O- | sed 's,",\n,g' |
+        grep -Eio -m1 "https://.+/$file_regex" | grep .
+}
+
 install_windows() {
     get_wim_prop() {
         wim=$1
@@ -6377,9 +6393,7 @@ install_windows() {
                         2025) echo 838943 ;;
                         esac
                     )
-                    # intel 禁止了 wget 下载网页
-                    wget -U curl/7.54.1 https://www.intel.com/content/www/us/en/download/$id.html -O- |
-                        grep -Eio -m1 "\"https://.+/(Wired_driver|prowin).*${arch_intel}(legacy)?\.(zip|exe)\"" | tr -d '"' | grep .
+                    get_intel_download_url "$id" "(Wired_driver|prowin).*${arch_intel}(legacy)?\.(zip|exe)"
                     ;;
                 esac ;;
             esac
@@ -7063,6 +7077,8 @@ EOF
     }
 
     add_driver_vmd() {
+        info "Add drivers: VMD"
+
         # RST v20 不支持 11代 PCI\VEN_8086&DEV_9A0B
         support_v19=false
         support_v20=false
@@ -7080,18 +7096,16 @@ EOF
             fi
         done
 
-        local page=
+        local id
         if $support_v20 && [ "$build_ver" -ge 19041 ]; then
-            page=https://www.intel.com/content/www/us/en/download/849936.html
+            id=849936
         elif $support_v19 && [ "$build_ver" -ge 15063 ]; then
-            page=https://www.intel.com/content/www/us/en/download/849933.html
+            id=849933
         fi
 
-        if [ -n "$page" ]; then
-            # intel 禁止了 wget 下载网页
+        if [ -n "$id" ]; then
             local url
-            url=$(wget -U curl/7.54.1 "$page" -O- |
-                grep -Eio -m1 "\"https://.+/SetupRST\.exe\"" | tr -d '"' | grep .)
+            url=$(get_intel_download_url "$id" "SetupRST\.exe")
 
             # 注意 intel 禁止了 aria2 下载
             download $url $drv/SetupRST.exe
