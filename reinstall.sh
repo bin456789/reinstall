@@ -702,12 +702,6 @@ is_virt() {
     $_is_virt
 }
 
-is_absolute_path() {
-    # 检查路径是否以/开头
-    # 注意语法和 ash 不同
-    [[ "$1" = /* ]]
-}
-
 is_cpu_supports_x86_64_v3() {
     # 用 ld.so/cpuid/coreinfo.exe 更准确
     # centos 7 /usr/lib64/ld-linux-x86-64.so.2 没有 --help
@@ -3229,7 +3223,7 @@ build_cmdline() {
 
 # 脚本可能多次运行，先清理之前的残留
 mkdir_clear() {
-    dir=$1
+    local dir=$1
 
     if [ -z "$dir" ] || [ "$dir" = / ]; then
         return
@@ -3892,6 +3886,7 @@ This script is outdated, please download reinstall.sh again.
 
     if [ "$hold" = 0 ]; then
         info 'hold 0'
+        echo "Edit $tmp if needed."
         read -r -p 'Press Enter to continue...'
     fi
 

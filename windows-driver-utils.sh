@@ -1,6 +1,6 @@
 #!/bin/ash
 # shellcheck shell=dash
-# shellcheck disable=SC3001,SC3003,SC3010
+# shellcheck disable=SC3001,SC3003,SC3010,SC3015
 # reinstall.sh / trans.sh 共用此文件
 
 # grep 无法处理 UTF-16LE 编码的 inf，有以下几种解决方法
@@ -239,6 +239,27 @@ list_files_from_inf() {
     done < <(echo "$inf_txts")
 }
 
+is_x_starts_with_y() {
+    [[ "$1" =~ ^"$2" ]]
+}
+
+is_x_ends_with_y() {
+    [[ "$1" =~ "$2"$ ]]
+}
+
+is_absolute_path() {
+    # 检查路径是否以/开头
+
+    # alpine ash 可用
+    # [[ "$1" = "/*" ]]
+
+    # bash 可用
+    # [[ "$1" = /* ]]
+
+    # 都可用
+    is_x_starts_with_y "$1" /
+}
+
 # windows 安装驱动时，只会安装相同架构的驱动文件到系统，即使 inf 里有列出其它架构的驱动
 # 因此 DISM 导出驱动时，也就没有包含其它架构的驱动文件
 
@@ -284,7 +305,11 @@ get_path_in_correct_case() {
                 output="$output$part/"
             else
                 # 最后 part
-                output="$output$part"
+                if is_x_ends_with_y "$path" /; then
+                    output="$output$part/"
+                else
+                    output="$output$part"
+                fi
             fi
             shift
         done

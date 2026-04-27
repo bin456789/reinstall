@@ -5738,10 +5738,15 @@ get_filesize_mb() {
     du -m "$1" | awk '{print $1}'
 }
 
-is_absolute_path() {
-    # 检查路径是否以/开头
-    # 注意语法和 bash 不同
-    [[ "$1" = "/*" ]]
+mkdir_clear() {
+    local dir=$1
+
+    if [ -z "$dir" ] || [ "$dir" = / ]; then
+        return
+    fi
+
+    rm -rf "$dir"
+    mkdir -p "$dir"
 }
 
 # 注意使用方法是 list=$(list_add "$list" "$item_to_add")
@@ -6014,7 +6019,7 @@ install_windows() {
     # 检测 sac 和 nvme
     {
         find_file_ignore_case /wim/Windows/System32/sacsess.exe && has_sac=true || has_sac=false
-        find_file_ignore_case /wim/Windows/INF/stornvme.inf && has_stornvme=true || has_stornvme=false
+        find_file_ignore_case /wim/Windows/System32/drivers/stornvme.sys && has_stornvme=true || has_stornvme=false
     } >/dev/null 2>&1
 
     # 检测是否支持 sha256 签名的驱动
@@ -6234,8 +6239,9 @@ install_windows() {
     add_drivers() {
         info "Add drivers"
 
+        # 驱动下载临时文件夹
         drv=/os/drivers
-        mkdir -p "$drv" # 驱动下载临时文件夹
+        mkdir_clear "$drv"
 
         # 这里有坑
         # $(get_cloud_vendor) 调用了 cache_dmi_and_virt
@@ -6743,8 +6749,7 @@ EOF
                 cp_drivers $drv/virtio -ipath "*/$virtio_sys/$arch/*" "$@"
             fi
         else
-            # coreutils 的 cp mv rm 才有 -v 参数
-            apk add 7zip file coreutils
+            apk add 7zip file
             download $baseurl/$dir/virtio-win-gt-$arch_xdd.msi $drv/virtio.msi
             match="FILE_*_${virtio_sys}_${arch}*"
             7z x $drv/virtio.msi -o$drv/virtio -i!$match -y -bb1

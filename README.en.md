@@ -331,7 +331,7 @@ bash reinstall.sh netboot.xyz
 - If remote login fails, try using the username `.\administrator`.
 - The machine with a static IP will automatically configure the IP. It may take a few minutes to take effect on the first boot.
 - Supports ISO images in any language.
-- Supports bypassing Windows 11 hardware requirements.
+- Automatically bypassing Windows 11 hardware requirements.
 
 #### Supported Systems
 
@@ -582,12 +582,14 @@ bash reinstall.sh reset
 
 According to the Law of Bug Conservation, fixing old bugs often introduces new ones.
 
-If a new bug occurs, try using an older version to see if it works.
+If a bug occurs, try using an older version to see if it works.
 
 Go to <https://github.com/bin456789/reinstall/commits/main> and find the old version’s `commit_id` on the right side.
 
+Replace `xxxxxxxx` in the script below with the `commit_id` of an older version and run the script.
+
 ```bash
-commit_id=xxxxxxx
+commit_id=xxxxxxxx
 curl -O https://raw.githubusercontent.com/bin456789/reinstall/$commit_id/reinstall.sh || wget -O ${_##*/} $_
 sed -i "/^confhome.*main$/s/main/$commit_id/" reinstall.sh
 bash reinstall.sh ...
@@ -598,6 +600,7 @@ bash reinstall.sh ...
 1. Fork this repository.
 2. Modify the `confhome` and `confhome_cn` at the beginning of `reinstall.sh` and `reinstall.bat`.
 3. Make changes to the other code.
+4. Download and run your `reinstall.sh` or `reinstall.bat`."
 
 ## Thanks
 

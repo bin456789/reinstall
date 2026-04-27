@@ -331,7 +331,7 @@ bash reinstall.sh netboot.xyz
 - 如果远程登录失败，可以尝试使用用户名 `.\administrator`
 - 静态机器会自动配置好 IP，可能首次开机几分钟后才生效
 - 支持任意语言的 ISO
-- 支持绕过 Windows 11 硬件限制
+- 自动绕过 Windows 11 硬件限制
 
 #### 支持的系统
 
@@ -582,12 +582,14 @@ bash reinstall.sh reset
 
 根据 Bug 守恒定律，修复旧 Bug 的同时会引入新的 Bug
 
-如果遇到新的 Bug，可以试下旧版本是否正常
+如果脚本出现问题，可以试下旧版本是否正常
 
 从 <https://github.com/bin456789/reinstall/commits/main> 右侧找到旧版本的 `commit_id`
 
+将下面脚本的 `xxxxxxxx` 替换成旧版本的 `commit_id` 并运行脚本
+
 ```bash
-commit_id=xxxxxxx
+commit_id=xxxxxxxx
 curl -O https://raw.githubusercontent.com/bin456789/reinstall/$commit_id/reinstall.sh || wget -O ${_##*/} $_
 sed -i "/^confhome.*main$/s/main/$commit_id/" reinstall.sh
 bash reinstall.sh ...
@@ -598,6 +600,7 @@ bash reinstall.sh ...
 1. Fork 本仓库
 2. 修改 `reinstall.sh` 和 `reinstall.bat` 开头的 `confhome` 和 `confhome_cn`
 3. 修改其它代码
+4. 下载并运行你的 `reinstall.sh` 或 `reinstall.bat`
 
 ## 感谢
 
