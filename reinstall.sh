@@ -643,13 +643,12 @@ wmic() {
         curl -Lo "$tmp/wmic.ps1" "$confhome/wmic.ps1"
     fi
 
-    # shellcheck disable=SC2046
     powershell -NoLogo -NoProfile -NonInteractive -ExecutionPolicy Bypass \
         -File "$(cygpath -w "$tmp/wmic.ps1")" \
         -Namespace "$namespace" \
         -Class "$class" \
-        $([ -n "$filter" ] && echo -Filter "$filter") \
-        $([ -n "$props" ] && echo -Properties "$props")
+        ${filter:+"-Filter"} ${filter:+"$filter"} \
+        ${props:+"-Properties"} ${props:+"$props"}
 }
 
 is_virt() {
