@@ -29,6 +29,7 @@ jobs:
           ${{ matrix.command }} ubuntu
           ${{ matrix.command }} debian
           ${{ matrix.command }} debian --ci
+          ${{ matrix.command }} talos
           # ${{ matrix.command }} kali
           # ${{ matrix.command }} alpine
           # ${{ matrix.command }} opensuse

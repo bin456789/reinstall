@@ -9,6 +9,8 @@ set -eE
 confhome=https://raw.githubusercontent.com/bin456789/reinstall/main
 confhome_cn=https://cnb.cool/bin456789/reinstall/-/git/raw/main
 # confhome_cn=https://www.ghproxy.cc/https://raw.githubusercontent.com/bin456789/reinstall/main
+default_confhome=$confhome
+default_confhome_cn=$confhome_cn
 
 # 用于判断 reinstall.sh 和 trans.sh 是否兼容
 SCRIPT_VERSION=4BACD833-A585-23BA-6CBB-9AA4E08E0004
@@ -83,6 +85,7 @@ Usage: $reinstall_____ anolis      7|8|23
                        almalinux   8|9|10
                        centos      9|10
                        fnos        1
+                       talos       1.12.4
                        nixos       25.11
                        fedora      42|43
                        debian      9|10|11|12|13
@@ -102,10 +105,11 @@ Usage: $reinstall_____ anolis      7|8|23
                        reset
 
        Options:        For Linux/Windows:
-                       [--password    PASSWORD]
-                       [--ssh-key     KEY]
-                       [--ssh-port    PORT]
-                       [--web-port    PORT]
+                       [--password  PASSWORD]
+                       [--ssh-key   KEY]
+                       [--ssh-port  PORT]
+                       [--web-port  PORT]
+                       [--confhome  URL_OR_DIR]
                        [--frpc-config PATH]
 
                        For Windows Only:
@@ -219,8 +223,18 @@ is_in_china() {
         # 备用 www.prologis.cn
         # 备用 www.autodesk.com.cn
         # 备用 www.keysight.com.cn
-        if ! _loc=$(curl -L http://www.qualcomm.cn/cdn-cgi/trace | grep '^loc=' | cut -d= -f2 | grep .); then
-            error_and_exit "Can not get location."
+        for trace_url in \
+            http://www.qualcomm.cn/cdn-cgi/trace \
+            https://www.qualcomm.cn/cdn-cgi/trace \
+            https://www.cloudflare.com/cdn-cgi/trace; do
+            if _loc=$(command curl --insecure --connect-timeout 4 --max-time 8 -fsSL "$trace_url" 2>/dev/null |
+                grep '^loc=' | cut -d= -f2 | grep .); then
+                break
+            fi
+        done
+        if [ -z "$_loc" ]; then
+            _loc=UN
+            warn false "Can not get location, assume non-CN."
         fi
         echo "Location: $_loc" >&2
     fi
@@ -1662,6 +1676,55 @@ Continue with DD?
         eval ${step}_img=$img
     }
 
+    setos_talos() {
+        talos_url_exists_quick() {
+            curl --connect-timeout 5 --max-time 12 -fsIL -o /dev/null "$1"
+        }
+
+        talos_img=
+        if [ -n "$releasever" ]; then
+            releasever=${releasever#v}
+            eval ${step}_releasever=$releasever
+            talos_img_prefix="https://github.com/siderolabs/talos/releases/download/v$releasever/metal-$basearch_alt"
+        else
+            # 优先解析最新 tag，并使用固定版本下载链接，避免依赖 latest/download
+            if latest_talos_tag=$(
+                curl --connect-timeout 5 --max-time 12 -fsSL https://api.github.com/repos/siderolabs/talos/releases/latest 2>/dev/null |
+                    grep -m1 '"tag_name":' | grep -oE 'v[0-9]+\.[0-9]+\.[0-9]+' | head -1 | grep .
+            ); then
+                eval ${step}_releasever=${latest_talos_tag#v}
+                talos_img_prefix="https://github.com/siderolabs/talos/releases/download/$latest_talos_tag/metal-$basearch_alt"
+            else
+                talos_img_prefix="https://github.com/siderolabs/talos/releases/latest/download/metal-$basearch_alt"
+            fi
+        fi
+
+        # 兼容新旧资产命名：优先 raw.zst，回退 raw.xz
+        if [ -z "$talos_img" ]; then
+            info false "Probe Talos image URL..."
+            if talos_url_exists_quick "$talos_img_prefix.raw.zst"; then
+                talos_img="$talos_img_prefix.raw.zst"
+            elif talos_url_exists_quick "$talos_img_prefix.raw.xz"; then
+                talos_img="$talos_img_prefix.raw.xz"
+            else
+                talos_img="$talos_img_prefix.raw.zst"
+            fi
+        fi
+
+        # 自动识别 latest 对应的具体版本号，仅用于信息展示
+        # 仅在上面没拿到 tag 时使用
+        if [ -z "$releasever" ]; then
+            if [ -z "$(eval "echo \${${step}_releasever}")" ] && tag=$(
+                curl --connect-timeout 5 --max-time 12 -fIL -o /dev/null -w '%{url_effective}' "$talos_img" 2>/dev/null |
+                    grep -oE 'v[0-9]+\.[0-9]+\.[0-9]+' | head -1 | grep .
+            ); then
+                eval ${step}_releasever=${tag#v}
+            fi
+        fi
+
+        eval ${step}_img="$talos_img"
+    }
+
     setos_centos_almalinux_rocky_fedora() {
         # el 10 需要 x86-64-v3，除了 almalinux
         if [ "$basearch" = x86_64 ] &&
@@ -1867,8 +1930,31 @@ Continue with DD?
 
     # 集中测试云镜像格式
     if is_use_cloud_image && [ "$step" = finalos ]; then
-        # shellcheck disable=SC2154
-        test_url $finalos_img 'qemu qemu.gzip qemu.xz qemu.zstd raw.xz' finalos_img_type
+        # Talos 镜像后缀固定，避免走 file_enhanced 触发安装 zstd 并拖慢流程
+        if [ "$distro" = talos ]; then
+            case "$finalos_img" in
+            *.raw.zst | *.raw.zstd)
+                finalos_img_type=raw
+                finalos_img_type_warp=zstd
+                ;;
+            *.raw.xz)
+                finalos_img_type=raw
+                finalos_img_type_warp=xz
+                ;;
+            *)
+                # 异常后缀时回退通用检测
+                # shellcheck disable=SC2154
+                test_url $finalos_img 'qemu qemu.gzip qemu.xz qemu.zstd raw.xz raw.zstd' finalos_img_type
+                return
+                ;;
+            esac
+
+            # 仅做可访问性检查
+            test_url $finalos_img
+        else
+            # shellcheck disable=SC2154
+            test_url $finalos_img 'qemu qemu.gzip qemu.xz qemu.zstd raw.xz raw.zstd' finalos_img_type
+        fi
     fi
 }
 
@@ -1899,6 +1985,14 @@ get_latest_distro_releasever() {
 verify_os_name() {
     if [ -z "$*" ]; then
         usage_and_exit
+    fi
+
+    # 支持 talos: `talos` / `talos 1.12.4` / `talos v1.12.4`
+    finalos=$(echo "$@" | to_lower | sed -n -E "s,^(talos)[ :-]?((v)?[0-9]+\.[0-9]+\.[0-9]+)?$,\1 \2,p")
+    if [ -n "$finalos" ]; then
+        read -r distro releasever <<<"$finalos"
+        releasever=${releasever#v}
+        return
     fi
 
     # 不要删除 centos 7
@@ -1948,6 +2042,24 @@ verify_os_args() {
     dd) [ -n "$img" ] || error_and_exit "dd need --img" ;;
     redhat) [ -n "$img" ] || error_and_exit "redhat need --img" ;;
     windows) [ -n "$image_name" ] || error_and_exit "Install Windows need --image-name." ;;
+    talos)
+        unsupported=
+        [ -n "$minimal" ] && unsupported+=" --minimal"
+        [ -n "$installer" ] && unsupported+=" --installer"
+        [ -n "$allow_ping" ] && unsupported+=" --allow-ping"
+        [ -n "$rdp_port" ] && unsupported+=" --rdp-port"
+        [ -n "$custom_infs" ] && unsupported+=" --add-driver"
+        [ -n "$img" ] && unsupported+=" --img"
+        [ -n "$cloud_data" ] && unsupported+=" --cloud-data"
+        [ -n "$iso" ] && unsupported+=" --iso"
+        [ -n "$boot_wim" ] && unsupported+=" --boot-wim"
+        [ -n "$image_name" ] && unsupported+=" --image-name"
+        [ -n "$lang" ] && unsupported+=" --lang"
+        [ -n "$force_old_windows_setup" ] && unsupported+=" --force-old-windows-setup"
+        if [ -n "$unsupported" ]; then
+            error_and_exit "For talos, unsupported option(s):$unsupported"
+        fi
+        ;;
     esac
 
     case "$distro" in
@@ -2188,7 +2300,7 @@ check_ram() {
         alpine | debian | kali | dd) echo 256 ;;
         arch | gentoo | aosc | nixos | windows) echo 512 ;;
         redhat | centos | almalinux | rocky | fedora | oracle | ubuntu | anolis | opencloudos | openeuler) echo 1024 ;;
-        opensuse | fnos) echo -1 ;; # 没有安装模式
+        opensuse | fnos | talos) echo -1 ;; # 没有安装模式
         esac
     )
 
@@ -2202,7 +2314,7 @@ check_ram() {
 
     has_cloud_image=$(
         case "$distro" in
-        redhat | centos | almalinux | rocky | oracle | fedora | debian | ubuntu | opensuse | anolis | openeuler) echo true ;;
+        redhat | centos | almalinux | rocky | oracle | fedora | debian | ubuntu | opensuse | anolis | openeuler | talos) echo true ;;
         netboot.xyz | alpine | dd | arch | gentoo | nixos | kali | windows) echo false ;;
         esac
     )
@@ -2356,14 +2468,18 @@ prompt_password() {
                 error "Passwords don't match. Try again."
             fi
         else
-            # 特殊字符列表
-            # https://learn.microsoft.com/previous-versions/windows/it-pro/windows-server-2012-r2-and-2012/hh994562(v=ws.11)
-            # 有的机器运行 centos 7 ，用 /dev/random 产生 16 位密码，开启了 rngd 也要 5 秒，关闭了 rngd 则长期阻塞
-            chars=\''A-Za-z0-9~!@#$%^&*_=+`|(){}[]:;"<>,.?/-'
-            password=$(tr -dc "$chars" </dev/urandom | head -c16)
+            password=$(generate_random_password)
             break
         fi
     done
+}
+
+generate_random_password() {
+    # 特殊字符列表
+    # https://learn.microsoft.com/previous-versions/windows/it-pro/windows-server-2012-r2-and-2012/hh994562(v=ws.11)
+    # 有的机器运行 centos 7 ，用 /dev/random 产生 16 位密码，开启了 rngd 也要 5 秒，关闭了 rngd 则长期阻塞
+    chars=\''A-Za-z0-9~!@#$%^&*_=+`|(){}[]:;"<>,.?/-'
+    tr -dc "$chars" </dev/urandom | head -c16
 }
 
 save_password() {
@@ -3117,7 +3233,11 @@ build_extra_cmdline() {
     for key in confhome hold force_boot_mode force_cn force_old_windows_setup cloud_image main_disk \
         elts deb_mirror \
         ssh_port rdp_port web_port allow_ping; do
-        value=${!key}
+        if [ "$key" = confhome ] && [ -n "$confhome_for_cmdline" ]; then
+            value=$confhome_for_cmdline
+        else
+            value=${!key}
+        fi
         if [ -n "$value" ]; then
             is_need_quote "$value" &&
                 extra_cmdline+=" extra_$key='$value'" ||
@@ -3779,6 +3899,9 @@ EOF
         # wget --no-check-certificate -O \$sysroot/etc/local.d/trans.start $confhome/trans.sh
         cp /trans.sh \$sysroot/etc/local.d/trans.start
         chmod a+x \$sysroot/etc/local.d/trans.start
+
+        # installer 环境不需要 tiny-cloud，避免宿主机 cloud-init 元数据干扰 trans.start
+        rm -f \$sysroot/etc/runlevels/default/tiny-cloud*
         ln -s /etc/init.d/local \$sysroot/etc/runlevels/default/
 
         # 配置 + 自定义驱动
@@ -4036,13 +4159,25 @@ init_confhome() {
     # gitee 不支持ipv6
     # jsdelivr 有12小时缓存
     # https://github.com/XIU2/UserScript/blob/master/GithubEnhanced-High-Speed-Download.user.js#L31
-    if is_in_china; then
+    if [ -z "$custom_confhome" ] && is_in_china; then
         if [ -n "$confhome_cn" ]; then
             confhome=$confhome_cn
         elif [ -n "$github_proxy" ] && [[ "$confhome" = http*://raw.githubusercontent.com/* ]]; then
             confhome=${confhome/http:\/\//https:\/\/}
             confhome=${confhome/https:\/\/raw.githubusercontent.com/$github_proxy}
         fi
+    fi
+
+    # 本地目录 confhome 仅用于当前系统构建 initrd。
+    # 安装环境无法直接访问宿主机目录，因此 cmdline 里回退到在线 confhome。
+    confhome_for_cmdline=$confhome
+    if [[ "$confhome" = file://* ]]; then
+        if is_in_china && [ -n "$default_confhome_cn" ]; then
+            confhome_for_cmdline=$default_confhome_cn
+        else
+            confhome_for_cmdline=$default_confhome
+        fi
+        warn false "Local --confhome is build-time only. Runtime fallback confhome: $confhome_for_cmdline"
     fi
 }
 
@@ -4317,7 +4452,8 @@ for o in ci installer debug minimal allow-ping force-cn help \
     web-port: http-port: \
     allow-ping: \
     commit: \
-    frpc-conf: frpc-config: \
+    confhome: \
+    frpc-conf: frpc-config: frpc-toml: \
     target-disk: \
     force-boot-mode: \
     force-old-windows-setup:; do
@@ -4382,6 +4518,31 @@ while true; do
         commit=$2
         shift 2
         ;;
+    --confhome)
+        [ -n "$2" ] || error_and_exit "Need value for $1"
+        case "$2" in
+        http://* | https://* | file://*)
+            confhome=$2
+            ;;
+        *)
+            # 支持传本地目录路径
+            local_confhome=$(get_unix_path "$2")
+            local_confhome=$(readlink -f "$local_confhome")
+            if ! [ -d "$local_confhome" ]; then
+                error_and_exit "Invalid --confhome: $2"
+            fi
+            confhome="file://$local_confhome"
+            ;;
+        esac
+        custom_confhome=1
+        # 指定 confhome 时，默认不再自动切换到 confhome_cn
+        confhome_cn=
+        shift 2
+        ;;
+    -x | --debug)
+        set -x
+        shift
+        ;;
     --ci)
         cloud_image=1
         unset installer
@@ -4412,7 +4573,7 @@ while true; do
         hold=$2
         shift 2
         ;;
-    --frpc-conf | --frpc-config)
+    --frpc-conf | --frpc-config | --frpc-toml)
         [ -n "$2" ] || error_and_exit "Need value for $1"
 
         case "$(to_lower <<<"$2")" in
@@ -4621,10 +4782,19 @@ verify_os_args
 
 # 密码
 if ! is_netboot_xyz && [ -z "$ssh_keys" ] && [ -z "$password" ]; then
-    if is_use_dd; then
-        show_dd_password_tips
+    if [ "$distro" = talos ]; then
+        # talos 目标系统无 shell，默认不应交互询问密码
+        # 仍生成随机密码用于安装环境（alpine）ssh
+        password=$(generate_random_password)
+        warn false "Talos target has no SSH shell."
+        warn false "Auto-generated a random password for installer environment."
+        warn false "Use --password or --ssh-key if you need SSH access during installation."
+    else
+        if is_use_dd; then
+            show_dd_password_tips
+        fi
+        prompt_password
     fi
-    prompt_password
 fi
 
 # 强制忽略/强制添加 --ci 参数
@@ -4636,7 +4806,7 @@ dd | windows | netboot.xyz | kali | alpine | arch | gentoo | aosc | nixos | fnos
         unset cloud_image
     fi
     ;;
-oracle | opensuse | anolis | opencloudos | openeuler)
+oracle | opensuse | anolis | opencloudos | openeuler | talos)
     cloud_image=1
     ;;
 redhat | centos | almalinux | rocky | fedora | ubuntu)
@@ -4899,7 +5069,7 @@ echo "$distro $releasever"
 
 case "$distro" in
 windows) username=administrator ;;
-netboot.xyz) username= ;;
+netboot.xyz | talos) username= ;;
 dd | *) username=root ;;
 esac
 
@@ -4933,6 +5103,16 @@ elif [ "$distro" = fnos ]; then
     echo "重启后开始安装。"
     echo "安装完成后不支持 SSH 登录。"
     echo "你需要尽快在 http://SERVER_IP:5666 配置账号密码。"
+elif [ "$distro" = talos ]; then
+    echo "Special note for Talos:"
+    echo "Reboot to start the installation."
+    echo "Talos has no SSH login by default."
+    echo "Please bootstrap and manage nodes via talosctl."
+    echo
+    echo "Talos 注意事项："
+    echo "重启后开始安装。"
+    echo "Talos 默认不支持 SSH 登录。"
+    echo "请使用 talosctl 引导并管理节点。"
 else
     echo "Reboot to start the installation."
 fi
