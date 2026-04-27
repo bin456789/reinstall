@@ -156,6 +156,9 @@
             <OOBE>
                 <HideEULAPage>true</HideEULAPage>
                 <ProtectYourPC>3</ProtectYourPC>
+                <!-- 文档说请勿使用 SkipMachineOOBE 设置自动执行 OOBE -->
+                <!-- 但是 Azure 的系统镜像也是用了 SkipMachineOOBE -->
+                <!-- https://learn.microsoft.com/windows-hardware/customize/desktop/automate-oobe -->
                 <SkipMachineOOBE>true</SkipMachineOOBE>
                 <SkipUserOOBE>true</SkipUserOOBE>
             </OOBE>

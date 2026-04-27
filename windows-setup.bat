@@ -49,29 +49,22 @@ if exist X:\custom_drivers\ (
 rem 等待加载分区
 call :sleep 5000
 echo rescan | diskpart
-
-rem 判断 efi 还是 bios
-rem 或者用 https://learn.microsoft.com/windows-hardware/manufacture/desktop/boot-to-uefi-mode-or-legacy-bios-mode
-rem pe 下没有 mountvol
-echo list vol | diskpart | find "efi" && (
-    set BootType=efi
-) || (
-    set BootType=bios
-)
+call :sleep 5000
 
 rem 获取 ProductType
 rem for /f "tokens=3" %%a in ('reg query "HKLM\SYSTEM\CurrentControlSet\Control\ProductOptions" /v ProductType') do (
 rem     set "ProductType=%%a"
 rem )
 
-rem 获取 BuildNumber
-for /f "tokens=3" %%a in ('reg query "HKLM\SOFTWARE\Microsoft\Windows NT\CurrentVersion" /v CurrentBuildNumber') do (
-    set "BuildNumber=%%a"
+rem 获取 installer 卷 id
+for /f "tokens=2" %%a in ('echo list vol ^| diskpart ^| find " installer "') do (
+    set "VolIndex=%%a"
 )
 
-rem 获取 installer 卷 id
-for /f "tokens=2" %%a in ('echo list vol ^| diskpart ^| find "installer"') do (
-    set "VolIndex=%%a"
+rem 及时退出
+if "%VolIndex%"=="" (
+    echo "Error: Cannot find installer partition." >&2
+    exit /b 1
 )
 
 rem 将 installer 分区设为 Y 盘
@@ -93,6 +86,15 @@ for /f "tokens=3" %%a in (X:\disk.txt) do (
 )
 del X:\disk.txt
 
+rem 判断 efi 还是 bios
+rem 或者用 https://learn.microsoft.com/windows-hardware/manufacture/desktop/boot-to-uefi-mode-or-legacy-bios-mode
+rem pe 下没有 mountvol
+echo list vol | diskpart | find " efi " && (
+    set BootType=efi
+) || (
+    set BootType=bios
+)
+
 rem 这个变量会被 trans.sh 修改
 set is4kn=0
 if "%is4kn%"=="1" (
@@ -105,6 +107,7 @@ rem 重新分区/格式化
 (if "%BootType%"=="efi" (
     echo select disk %DiskIndex%
 
+    rem del
     echo select part 1
     echo delete part override
     echo select part 2
@@ -112,23 +115,31 @@ rem 重新分区/格式化
     echo select part 3
     echo delete part override
 
+    rem 1
     echo create part efi size=%EFISize%
     echo format fs=fat32 quick
 
+    rem 2
     echo create part msr size=16
 
+    rem 3
     echo create part primary
     echo format fs=ntfs quick
     rem echo assign letter=Z
+
 ) else (
     echo select disk %DiskIndex%
 
+    rem del
     echo select part 1
-    rem echo delete part override
-    rem echo create part primary
+    echo delete part override
+
+    rem 1
+    echo create part primary
     echo format fs=ntfs quick
     echo active
     rem echo assign letter=Z
+
 )) > X:\diskpart.txt
 
 rem 使用 diskpart /s ，出错不会执行剩下的 diskpart 命令
@@ -139,6 +150,11 @@ rem 盘符
 rem X boot.wim (ram)
 rem Y installer
 rem Z os
+
+rem 获取 BuildNumber
+for /f "tokens=3" %%a in ('reg query "HKLM\SOFTWARE\Microsoft\Windows NT\CurrentVersion" /v CurrentBuildNumber') do (
+    set "BuildNumber=%%a"
+)
 
 rem 旧版安装程序会自动在C盘设置虚拟内存，新版安装程序(24h2)不会
 rem 如果不创建虚拟内存，1g 内存的机器安装时会报错/杀进程
@@ -180,11 +196,25 @@ rem 运行 ramdisk X:\setup.exe 的话
 rem vista 会找不到安装源
 rem server 23h2 会无法运行
 rem 使用 /installfrom 可以解决?
-if "%ForceOldSetup%"=="1" (
+
+rem 有的精简版 iso install.wim 根目录没有 setup.exe
+rem https://github.com/bin456789/reinstall/issues/578
+
+if "%ForceOldSetup%"=="1" if exist Y:\sources\setup.exe (
     set setup=Y:\sources\setup.exe
-) else (
-    set setup=Y:\setup.exe
+    goto :SetupExeFound
 )
+if exist Y:\setup.exe (
+    set setup=Y:\setup.exe
+) else if exist Y:\sources\setup.exe (
+    set setup=Y:\sources\setup.exe
+) else if exist X:\setup.exe (
+    set setup=X:\setup.exe
+) else (
+    echo "Error: setup.exe not found." >&2
+    exit /b 1
+)
+:SetupExeFound
 
 if "%EnableUnattended%"=="1" (
     set Unattended=/unattend:X:\windows.xml
@@ -246,6 +276,12 @@ exit /b
 rem 不要查找 Class=SCSIAdapter 因为有些驱动等号两边有空格
 find /i "SCSIAdapter" "%~1" >nul
 if not errorlevel 1 (
+    rem 有 N 种方法安装驱动
+    rem 1. dism /online /add-driver /driver:"%~1"     # PE 不支持 /online 添加驱动
+    rem 2. pnputil -i -a "%~1"
+    rem 3. devcon
+    rem 4. dpinst
+    rem 5. drvload 官方推荐 https://learn.microsoft.com/windows-hardware/manufacture/desktop/drvload-command-line-options
     drvload "%~1"
 )
 exit /b
