@@ -56,8 +56,8 @@ The system requirements for the target system are as follows:
 | <img width="16" height="16" src="https://www.redhat.com/favicon.ico" /> RHEL &nbsp;<img width="16" height="16" src="https://almalinux.org/fav/favicon.ico" /> AlmaLinux &nbsp;<img width="16" height="16" src="https://rockylinux.org/favicon.png" /> Rocky &nbsp;<img width="16" height="16" src="https://www.oracle.com/asset/web/favicons/favicon-32.png" /> Oracle | 8, 9, 10                              | 512 MB \* | 5 GB             |
 | <img width="16" height="16" src="https://opencloudos.org/qq.ico" /> OpenCloudOS                                                                                                                                                                                                                                                                                        | 8, 9, Stream 23                       | 512 MB \* | 5 GB             |
 | <img width="16" height="16" src="https://www.centos.org/assets/icons/favicon.svg" /> CentOS Stream                                                                                                                                                                                                                                                                     | 9, 10                                 | 512 MB \* | 5 GB             |
-| <img width="16" height="16" src="https://fedoraproject.org/favicon.ico" /> Fedora                                                                                                                                                                                                                                                                                      | 42, 43                                | 512 MB \* | 5 GB             |
-| <img width="16" height="16" src="https://www.openeuler.org/favicon.ico" /> openEuler                                                                                                                                                                                                                                                                                   | 20.03 LTS - 24.03 LTS, 25.09          | 512 MB \* | 5 GB             |
+| <img width="16" height="16" src="https://fedoraproject.org/favicon.ico" /> Fedora                                                                                                                                                                                                                                                                                      | 43, 44                                | 512 MB \* | 5 GB             |
+| <img width="16" height="16" src="https://www.openeuler.org/favicon.ico" /> openEuler                                                                                                                                                                                                                                                                                   | 20.03 LTS - 24.03 LTS                 | 512 MB \* | 5 GB             |
 | <img width="16" height="16" src="https://static.opensuse.org/favicon.ico" /> openSUSE                                                                                                                                                                                                                                                                                  | Leap 15.6, 16.0, Tumbleweed (Rolling) | 512 MB \* | 5 GB             |
 | <img width="16" height="16" src="https://nixos.org/favicon.svg" /> NixOS                                                                                                                                                                                                                                                                                               | 25.11                                 | 512 MB    | 5 GB             |
 | <img width="16" height="16" src="https://archlinux.org/static/favicon.png" /> Arch                                                                                                                                                                                                                                                                                     | Rolling                               | 512 MB    | 5 GB             |
@@ -149,7 +149,7 @@ certutil -urlcache -f -split https://cnb.cool/bin456789/reinstall/-/git/raw/main
 
 - Username `root`. The script prompts for a password. If left blank, a random one is generated.
 - When installing the latest version, the version number does not need to be specified.
-- Maximizes disk space usage: no boot partition (except for Fedora) and no swap partition.
+- Maximizes disk space utilization: no boot or swap partitions.
 - Automatically selects different optimized kernels based on machine type, such as `Cloud` or `HWE` kernels.
 - When installing Red Hat, you must provide the `qcow2` image link obtained from <https://access.redhat.com/downloads/content/rhel>. You can also install `qcow2` of other RHEL-based OS, such as `Alibaba Cloud Linux` and `TencentOS Server`.
 - After reinstallation, if you need to change the SSH port or switch to key-based login, make sure to also modify the files inside `/etc/ssh/sshd_config.d/`.
@@ -163,11 +163,11 @@ bash reinstall.sh anolis      7|8|23
                   centos      9|10
                   fnos        1
                   nixos       25.11
-                  fedora      42|43
+                  fedora      43|44
                   debian      9|10|11|12|13
+                  openeuler   20.03|22.03|24.03
                   alpine      3.20|3.21|3.22|3.23
                   opensuse    15.6|16.0|tumbleweed
-                  openeuler   20.03|22.03|24.03|25.09
                   ubuntu      18.04|20.04|22.04|24.04|26.04 [--minimal]
                   kali
                   arch

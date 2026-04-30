@@ -84,11 +84,11 @@ Usage: $reinstall_____ anolis      7|8|23
                        centos      9|10
                        fnos        1
                        nixos       25.11
-                       fedora      42|43
+                       fedora      43|44
                        debian      9|10|11|12|13
+                       openeuler   20.03|22.03|24.03
                        alpine      3.20|3.21|3.22|3.23
                        opensuse    15.6|16.0|tumbleweed
-                       openeuler   20.03|22.03|24.03|25.09
                        ubuntu      18.04|20.04|22.04|24.04|26.04 [--minimal]
                        kali
                        arch
@@ -1910,12 +1910,12 @@ verify_os_name() {
         'rocky       8|9|10' \
         'oracle      8|9|10' \
         'fnos        1' \
-        'fedora      42|43' \
+        'fedora      43|44' \
         'nixos       25.11' \
         'debian      9|10|11|12|13' \
         'opensuse    15.6|16.0|tumbleweed' \
         'alpine      3.20|3.21|3.22|3.23' \
-        'openeuler   20.03|22.03|24.03|25.09' \
+        'openeuler   20.03|22.03|24.03' \
         'ubuntu      18.04|20.04|22.04|24.04|26.04' \
         'redhat' \
         'kali' \

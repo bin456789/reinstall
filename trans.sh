@@ -3481,8 +3481,9 @@ modify_linux() {
     find_and_mount() {
         mount_point=$1
         mount_dev=$(awk "\$2==\"$mount_point\" {print \$1}" $os_dir/etc/fstab)
+        mount_opts=$(awk "\$2==\"$mount_point\" {print \$4}" $os_dir/etc/fstab)
         if [ -n "$mount_dev" ]; then
-            mount $mount_dev $os_dir$mount_point
+            mount -o "$mount_opts" "$mount_dev" "$os_dir$mount_point"
         fi
     }
 
@@ -3510,9 +3511,13 @@ EOF
         # 防止删除 cloud-init / 安装 firmware 时不够内存
         create_swap_if_ram_less_than 2048 $os_dir/swapfile
 
-        find_and_mount /boot
-        find_and_mount /boot/efi
         mount_pseudo_fs $os_dir
+
+        # find_and_mount /boot
+        # find_and_mount /boot/efi
+        # fedora 的 fstab 还有 /home /var，因此用 mount -a
+        chroot $os_dir mount -a
+
         cp_resolv_conf $os_dir
 
         # 可以直接用 alpine 的 cloud-init 生成 Network Manager 配置
