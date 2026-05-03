@@ -174,8 +174,9 @@ is_magnet_link() {
 }
 
 download() {
-    url=$1
-    path=$2
+    local url=$1
+    local path=$2
+    local can_use_cn_mirror=${3:-false}
 
     # 有ipv4地址无ipv4网关的情况下，aria2可能会用ipv4下载，而不是ipv6
     # axel 在 lightsail 上会占用大量cpu
@@ -214,11 +215,18 @@ download() {
 
     # -o 设置 http 下载文件名
     # -O 设置 bt 首个文件的文件名
-    aria2c "$url" \
+    set -- \
         -d "$(dirname "$path")" \
         -o "$(basename "$path")" \
         -O "1=$(basename "$path")" \
         -U curl/7.54.1
+
+    if ! aria2c "$url" "$@" &&
+        ! { $can_use_cn_mirror && is_in_china && is_any_ipv4_has_internet &&
+            url_cn=https://files.m.daocloud.io/$(echo "$url" | sed -Ei 's,^https?://,,') &&
+            aria2c "$url_cn" "$@"; }; then
+        error_and_exit "Failed to download $url"
+    fi
 
     # opensuse 官方镜像支持 metalink
     # aira2 无法重命名用 metalink 下载的文件
@@ -6411,7 +6419,7 @@ install_windows() {
         )
 
         # 注意 intel 禁止了 aria2 下载
-        download "$url" $drv/intel.zip
+        download "$url" $drv/intel.zip true
 
         # inf 可能是 UTF-16 LE？因此用 rg 搜索
         # 用 busybox unzip 解压 win10 驱动时，路径和文件名会粘在一起
@@ -6724,13 +6732,28 @@ EOF
         # %RHELScsi.DeviceDesc% = rhelscsi_inst, PCI\VEN_1AF4&DEV_1004&SUBSYS_00081AF4&REV_00
         # %RHELScsi.DeviceDesc% = rhelscsi_inst, PCI\VEN_1AF4&DEV_1048&SUBSYS_11001AF4&REV_01
 
+        local baseurl=https://fedorapeople.org/groups/virt/virtio-win/direct-downloads
+
         case "$nt_ver" in
         6.0 | 6.1) $support_sha256 &&
             dir=archive-virtio/virtio-win-0.1.187-1 ||
             dir=archive-virtio/virtio-win-0.1.173-9 ;;        # vista|w7|2k8|2k8R2
         6.2 | 6.3) dir=archive-virtio/virtio-win-0.1.215-2 ;; # w8|w8.1|2k12|2k12R2
-        *) dir=stable-virtio ;;
+        *)
+            # 先获取最新版本号，再下载
+            # 用 stable-virtio 的话国内镜像下载的可能是缓存的旧版
+            dir=$(wget --spider -S "$baseurl/stable-virtio" 2>&1 >/dev/null |
+                grep -E '^  Location: ' | grep -Ewo -m1 'archive-virtio/virtio-win-.+$')
+            # dir=stable-virtio
+            ;;
         esac
+
+        # 如果 dir 包含数字，则是从具体版本号文件夹下载，文件不会更新，可以使用国内镜像
+        if [[ "$dir" =~ [0-9] ]]; then
+            local can_use_cn_mirror=true
+        else
+            local can_use_cn_mirror=false
+        fi
 
         # vista|w7|2k8|2k8R2|arm64 要从 iso 获取驱动
         if [ "$nt_ver" = 6.0 ] || [ "$nt_ver" = 6.1 ] || [ "$arch_wim" = arm64 ]; then
@@ -6739,10 +6762,8 @@ EOF
             virtio_source=msi
         fi
 
-        baseurl=https://fedorapeople.org/groups/virt/virtio-win/direct-downloads
-
         if [ "$virtio_source" = iso ]; then
-            download $baseurl/$dir/virtio-win.iso $drv/virtio.iso
+            download $baseurl/$dir/virtio-win.iso $drv/virtio.iso $can_use_cn_mirror
             mkdir -p $drv/virtio
             mount -o ro $drv/virtio.iso $drv/virtio
 
@@ -6755,7 +6776,7 @@ EOF
             fi
         else
             apk add 7zip file
-            download $baseurl/$dir/virtio-win-gt-$arch_xdd.msi $drv/virtio.msi
+            download $baseurl/$dir/virtio-win-gt-$arch_xdd.msi $drv/virtio.msi $can_use_cn_mirror
             match="FILE_*_${virtio_sys}_${arch}*"
             7z x $drv/virtio.msi -o$drv/virtio -i!$match -y -bb1
 
@@ -6808,7 +6829,7 @@ EOF
         # https://mirrors.tencent.com/install/cts/windows/Drivers.zip
 
         apk add 7zip
-        download https://mirrors.tencent.com/install/windows/virtio_64_1.0.9.exe $drv/virtio.exe
+        download https://mirrors.tencent.com/install/windows/virtio_64_1.0.9.exe $drv/virtio.exe true
         exclude='$*' # 排除 $PLUGINSDIR
         override=u   # A(u)to rename all
         7z x $drv/virtio.exe -o$drv/qcloud/ -ao$override -x!$exclude
@@ -7118,7 +7139,7 @@ EOF
             url=$(get_intel_download_url "$id" "SetupRST\.exe")
 
             # 注意 intel 禁止了 aria2 下载
-            download $url $drv/SetupRST.exe
+            download $url $drv/SetupRST.exe true
             apk add 7zip
             7z x $drv/SetupRST.exe -o$drv/SetupRST -i!.text
             7z x $drv/SetupRST/.text -o$drv/vmd
