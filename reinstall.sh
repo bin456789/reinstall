@@ -4912,6 +4912,9 @@ if [ -n "$username" ]; then
     else
         echo "Password: $password"
     fi
+    if [ -n "$ssh_port" ]; then
+        echo "SSH Port: $ssh_port"
+    fi
 fi
 
 if is_netboot_xyz; then
