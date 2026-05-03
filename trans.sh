@@ -418,6 +418,16 @@ extract_env_from_cmdline() {
     done
 }
 
+load_fs_config() {
+    if [ -f /configs/fs_type ]; then
+        fs_type=$(head -n1 /configs/fs_type | to_lower)
+    fi
+
+    if [ -f /configs/fs_options ]; then
+        fs_options=$(head -n1 /configs/fs_options)
+    fi
+}
+
 ensure_service_started() {
     local service=$1
 
@@ -2563,6 +2573,45 @@ xda() {
     fi
 }
 
+get_root_fs_type() {
+    if [ -n "$fs_type" ] && [ "$fs_type" != default ]; then
+        echo "$fs_type"
+    else
+        echo ext4
+    fi
+}
+
+format_root_partition() {
+    local part=$1
+    local label=$2
+    local ext4_compat_opts=$3
+    local root_fs
+
+    root_fs=$(get_root_fs_type)
+    info false "format root: $part ($root_fs)"
+
+    # shellcheck disable=SC2086
+    case "$root_fs" in
+    ext4)
+        if [ -n "$label" ]; then
+            mkfs.ext4 -F -L "$label" $fs_options $ext4_compat_opts "$part"
+        else
+            mkfs.ext4 -F $fs_options $ext4_compat_opts "$part"
+        fi
+        ;;
+    xfs)
+        if [ -n "$label" ]; then
+            mkfs.xfs -f -L "$label" $fs_options "$part"
+        else
+            mkfs.xfs -f $fs_options "$part"
+        fi
+        ;;
+    *)
+        error_and_exit "Unsupported root fs type: $root_fs"
+        ;;
+    esac
+}
+
 create_part() {
     # 除了 dd 都会用到
     info "Create Part"
@@ -2571,6 +2620,9 @@ create_part() {
     apk add parted e2fsprogs
     if is_efi; then
         apk add dosfstools
+    fi
+    if [ "$fs_type" = xfs ]; then
+        apk add xfsprogs
     fi
 
     # 清除分区签名
@@ -2687,7 +2739,7 @@ create_part() {
             update_part
 
             mkfs.fat "/dev/$(xda 1)"                #1 efi
-            mkfs.ext4 -F $ext4_opts "/dev/$(xda 2)" #2 os + installer
+            format_root_partition "/dev/$(xda 2)" '' "$ext4_opts" #2 os + installer
         elif is_xda_gt_2t; then
             # bios > 2t
             # 官方安装器是 mkpart BOOT 1M 100M，无论 esp 或者 bios_grub 都用这个分区和大小
@@ -2699,7 +2751,7 @@ create_part() {
             update_part
 
             echo                                    #1 bios_boot
-            mkfs.ext4 -F $ext4_opts "/dev/$(xda 2)" #2 os + installer
+            format_root_partition "/dev/$(xda 2)" '' "$ext4_opts" #2 os + installer
         else
             # bios
             parted /dev/$xda -s -- \
@@ -2710,7 +2762,7 @@ create_part() {
             update_part
 
             echo                                    #1 官方安装有这个分区
-            mkfs.ext4 -F $ext4_opts "/dev/$(xda 2)" #2 os + installer
+            format_root_partition "/dev/$(xda 2)" '' "$ext4_opts" #2 os + installer
         fi
     elif is_use_cloud_image; then
         installer_part_size="$(get_cloud_image_part_size)"
@@ -2720,7 +2772,7 @@ create_part() {
             [ "$distro" = anolis ] || [ "$distro" = opencloudos ] || [ "$distro" = openeuler ] ||
             [ "$distro" = ubuntu ]; then
             # 这里的 fs 没有用，最终使用目标系统的格式化工具
-            fs=ext4
+            fs=$(get_root_fs_type)
             if is_efi; then
                 parted /dev/$xda -s -- \
                     mklabel gpt \
@@ -2760,6 +2812,7 @@ create_part() {
         fi
     elif [ "$distro" = alpine ] || [ "$distro" = arch ] || [ "$distro" = gentoo ] ||
         [ "$distro" = nixos ] || [ "$distro" = aosc ]; then
+        root_fs=$(get_root_fs_type)
         # alpine 本身关闭了 64bit ext4
         # https://gitlab.alpinelinux.org/alpine/alpine-conf/-/blob/3.18.1/setup-disk.in?ref_type=tags#L908
         # 而且 alpine 的 extlinux 不兼容 64bit ext4
@@ -2769,32 +2822,32 @@ create_part() {
             parted /dev/$xda -s -- \
                 mklabel gpt \
                 mkpart '" "' fat32 1MiB 101MiB \
-                mkpart '" "' ext4 101MiB 100% \
+                mkpart '" "' $root_fs 101MiB 100% \
                 set 1 boot on
             update_part
 
             mkfs.fat "/dev/$(xda 1)"                #1 efi
-            mkfs.ext4 -F $ext4_opts "/dev/$(xda 2)" #2 os
+            format_root_partition "/dev/$(xda 2)" '' "$ext4_opts" #2 os
         elif is_xda_gt_2t; then
             # bios > 2t
             parted /dev/$xda -s -- \
                 mklabel gpt \
                 mkpart '" "' ext4 1MiB 2MiB \
-                mkpart '" "' ext4 2MiB 100% \
+                mkpart '" "' $root_fs 2MiB 100% \
                 set 1 bios_grub on
             update_part
 
             echo                                    #1 bios_boot
-            mkfs.ext4 -F $ext4_opts "/dev/$(xda 2)" #2 os
+            format_root_partition "/dev/$(xda 2)" '' "$ext4_opts" #2 os
         else
             # bios
             parted /dev/$xda -s -- \
                 mklabel msdos \
-                mkpart primary ext4 1MiB 100% \
+                mkpart primary $root_fs 1MiB 100% \
                 set 1 boot on
             update_part
 
-            mkfs.ext4 -F $ext4_opts "/dev/$(xda 1)" #1 os
+            format_root_partition "/dev/$(xda 1)" '' "$ext4_opts" #1 os
         fi
     else
         # 安装红帽系或ubuntu
@@ -4702,11 +4755,15 @@ install_qcow_by_copy() {
         # mapper/vg_main-lv_root
         # mapper/opencloudos-root
 
+        # 修正根分区的格式和 uuid (可能原镜像为 lvm / ext4 / xfs / 甚至是 LABEL 挂载)
+        os_fs_uuid=$(lsblk -rno UUID "/dev/$(xda 2)")
+        sed -i -E "s|^[^#[:space:]]+([[:space:]]+/[[:space:]]+)[^[:space:]]+([[:space:]]+)[^[:space:]]+|UUID=$os_fs_uuid\1$target_os_fstype\2defaults|" /os/etc/fstab
+
         # oracle/opencloudos 系统盘从 lvm 改成 uuid 挂载
-        sed -i "s,/dev/$os_part,UUID=$os_part_uuid," /os/etc/fstab
+        sed -i "s,/dev/$os_part,UUID=$os_fs_uuid," /os/etc/fstab
         if ls /os/boot/loader/entries/*.conf 2>/dev/null; then
             # options root=/dev/mapper/opencloudos-root ro console=ttyS0,115200n8 no_timer_check net.ifnames=0 crashkernel=1800M-64G:256M,64G-128G:512M,128G-486G:768M,486G-972G:1024M,972G-:2048M rd.lvm.lv=opencloudos/root rhgb quiet
-            sed -i "s,/dev/$os_part,UUID=$os_part_uuid," /os/boot/loader/entries/*.conf
+            sed -i "s,/dev/$os_part,UUID=$os_fs_uuid," /os/boot/loader/entries/*.conf
         fi
 
         # oracle/opencloudos 移除 lvm cmdline
@@ -5050,6 +5107,17 @@ EOF
             fi
         fi
 
+        # fstab
+        # 修正根分区的格式和 uuid (原镜像可能是 ext4 或者是 LABEL 挂载)
+        os_fs_uuid=$(lsblk -rno UUID "/dev/$(xda 2)")
+        sed -i -E "s|^[^#[:space:]]+([[:space:]]+/[[:space:]]+)[^[:space:]]+([[:space:]]+)[^[:space:]]+|UUID=$os_fs_uuid\1$target_os_fstype\2defaults|" $os_dir/etc/fstab
+        # 24.04 镜像有boot分区，但我们不需要
+        sed -i '/[[:space:]]\/boot[[:space:]]/d' $os_dir/etc/fstab
+        if ! is_efi; then
+            # bios 删除 efi 条目
+            sed -i '/[[:space:]]\/boot\/efi[[:space:]]/d' $os_dir/etc/fstab
+        fi
+
         # 要重新生成 grub.cfg，因为
         # 1 我们删除了 boot 分区
         # 2 改动了 /etc/default/grub.d/40-force-partuuid.cfg
@@ -5057,14 +5125,6 @@ EOF
 
         # 还原 grub 配置（os prober）
         mv $os_dir/etc/default/grub.orig $os_dir/etc/default/grub
-
-        # fstab
-        # 24.04 镜像有boot分区，但我们不需要
-        sed -i '/[[:space:]]\/boot[[:space:]]/d' $os_dir/etc/fstab
-        if ! is_efi; then
-            # bios 删除 efi 条目
-            sed -i '/[[:space:]]\/boot\/efi[[:space:]]/d' $os_dir/etc/fstab
-        fi
 
         restore_resolv_conf $os_dir
     }
@@ -5192,9 +5252,33 @@ EOF
     # centos8 如果用alpine格式化xfs，grub2-mkconfig和grub2里面都无法识别xfs分区
     mount_nouuid /dev/$os_part /nbd/
     mount_pseudo_fs /nbd/
-    case "$os_part_fstype" in
-    ext4) chroot /nbd mkfs.ext4 -F -L "$os_part_label" -U "$os_part_uuid" "/dev/$(xda 2)" ;;
-    xfs) chroot /nbd mkfs.xfs -f -L "$os_part_label" -m uuid=$os_part_uuid "/dev/$(xda 2)" ;;
+    if [ -n "$fs_type" ] && [ "$fs_type" != default ]; then
+        target_os_fstype=$fs_type
+    else
+        target_os_fstype=$os_part_fstype
+    fi
+    # shellcheck disable=SC2086
+    case "$target_os_fstype" in
+    ext4)
+        chroot /nbd mkfs.ext4 -F ${os_part_label:+-L "$os_part_label"} $fs_options -U "$os_part_uuid" "/dev/$(xda 2)"
+        ;;
+    xfs)
+        # Ensure xfsprogs is installed in target image for mkfs.xfs
+        if ! chroot /nbd test -x /sbin/mkfs.xfs 2>/dev/null; then
+            info "Installing xfsprogs in target image..."
+            chroot /nbd apt-get update >/dev/null 2>&1 || true
+            chroot /nbd apt-get install -y xfsprogs 2>&1 | grep -E '(Setting up|E:)' || true
+            if ! chroot /nbd test -x /sbin/mkfs.xfs; then
+                error_and_exit "Failed to install xfsprogs in target image. xfs not available."
+            fi
+        fi
+        # XFS limit label to 12 chars
+        mkfs_label="${os_part_label:0:12}"
+        chroot /nbd mkfs.xfs -f ${mkfs_label:+-L "$mkfs_label"} $fs_options -m uuid=$os_part_uuid "/dev/$(xda 2)"
+        ;;
+    *)
+        error_and_exit "Unsupported target root fs type: $target_os_fstype"
+        ;;
     esac
     umount -R /nbd/
 
@@ -7720,6 +7804,7 @@ rm -f /etc/runlevels/default/local
 
 # 提取变量
 extract_env_from_cmdline
+load_fs_config
 
 # 带参数运行部分
 # 重新下载并 exec 运行新脚本

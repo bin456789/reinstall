@@ -224,6 +224,16 @@ ISO 安装 Ubuntu
 bash reinstall.sh ubuntu --installer
 ```
 
+指定根分区文件系统类型和参数
+
+- `--fs-type ...` 指定根分区文件系统。目前可用值为`default|ext4|xfs`，默认值为 `default` 即保持发行版默认逻辑。**`xfs` 要求 XFS v5 格式，对应需要最低 Linux 5.10 内核**。因此仅支持 Debian 11+、Ubuntu 22.04+、Anolis 8+、OpenCloudOS 9+、openEuler 22.03+、Oracle 云镜像模板，以及使用 mkfs 的滚动发行版。**不支持** Ubuntu 20.04-、Debian 10-、Anolis 7、OpenCloudOS 8、openEuler 20.03、AlmaLinux/Rocky 8-、FNOS。
+- `--fs-options ...` 是追加到 `mkfs` 的参数，仅作用于根分区，且必须和 `--fs-type ext4|xfs`一起使用（不支持 `default`）。仅支持由 `trans.sh` 直接执行根分区 `mkfs` 的安装方案；安装器路径或直接写入云镜像路径会在参数检查时直接报错。
+
+```bash
+bash reinstall.sh ubuntu 22.04 --fs-type ext4 --fs-options '-m 0'
+bash reinstall.sh ubuntu 26.04 --fs-type xfs --fs-options '-m reflink=1,rmapbt=0'
+```
+
 </details>
 
 ### 功能 2: DD RAW 镜像到硬盘

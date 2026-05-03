@@ -27,7 +27,7 @@ autoinstall:
 
       # 生成分区信息
       xda=$(curl -L "$confhome/get-xda.sh" | sh -s)
-      export xda
+      export xda fs_type
       curl -L "$confhome/ubuntu-storage-early.sh" | sh -s
 
       # 要安装的版本

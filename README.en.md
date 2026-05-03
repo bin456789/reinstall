@@ -224,6 +224,16 @@ Install Ubuntu using ISO
 bash reinstall.sh ubuntu --installer
 ```
 
+Appoint root partition file system type and parameters
+
+- `--fs-type ...` Specifies the root partition file system. Currently available values are `default|ext4|xfs`, with the default being `default`, which maintains the distribution's default logic. **`xfs` requires XFS v5 format, corresponding to a minimum Linux 5.10 kernel**. Therefore, it only supports Debian 11+, Ubuntu 22.04+, Anolis 8+, OpenCloudOS 9+, openEuler 22.03+, Oracle cloud image templates, and rolling distributions that use mkfs. **It does not support** Ubuntu 20.04-, Debian 10-, Anolis 7, OpenCloudOS 8, openEuler 20.03, AlmaLinux/Rocky 8- and FNOS.
+- `--fs-options ...` are parameters appended to `mkfs`, only applicable to the root partition, and must be used together with `--fs-type ext4|xfs` (not supported with `default`). Only supports installation schemes where `trans.sh` directly executes `mkfs` on the root partition; installer paths or direct writing in cloud image paths will report errors during parameter checking.
+
+```bash
+bash reinstall.sh ubuntu 22.04 --fs-type ext4 --fs-options '-m 0'
+bash reinstall.sh ubuntu 26.04 --fs-type xfs --fs-options '-m reflink=1,rmapbt=0'
+```
+
 </details>
 
 ### Feature 2: DD RAW image to hard disk

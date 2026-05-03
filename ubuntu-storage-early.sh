@@ -14,6 +14,11 @@ size_os=$(lsblk -bn -o SIZE /dev/disk/by-label/os)
 
 # shellcheck disable=SC2154
 if parted "/dev/$xda" print | grep '^Partition Table' | grep gpt; then
+  case "$fs_type" in
+  ext4 | xfs) root_fstype=$fs_type ;;
+  *) root_fstype=ext4 ;;
+  esac
+
     # efi
     if [ -e /dev/disk/by-label/efi ]; then
         size_efi=$(lsblk -bn -o SIZE /dev/disk/by-label/efi)
@@ -44,7 +49,7 @@ if parted "/dev/$xda" print | grep '^Partition Table' | grep gpt; then
       preserve: true
       type: partition
       id: partition-os
-    - fstype: ext4
+    - fstype: $root_fstype
       volume: partition-os
       type: format
       id: format-os
@@ -84,7 +89,7 @@ EOF
       preserve: true
       type: partition
       id: partition-os
-    - fstype: ext4
+    - fstype: $root_fstype
       volume: partition-os
       type: format
       id: format-os
@@ -97,6 +102,11 @@ EOF
     fi
 else
     # bios
+  case "$fs_type" in
+  ext4 | xfs) root_fstype=$fs_type ;;
+  *) root_fstype=ext4 ;;
+  esac
+
     cat <<EOF >>/autoinstall.yaml
   config:
     # disk
@@ -113,7 +123,7 @@ else
       preserve: true
       type: partition
       id: partition-os
-    - fstype: ext4
+    - fstype: $root_fstype
       volume: partition-os
       type: format
       id: format-os
