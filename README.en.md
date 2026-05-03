@@ -64,6 +64,7 @@ The system requirements for the target system are as follows:
 | <img width="16" height="16" src="https://www.gentoo.org/assets/img/logo/gentoo-g.png" /> Gentoo                                                                                                                                                                                                                                                                        | Rolling                               | 512 MB    | 5 GB             |
 | <img width="16" height="16" src="https://aosc.io/distros/aosc-os.svg" /> AOSC OS                                                                                                                                                                                                                                                                                       | Rolling                               | 512 MB    | 5 GB             |
 | <img width="16" height="16" src="https://www.fnnas.com/favicon.ico" /> fnOS                                                                                                                                                                                                                                                                                            | 1                                     | 512 MB    | 8 GB             |
+| <img width="16" height="16" src="https://www.talos.dev/favicon.ico" /> Talos                                                                                                                                                                                                                                                                                            | Latest, x.y.z                         | 1 ~ 2 GB † | 10 GB            |
 | <img width="16" height="16" src="https://blogs.windows.com/wp-content/uploads/prod/2022/09/cropped-Windows11IconTransparent512-32x32.png" /> Windows (DD)                                                                                                                                                                                                              | Any                                   | 512 MB    | Depends on image |
 | <img width="16" height="16" src="https://blogs.windows.com/wp-content/uploads/prod/2022/09/cropped-Windows11IconTransparent512-32x32.png" /> Windows (ISO)                                                                                                                                                                                                             | Vista, 7, 8.x (Server 2008 - 2012 R2) | 512 MB    | 25 GB            |
 | <img width="16" height="16" src="https://blogs.windows.com/wp-content/uploads/prod/2022/09/cropped-Windows11IconTransparent512-32x32.png" /> Windows (ISO)                                                                                                                                                                                                             | 10, 11 (Server 2016 - 2025)           | 1 GB      | 25 GB            |
@@ -71,6 +72,8 @@ The system requirements for the target system are as follows:
 \* Indicates installation using cloud images, not traditional network installation.
 
 ^ Indicates requiring either 256 MB memory + 1.5 GB disk, or 512 MB memory + 1 GB disk
+
+† Talos memory requirement depends on node role: Control Plane needs at least 2 GiB, Worker needs at least 1 GiB
 
 > [!WARNING]
 >
@@ -147,7 +150,7 @@ certutil -urlcache -f -split https://cnb.cool/bin456789/reinstall/-/git/raw/main
 >
 > If the script was run by mistake, you can run `bash reinstall.sh reset` before rebooting to cancel the reinstallation operation.
 
-- Username `root`. The script prompts for a password. If left blank, a random one is generated.
+- Username `root`. The script prompts for a password. If left blank, a random one is generated (except Talos).
 - When installing the latest version, the version number does not need to be specified.
 - Maximizes disk space utilization: no boot or swap partitions.
 - Automatically selects different optimized kernels based on machine type, such as `Cloud` or `HWE` kernels.
@@ -162,6 +165,7 @@ bash reinstall.sh anolis      7|8|23
                   opencloudos 8|9|23
                   centos      9|10
                   fnos        1
+                  talos       1.12.4
                   nixos       25.11
                   fedora      43|44
                   debian      9|10|11|12|13
@@ -175,6 +179,11 @@ bash reinstall.sh anolis      7|8|23
                   aosc
                   redhat      --img="http://access.cdn.redhat.com/xxx.qcow2"
 ```
+
+- For Talos, the script resolves the latest official tag first (for example `v1.12.4`), then uses a pinned release URL to download the official `metal-ARCH.raw.zst` image (with `raw.xz` fallback). Talos does not support SSH login by default. Use `talosctl` to bootstrap and manage nodes.
+- For Talos, the script does not prompt for password interactively by default. If neither `--password` nor `--ssh-key` is provided, it auto-generates a random password for installer-environment SSH.
+- Talos only supports installer-environment options: `--password`, `--ssh-key`, `--ssh-port`, `--web-port`, `--hold`, `--frpc-toml`.
+- Talos does not support: `--minimal`, `--installer`, `--allow-ping`, `--rdp-port`, `--add-driver`, `--img`, `--cloud-data`, `--iso`, `--boot-wim`, `--image-name`, `--lang`, `--force-old-windows-setup`.
 
 #### Optional Parameters
 
