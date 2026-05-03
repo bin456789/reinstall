@@ -2881,18 +2881,20 @@ add_efi_entry_in_linux() {
         dev_part=$(findmnt -T "$dist_dir" -no SOURCE | grep '^/dev/')
     fi
 
-    if ! {
-        res=$(efibootmgr --create-only \
-            --disk "/dev/$(get_disk_by_part $dev_part)" \
-            --part "$(get_part_num_by_part $dev_part)" \
-            --label "$(get_entry_name)" \
-            --loader "\\EFI\\reinstall\\$basename") &&
-            id=$(echo "$res" | grep_efi_entry | tail -1 | grep_efi_index | grep .) &&
-            efibootmgr --bootnext "$id"
-    }; then
+    set -- efibootmgr --create-only \
+        --disk "/dev/$(get_disk_by_part $dev_part)" \
+        --part "$(get_part_num_by_part $dev_part)" \
+        --label "$(get_entry_name)" \
+        --loader "\\EFI\\reinstall\\$basename"
+
+    if ! res=$("$@"); then
+        echo "Command: $*"
         echo "$res"
         error_and_exit "Could not add efi entry."
     fi
+
+    id=$(echo "$res" | grep_efi_entry | tail -1 | grep_efi_index | grep .)
+    efibootmgr --bootnext "$id"
 }
 
 get_grub_efi_filename() {
