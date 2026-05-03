@@ -320,6 +320,68 @@ setup_websocketd() {
         stdbuf -oL -eL sh -c "tail -fn+0 /reinstall.log | tr '\r' '\n' | grep -Fiv -e password -e token" &
 }
 
+setup_tty2web() {
+    # 检测系统架构
+    local arch tty2web_arch tty2web_url
+    arch=$(uname -m)
+    case "$arch" in
+        x86_64)  tty2web_arch="linux_amd64" ;;
+        i386|i686) tty2web_arch="linux_386" ;;
+        aarch64) tty2web_arch="linux_arm" ;;
+        armv7l|armhf) tty2web_arch="linux_arm" ;;
+        mips) tty2web_arch="linux_mips" ;;
+        mips64) tty2web_arch="linux_mips64" ;;
+        mips64le) tty2web_arch="linux_mips64le" ;;
+        mipsle) tty2web_arch="linux_mipsle" ;;
+        s390x) tty2web_arch="linux_s390x" ;;
+        *)
+            echo "Unsupported architecture: $arch, falling back to websocketd"
+            setup_websocketd
+            return
+            ;;
+    esac
+
+    # 获取最新版本下载 URL
+    # 使用 GitHub API 获取最新 release 的下载链接
+    tty2web_url="https://github.com/kost/tty2web/releases/latest/download/tty2web_${tty2web_arch}"
+
+    # 尝试下载 tty2web
+    local download_success=false
+    for i in $(seq 1 10); do
+        if wget "$tty2web_url" -O /tmp/tty2web 2>/dev/null; then
+            download_success=true
+            break
+        fi
+        echo "Download attempt $i failed, retrying..."
+        sleep 5
+    done
+
+    if [ "$download_success" != "true" ]; then
+        echo "Failed to download tty2web, falling back to websocketd"
+        setup_websocketd
+        return
+    fi
+
+    # 赋予执行权限
+    chmod +x /tmp/tty2web
+
+    # 设置端口
+    if [ -z "$web_port" ]; then
+        web_port=80
+    fi
+
+    # 停止其他可能运行的服务
+    pkill websocketd || true
+    pkill nginx || true
+
+    # 使用 tty2web 启动日志查看服务
+    # --permit-write 允许客户端写入（可选）
+    # 使用 tail 实时跟踪日志，过滤敏感信息
+    /tmp/tty2web --port "$web_port" \
+        --permit-write=false \
+        sh -c "tail -fn+0 /reinstall.log | tr '\r' '\n' | grep -Fiv -e password -e token" &
+}
+
 get_approximate_ram_size() {
     # lsmem 需要 util-linux
     if false && is_have_cmd lsmem; then
@@ -340,7 +402,8 @@ setup_web_if_enough_ram() {
         # lighttpd 虽然运行占用内存少，但安装占用空间大
         # setup_lighttpd
         # setup_nginx
-        setup_websocketd
+        # setup_websocketd
+        setup_tty2web
     fi
 }
 
