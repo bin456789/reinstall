@@ -1694,6 +1694,8 @@ install_nixos() {
             mkdir -p "$(dirname "$file")"
             if [ -f "$file" ]; then
                 sed -i '/^[[:space:]]*substituters[[:space:]]*=/d' "$file"
+                # Ensure trailing newline before appending
+                [ -n "$(tail -c1 "$file" 2>/dev/null)" ] && echo >> "$file"
             fi
             echo "substituters = $mirror/store" >>"$file"
         done
