@@ -1682,6 +1682,21 @@ install_nixos() {
     export USER=root
     export HOME=/root
 
+    configure_nix_substituters() {
+        if ! is_in_china; then
+            return
+        fi
+
+        nix_conf=/etc/nix/nix.conf
+        mkdir -p "$(dirname "$nix_conf")"
+
+        if [ -f "$nix_conf" ]; then
+            sed -i '/^[[:space:]]*substituters[[:space:]]*=/d' "$nix_conf"
+        fi
+
+        echo "substituters = $mirror/store" >>"$nix_conf"
+    }
+
     case "$nix_from" in
     alpine)
         apk add nix
@@ -1690,9 +1705,7 @@ install_nixos() {
         # https://gitlab.alpinelinux.org/alpine/aports/-/blob/master/community/nix/APKBUILD#L125
         sed -i '/max-jobs/d' /etc/nix/nix.conf
         echo "max-jobs = $threads" >>/etc/nix/nix.conf
-        if is_in_china; then
-            echo "substituters = $mirror/store" >>/etc/nix/nix.conf
-        fi
+        configure_nix_substituters
         rc-service -q nix-daemon restart
         # 添加 nix-env 安装的软件到 PATH
         PATH="/root/.nix-profile/bin:$PATH"
@@ -1743,6 +1756,7 @@ install_nixos() {
         apk del xz
         # shellcheck source=/dev/null
         . /root/.nix-profile/etc/profile.d/nix.sh
+        configure_nix_substituters
         ;;
     esac
 
