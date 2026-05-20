@@ -1683,36 +1683,18 @@ install_nixos() {
     export HOME=/root
 
     configure_nix_substituters() {
-        local file old_nix_config
-
         if ! is_in_china; then
             return
         fi
 
-        info "Configure Nix substituters"
-        for file in /etc/nix/nix.conf /root/.config/nix/nix.conf; do
-            mkdir -p "$(dirname "$file")"
-            if [ -f "$file" ]; then
-                sed -i '/^[[:space:]]*substituters[[:space:]]*=/d' "$file"
-                # Ensure trailing newline before appending
-                [ -n "$(tail -c1 "$file" 2>/dev/null)" ] && echo >> "$file"
-            fi
-            echo "substituters = $mirror/store" >>"$file"
-        done
+        nix_conf=/etc/nix/nix.conf
+        mkdir -p "$(dirname "$nix_conf")"
 
-        old_nix_config=$(
-            if [ -n "$NIX_CONFIG" ]; then
-                printf -- '%s\n' "$NIX_CONFIG" |
-                    sed '/^[[:space:]]*substituters[[:space:]]*=/d'
-            fi
-        )
-        if [ -n "$old_nix_config" ]; then
-            NIX_CONFIG="$old_nix_config
-substituters = $mirror/store"
-        else
-            NIX_CONFIG="substituters = $mirror/store"
+        if [ -f "$nix_conf" ]; then
+            sed -i '/^[[:space:]]*substituters[[:space:]]*=/d' "$nix_conf"
         fi
-        export NIX_CONFIG
+
+        echo "substituters = $mirror/store" >>"$nix_conf"
     }
 
     case "$nix_from" in
