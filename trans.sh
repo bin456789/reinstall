@@ -1702,7 +1702,7 @@ install_nixos() {
 
         old_nix_config=$(
             if [ -n "$NIX_CONFIG" ]; then
-                printf '%s\n' "$NIX_CONFIG" |
+                printf -- '%s\n' "$NIX_CONFIG" |
                     sed '/^[[:space:]]*substituters[[:space:]]*=/d'
             fi
         )
