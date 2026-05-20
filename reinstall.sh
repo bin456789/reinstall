@@ -4194,7 +4194,7 @@ recreate_grub_or_extlinux_cfg() {
             /nix/var/nix/profiles/system/bin/switch-to-configuration boot
             # 手动启用 41_custom
             nixos_grub_home="$(dirname "$(readlink -f "$(get_cmd_path grub-mkconfig)")")/.."
-            $nixos_grub_home/etc/grub.d/41_custom >>$target_cfg
+            $nixos_grub_home/etc/grub.d/41_custom >>"$(dirname "$target_cfg")/grub.cfg"
         elif is_have_cmd update-grub; then
             update-grub
         else
