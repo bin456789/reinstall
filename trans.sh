@@ -3176,7 +3176,20 @@ modify_windows() {
         bats="$bats windows-set-netconf-$ethx.bat"
     done
 
-    # 5 frp
+    # 5. 设置用户密码永不过期
+    #    Azure 的 Windows 实例，初始用户的密码也是永不过期的
+    #    管理员账号默认不会过期
+    if [ -n "$username" ]; then
+        cat <<EOF >$os_dir/windows-set-user-password-never-expires.bat
+wmic useraccount where name="$username" set passwordexpires=false || ^
+powershell -NoLogo -NoProfile -NonInteractive -ExecutionPolicy Bypass -Command "Set-LocalUser -Name '$username' -PasswordNeverExpires \$true"
+del "%~f0"
+EOF
+        unix2dos $os_dir/windows-set-user-password-never-expires.bat
+        bats="$bats windows-set-user-password-never-expires.bat"
+    fi
+
+    # 6. frp
     if ls /configs/frpc.* >/dev/null 2>&1; then
         if [ "$(get_windows_arch_from_windows_drive "$os_dir" | to_lower)" = x86 ]; then
             os_bit=32
