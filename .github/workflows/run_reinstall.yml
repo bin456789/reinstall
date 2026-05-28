@@ -12,9 +12,11 @@ jobs:
         os: [ubuntu-latest, windows-latest]
         include:
           - os: ubuntu-latest
-            command: sudo bash reinstall.sh --debug --password 123@@@
+            command: sudo bash reinstall.sh --debug --username x --password x
+            command_no_username_option: sudo bash reinstall.sh --debug
           - os: windows-latest
-            command: ./reinstall.bat --debug --password 123@@@
+            command: ./reinstall.bat --debug --username x --password x
+            command_no_username_option: ./reinstall.bat --debug
     runs-on: ${{ matrix.os }}
     steps:
       - run: |
@@ -35,9 +37,9 @@ jobs:
           # ${{ matrix.command }} arch
           # ${{ matrix.command }} gentoo
 
-          ${{ matrix.command }} netboot.xyz
-          ${{ matrix.command }} dd --img=https://download.opensuse.org/tumbleweed/appliances/openSUSE-MicroOS.x86_64-SelfInstall.raw.xz
-          ${{ matrix.command }} windows --image-name='Windows Server blah' --iso https://aka.ms/HCIReleaseImage --username administrator
+          ${{ matrix.command_no_username_option }} netboot.xyz
+          ${{ matrix.command }} dd --img=https://cloud.debian.org/images/cloud/sid/daily/latest/debian-sid-nocloud-amd64-daily.tar.xz
+          ${{ matrix.command }} windows --image-name='Windows Server blah' --iso https://aka.ms/HCIReleaseImage
 
           ${{ matrix.command }} reset
 

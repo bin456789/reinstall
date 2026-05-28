@@ -46,8 +46,24 @@ warn() {
 
 error_and_exit() {
     error "$@"
-    echo "Run '/trans.sh' to retry." >&2
-    echo "Run '/trans.sh alpine' to install Alpine Linux instead." >&2
+
+    if is_have_cmd sudo; then
+        sudo_='sudo '
+    elif is_have_cmd doas; then
+        sudo_='doas '
+    else
+        sudo_=
+    fi
+
+    echo "Run '$sudo_/trans.sh' to retry." >&2
+    echo "Run '$sudo_/trans.sh alpine' to install Alpine Linux instead." >&2
+
+    # 解除锁定，允许用户登录处理故障
+    # passwd -u "$username" >/dev/null
+
+    # 用不着，因为 alpine 锁定账户后无法登录 ssh
+    # 因此不会锁定
+
     exit 1
 }
 
@@ -292,9 +308,6 @@ setup_nginx() {
     wget $confhome/logviewer.html -O /logviewer.html
     wget $confhome/logviewer-nginx.conf -O /etc/nginx/http.d/default.conf
 
-    if [ -z "$web_port" ]; then
-        web_port=80
-    fi
     sed -i "s/@WEB_PORT@/$web_port/gi" /etc/nginx/http.d/default.conf
 
     # rc-service -q nginx start
@@ -309,10 +322,6 @@ setup_websocketd() {
     apk add websocketd
     wget $confhome/logviewer.html -O /tmp/index.html
     apk add coreutils
-
-    if [ -z "$web_port" ]; then
-        web_port=80
-    fi
 
     pkill websocketd || true
     # websocketd 遇到 \n 才推送，因此要转换 \r 为 \n
@@ -424,6 +433,16 @@ extract_env_from_cmdline() {
             fi
         done < <(xargs -n1 </proc/cmdline | grep "^${prefix}_" | sed "s/^${prefix}_//")
     done
+
+    # 如果空白则设置默认值
+    if [ "$distro" = windows ]; then
+        username=${username:-administrator}
+    else
+        username=${username:-root}
+    fi
+    ssh_port=${ssh_port:-22}
+    rdp_port=${rdp_port:-3389}
+    web_port=${web_port:-80}
 }
 
 ensure_service_started() {
@@ -1553,6 +1572,7 @@ install_alpine() {
     printf '\n' | chroot /os setup-ntp || true
 
     # 设置公钥
+    add_user_if_need /os
     if is_need_set_ssh_keys; then
         set_ssh_keys_and_del_password /os
     fi
@@ -1795,21 +1815,69 @@ install_nixos() {
         nix_swap="swapDevices = [{ device = \"/swapfile\"; size = $swap_size; }];"
     fi
 
+    # keys
     if is_need_set_ssh_keys; then
-        nix_ssh_keys_or_PermitRootLogin="
-services.openssh.settings.PasswordAuthentication = false;
-users.users.root.openssh.authorizedKeys.keys = [
+        nix_user_keys_fragment="
+openssh.authorizedKeys.keys = [
 $(del_comment_lines </configs/ssh_keys | del_empty_lines | quote_line | add_space 2)
 ];
 "
+    fi
+
+    # root user
+    if [ "$username" = root ]; then
+        if is_need_set_ssh_keys; then
+            nix_users="
+users.users.$username = {
+$(echo "$nix_user_keys_fragment" | add_space 2)
+};
+"
+        else
+            nix_users=""
+        fi
     else
-        nix_ssh_keys_or_PermitRootLogin='services.openssh.settings.PermitRootLogin = "yes";'
+        # normal user
+        # https://nixos.org/manual/nixos/stable/#sec-user-management
+        nix_users=$(
+            cat <<EOF
+users.users.$username = {
+  isNormalUser = true;
+  home = "/home/$username";
+  extraGroups = [
+    "wheel"
+    "networkmanager"
+  ];
+$(echo "$nix_user_keys_fragment" | add_space 2)
+};
+
+security.sudo.extraRules = [
+  { users = [ "$username" ]; commands = [ { command = "ALL"; options = [ "NOPASSWD" ]; } ]; }
+];
+EOF
+        )
     fi
 
-    if is_need_change_ssh_port; then
-        nix_ssh_ports="services.openssh.ports = [ $ssh_port ];"
-    fi
+    # openssh
+    nix_openssh="
+services.openssh = {
+  enable = true;
+$(
+        {
+            if is_need_change_ssh_port; then
+                echo "ports = [ $ssh_port ];"
+            fi
+            if is_need_set_ssh_keys; then
+                echo 'settings.PasswordAuthentication = false;'
+            fi
+            if [ "$username" = root ] && ! is_need_set_ssh_keys; then
+                echo 'settings.PermitRootLogin = "yes";'
+            fi
+        } | add_space 2
+    )
+};
+"
 
+    # frpc
     if ls /configs/frpc.* >/dev/null 2>&1; then
         nix_frpc=$(
             if false; then
@@ -1856,9 +1924,8 @@ $nix_bootloader
 $nix_swap
 $nix_substituters
 boot.kernelParams = [ $(get_ttys console= | quote_word) ];
-services.openssh.enable = true;
-$nix_ssh_keys_or_PermitRootLogin
-$nix_ssh_ports
+$nix_users
+$nix_openssh
 $nix_frpc
 $(cat /tmp/nixos_network_config.nix)
 ###################################################
@@ -1906,7 +1973,7 @@ EOF
 
     # 设置密码
     if ! is_need_set_ssh_keys; then
-        echo "root:$(get_password_linux_sha512)" | nixos-enter --root /os -- \
+        printf '%s\n' "$username:$(get_password_linux_sha512)" | nixos-enter --root /os -- \
             /run/current-system/sw/bin/chpasswd -e
     fi
 
@@ -2042,12 +2109,13 @@ basic_init() {
     fi
 
     # 公钥/密码
+    add_user_if_need "$os_dir"
     if is_need_set_ssh_keys; then
         set_ssh_keys_and_del_password $os_dir
-        change_ssh_conf_for_root_key_login $os_dir
+        change_ssh_conf_for_key_login $os_dir
     else
-        change_root_password $os_dir
-        change_ssh_conf_for_root_password_login $os_dir
+        change_user_password $os_dir
+        change_ssh_conf_for_password_login $os_dir
     fi
 
     # 下载 fix-eth-name.service
@@ -2119,6 +2187,10 @@ EOF
         if [ "$(uname -m)" = aarch64 ]; then
             pkgs="$pkgs archlinuxarm-keyring"
         fi
+        if ! [ "$username" = root ]; then
+            pkgs="$pkgs sudo"
+        fi
+
         pacstrap -K $os_dir $pkgs
 
         # dns
@@ -2268,6 +2340,10 @@ EOF
 
         if is_efi; then
             chroot $os_dir emerge sys-fs/dosfstools
+        fi
+
+        if ! [ "$username" = root ]; then
+            chroot $os_dir emerge app-admin/sudo
         fi
 
         # firmware + microcode
@@ -3179,7 +3255,7 @@ modify_windows() {
     # 5. 设置用户密码永不过期
     #    Azure 的 Windows 实例，初始用户的密码也是永不过期的
     #    管理员账号默认不会过期
-    if [ -n "$username" ]; then
+    if ! is_administrator_username "$username"; then
         cat <<EOF >$os_dir/windows-set-user-password-never-expires.bat
 wmic useraccount where name="$username" set passwordexpires=false || ^
 powershell -NoLogo -NoProfile -NonInteractive -ExecutionPolicy Bypass -Command "Set-LocalUser -Name '$username' -PasswordNeverExpires \$true"
@@ -3451,6 +3527,10 @@ remove_or_disable_cloud_init() {
                     rm -f $os_dir/etc/cloud/cloud.cfg.rpmsave
                     ;;
                 zypper)
+                    # 防止删除 cloud-init 时自动删除 sudo
+                    if ! [ "$username" = root ]; then
+                        sed -i '/^sudo$/d' "$os_dir/var/lib/zypp/AutoInstalled"
+                    fi
                     # 加上 -u 才会删除依赖
                     chroot $os_dir zypper remove -y -u cloud-init cloud-init-config-suse
                     ;;
@@ -3562,6 +3642,7 @@ EOF
         # find_and_mount /boot
         # find_and_mount /boot/efi
         # fedora 的 fstab 还有 /home /var，因此用 mount -a
+        # 不然无法往 /home/$username 写入 ssh 公钥
         chroot $os_dir mount -a
 
         cp_resolv_conf $os_dir
@@ -3823,7 +3904,7 @@ EOF
                 chroot $os_dir zypper remove -y --force-resolution $origin_kernel
             fi
             if $need_password_workaround; then
-                chroot $os_dir passwd -d root
+                chroot $os_dir passwd -d -l root
             fi
         fi
 
@@ -3860,7 +3941,7 @@ EOF
 
         # 在这里修改密码，而不是用cloud-init，因为我们的默认密码太弱
         is_password_plaintext && sed -i 's/enforce=everyone/enforce=none/' $os_dir/etc/security/passwdqc.conf
-        change_root_password $os_dir
+        change_user_password $os_dir
         is_password_plaintext && sed -i 's/enforce=none/enforce=everyone/' $os_dir/etc/security/passwdqc.conf
 
         # 下载仓库，选择 profile
@@ -4045,19 +4126,125 @@ create_swap() {
     fi
 }
 
-set_ssh_keys_and_del_password() {
-    os_dir=$1
-    info 'set ssh keys'
+del_user_password_and_lock() {
+    local os_dir=$1
+    local username=$2
 
-    # 添加公钥
-    (
-        umask 077
-        mkdir -p $os_dir/root/.ssh
-        cat /configs/ssh_keys >$os_dir/root/.ssh/authorized_keys
-    )
+    # 锁定用户后 ssh 能否登录
+    # alpine ×
+    # 其它系统 √
+
+    # root 空密码，不锁定 root，其它用户用 su - root 能否切换到 root
+    # alpine ×
+    # 其它系统 √
+
+    # centos 7 不支持一行命令同时 -d -l
+    # passwd: Only one of -l, -u, -d, -S may be specified.
 
     # 删除密码
-    chroot $os_dir passwd -d root
+    chroot "$os_dir" passwd -d "$username"
+
+    # 锁定用户
+    if ! [ -e "$os_dir/etc/alpine-release" ]; then
+        chroot "$os_dir" passwd -l "$username"
+    fi
+
+    # alpine 锁定用户无法登录 ssh
+    # 因为 alpine 默认不开启 pam
+    # 其他系统默认开启
+
+    # 不开启 pam 的话，锁定用户无法登录 ssh
+    # 开启 pam 后可以
+
+    # alpine 是通过安装 openssh-server-pam 开启 pam
+    # 不需要设置 UsePAM yes 也无法识别 UsePAM yes
+    # localhost:~# sshd -G | grep -i pam
+    # /etc/ssh/sshd_config line 88: Unsupported option UsePAM
+}
+
+set_ssh_keys_and_del_password() {
+    local os_dir=$1
+
+    info 'set ssh keys'
+
+    if [ "$username" = root ]; then
+        local user_home="/root"
+    else
+        local user_home="/home/$username"
+    fi
+
+    # 添加公钥
+    if true; then
+        (
+            umask 077
+            mkdir -p "$os_dir/$user_home/.ssh"
+            cat /configs/ssh_keys >"$os_dir/$user_home/.ssh/authorized_keys"
+        )
+        # 注意要用 chroot，否则 uid/gid 是 alpine live os 下的 uid/gid
+        chroot "$os_dir" chown "$username:$username" "$user_home"
+        chroot "$os_dir" chown "$username:$username" "$user_home/.ssh"
+        chroot "$os_dir" chown "$username:$username" "$user_home/.ssh/authorized_keys"
+    else
+        (
+            # 如果日后添加 bsd 无法 chroot 时可以这样
+            umask 077
+            read -r owner group < \
+                <(awk -F: -v user="$username" '$1==user {print $3,$4}' "$os_dir/etc/passwd")
+            install -D \
+                -m 600 \
+                -o "$owner" \
+                -g "$group" \
+                /configs/ssh_keys \
+                "$os_dir/$user_home/.ssh/authorized_keys"
+        )
+    fi
+
+    # 删除密码/锁定用户
+    del_user_password_and_lock "$os_dir" "$username"
+
+    # debian 云镜像 /etc/shadow 的 root 条目为
+    # root:!unprovisioned:20591:0:99999:7:::
+    # 首次开机会停在设置 root 密码界面，且阻塞 ssh 服务
+    # 因此这里手动清空 root 密码并锁定
+    if ! [ "$username" = root ] && is_have_cmd_on_disk "$os_dir" systemd-firstboot; then
+        del_user_password_and_lock "$os_dir" root
+    fi
+}
+
+_is_ssh_kv_effective() {
+    local os_dir=$1
+    local key=$2
+    local value=$3
+
+    # centos 7 不支持 -G
+    if res=$(chroot "$os_dir" sshd -G 2>/dev/null || chroot "$os_dir" sshd -T 2>/dev/null); then
+        printf "%s\n" "$res" | grep -Fxiq "$key $value"
+    else
+        error_and_exit "Failed to verify sshd config."
+    fi
+}
+
+is_ssh_kv_effective() {
+    local os_dir=$1
+    local key=$2
+    local value=$3
+
+    if _is_ssh_kv_effective "$os_dir" "$key" "$value"; then
+        return 0
+    fi
+
+    # centos 7 设置 prohibit-password ，sshd -T 会显示成 without-password
+    if [ "$(echo "$key" | to_lower)" = "permitrootlogin" ] && {
+        [ "$(echo "$value" | to_lower)" = "prohibit-password" ] ||
+            [ "$(echo "$value" | to_lower)" = "without-password" ]
+    }; then
+        if _is_ssh_kv_effective "$os_dir" "permitrootlogin" "prohibit-password" ||
+            _is_ssh_kv_effective "$os_dir" "permitrootlogin" "without-password"; then
+            return 0
+        fi
+    fi
+
+    return 1
 }
 
 change_ssh_conf_if_different() {
@@ -4079,7 +4266,7 @@ change_ssh_conf_if_different() {
     # PasswordAuthentication no
 
     # 0. 如果已经有这个配置，则不修改，避免不必要的改动
-    if chroot "$os_dir" sshd -G | grep -Fxiq "$key $value"; then
+    if is_ssh_kv_effective "$os_dir" "$key" "$value"; then
         return
     fi
 
@@ -4109,19 +4296,25 @@ change_ssh_conf_if_different() {
             echo "$key $value" >>$os_dir/etc/ssh/sshd_config
         fi
     fi
+
+    # 验证是否成功
+    if ! is_ssh_kv_effective "$os_dir" "$key" "$value"; then
+        error_and_exit "Failed to set sshd config $key $value."
+    fi
 }
 
-change_ssh_conf_for_root_key_login() {
+change_ssh_conf_for_key_login() {
     local os_dir=$1
 
-    # 目前脚本只用 root ，不需要设置这个
-    # change_ssh_conf_if_different "$os_dir" PasswordAuthentication no
+    change_ssh_conf_if_different "$os_dir" PasswordAuthentication no
 
-    # 这个也不需要设置，默认就是 prohibit-password
-    # change_ssh_conf_if_different "$os_dir" PermitRootLogin prohibit-password
+    # centos 7 PermitRootLogin 默认是 yes，而不是 prohibit-password
+    if [ "$username" = root ]; then
+        change_ssh_conf_if_different "$os_dir" PermitRootLogin prohibit-password
+    fi
 }
 
-change_ssh_conf_for_root_password_login() {
+change_ssh_conf_for_password_login() {
     local os_dir=$1
 
     # opensuse 16/tumbleweed 安装 openssh-server-config-rootlogin
@@ -4137,7 +4330,10 @@ change_ssh_conf_for_root_password_login() {
     # PasswordAuthentication 默认是 yes
     # 但某些发行版会在 sshd_config.d 里设置 PasswordAuthentication no
     change_ssh_conf_if_different "$os_dir" PasswordAuthentication yes
-    change_ssh_conf_if_different "$os_dir" PermitRootLogin yes
+
+    if [ "$username" = root ]; then
+        change_ssh_conf_if_different "$os_dir" PermitRootLogin yes
+    fi
 }
 
 change_ssh_port() {
@@ -4147,10 +4343,117 @@ change_ssh_port() {
     change_ssh_conf_if_different "$os_dir" Port "$ssh_port"
 }
 
-change_root_password() {
-    os_dir=$1
+# 暂时用不着
+add_user_if_need_for_alpine() {
+    local os_dir=$1
 
-    info 'change root password'
+    if ! grep -q "^$username:" "$os_dir/etc/passwd"; then
+        #  -a  Create admin user. Add to wheel group and set up doas
+        #  -u  Unlock the user automatically (eg. creating the user non-interactively
+        #      with an ssh key for login)
+        if is_need_set_ssh_keys; then
+            chroot "$os_dir" setup-user -a -u -k "$(cat /configs/ssh_keys)" "$username"
+        else
+            chroot "$os_dir" setup-user -a -u "$username"
+            change_user_password $os_dir
+        fi
+    fi
+}
+
+add_user_if_need() {
+    local os_dir=$1
+
+    # 添加用户
+    if ! grep -q "^$username:" "$os_dir/etc/passwd"; then
+        # debian 推荐使用 adduser 而不是 useradd
+        # https://manpages.debian.org/trixie/passwd/useradd.8.en.html
+        # useradd is a low level utility for adding users.
+        # On Debian, administrators should usually use adduser(8) instead.
+
+        # adduser 会从 /etc/adduser.conf 读取默认要添加的组
+        # 然而通常这个值是空白
+
+        # alpine
+        if is_have_cmd_on_disk "$os_dir" adduser &&
+            chroot "$os_dir" adduser --help 2>&1 | grep -Fq -- BusyBox; then
+            chroot "$os_dir" adduser --disabled-password "$username"
+
+        # debian/ubuntu
+        elif is_have_cmd_on_disk "$os_dir" adduser &&
+            chroot "$os_dir" adduser --help 2>&1 | grep -Fq -- '--disabled-password'; then
+            chroot "$os_dir" adduser --disabled-password --comment '' "$username"
+
+        # el
+        elif is_have_cmd_on_disk "$os_dir" adduser &&
+            chroot "$os_dir" adduser --help 2>&1 | grep -Fq -- '--password'; then
+            chroot "$os_dir" adduser --password ! "$username"
+
+        # arch/gentoo 默认没有 adduser
+        else
+            chroot "$os_dir" useradd -m "$username"
+        fi
+    fi
+
+    # 添加到 wheel/sudo 组
+    if ! [ "$username" = root ]; then
+        if [ -e "$os_dir/etc/alpine-release" ]; then
+            # alpine
+            # https://github.com/alpinelinux/alpine-conf/blob/master/setup-user.in#L168
+
+            # 安装 doas
+            chroot "$os_dir" apk add doas doas-sudo-shim
+            mkdir -p "$os_dir/etc/doas.d"
+
+            # 添加用户到组
+            chroot "$os_dir" addgroup "$username" wheel
+
+            # doas: 添加 wheel 组
+            local file="$os_dir/etc/doas.d/20-wheel.conf"
+            local content="permit persist :wheel"
+            if ! grep -q "^$content" "$file" 2>/dev/null; then
+                echo "$content" >>"$file"
+            fi
+
+            # doas: 添加单个用户 nopass
+            echo "permit nopass $username" >"$os_dir/etc/doas.d/99-$username.conf"
+        else
+            # 通常用 wheel 组
+            # debian/ubuntu 没有 wheel 组，只有 sudo 组
+
+            # aws lightsail 上测试默认用户加入了哪些组
+            # debian       admin : admin adm dialout cdrom floppy sudo audio dip video plugdev
+            # ubuntu       ubuntu : ubuntu adm cdrom sudo dip lxd
+            # almalinux    ec2-user : ec2-user adm systemd-journal
+            # opensuse     ec2-user : ec2-user
+
+            # 添加用户到组
+            for group in \
+                wheel sudo \
+                adm dialout cdrom floppy audio dip video plugdev lxd systemd-journal; do
+                if grep -q "^$group:" "$os_dir/etc/group"; then
+                    # chroot "$os_dir" addgroup "$username" "$group"
+                    chroot "$os_dir" usermod -aG "$group" "$username"
+                fi
+            done
+
+            # sudo: gentoo 安装 sudo 后也没有 /etc/sudoers.d
+            if ! [ -d "$os_dir/etc/sudoers.d" ]; then
+                install -d -m 0750 "$os_dir/etc/sudoers.d"
+            fi
+
+            # sudo: 添加单个用户 NOPASSWD
+            # https://wiki.archlinux.org/title/Sudo#Sudoers_default_file_permissions
+            local file="$os_dir/etc/sudoers.d/99-$username"
+            printf '%s\n' "$username ALL=(ALL) NOPASSWD:ALL" >"$file"
+            chmod 0440 "$file"
+        fi
+    fi
+}
+
+change_user_password() {
+    local os_dir=$1
+
+    info 'change user password'
 
     if is_password_plaintext; then
         pam_d=$os_dir/etc/pam.d
@@ -4184,13 +4487,13 @@ change_root_password() {
 
         # 分两行写，不然遇到错误不会终止
         plaintext=$(get_password_plaintext)
-        echo "root:$plaintext" | chroot $os_dir chpasswd
+        printf '%s\n' "$username:$plaintext" | chroot $os_dir chpasswd
 
         if $has_pamd_chpasswd; then
             mv $pam_d/chpasswd.orig $pam_d/chpasswd
         fi
     else
-        echo "root:$(get_password_linux_sha512)" | chroot $os_dir chpasswd -e
+        printf '%s\n' "$username:$(get_password_linux_sha512)" | chroot $os_dir chpasswd -e
     fi
 }
 
@@ -4460,6 +4763,7 @@ chroot_apt_autoremove() {
 del_default_user() {
     os_dir=$1
 
+    local user
     while read -r user; do
         if grep ^$user':\$' "$os_dir/etc/shadow"; then
             echo "Deleting user $user"
@@ -4593,18 +4897,20 @@ install_fnos() {
     mount_pseudo_fs /os
 
     # 更改密码
-    if is_need_set_ssh_keys; then
-        set_ssh_keys_and_del_password $os_dir
-    else
-        change_root_password $os_dir
+    if false; then
+        if is_need_set_ssh_keys; then
+            set_ssh_keys_and_del_password $os_dir
+        else
+            change_user_password $os_dir
+        fi
     fi
 
     # ssh root 登录，测试用
     if false; then
         if is_need_set_ssh_keys; then
-            change_ssh_conf_for_root_key_login $os_dir
+            change_ssh_conf_for_key_login $os_dir
         else
-            change_ssh_conf_for_root_password_login $os_dir
+            change_ssh_conf_for_password_login $os_dir
         fi
         chroot $os_dir systemctl enable ssh
     fi
@@ -5754,6 +6060,26 @@ is_nt_ver_ge() {
     orig=$(printf '%s\n' "$1" "$nt_ver")
     sorted=$(echo "$orig" | sort -V)
     [ "$orig" = "$sorted" ]
+}
+
+# reinstall.sh 有同名方法
+is_administrator_username() {
+    username_in_lower=$(printf "%s" "$1" | to_lower)
+
+    for builtin_username in \
+        administrator \
+        administrador \
+        administrateur \
+        administratör \
+        администратор \
+        järjestelmänvalvoja \
+        rendszergazda; do
+        if [ "$username_in_lower" = "$builtin_username" ]; then
+            return 0
+        fi
+    done
+
+    return 1
 }
 
 get_cloud_vendor() {
@@ -7218,26 +7544,26 @@ EOF
         /tmp/autounattend.xml
 
     # 账号密码
-    if [ -n "$username" ]; then
-        # 普通账号
-        password_base64=$(get_password_windows_user_base64)
-        xmlstarlet ed -L -N x="urn:schemas-microsoft-com:unattend" \
-            -d "//x:AdministratorPassword" \
-            /tmp/autounattend.xml
-        sed -i \
-            -e "s|%enable_administrator%|0|" \
-            -e "s|%user_username%|$username|" \
-            -e "s|%user_password%|$password_base64|" \
-            /tmp/autounattend.xml
-    else
+    if is_administrator_username "$username"; then
         # Administrator
         password_base64=$(get_password_windows_administrator_base64)
         xmlstarlet ed -L -N x="urn:schemas-microsoft-com:unattend" \
             -d "//x:LocalAccounts" \
             /tmp/autounattend.xml
         sed -i \
-            -e "s|%enable_administrator%|1|" \
-            -e "s|%administrator_password%|$password_base64|" \
+            -e "s|%enable_administrator%|1|gi" \
+            -e "s|%administrator_password%|$password_base64|gi" \
+            /tmp/autounattend.xml
+    else
+        # 普通账号
+        password_base64=$(get_password_windows_user_base64)
+        xmlstarlet ed -L -N x="urn:schemas-microsoft-com:unattend" \
+            -d "//x:AdministratorPassword" \
+            /tmp/autounattend.xml
+        sed -i \
+            -e "s|%enable_administrator%|0|gi" \
+            -e "s|%user_username%|$username|gi" \
+            -e "s|%user_password%|$password_base64|gi" \
             /tmp/autounattend.xml
     fi
 
@@ -7838,13 +8164,14 @@ if is_need_change_ssh_port; then
 fi
 
 # 设置密码，添加开机启动 + 开启 ssh 服务
+add_user_if_need /
 if is_need_set_ssh_keys; then
     set_ssh_keys_and_del_password /
-    # 目前脚本只用 root，不需要设置这个
-    # change_ssh_conf_if_different / PasswordAuthentication no
+    change_ssh_conf_for_key_login /
     printf '\n' | setup-sshd
 else
-    change_root_password /
+    change_user_password /
+    change_ssh_conf_for_password_login /
     printf '\nyes' | setup-sshd
 fi
 
