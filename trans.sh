@@ -6711,8 +6711,9 @@ install_windows() {
         # vmd
         # RST v17 不支持 vmd
         # RST v18 inf 要求 15063 或以上
-        # RST v19 inf 要求 15063 或以上
+        # RST v19 inf 要求 15063 或以上，包含 v18 全部硬件 id
         # RST v20 inf 要求 19041 或以上
+        # RST v21 inf 要求 19041 或以上
         if [ -d /sys/module/vmd ] && [ "$build_ver" -ge 15063 ] && [ "$arch_wim" = x86_64 ]; then
             add_driver_vmd
         fi
@@ -7508,29 +7509,36 @@ EOF
     add_driver_vmd() {
         info "Add drivers: VMD"
 
-        # RST v20 不支持 11代 PCI\VEN_8086&DEV_9A0B
-        support_v19=false
-        support_v20=false
+        local id=
         for d in /sys/bus/pci/devices/*; do
-            vendor=$(cat "$d/vendor" 2>/dev/null)
-            device=$(cat "$d/device" 2>/dev/null)
-            if [ "$vendor" = "0x8086" ]; then
-                case "$device" in
-                "0x9a0b") support_v19=true && support_v20=false && break ;;
-                "0x467f") support_v19=true && support_v20=true && break ;;
-                "0xa77f") support_v19=true && support_v20=true && break ;;
-                "0x7d0b") support_v19=false && support_v20=true && break ;;
-                "0xad0b") support_v19=false && support_v20=true && break ;;
-                esac
+            if [ "$(cat "$d/vendor" 2>/dev/null)" = "0x8086" ] &&
+                device=$(sed 's/^0x//' "$d/device" 2>/dev/null); then
+
+                # v21
+                if [ "$build_ver" -ge 19041 ] &&
+                    [ "$device" = "b06f" ]; then
+                    id=920456
+                    break
+
+                # v20
+                elif [ "$build_ver" -ge 19041 ] &&
+                    { [ "$device" = "467f" ] ||
+                        [ "$device" = "a77f" ] ||
+                        [ "$device" = "7d0b" ] ||
+                        [ "$device" = "ad0b" ]; }; then
+                    id=849936
+                    break
+
+                # v19
+                elif [ "$build_ver" -ge 15063 ] &&
+                    { [ "$device" = "9a0b" ] ||
+                        [ "$device" = "467f" ] ||
+                        [ "$device" = "a77f" ]; }; then
+                    id=849933
+                    break
+                fi
             fi
         done
-
-        local id
-        if $support_v20 && [ "$build_ver" -ge 19041 ]; then
-            id=849936
-        elif $support_v19 && [ "$build_ver" -ge 15063 ]; then
-            id=849933
-        fi
 
         if [ -n "$id" ]; then
             local url
