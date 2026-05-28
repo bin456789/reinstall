@@ -2066,6 +2066,19 @@ add_frpc_systemd_service_if_need() {
     fi
 }
 
+get_fs_of_mount_point() {
+    local mount_point=$1
+
+    if ! [ "$mount_point" = / ]; then
+        # 删除最后的若干个 /
+        mount_point=$(printf "%s" "$mount_point" | sed 's,/*$,,')
+    fi
+
+    # findmnt 要安装
+    # findmnt "$mount_point" -rno FSTYPE
+    mount | awk -v mp="$1" '$3==mp {print $5}' | grep .
+}
+
 basic_init() {
     os_dir=$1
 
@@ -2179,11 +2192,20 @@ EOF
 
         # 安装系统
         # 要安装分区工具(包含 fsck.xxx)，用于 initramfs 检查分区数据
-        # base 包含 e2fsprogs
         pkgs="base grub openssh"
+
+        # efi fs
         if is_efi; then
             pkgs="$pkgs efibootmgr dosfstools"
         fi
+
+        # root fs
+        case $(get_fs_of_mount_point "$os_dir") in
+        xfs) pkgs="$pkgs xfsprogs" ;;
+        ext4) pkgs="$pkgs e2fsprogs" ;;
+        btrfs) pkgs="$pkgs btrfs-progs" ;;
+        esac
+
         if [ "$(uname -m)" = aarch64 ]; then
             pkgs="$pkgs archlinuxarm-keyring"
         fi
@@ -2335,20 +2357,32 @@ EOF
         rm -rf $os_dir/var/db/repos/gentoo
         chroot $os_dir emerge --sync
 
-        # https://wiki.gentoo.org/wiki/Handbook:AMD64/Installation/Tools#Filesystem_tools
-        chroot $os_dir emerge sys-block/io-scheduler-udev-rules
+        # 一次性安装所有包，可减少软件包重复 rebuild ?
+        local pkgs=
 
+        # https://wiki.gentoo.org/wiki/Handbook:AMD64/Installation/Tools#Filesystem_tools
+        pkgs="$pkgs sys-block/io-scheduler-udev-rules"
+
+        # efi fs
         if is_efi; then
-            chroot $os_dir emerge sys-fs/dosfstools
+            pkgs="$pkgs sys-fs/dosfstools sys-boot/efibootmgr"
         fi
 
+        # root fs
+        case $(get_fs_of_mount_point "$os_dir") in
+        xfs) pkgs="$pkgs sys-fs/xfsprogs" ;;
+        ext4) pkgs="$pkgs sys-fs/e2fsprogs" ;;
+        btrfs) pkgs="$pkgs sys-fs/btrfs-progs" ;;
+        esac
+
+        # sudo
         if ! [ "$username" = root ]; then
-            chroot $os_dir emerge app-admin/sudo
+            pkgs="$pkgs app-admin/sudo"
         fi
 
         # firmware + microcode
         if fw_pkgs=$(get_ucode_firmware_pkgs) && [ -n "$fw_pkgs" ]; then
-            chroot $os_dir emerge $fw_pkgs
+            pkgs="$pkgs $fw_pkgs"
         fi
 
         # 安装 grub + 内核
@@ -2363,8 +2397,11 @@ EOF
         uuid=$(chroot $os_dir findmnt -rno UUID /)
         mkdir -p $os_dir/etc/dracut.conf.d
         echo "kernel_cmdline=\" root=UUID=$uuid \"" >$os_dir/etc/dracut.conf.d/00-installkernel.conf
+        pkgs="$pkgs sys-kernel/gentoo-kernel-bin"
 
-        chroot $os_dir emerge sys-kernel/gentoo-kernel-bin
+        # 安装
+        # 不添加 -n/--noreplace 的话会 rebuild 选定的包，无论是否已安装
+        chroot "$os_dir" emerge -n $pkgs
     }
 
     install_aosc() {
