@@ -87,7 +87,7 @@ rem for /f "tokens=3" %%a in (X:\disk.txt) do (
 rem     set "DiskIndex=%%a"
 rem )
 
-rem PE 下没有 findstr，因此不能从 wmic 的输出直接选出开头为 * 的行，要用复杂的方法取出磁盘编号
+rem PE 下没有 findstr，因此不能从 diskpart 的输出直接选出开头为 * 的行，要用复杂的方法取出磁盘编号
 
 rem 输出 diskpart 结果到文件
 (echo select vol %VolIndex% & echo list disk) | diskpart | find "* " > X:\disk.txt

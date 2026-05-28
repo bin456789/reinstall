@@ -512,7 +512,9 @@ clear_previous() {
     fi
     disconnect_qcow
     # 安装 arch 有 gpg-agent 进程驻留
-    pkill gpg-agent || true
+    killall gpg-agent || true
+    # 在 aria2c 下载时手动中止脚本，aria2c 还会在后台下载
+    killall aria2c || true
     rc-service -q --ifexists --ifstarted nix-daemon stop
     swapoff -a
     umount_all
@@ -1702,6 +1704,8 @@ install_nixos() {
     export USER=root
     export HOME=/root
 
+    # 也可以用 export NIX_CONFIG 和 --option substituters https://mirror.nju.edu.cn/nix-channels/store
+    # https://help.mirrorz.org/nix-channels/
     configure_nix_substituters() {
         if ! is_in_china; then
             return
@@ -1795,6 +1799,9 @@ install_nixos() {
     # 安装 nixos-install-tools
     nix-env -iA nixpkgs.nixos-install-tools -j $threads
 
+    # 安装 nixfmt
+    nix-env -iA nixpkgs.nixfmt -j $threads
+
     # 生成配置并显示
     nixos-generate-config --root /os
     echo "Original NixOS Configuration:"
@@ -1812,7 +1819,7 @@ install_nixos() {
     fi
 
     if [ -e /os/swapfile ] && $keep_swap; then
-        nix_swap="swapDevices = [{ device = \"/swapfile\"; size = $swap_size; }];"
+        nix_swap="swapDevices = [ { device = \"/swapfile\"; size = $swap_size; } ];"
     fi
 
     # keys
@@ -1943,10 +1950,10 @@ EOF
     )
     alls="$olds"
     # https://github.com/search?q=repo%3ANixOS%2Fnixpkgs+availableKernelModules&type=code
-    for mod in ahci ata_piix uhci_hcd sr_mod nvme \
+    for mod in ahci ata_piix uhci_hcd sr_mod nvme vmd \
         virtio_pci virtio_blk virtio_scsi \
         xen_blkfront xen_scsifront \
-        hv_storvsc \
+        hv_storvsc pci_hyperv \
         vmw_pvscsi \
         mptspi; do
         if [ -d /sys/module/$mod ] && ! echo "$olds" | grep -wq "$mod"; then
@@ -1963,6 +1970,10 @@ EOF
         "$(echo "$alls" | quote_word)" \
         array \
         /os/etc/nixos/hardware-configuration.nix
+
+    # 格式化
+    nixfmt /os/etc/nixos/configuration.nix
+    nixfmt /os/etc/nixos/hardware-configuration.nix
 
     # 显示修改后的配置
     echo "Modified NixOS Configuration:"
@@ -3289,13 +3300,22 @@ modify_windows() {
         bats="$bats windows-set-netconf-$ethx.bat"
     done
 
-    # 5. 设置用户密码永不过期
+    # 5. 设置用户密码永不过期（仅限 iso 安装）
     #    Azure 的 Windows 实例，初始用户的密码也是永不过期的
     #    管理员账号默认不会过期
-    if ! is_administrator_username "$username"; then
+    if [ "$distro" = "windows" ] && ! is_administrator_username "$username"; then
+        # 两种方法都可以，但语法很神奇
+
+        # 第二行前面不能有空格
         cat <<EOF >$os_dir/windows-set-user-password-never-expires.bat
 wmic useraccount where name="$username" set passwordexpires=false || ^
 powershell -NoLogo -NoProfile -NonInteractive -ExecutionPolicy Bypass -Command "Set-LocalUser -Name '$username' -PasswordNeverExpires \$true"
+del "%~f0"
+EOF
+        # 第二行 || 前面必须有空格
+        cat <<EOF >$os_dir/windows-set-user-password-never-expires.bat
+wmic useraccount where name="$username" set passwordexpires=false ^
+  || powershell -NoLogo -NoProfile -NonInteractive -ExecutionPolicy Bypass -Command "Set-LocalUser -Name '$username' -PasswordNeverExpires \$true"
 del "%~f0"
 EOF
         unix2dos $os_dir/windows-set-user-password-never-expires.bat
@@ -7147,8 +7167,14 @@ EOF
         *)
             # 先获取最新版本号，再下载
             # 用 stable-virtio 的话国内镜像下载的可能是缓存的旧版
-            dir=$(wget --spider -S "$baseurl/stable-virtio" 2>&1 >/dev/null |
-                grep -E '^  Location: ' | grep -Ewo -m1 'archive-virtio/virtio-win-.+$')
+
+            # https://fedorapeople.org/groups/virt/virtio-win/direct-downloads/stable-virtio/
+            # 路径是网页，可能会弹出 anubis 验证
+
+            # https://fedorapeople.org/groups/virt/virtio-win/direct-downloads/stable-virtio/CHECKSUM
+            # 路径是文件，应该不会弹出 anubis 验证？
+            dir=$(wget --spider -S "$baseurl/stable-virtio/CHECKSUM" 2>&1 >/dev/null |
+                grep -E '^  Location: ' | grep -Ewo -m1 'archive-virtio/virtio-win-[^/]+')
             # dir=stable-virtio
             ;;
         esac

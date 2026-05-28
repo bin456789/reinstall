@@ -881,7 +881,7 @@ is_have_arm_version() {
 find_windows_iso() {
     parse_windows_image_name || error_and_exit "--image-name wrong: $image_name"
     if ! { [ "$version" = 8 ] || [ "$version" = 8.1 ]; } && [ -z "$edition" ]; then
-        error_and_exit "Edition is not set."
+        error_and_exit "Windows Edition is not specified."
     fi
 
     if [ -z "$lang" ]; then
@@ -1284,8 +1284,12 @@ Continue?
             if is_in_china; then
                 hostname=mirror.nju.edu.cn
             else
-                # http.kali.org 没有 ipv6 地址
-                # http.kali.org (geoip 重定向) 到 kali.download (cf)
+                # http.kali.org (geoip 重定向) 到 kali.download (cf) 或最近的站点
+                # 文档还说 which is guaranteed to be up-to-date
+                # 但是目测有可能重定义到一个拉黑了部分 IP 的服务器
+                # 因此这里用 kali.download (cf)
+                # https://www.kali.org/docs/community/kali-linux-mirrors/
+                # https://www.kali.org/docs/general-use/kali-apt-sources/
                 hostname=kali.download
             fi
             codename=kali-rolling

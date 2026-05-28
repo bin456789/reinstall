@@ -20,7 +20,7 @@ One-Click system reinstallation script for VPS [中文](README.md)
 - Supports BIOS and EFI boot, and ARM Server
 - No homemades image included, all resources are obtained in real-time from mirror sites
 
-If this helped you, you can buy me a milk tea.
+Buy me a milk tea:
 [![Donate](https://img.shields.io/badge/Donate-30363D?style=for-the-badge&logo=GitHub-Sponsors&logoColor=#EA4AAA)](https://github.com/sponsors/bin456789)
 
 [![Sponsors](https://raw.githubusercontent.com/bin456789/sponsors/refs/heads/master/sponsors.svg)](https://github.com/sponsors/bin456789)
@@ -147,12 +147,13 @@ certutil -urlcache -f -split https://cnb.cool/bin456789/reinstall/-/git/raw/main
 >
 > If the script was run by mistake, you can run `bash reinstall.sh reset` before rebooting to cancel the reinstallation operation.
 
-- Username `root`. The script prompts for a password. If left blank, a random one is generated.
-- When installing the latest version, the version number does not need to be specified.
+- The script prompts for a username and password. If left blank, will use `root` and random password.
+- If no version specified, will install the latest version.
 - Maximizes disk space utilization: no boot or swap partitions.
-- Automatically selects different optimized kernels based on machine type, such as `Cloud` or `HWE` kernels.
+- Automatically install optimized kernel based on machine type and vendor.
 - When installing Red Hat, you must provide the `qcow2` image link obtained from <https://access.redhat.com/downloads/content/rhel>. You can also install `qcow2` of other RHEL-based OS, such as `Alibaba Cloud Linux` and `TencentOS Server`.
 - After reinstallation, if you need to change the SSH port or switch to key-based login, make sure to also modify the files inside `/etc/ssh/sshd_config.d/`.
+- To ensure a faster reinstall, the new system will not be updated during the process. Please update the system manually after reinstallation.
 
 ```bash
 bash reinstall.sh anolis      7|8|23
@@ -178,9 +179,10 @@ bash reinstall.sh anolis      7|8|23
 
 #### Optional Parameters
 
+- `--username USERNAME` Set the username
 - `--password PASSWORD` Set the password
 - `--ssh-key KEY` Set up SSH login public key, [formatted as follows](#--ssh-key). When using public key, password is empty.
-- `--ssh-port PORT` Change the SSH port (for log observation during installation and for the new system)
+- `--ssh-port PORT` Change the SSH port
 - `--web-port PORT` Change the Web port (for log observation during installation only)
 - `--frpc-config PATH` Add frpc for intranet tunneling. Parameter can be local filepath or HTTP URL of the configuration file.
 - `--hold 1` Reboot only into install environment, without running installer, only for SSH connect to test network connection.
@@ -237,6 +239,7 @@ bash reinstall.sh ubuntu --installer
 - Supports `raw` and fixed-size `vhd` image formats. Either uncompressed or compressed as `.gz`, `.xz`, `.zst`, `.tar`, `.tar.gz`, `.tar.xz`, `.tar.zst`.
 - When deploy a Windows image, the system disk will be automatically expanded, and machines with a static IP will have their IP configured, and may take a few minutes after the first boot for the configuration to take effect.
 - When deploy a Linux image, will **NOT** modify any contents of the image.
+- The script prompts for a username and password for SSH to view logs during the installation. If left blank, will use `root` and random password.
 
 ```bash
 bash reinstall.sh dd --img "https://example.com/xxx.xz"
@@ -244,10 +247,13 @@ bash reinstall.sh dd --img "https://example.com/xxx.xz"
 
 #### Optional Parameters
 
-- `--allow-ping` Configure Windows Firewall to Allow Ping Responses (DD Windows only)
-- `--rdp-port PORT` Change RDP port (DD Windows only)
+- `--username USERNAME` Set username (for log observation during installation)
+- `--password PASSWORD` Set Password (for log observation during installation)
+- `--ssh-key KEY` Set up SSH login public key (for log observation during installation), [formatted as follows](#--ssh-key). When using public key, password is empty.
 - `--ssh-port PORT` Change SSH port (for log observation during installation)
+- `--rdp-port PORT` Change RDP port (DD Windows only)
 - `--web-port PORT` Change Web port (for log observation during installation)
+- `--allow-ping` Configure Windows Firewall to Allow Ping Responses (DD Windows only)
 - `--frpc-config PATH` Add frpc for intranet tunneling (DD Windows only). Parameter can be local filepath or HTTP URL of the configuration file.
 - `--cloud-data PATH_OR_URL` Inject cloud-init NoCloud configuration into the DD'd Linux image (DD Linux only)
 - `--hold 1` Reboot only into install environment, without running installer, only for SSH connect to test network connection.
@@ -257,7 +263,7 @@ bash reinstall.sh dd --img "https://example.com/xxx.xz"
 >
 > `--cloud-data` accepts a local directory path or an HTTP base URL. The directory must contain a `user-data` file; `meta-data` and `network-config` are optional:
 >
-> ```
+> ```bash
 > seed/
 > ├── user-data      # required
 > ├── meta-data      # optional
@@ -282,7 +288,7 @@ bash reinstall.sh dd --img "https://example.com/xxx.xz"
 ### Feature 3: Reboot to <img width="16" height="16" src="https://www.alpinelinux.org/alpine-logo.ico" /> Alpine Live OS
 
 - You can use SSH to backup/restore disk, manually perform DD operations, partition modifications, manual Alpine installation, and other operations.
-- Username `root`. The script prompts for a password. If left blank, a random one is generated.
+- The script prompts for a username and password. If left blank, will use `root` and random password.
 
 > [!TIP]
 >
@@ -296,9 +302,10 @@ bash reinstall.sh alpine --hold 1
 
 #### Optional Parameters
 
+- `--username USERNAME` Set username
 - `--password PASSWORD` Set password
-- `--ssh-port PORT` Change SSH port
 - `--ssh-key KEY` Set up SSH login public key, [formatted as follows](#--ssh-key). When using public key, password is empty.
+- `--ssh-port PORT` Change SSH port
 - `--frpc-config PATH` Add frpc for intranet tunneling. Parameter can be local filepath or HTTP URL of the configuration file.
 
 ### Feature 4: Reboot to <img width="16" height="16" src="https://netboot.xyz/img/favicon.ico" /> netboot.xyz
@@ -327,8 +334,8 @@ bash reinstall.sh netboot.xyz
 >
 > If the script was run by mistake, you can run `bash reinstall.sh reset` before rebooting to cancel the reinstallation operation.
 
-- The script prompts for a username. If left blank, will use `administrator`.
-- The script prompts for a password. If left blank, will use a random one.
+- The script prompts for a username and password. If left blank, will use `administrator` and random password.
+- In a few languages, the system administrator account is not `administrator`. [Details](https://learn.microsoft.com/archive/technet-wiki/13813.localized-names-for-administrator-account-in-windows#list-of-languages-that-localize-the-administrator-account-name)
 - If remote login fails, try adding `.\` before the username, for example, `.\administrator`.
 - The machine with a static IP will automatically configure the IP. It may take a few minutes to take effect on the first boot.
 - Supports ISO images in any language.
@@ -447,12 +454,12 @@ bash reinstall.sh windows \
 
 #### Optional Parameters
 
-- `--username USERNAME` Set Username (for Windows only)
+- `--username USERNAME` Set Username
 - `--password PASSWORD` Set Password
-- `--allow-ping` Configure Windows Firewall to Allow Ping Responses
 - `--rdp-port PORT` Change RDP port
 - `--ssh-port PORT` Change SSH port (for log observation during installation only)
 - `--web-port PORT` Change Web port (for log observation during installation only)
+- `--allow-ping` Configure Windows Firewall to Allow Ping Responses
 - `--add-driver INF_OR_DIR` Add additional driver, specifying .inf path, or the folder contains .inf file.
   - The driver must be downloaded to current system first.
   - This parameter can be set multiple times to add different driver.
@@ -467,7 +474,7 @@ bash reinstall.sh windows \
 - AWS ([ENA Network Adapter][aws-ena], [NVME Storage Controller][aws-nvme])
 - GCP ([gVNIC Network Adapter][gcp-gvnic], [GGA Display Adapter][gcp-gga])
 - Azure ([MANA Network Adapter][azure-mana])
-- Intel (VMD Storage Controller: [11th Gen Core][intel-vmd-gen11], [12th-15th Gen Core][intel-vmd-gen12-to-gen15], Network Adapter: [7][intel-nic-7], [8.x][intel-nic-8.1], [10][intel-nic-10], [11][intel-nic-11], [2008 R2][intel-nic-7], [2012][intel-nic-2012], [2012 R2][intel-nic-2012-r2], [2016][intel-nic-2016], [2019][intel-nic-2019], [2022][intel-nic-2022], [2025][intel-nic-2025])
+- Intel (VMD Storage Controller: [11th Gen Core][intel-vmd-gen11], [12th-15th Gen Core][intel-vmd-gen12-to-gen15], [Core Ultra 3][intel-vmd-ultra3], Network Adapter: [7][intel-nic-7], [8.x][intel-nic-8.1], [10][intel-nic-10], [11][intel-nic-11], [2008 R2][intel-nic-7], [2012][intel-nic-2012], [2012 R2][intel-nic-2012-r2], [2016][intel-nic-2016], [2019][intel-nic-2019], [2022][intel-nic-2022], [2025][intel-nic-2025])
 
 [virtio-virtio]: https://fedorapeople.org/groups/virt/virtio-win/direct-downloads/
 [virtio-aliyun]: https://www.alibabacloud.com/help/ecs/user-guide/install-the-virtio-driver-1
@@ -483,6 +490,7 @@ bash reinstall.sh windows \
 [azure-mana]: https://learn.microsoft.com/azure/virtual-network/accelerated-networking-mana-windows
 [intel-vmd-gen11]: https://www.intel.com/content/www/us/en/download/849933/intel-rapid-storage-technology-driver-installation-software-with-intel-optane-memory-12th-to-13th-gen-platforms.html
 [intel-vmd-gen12-to-gen15]: https://www.intel.com/content/www/us/en/download/849936/intel-rapid-storage-technology-driver-installation-software-with-intel-optane-memory-12th-to-15th-gen-platforms.html
+[intel-vmd-ultra3]: https://www.intel.com/content/www/us/en/download/920456/intel-rapid-storage-technology-driver-installation-software-for-intel-core-ultra-series-3-platforms.html
 [intel-nic-7]: https://www.intel.com/content/www/us/en/download/15590/intel-network-adapter-driver-for-windows-7-final-release.html
 [intel-nic-8.1]: https://www.intel.com/content/www/us/en/download/17479/intel-network-adapter-driver-for-windows-8-1.html
 [intel-nic-10]: https://www.intel.com/content/www/us/en/download/18293/intel-network-adapter-driver-for-windows-10.html
