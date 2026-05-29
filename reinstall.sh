@@ -1016,7 +1016,7 @@ get_windows_iso_link() {
         grep -Ewq 'ltsb|ltsc' <<<"$edition"
     }
 
-    # 部分 bash 不支持 $() 里面嵌套case，所以定义成函数
+    # 部分 bash 例如 ubuntu 22.04 不支持 $() 里面嵌套case，所以定义成函数
     label_msdn=$(get_label_msdn)
     label_msdl=$(get_label_msdl)
     label_vlsc=$(get_label_vlsc)
@@ -3673,8 +3673,27 @@ EOF
         -e "/^[[:space:]]*set[[:space:]]/s/E//" \
         $initrd_dir/trans.sh
 
+    # ubuntu 22.04 不支持这种语法，bash -n 会报错
+    # 因此不验证 trans.sh 的语法
+    # a=$(
+    #     case 1 in
+    #     1)
+    #         case 1 in
+    #         1) echo ;;
+    #         2) echo ;;
+    #         esac
+    #         ;;
+    #     2)
+    #         case 1 in
+    #         1) echo ;;
+    #         2) echo ;;
+    #         esac
+    #         ;;
+    #     esac
+    # )
+
     # 测试魔改后的 trans.sh 有没有语法问题
-    bash -n $initrd_dir/trans.sh
+    # bash -n $initrd_dir/trans.sh
 }
 
 get_disk_drivers() {

@@ -4273,8 +4273,21 @@ _is_ssh_kv_effective() {
     local key=$2
     local value=$3
 
-    # centos 7 不支持 -G
+    # 解决 ubuntu 22.04 报错
+    # Missing privilege separation directory: /run/sshd
+    if [ -d "$os_dir/run/sshd" ]; then
+        we_create_run_sshd_dir=false
+    else
+        we_create_run_sshd_dir=true
+        mkdir -p "$os_dir/run/sshd"
+    fi
+
+    # centos 7 / ubuntu 22.04 不支持 -G
     if res=$(chroot "$os_dir" sshd -G 2>/dev/null || chroot "$os_dir" sshd -T 2>/dev/null); then
+        # 删除自己创建的，避免后续权限不准确
+        if $we_create_run_sshd_dir; then
+            rm -rf "$os_dir/run/sshd"
+        fi
         printf "%s\n" "$res" | grep -Fxiq "$key $value"
     else
         error_and_exit "Failed to verify sshd config."
