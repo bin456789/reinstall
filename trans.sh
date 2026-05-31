@@ -7122,15 +7122,21 @@ EOF
         # 10 >>> w10
         # 2012 r2 >>> 2k12R2
         virtio_sys=$(
-            case "$(echo "$product_ver" | to_lower)" in
-            'vista') echo 2k8 ;; # 没有 vista 文件夹
-            *)
+            # 没有 vista 文件夹
+            if [ "$product_ver" = vista ]; then
+                echo 2k8
+
+            # 2k16 2k19 2k22 文件夹没有 arm64 驱动
+            elif { [ "$product_ver" = 2016 ] || [ "$product_ver" = 2019 ] || [ "$product_ver" = 2022 ]; } &&
+                [ "$arch_wim" = arm64 ]; then
+                echo w10
+
+            else
                 case "$windows_type" in
                 client) echo "w$product_ver" ;;
                 server) echo "$product_ver" | sed -E -e 's/ //' -e 's/^200?/2k/' -e 's/r2/R2/' ;;
                 esac
-                ;;
-            esac
+            fi
         )
 
         # win7-drivers 分支 win7 文件夹只有一次提交，也就是 173 全家桶
