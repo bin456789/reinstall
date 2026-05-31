@@ -15,16 +15,23 @@ fi
 
 # 安装环境下 tty 不一定齐全
 # hytron 有ttyS0 但无法写入
-# 用于 cmdline 引导参数时不需要判断 tty 是否存在和可写
+# 用于 cmdline 引导参数时，明确排除不可写的 tty，避免 getty 反复重启
+# https://github.com/bin456789/reinstall/issues/620
+
 if [ "$prefix" = "console=" ]; then
     is_for_cmdline=true
 else
     is_for_cmdline=false
 fi
 
+# 用途       条件
+# 安装日志   存在且可写
+# console    存在且可写 或 不存在（因为安装环境下 tty 不一定齐全）
+
 is_first=true
 for tty in $ttys; do
-    if $is_for_cmdline || stty -g -F "/dev/$tty" >/dev/null 2>&1; then
+    if { [ -c "/dev/$tty" ] && stty -g -F "/dev/$tty" >/dev/null 2>&1; } ||
+        { $is_for_cmdline && ! [ -c "/dev/$tty" ]; }; then
         if $is_first; then
             is_first=false
         else
