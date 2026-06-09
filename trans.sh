@@ -245,7 +245,7 @@ download() {
 
     if ! aria2c "$url" "$@" &&
         ! { $can_use_cn_mirror && is_in_china && is_any_ipv4_has_internet &&
-            url_cn=https://files.m.daocloud.io/$(echo "$url" | sed -Ei 's,^https?://,,') &&
+            url_cn=https://files.m.daocloud.io/$(echo "$url" | sed -E 's,^https?://,,i') &&
             aria2c "$url_cn" "$@"; }; then
         error_and_exit "Failed to download $url"
     fi
