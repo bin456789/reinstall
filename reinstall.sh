@@ -83,6 +83,7 @@ Usage: $reinstall_____ anolis      7|8|23
                        almalinux   8|9|10
                        centos      9|10
                        fnos        1
+                       fygoos      1
                        nixos       25.11
                        fedora      43|44
                        debian      9|10|11|12|13
@@ -1631,18 +1632,23 @@ Continue with DD?
         done
 
         if [ -z "$iso" ]; then
-            # 对于同一行有多个成功匹配，grep -m1 无效
-            iso=$(curl -L "https://fnnas.com/download$([ "$basearch" = aarch64 ] && echo -arm)" |
-                grep -o 'https://[^"]*\.iso' | head -1 | grep .)
+            if [ "$FLYGOOS" = 1 ]; then
+                iso=$(curl -L "https://fygonas.com/download" |
+                    grep -o 'https://[^"]*\.iso' | head -1 | grep .)
+            else
+                # 对于同一行有多个成功匹配，grep -m1 无效
+                iso=$(curl -L "https://fnnas.com/download$([ "$basearch" = aarch64 ] && echo -arm)" |
+                    grep -o 'https://[^"]*\.iso' | head -1 | grep .)
 
-            # curl 7.82.0+
-            # curl -L --json '{"url":"'$iso'"}' https://www.fnnas.com/api/download-sign
+                # curl 7.82.0+
+                # curl -L --json '{"url":"'$iso'"}' https://www.fnnas.com/api/download-sign
 
-            iso=$(curl -L \
-                -d '{"url":"'$iso'"}' \
-                -H 'Content-Type: application/json' \
-                https://www.fnnas.com/api/download-sign |
-                grep -o 'https://[^"]*')
+                iso=$(curl -L \
+                    -d '{"url":"'$iso'"}' \
+                    -H 'Content-Type: application/json' \
+                    https://www.fnnas.com/api/download-sign |
+                    grep -o 'https://[^"]*')
+            fi
         fi
 
         test_url "$iso" iso
@@ -1913,6 +1919,7 @@ verify_os_name() {
         'rocky       8|9|10' \
         'oracle      8|9|10' \
         'fnos        1' \
+        'fygoos      1' \
         'fedora      43|44' \
         'nixos       25.11' \
         'debian      9|10|11|12|13' \
@@ -1934,6 +1941,11 @@ verify_os_name() {
         finalos=$(echo "$@" | to_lower | sed -n -E "s,^($ds)[ :-]?(|$vers_)$,\1 \2,p")
         if [ -n "$finalos" ]; then
             read -r distro releasever <<<"$finalos"
+            # fygoos to fnos
+            if [ "$distro" = fygoos ]; then
+                distro=fnos
+                FLYGOOS=1
+            fi
             # 默认版本号
             if [ -z "$releasever" ] && [ -n "$vers" ]; then
                 releasever=$(awk -F '|' '{print $NF}' <<<"|$vers")

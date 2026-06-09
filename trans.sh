@@ -4872,7 +4872,7 @@ EOF
 }
 
 install_fnos() {
-    info "Install fnos"
+    info "Install fnos/fygoos"
     os_dir=/os
 
     # 官方安装调用流程
@@ -4925,7 +4925,7 @@ install_fnos() {
     fi
 
     # 复制系统
-    info "Extract fnos"
+    info "Extract fnos/fygoos"
     apk add tar gzip pv
     pv -f /os/installer/trimfs.tgz | tar zxp --numeric-owner --xattrs-include='*.*' -C /os
     apk del tar gzip pv
@@ -4935,7 +4935,7 @@ install_fnos() {
 
     # 缩小分区
     if $NEED_SHRINK_FNOS_OS_PART; then
-        info "Shrink fnos os partition"
+        info "Shrink fnos/fygoos os partition"
 
         # 取消挂载
         if is_efi; then
@@ -5019,8 +5019,18 @@ install_fnos() {
     fi
 
     # grub 配置
-    # 取自 strings trim-install | grep GRUB_DISTRIBUTOR
-    sed -i 's/^GRUB_DISTRIBUTOR=.*/GRUB_DISTRIBUTOR="FNOS"/' $os_dir/etc/default/grub
+    # strings trim-install | grep GRUB_DISTRIBUTOR
+    # 国内版得到的是 sed -i 's/^GRUB_DISTRIBUTOR=.*/GRUB_DISTRIBUTOR="FNOS"/' /mnt/rootfs/etc/default/grub
+    # 国际版得到的是 sed -i 's/^GRUB_DISTRIBUTOR=.*/GRUB_DISTRIBUTOR="%s"/' /mnt/rootfs/etc/default/grub
+    # 因此这里写死
+    if grep -Fq fygonas.com $os_dir/etc/apt/sources.list.d/trim_repo.list; then
+        name_for_grub=FygoOS
+    elif grep -Fq fnnas.com $os_dir/etc/apt/sources.list.d/trim_repo.list; then
+        name_for_grub=FNOS
+    else
+        error_and_exit 'Can not detect FNOS/FygoOS.'
+    fi
+    sed -i "s/^GRUB_DISTRIBUTOR=.*/GRUB_DISTRIBUTOR=\"$name_for_grub\"/" $os_dir/etc/default/grub
 
     # grub tty
     ttys_cmdline=$(get_ttys console=)
