@@ -195,6 +195,57 @@ is_magnet_link() {
     [[ "$1" = magnet:* ]]
 }
 
+create_alpine_rootfs() {
+    local os_dir=$1
+    local init_now=${2:-false}
+
+    # 复制当前系统的 /etc/apk 文件夹
+    mkdir -p "$os_dir"
+    cp -a --parents /etc/apk "$os_dir"
+    rm -f "$os_dir/etc/apk/world"
+
+    # 安装 alpine
+    apk add --root "$os_dir" --initdb \
+        alpine-base openssl ca-certificates
+
+    if $init_now; then
+        cp_resolv_conf "$os_dir"
+        mount_pseudo_fs "$os_dir"
+    fi
+}
+
+download_via_browser() {
+    local url=$1
+    local path=$2
+
+    local os_dir=/os/alpine_for_browser
+    mkdir_clear "$os_dir"
+
+    # 安装 chromium-headless-shell npm 到硬盘，减少内存占用
+    create_alpine_rootfs "$os_dir" true
+    apk add --root "$os_dir" chromium-headless-shell npm
+
+    # 安装 playwright
+    # shellcheck disable=SC2046
+    PLAYWRIGHT_SKIP_BROWSER_DOWNLOAD=1 \
+        chroot "$os_dir" \
+        npm install \
+        --no-save --no-package-lock \
+        --prefix "/work" \
+        $(is_in_china && echo '--registry=https://registry.npmmirror.com') \
+        playwright
+
+    # 下载文件
+    # shellcheck disable=SC2154
+    wget "$confhome/download-via-browser.js" -O "$os_dir/work/download-via-browser.js"
+    retry 5 chroot "$os_dir" node /work/download-via-browser.js "$url" "/work/download_file"
+    cp "$os_dir/work/download_file" "$path"
+
+    # 清理
+    umount_pseudo_fs "$os_dir"
+    rm -rf "$os_dir"
+}
+
 download() {
     local url=$1
     local path=$2
@@ -6873,7 +6924,8 @@ install_windows() {
         )
 
         # 注意 intel 禁止了 aria2 下载
-        download "$url" $drv/intel.zip true
+        # 还使用了 aws waf，要用浏览器通过 js 获取 aws-waf-token cookie 才能下载
+        download_via_browser "$url" $drv/intel.zip
 
         # inf 可能是 UTF-16 LE？因此用 rg 搜索
         # 用 busybox unzip 解压 win10 驱动时，路径和文件名会粘在一起
@@ -7606,7 +7658,7 @@ EOF
             url=$(get_intel_download_url "$id" "SetupRST\.exe")
 
             # 注意 intel 禁止了 aria2 下载
-            download $url $drv/SetupRST.exe true
+            download_via_browser $url $drv/SetupRST.exe
             apk add 7zip
             7z x $drv/SetupRST.exe -o$drv/SetupRST -i!.text
             7z x $drv/SetupRST/.text -o$drv/vmd
