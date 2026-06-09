@@ -164,11 +164,17 @@ retry() {
         local interval=5
     fi
 
+    local i
     for i in $(seq $max_try); do
         if "$@"; then
             return
         else
             ret=$?
+            # wget -O- | grep -m1 成功后会提前关闭管道，导致 141 错误
+            # 这是预期行为，因此需要排除
+            if [ $ret -eq 141 ]; then
+                return
+            fi
             if [ $i -ge $max_try ]; then
                 return $ret
             fi
@@ -245,7 +251,7 @@ download() {
     fi
 
     # opensuse 官方镜像支持 metalink
-    # aira2 无法重命名用 metalink 下载的文件
+    # aria2 无法重命名用 metalink 下载的文件
     # 需用以下方法重命名
     if head -c 1024 "$path" | grep -Fq 'urn:ietf:params:xml:ns:metalink'; then
         real_file=$(tr -d '\n' <"$path" | sed -E 's|.*<file[[:space:]]+name="([^"]*)".*|\1|')
