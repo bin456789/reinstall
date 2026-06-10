@@ -882,7 +882,7 @@ get_windows_version_from_windows_drive() {
     # CurrentMajorVersionNumber  10
     # CurrentMinorVersionNumber   0
 
-    apk add hivex
+    apk add hivex-perl
     hive=$(find_file_ignore_case $os_dir/Windows/System32/config/SOFTWARE)
 
     get_current_version_key() {
@@ -919,7 +919,7 @@ get_windows_version_from_windows_drive() {
     fi
 
     echo "Version: $nt_ver.$build_ver.$rev_ver" >&2
-    apk del hivex
+    apk del hivex-perl
 }
 
 is_elts() {
@@ -1635,6 +1635,20 @@ install_alpine() {
     if is_need_set_ssh_keys; then
         set_ssh_keys_and_del_password /os
     fi
+
+    # alpine 3.24+
+    # 要从 /etc/inittab 删除多余的 tty0
+    # 否则开机时 vnc 会有两个登录提示，一个是 tty0，一个是 tty1
+
+    # sed 找到 # enable login on alternative console 的行
+    # 用 N 读取下一行到当前空间
+    # 再匹配 \ntty0:
+    sed -i '
+/^# enable login on alternative console$/{
+    N
+    /\ntty0:/d
+}
+' /os/etc/inittab
 
     # 下载 fix-eth-name
     download "$confhome/fix-eth-name.sh" /os/fix-eth-name.sh
@@ -3300,10 +3314,10 @@ get_image_state() {
         image_state=$(grep -i '^ImageState=' $state_ini | cut -d= -f2 | tr -d '\r')
     fi
     if [ -z "$image_state" ]; then
-        apk add hivex
+        apk add hivex-perl
         hive=$(find_file_ignore_case $os_dir/Windows/System32/config/SOFTWARE)
         image_state=$(hivexget $hive '\Microsoft\Windows\CurrentVersion\Setup\State' ImageState)
-        apk del hivex
+        apk del hivex-perl
     fi
 
     if [ -n "$image_state" ]; then
@@ -6295,10 +6309,10 @@ get_drivers() {
 get_windows_type_from_windows_drive() {
     local os_dir=$1
 
-    apk add hivex
+    apk add hivex-perl
     system_hive=$(find_file_ignore_case $os_dir/Windows/System32/config/SYSTEM)
     product_type=$(hivexget $system_hive '\ControlSet001\Control\ProductOptions' ProductType)
-    apk del hivex
+    apk del hivex-perl
 
     # ProductType InstallationType 都是用来区分客户端和服务器系统
     # 就驱动而言，用的是 ProductType
@@ -6321,11 +6335,11 @@ get_windows_type_from_windows_drive() {
 get_windows_arch_from_windows_drive() {
     local os_dir=$1
 
-    apk add hivex
+    apk add hivex-perl
     hive=$(find_file_ignore_case $os_dir/Windows/System32/config/SYSTEM)
     # 没有 CurrentControlSet
     hivexget $hive 'ControlSet001\Control\Session Manager\Environment' PROCESSOR_ARCHITECTURE
-    apk del hivex
+    apk del hivex-perl
 }
 
 get_intel_download_url() {
@@ -6344,18 +6358,18 @@ get_intel_download_url() {
         grep -Eio -m1 "https://.+/$file_regex" | grep .
 }
 
-apk_add_hivex_perl() {
-    # TODO: alpine 3.24 发布后删除
-    # hivex-perl 要从 edge/community 仓库下载
+apk_add_from_edge() {
+    # 从 edge/community 仓库下载新版软件包
+    # 现在用不到
     local alpine_mirror
     alpine_mirror=$(grep '^http.*/main$' /etc/apk/repositories | sed 's,/[^/]*/main$,,' | head -1)
     apk add --repository "$alpine_mirror/edge/community" \
         --force-non-repository \
         --virtual edge \
-        hivex-perl
+        "$@"
 }
 
-apk_del_hivex_perl() {
+apk_del_edge() {
     apk del edge
 }
 
@@ -7559,7 +7573,7 @@ EOF
             to_system_hive="$(find_file_ignore_case /wim/Windows/System32/config/SYSTEM)"
             to_software_hive="$(find_file_ignore_case /wim/Windows/System32/config/SOFTWARE)"
 
-            apk_add_hivex_perl
+            apk add hivex-perl
 
             # 获取当前生效的 wvpci.inf 文件
             # 得到 wvpci.inf_amd64_86afbe8940682d27 这样的文件名
@@ -7611,7 +7625,7 @@ EOF
 EOF
             hivexregedit --merge "$to_system_hive" "$reg"
 
-            apk_del_hivex_perl
+            apk del hivex-perl
         else
             error_and_exit "vpci driver not found."
         fi

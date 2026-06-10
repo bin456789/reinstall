@@ -89,7 +89,7 @@ Usage: $reinstall_____ anolis      7|8|23
                        debian      9|10|11|12|13
                        opensuse    16.0|tumbleweed
                        openeuler   20.03|22.03|24.03
-                       alpine      3.20|3.21|3.22|3.23
+                       alpine      3.21|3.22|3.23|3.24
                        ubuntu      18.04|20.04|22.04|24.04|26.04 [--minimal]
                        kali
                        arch
@@ -1924,7 +1924,7 @@ verify_os_name() {
         'nixos       25.11' \
         'debian      9|10|11|12|13' \
         'opensuse    16.0|tumbleweed' \
-        'alpine      3.20|3.21|3.22|3.23' \
+        'alpine      3.21|3.22|3.23|3.24' \
         'openeuler   20.03|22.03|24.03' \
         'ubuntu      18.04|20.04|22.04|24.04|26.04' \
         'redhat' \
