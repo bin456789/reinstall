@@ -7956,6 +7956,8 @@ EOF
         cat <<EOF >"$(get_path_in_correct_case /os/boot/grub/grub.cfg)"
             set timeout=5
             menuentry "reinstall" {
+                insmod search
+                insmod ntldr
                 search --no-floppy --label --set=root os
                 ntldr /$(cd /os && get_path_in_correct_case bootmgr)
             }
