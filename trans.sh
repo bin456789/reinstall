@@ -117,6 +117,16 @@ show_url_in_args() {
     done
 }
 
+killall() {
+    # killall 是异步的，要等一下
+    local ret=0
+    if ! command killall "$@"; then
+        ret=$?
+    fi
+    sleep 5
+    return $ret
+}
+
 # 在没有设置 set +o pipefail 的情况下，限制下载大小：
 # retry 5 command wget | head -c 1048576 会触发 retry，下载 5 次
 # command wget "$@" --tries=5 | head -c 1048576 不会触发 wget 自带的 retry，只下载 1 次
@@ -214,6 +224,34 @@ create_alpine_rootfs() {
     fi
 }
 
+create_alpine_rootfs_with_arch_install_scripts() {
+    local os_dir=$1
+    local init_now=${2:-false}
+    local parent_os_dir=$3
+
+    create_alpine_rootfs "$os_dir" $init_now
+
+    # 将 alpine-base 的依赖写入 world，再删除 alpine-base alpine-conf
+    # --installed --depends 顺序不能错
+    # 不添加 --installed 则会同时显示已安装的和最新版的
+    alpine_base_depends=$(chroot "$os_dir" apk info --installed --depends alpine-base | sed '/depends on:/d')
+    chroot "$os_dir" apk add $alpine_base_depends
+    chroot "$os_dir" apk del alpine-base alpine-conf
+    chroot "$os_dir" apk add arch-install-scripts
+
+    if [ -n "$parent_os_dir" ]; then
+        mkdir -p "$os_dir/parent"
+        mount --rbind "$parent_os_dir" "$os_dir/parent"
+    fi
+}
+
+remove_alpine_rootfs() {
+    local os_dir=$1
+
+    umount_pseudo_fs "$os_dir"
+    rm -rf "$os_dir"
+}
+
 download_via_browser() {
     local url=$1
     local path=$2
@@ -242,8 +280,7 @@ download_via_browser() {
     cp "$os_dir/work/download_file" "$path"
 
     # 清理
-    umount_pseudo_fs "$os_dir"
-    rm -rf "$os_dir"
+    remove_alpine_rootfs "$os_dir"
 }
 
 download() {
@@ -380,7 +417,7 @@ setup_websocketd() {
     wget $confhome/logviewer.html -O /tmp/index.html
     apk add coreutils
 
-    pkill websocketd || true
+    killall -q websocketd || true
     # websocketd 遇到 \n 才推送，因此要转换 \r 为 \n
     websocketd --port "$web_port" --loglevel=fatal --staticdir=/tmp \
         stdbuf -oL -eL sh -c "tail -fn+0 /reinstall.log | tr '\r' '\n' | grep -Fiv -e password -e token" &
@@ -569,9 +606,8 @@ clear_previous() {
     fi
     disconnect_qcow
     # 安装 arch 有 gpg-agent 进程驻留
-    killall gpg-agent || true
     # 在 aria2c 下载时手动中止脚本，aria2c 还会在后台下载
-    killall aria2c || true
+    killall -q gpg-agent aria2c || true
     rc-service -q --ifexists --ifstarted nix-daemon stop
     swapoff -a
     umount_all
@@ -2242,35 +2278,41 @@ install_arch_gentoo_aosc() {
         # 添加 swap
         create_swap_if_ram_less_than 1024 $os_dir/swapfile
 
-        apk add arch-install-scripts
+        if false; then
+            local alpine_rootfs=/
+            apk add arch-install-scripts
+        else
+            local alpine_rootfs=$os_dir/alpine
+            create_alpine_rootfs_with_arch_install_scripts "$alpine_rootfs" true "$os_dir"
+        fi
 
         # 为了二次运行时 /etc/pacman.conf 未修改
-        if [ -f /etc/pacman.conf.orig ]; then
-            cp /etc/pacman.conf.orig /etc/pacman.conf
+        if [ -f $alpine_rootfs/etc/pacman.conf.orig ]; then
+            cp $alpine_rootfs/etc/pacman.conf.orig $alpine_rootfs/etc/pacman.conf
         else
-            cp /etc/pacman.conf /etc/pacman.conf.orig
+            cp $alpine_rootfs/etc/pacman.conf $alpine_rootfs/etc/pacman.conf.orig
         fi
 
         # 设置 repo
-        insert_into_file /etc/pacman.conf before '\[core\]' <<EOF
+        insert_into_file $alpine_rootfs/etc/pacman.conf before '\[core\]' <<EOF
 SigLevel = Never
 ParallelDownloads = 5
 EOF
-        cat <<EOF >>/etc/pacman.conf
+        cat <<EOF >>$alpine_rootfs/etc/pacman.conf
 [core]
 Include = /etc/pacman.d/mirrorlist
 
 [extra]
 Include = /etc/pacman.d/mirrorlist
 EOF
-        mkdir -p /etc/pacman.d
+        mkdir -p $alpine_rootfs/etc/pacman.d
         # shellcheck disable=SC2016
         case "$(uname -m)" in
         x86_64) dir='$repo/os/$arch' ;;
         aarch64) dir='$arch/$repo' ;;
         esac
         # shellcheck disable=SC2154
-        echo "Server = $mirror/$dir" >/etc/pacman.d/mirrorlist
+        echo "Server = $mirror/$dir" >$alpine_rootfs/etc/pacman.d/mirrorlist
 
         # 安装系统
         # 要安装分区工具(包含 fsck.xxx)，用于 initramfs 检查分区数据
@@ -2295,7 +2337,17 @@ EOF
             pkgs="$pkgs sudo"
         fi
 
-        pacstrap -K $os_dir $pkgs
+        # retry 防止网络问题
+        if [ "$alpine_rootfs" = / ]; then
+            retry 5 pacstrap -K "$os_dir" $pkgs
+            killall -q gpg-agent || true
+            apk del arch-install-scripts
+        else
+            retry 5 chroot "$alpine_rootfs" pacstrap -K "/parent" $pkgs
+            killall -q gpg-agent || true
+            umount -R "$alpine_rootfs/parent"
+            remove_alpine_rootfs "$alpine_rootfs"
+        fi
 
         # dns
         cp_resolv_conf $os_dir
@@ -2511,7 +2563,7 @@ EOF
     install_$distro
 
     # 安装 arch 有 gpg-agent 进程驻留
-    pkill gpg-agent || true
+    killall -q gpg-agent || true
 
     # 初始化
     if false; then
@@ -2591,9 +2643,13 @@ EOF
     # fstab
     # fstab 可不写 efi 条目， systemd automount 会自动挂载
     # fstab 头部有使用说明，因此用 >>
-    apk add arch-install-scripts
-    genfstab -U $os_dir | sed '/swap/d' >>$os_dir/etc/fstab
-    apk del arch-install-scripts
+    local alpine_rootfs=$os_dir/alpine
+    create_alpine_rootfs_with_arch_install_scripts "$alpine_rootfs" true "$os_dir"
+    # genfstab 会用到 findmnt 等工具
+    retry 5 chroot "$alpine_rootfs" apk add util-linux
+    chroot "$alpine_rootfs" genfstab -U /parent | sed '/swap/d' >>$os_dir/etc/fstab
+    umount -R "$alpine_rootfs/parent"
+    remove_alpine_rootfs "$alpine_rootfs"
 
     # 删除 resolv.conf，不然 systemd-resolved 无法创建软链接
     rm_resolv_conf $os_dir
