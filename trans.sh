@@ -7132,10 +7132,13 @@ EOF
 
         [ "$arch_wim" = arm64 ] && arch_dir=/ARM64 || arch_dir=
 
-        download "$(get_aws_repo)/NVMe$arch_dir/$nvme_ver/AWSNVMe.zip" $drv/AWSNVMe.zip
-        download "$(get_aws_repo)/ENA$arch_dir/$ena_ver/AwsEnaNetworkDriver.zip" $drv/AwsEnaNetworkDriver.zip
+        # arm64 的 AWSNVMe.zip 已从服务器删除
+        if ! [ "$arch_wim" = arm64 ]; then
+            download "$(get_aws_repo)/NVMe$arch_dir/$nvme_ver/AWSNVMe.zip" $drv/AWSNVMe.zip
+            unzip -o -d $drv/aws/ $drv/AWSNVMe.zip
+        fi
 
-        unzip -o -d $drv/aws/ $drv/AWSNVMe.zip
+        download "$(get_aws_repo)/ENA$arch_dir/$ena_ver/AwsEnaNetworkDriver.zip" $drv/AwsEnaNetworkDriver.zip
         unzip -o -d $drv/aws/ $drv/AwsEnaNetworkDriver.zip
 
         cp_drivers $drv/aws
