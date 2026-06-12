@@ -8131,6 +8131,8 @@ install_redhat_ubuntu() {
             # https://bugs.launchpad.net/ubuntu/+source/grub2/+bug/1851311
             # rmmod tpm
             insmod all_video
+            insmod search
+            insmod loopback
             search --no-floppy --label --set=root installer
             loopback loop /ubuntu.iso
             linux (loop)/casper/vmlinuz iso-scan/filename=/ubuntu.iso autoinstall noprompt noeject cloud-config-url=$ks $extra_cmdline extra_kernel=$kernel extra_source_id=$source_id --- $console_cmdline
@@ -8146,6 +8148,7 @@ EOF
         set timeout=5
         menuentry "reinstall" {
             insmod all_video
+            insmod search
             search --no-floppy --label --set=root os
             linux /vmlinuz inst.stage2=hd:LABEL=installer:/install.img inst.ks=$ks $extra_cmdline $console_cmdline
             initrd /initrd.img
