@@ -1727,7 +1727,7 @@ add_newline() {
 install_nixos() {
     info "Install NixOS"
 
-    os_dir=/os
+    local os_dir=/os
     keep_swap=true
     nix_from=website
     ram_per_thread=2048
@@ -2162,7 +2162,7 @@ get_fs_of_mount_point() {
 }
 
 basic_init() {
-    os_dir=$1
+    local os_dir=$1
 
     # 此时不能用
     # chroot $os_dir timedatectl set-timezone Asia/Shanghai
@@ -2502,7 +2502,7 @@ EOF
         chroot $os_dir update-initramfs
     }
 
-    os_dir=/os
+    local os_dir=/os
 
     # 挂载分区
     mount_part_basic_layout /os /os/efi
@@ -3096,6 +3096,7 @@ create_part() {
 }
 
 umount_pseudo_fs() {
+    local os_dir
     os_dir=$(realpath "$1")
 
     dirs="/proc /sys /dev /run"
@@ -3109,7 +3110,7 @@ umount_pseudo_fs() {
 }
 
 mount_pseudo_fs() {
-    os_dir=$1
+    local os_dir=$1
 
     mkdir -p $os_dir/proc/ $os_dir/sys/ $os_dir/dev/ $os_dir/run/
 
@@ -3258,7 +3259,7 @@ create_cloud_init_network_config() {
 # 实测没用，生成的 machine-id 是固定的
 # 而且 lightsail centos 9 模板 machine-id 也是相同的，显然相同 id 不是个问题
 clear_machine_id() {
-    os_dir=$1
+    local os_dir=$1
 
     # https://www.freedesktop.org/software/systemd/man/latest/machine-id.html
     # gentoo 不会自动创建该文件
@@ -3271,7 +3272,7 @@ clear_machine_id() {
 # 注意 anolis 7 有这个文件，可能干扰我们的配置?
 # /etc/cloud/cloud.cfg.d/aliyun_cloud.cfg -> /sys/firmware/qemu_fw_cfg/by_name/etc/cloud-init/vendor-data/raw
 download_cloud_init_config() {
-    os_dir=$1
+    local os_dir=$1
     recognize_static6=$2
     recognize_ipv6_types=$3
 
@@ -3328,7 +3329,7 @@ get_image_state() {
 }
 
 modify_windows() {
-    os_dir=$1
+    local os_dir=$1
     info "Modify Windows"
 
     # https://learn.microsoft.com/windows-hardware/manufacture/desktop/windows-setup-states
@@ -3503,7 +3504,7 @@ is_file_or_link() {
 }
 
 cp_resolv_conf() {
-    os_dir=$1
+    local os_dir=$1
     if is_file_or_link $os_dir/etc/resolv.conf &&
         ! is_file_or_link $os_dir/etc/resolv.conf.orig; then
         mv $os_dir/etc/resolv.conf $os_dir/etc/resolv.conf.orig
@@ -3512,19 +3513,19 @@ cp_resolv_conf() {
 }
 
 rm_resolv_conf() {
-    os_dir=$1
+    local os_dir=$1
     rm -f $os_dir/etc/resolv.conf $os_dir/etc/resolv.conf.orig
 }
 
 restore_resolv_conf() {
-    os_dir=$1
+    local os_dir=$1
     if is_file_or_link $os_dir/etc/resolv.conf.orig; then
         mv -f $os_dir/etc/resolv.conf.orig $os_dir/etc/resolv.conf
     fi
 }
 
 keep_now_resolv_conf() {
-    os_dir=$1
+    local os_dir=$1
     rm -f $os_dir/etc/resolv.conf.orig
 }
 
@@ -3598,7 +3599,7 @@ get_ucode_firmware_pkgs() {
 }
 
 chroot_systemctl_disable() {
-    os_dir=$1
+    local os_dir=$1
     shift
 
     for unit in "$@"; do
@@ -3615,7 +3616,7 @@ chroot_systemctl_disable() {
 }
 
 remove_or_disable_cloud_init() {
-    os_dir=$1
+    local os_dir=$1
 
     if ! is_have_cmd_on_disk $os_dir cloud-init; then
         return
@@ -3675,7 +3676,7 @@ remove_or_disable_cloud_init() {
 }
 
 disable_jeos_firstboot() {
-    os_dir=$1
+    local os_dir=$1
     info "Disable JeOS Firstboot"
 
     # 两种方法都可以
@@ -3693,8 +3694,8 @@ disable_jeos_firstboot() {
 }
 
 create_network_manager_config() {
-    source_cfg=$1
-    os_dir=$2
+    local source_cfg=$1
+    local os_dir=$2
     info "Create Network-Manager config"
 
     # 可以直接用 alpine 的 cloud-init 生成 Network Manager 配置
@@ -3729,7 +3730,7 @@ create_network_manager_config() {
 }
 
 modify_linux() {
-    os_dir=$1
+    local os_dir=$1
     info "Modify Linux"
 
     find_and_mount() {
@@ -4121,7 +4122,7 @@ EOF
 }
 
 setup_nocloud() {
-    os_dir=$1
+    local os_dir=$1
     info "Setup NoCloud"
 
     # 1. 配置 NoCloud-only datasource
@@ -4167,6 +4168,7 @@ modify_os_on_disk() {
         if mount -o ro /dev/$part /os; then
             if [ "$only_process" = linux ] || [ "$only_process" = nocloud ]; then
                 if etc_dir=$({ ls -d /os/etc/ || ls -d /os/*/etc/; } 2>/dev/null); then
+                    local os_dir
                     os_dir=$(dirname $etc_dir)
                     # 重新挂载为读写
                     mount -o remount,rw /os
@@ -4639,7 +4641,7 @@ change_user_password() {
 }
 
 disable_selinux() {
-    os_dir=$1
+    local os_dir=$1
 
     # https://access.redhat.com/solutions/3176
     # centos7 也建议将 selinux 开关写在 cmdline
@@ -4668,7 +4670,7 @@ disable_selinux() {
 }
 
 disable_kdump() {
-    os_dir=$1
+    local os_dir=$1
 
     # grubby 只处理 GRUB_CMDLINE_LINUX，不会处理 GRUB_CMDLINE_LINUX_DEFAULT
     # rocky 的 GRUB_CMDLINE_LINUX_DEFAULT 有 crashkernel=auto
@@ -4902,7 +4904,7 @@ chroot_apt_autoremove() {
 }
 
 del_default_user() {
-    os_dir=$1
+    local os_dir=$1
 
     local user
     while read -r user; do
@@ -4919,7 +4921,7 @@ is_el7_family() {
 }
 
 del_exist_sysconfig_NetworkManager_config() {
-    os_dir=$1
+    local os_dir=$1
 
     # 删除云镜像自带的 dhcp 配置，防止歧义
     rm -rf $os_dir/etc/NetworkManager/system-connections/*.nmconnection
@@ -4944,7 +4946,7 @@ EOF
 
 install_fnos() {
     info "Install fnos/fygoos"
-    os_dir=/os
+    local os_dir=/os
 
     # 官方安装调用流程
     # /etc/init.d/run_install.sh > trim-install > trim-grub
@@ -5126,7 +5128,7 @@ install_qcow_by_copy() {
 
     modify_el_ol() {
         info "Modify el ol"
-        os_dir=/os
+        local os_dir=/os
 
         # resolv.conf
         cp_resolv_conf /os
@@ -5396,7 +5398,7 @@ EOF
     }
 
     modify_ubuntu() {
-        os_dir=/os
+        local os_dir=/os
         info "Modify Ubuntu"
 
         cp_resolv_conf $os_dir
@@ -6024,8 +6026,8 @@ resize_after_install_cloud_image() {
 }
 
 mount_part_basic_layout() {
-    os_dir=$1
-    efi_dir=$2
+    local os_dir=$1
+    local efi_dir=$2
 
     if is_efi || is_xda_gt_2t; then
         os_part_num=2
