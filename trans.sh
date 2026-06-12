@@ -1853,9 +1853,9 @@ install_nixos() {
         fi
 
         # 备用方案
-        # 1. 从 https://mirror.nju.edu.cn/nix-channels/nixos-25.11/nixexprs.tar.xz 获取
-        #    https://github.com/NixOS/nixpkgs/blob/nixos-25.11/pkgs/tools/package-management/nix/default.nix
-        #    https://github.com/NixOS/nixpkgs/blob/nixos-25.11/nixos/modules/installer/tools/nix-fallback-paths.nix
+        # 1. 从 https://mirror.nju.edu.cn/nix-channels/nixos-26.05/nixexprs.tar.xz 获取
+        #    https://github.com/NixOS/nixpkgs/blob/nixos-26.05/pkgs/tools/package-management/nix/default.nix
+        #    https://github.com/NixOS/nixpkgs/blob/nixos-26.05/nixos/modules/installer/tools/nix-fallback-paths.nix
         # 2. 安装最新版 nix，添加 nixos channel 后获取
         #    nix eval -f '<nixpkgs>' --raw 'nixVersions.stable.version' --extra-experimental-features nix-command
 

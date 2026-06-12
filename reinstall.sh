@@ -84,7 +84,7 @@ Usage: $reinstall_____ anolis      7|8|23
                        centos      9|10
                        fnos        1
                        fygoos      1
-                       nixos       25.11
+                       nixos       26.05
                        fedora      43|44
                        debian      9|10|11|12|13
                        opensuse    16.0|tumbleweed
@@ -1921,7 +1921,7 @@ verify_os_name() {
         'fnos        1' \
         'fygoos      1' \
         'fedora      43|44' \
-        'nixos       25.11' \
+        'nixos       26.05' \
         'debian      9|10|11|12|13' \
         'opensuse    16.0|tumbleweed' \
         'alpine      3.21|3.22|3.23|3.24' \
