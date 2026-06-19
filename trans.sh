@@ -1633,6 +1633,17 @@ install_alpine() {
 
     mount_pseudo_fs /os
 
+    # azure nvme 实例的 initramfs 需要添加 pci_hyperv 驱动
+    if [ -d /sys/module/pci_hyperv ] &&
+        get_drivers "/sys/block/$xda" | grep -qx pci_hyperv; then
+        echo 'kernel/drivers/pci/controller/pci-hyperv.ko*' >/os/etc/mkinitfs/features.d/pci-hyperv.modules
+        if ! grep -q 'pci-hyperv' /os/etc/mkinitfs/mkinitfs.conf; then
+            # 找到 features=" 开头的行，将最后的"改成 pci-hyperv"
+            sed -i '/features="/s/"$/ pci-hyperv"/' /os/etc/mkinitfs/mkinitfs.conf
+        fi
+        chroot /os mkinitfs -k "$(basename /os/lib/modules/*-*)"
+    fi
+
     # 安装到硬盘后才安装各种应用
     # 避免占用 Live OS 内存
 
