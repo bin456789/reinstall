@@ -1137,21 +1137,35 @@ get_windows_iso_link_inner() {
     error_and_exit "Could not find iso for this windows edition or language."
 }
 
+set_var() {
+    # eval 不安全
+
+    # 仅 bash 可用
+    printf -v "$1" "%s" "$2"
+
+    # 或者
+    # IFS= read -r "$1" <<<"$2"
+}
+
 setos() {
     local step=$1
     local distro=$2
     local releasever=$3
     info set $step $distro $releasever
 
+    set_osvar() {
+        set_var "${step}_$1" "$2"
+    }
+
     setos_netboot.xyz() {
         if is_efi; then
             if [ "$basearch" = aarch64 ]; then
-                eval ${step}_efi=https://boot.netboot.xyz/ipxe/netboot.xyz-arm64.efi
+                set_osvar efi https://boot.netboot.xyz/ipxe/netboot.xyz-arm64.efi
             else
-                eval ${step}_efi=https://boot.netboot.xyz/ipxe/netboot.xyz.efi
+                set_osvar efi https://boot.netboot.xyz/ipxe/netboot.xyz.efi
             fi
         else
-            eval ${step}_vmlinuz=https://boot.netboot.xyz/ipxe/netboot.xyz.lkrn
+            set_osvar vmlinuz https://boot.netboot.xyz/ipxe/netboot.xyz.lkrn
         fi
     }
 
@@ -1164,10 +1178,10 @@ setos() {
         else
             mirror=http://dl-cdn.alpinelinux.org/alpine/v$releasever
         fi
-        eval ${step}_vmlinuz=$mirror/releases/$basearch/netboot/vmlinuz-$flavour
-        eval ${step}_initrd=$mirror/releases/$basearch/netboot/initramfs-$flavour
-        eval ${step}_modloop=$mirror/releases/$basearch/netboot/modloop-$flavour
-        eval ${step}_repo=$mirror/main
+        set_osvar vmlinuz "$mirror/releases/$basearch/netboot/vmlinuz-$flavour"
+        set_osvar initrd "$mirror/releases/$basearch/netboot/initramfs-$flavour"
+        set_osvar modloop "$mirror/releases/$basearch/netboot/modloop-$flavour"
+        set_osvar repo "$mirror/main"
     }
 
     setos_debian() {
@@ -1259,22 +1273,22 @@ Continue?
             else
                 ci_type=nocloud
             fi
-            eval ${step}_img=$cdimage_mirror/cloud/$codename/latest/debian-$releasever-$ci_type-$basearch_alt.qcow2
+            set_osvar img "$cdimage_mirror/cloud/$codename/latest/debian-$releasever-$ci_type-$basearch_alt.qcow2"
         else
             # 传统安装
             initrd_dir=dists/$codename/main/installer-$basearch_alt/current/images/netboot/debian-installer/$basearch_alt
 
-            eval ${step}_udeb_mirror=$udeb_mirror
-            eval ${step}_vmlinuz=https://$initrd_mirror/$initrd_dir/linux
-            eval ${step}_initrd=https://$initrd_mirror/$initrd_dir/initrd.gz
-            eval ${step}_ks=$confhome/debian.cfg
-            eval ${step}_firmware=$cdimage_mirror/unofficial/non-free/firmware/$codename/current/firmware.cpio.gz
-            eval ${step}_codename=$codename
+            set_osvar udeb_mirror "$udeb_mirror"
+            set_osvar vmlinuz "https://$initrd_mirror/$initrd_dir/linux"
+            set_osvar initrd "https://$initrd_mirror/$initrd_dir/initrd.gz"
+            set_osvar ks "$confhome/debian.cfg"
+            set_osvar firmware "$cdimage_mirror/unofficial/non-free/firmware/$codename/current/firmware.cpio.gz"
+            set_osvar codename "$codename"
         fi
 
         # 官方安装和云镜像都会用到的
-        eval ${step}_deb_mirror=$deb_mirror
-        eval ${step}_kernel=linux-image$flavour-$basearch_alt
+        set_osvar deb_mirror "$deb_mirror"
+        set_osvar kernel "linux-image$flavour-$basearch_alt"
     }
 
     setos_kali() {
@@ -1298,13 +1312,13 @@ Continue?
 
             is_virt && flavour=-cloud || flavour=
 
-            eval ${step}_vmlinuz=$mirror/linux
-            eval ${step}_initrd=$mirror/initrd.gz
-            eval ${step}_ks=$confhome/debian.cfg
-            eval ${step}_deb_mirror=$hostname/kali
-            eval ${step}_udeb_mirror=$hostname/kali
-            eval ${step}_codename=$codename
-            eval ${step}_kernel=linux-image$flavour-$basearch_alt
+            set_osvar vmlinuz "$mirror/linux"
+            set_osvar initrd "$mirror/initrd.gz"
+            set_osvar ks "$confhome/debian.cfg"
+            set_osvar deb_mirror "$hostname/kali"
+            set_osvar udeb_mirror "$hostname/kali"
+            set_osvar codename "$codename"
+            set_osvar kernel "linux-image$flavour-$basearch_alt"
             # 缺少 firmware 下载
         fi
     }
@@ -1348,10 +1362,10 @@ Continue?
                 if ! is_have_minimal_image; then
                     error_and_exit "Minimal cloud image is not available for $releasever $basearch_alt."
                 fi
-                eval ${step}_img="$ci_mirror/minimal/releases/$codename/release/ubuntu-$releasever-minimal-cloudimg-$basearch_img.img"
+                set_osvar img "$ci_mirror/minimal/releases/$codename/release/ubuntu-$releasever-minimal-cloudimg-$basearch_img.img"
             else
                 # 用 codename 而不是 releasever，可减少一次跳转
-                eval ${step}_img="$ci_mirror/releases/$codename/release/ubuntu-$releasever-server-cloudimg-$basearch_img.img"
+                set_osvar img "$ci_mirror/releases/$codename/release/ubuntu-$releasever-server-cloudimg-$basearch_img.img"
             fi
         else
             # 传统安装
@@ -1373,11 +1387,11 @@ Continue?
             iso=$mirror/$filename
             # 在 ubuntu 20.04 上，file 命令检测 ubuntu 22.04 iso 结果是 DOS/MBR boot sector
             test_url "$iso" iso
-            eval ${step}_iso=$iso
+            set_osvar iso "$iso"
 
             # ks
-            eval ${step}_ks=$confhome/ubuntu.yaml
-            eval ${step}_minimal=$minimal
+            set_osvar ks "$confhome/ubuntu.yaml"
+            set_osvar minimal "$minimal"
         fi
     }
 
@@ -1399,7 +1413,7 @@ Continue?
 
         if is_use_cloud_image; then
             # cloud image
-            eval ${step}_img=$mirror/images/latest/Arch-Linux-x86_64-cloudimg.qcow2
+            set_osvar img "$mirror/images/latest/Arch-Linux-x86_64-cloudimg.qcow2"
         else
             # 传统安装
             case "$basearch" in
@@ -1407,7 +1421,7 @@ Continue?
             aarch64) dir="$basearch/core" ;;
             esac
             test_url $mirror/$dir/core.db gzip
-            eval ${step}_mirror=$mirror
+            set_osvar mirror "$mirror"
         fi
     }
 
@@ -1425,7 +1439,7 @@ Continue?
             # 该服务器文件缓存 miss 时会响应 206 + Location 头
             # 但 curl 这种情况不会重定向，所以添加 text 类型让它不要报错
             test_url $mirror/nixos-$releasever/store-paths.xz 'xz text'
-            eval ${step}_mirror=$mirror
+            set_osvar mirror "$mirror"
         fi
     }
 
@@ -1444,13 +1458,13 @@ Continue?
             filename=$(curl -L $mirror/$dir/latest-$prefix.txt | grep '.qcow2' | awk '{print $1}' | grep .)
             file=$mirror/$dir/$filename
             test_url "$file" 'qemu'
-            eval ${step}_img=$file
+            set_osvar img "$file"
         else
             prefix=stage3-$basearch_alt-systemd
             filename=$(curl -L $mirror/$dir/latest-$prefix.txt | grep '.tar.xz' | awk '{print $1}' | grep .)
             file=$mirror/$dir/$filename
             test_url "$file" 'tar.xz'
-            eval ${step}_img=$file
+            set_osvar img "$file"
         fi
     }
 
@@ -1494,7 +1508,7 @@ Continue?
             # 有专门的kvm镜像，openSUSE-Leap-15.5-Minimal-VM.x86_64-kvm-and-xen.qcow2，里面没有cloud-init
             # file=openSUSE-Leap-15.5-Minimal-VM.x86_64-kvm-and-xen.qcow2
         fi
-        eval ${step}_img=$mirror/$dir/$file
+        set_osvar img "$mirror/$dir/$file"
     }
 
     setos_windows() {
@@ -1567,9 +1581,9 @@ The current machine is $basearch, but it seems the ISO is for $iso_arch. Continu
 
         [ -n "$boot_wim" ] && test_url "$boot_wim" 'wim'
 
-        eval "${step}_iso='$iso'"
-        eval "${step}_boot_wim='$boot_wim'"
-        eval "${step}_image_name='$image_name'"
+        set_osvar iso "$iso"
+        set_osvar boot_wim "$boot_wim"
+        set_osvar image_name "$image_name"
     }
 
     # shellcheck disable=SC2154
@@ -1603,15 +1617,15 @@ Continue with DD?
 继续 DD?'
                 read -r -p '[y/N]: '
                 if [[ "$REPLY" = [Yy] ]]; then
-                    eval ${step}_confirmed_no_efi=1
+                    set_osvar confirmed_no_efi 1
                 else
                     exit
                 fi
             fi
         fi
-        eval "${step}_img='$img'"
-        eval "${step}_img_type='$img_type'"
-        eval "${step}_img_type_warp='$img_type_warp'"
+        set_osvar img "$img"
+        set_osvar img_type "$img_type"
+        set_osvar img_type_warp "$img_type_warp"
     }
 
     setos_fnos() {
@@ -1626,7 +1640,7 @@ Continue with DD?
             if ! { is_digit "$input" && [ "$input" -ge "$min" ]; }; then
                 error "Invalid Size. Please Try again."
             else
-                eval "${step}_fnos_part_size=${input}G"
+                set_osvar fnos_part_size "${input}G"
                 break
             fi
         done
@@ -1652,7 +1666,7 @@ Continue with DD?
         fi
 
         test_url "$iso" iso
-        eval "${step}_iso='$iso'"
+        set_osvar iso "$iso"
     }
 
     setos_aosc() {
@@ -1668,7 +1682,7 @@ Continue with DD?
             sort -uV | tail -1 | grep .)
         img=$mirror/$dir/$file
         test_url $img 'tar.xz'
-        eval ${step}_img=$img
+        set_osvar img "$img"
     }
 
     setos_centos_almalinux_rocky_fedora() {
@@ -1733,7 +1747,7 @@ Continue with DD?
                 ;;
             esac
 
-            eval ${step}_img=${ci_image}
+            set_osvar img "$ci_image"
         else
             # 传统安装
             case $distro in
@@ -1757,12 +1771,12 @@ Continue with DD?
                 error_and_exit "All mirror failed."
             fi
 
-            eval "${step}_mirrorlist='${mirrorlist}'"
+            set_osvar mirrorlist "$mirrorlist"
 
-            eval ${step}_ks=$confhome/redhat.cfg
-            eval ${step}_vmlinuz=${mirror}images/pxeboot/vmlinuz
-            eval ${step}_initrd=${mirror}images/pxeboot/initrd.img
-            eval ${step}_squashfs=${mirror}images/install.img
+            set_osvar ks "$confhome/redhat.cfg"
+            set_osvar vmlinuz "${mirror}images/pxeboot/vmlinuz"
+            set_osvar initrd "${mirror}images/pxeboot/initrd.img"
+            set_osvar squashfs "${mirror}images/install.img"
             test_url ${mirror}images/install.img 'squashfs'
         fi
     }
@@ -1786,7 +1800,7 @@ Continue with DD?
             file=$(jq -r .kvm.image $tmp/oracle.json)
             ci_image=$mirror$dir/$file
 
-            eval ${step}_img=${ci_image}
+            set_osvar img "$ci_image"
         else
             :
         fi
@@ -1798,7 +1812,7 @@ Continue with DD?
             if [ "$basearch" = x86_64 ] && [[ "$img" = *rhel-10* ]]; then
                 assert_cpu_supports_x86_64_v3
             fi
-            eval "${step}_img='$img'"
+            set_osvar img "$img"
         else
             :
         fi
@@ -1823,7 +1837,7 @@ Continue with DD?
 
             file=$(curl -L $mirror/$dir/ | grep -oP 'OpenCloudOS.*?\.qcow2' |
                 sort -uV | tail -1 | grep .)
-            eval ${step}_img=$mirror/$dir/$file
+            set_osvar img "$mirror/$dir/$file"
         else
             :
         fi
@@ -1839,7 +1853,7 @@ Continue with DD?
                 filename='AnolisOS.*?-ANCK\.qcow2'
             file=$(curl -L $mirror/$dir/ | grep -oP "$filename" |
                 sort -uV | tail -1 | grep .)
-            eval ${step}_img=$mirror/$dir/$file
+            set_osvar img "$mirror/$dir/$file"
         else
             :
         fi
@@ -1855,14 +1869,14 @@ Continue with DD?
             # ci
             name=$(curl -L "$mirror/" | grep -oE "openEuler-$releasever(-LTS)?(-SP[0-9])?" |
                 sort -uV | tail -1 | grep .)
-            eval ${step}_img=$mirror/$name/virtual_machine_img/$basearch/$name-$basearch.qcow2.xz
+            set_osvar img "$mirror/$name/virtual_machine_img/$basearch/$name-$basearch.qcow2.xz"
         else
             :
         fi
     }
 
-    eval ${step}_distro=$distro
-    eval ${step}_releasever=$releasever
+    set_osvar distro "$distro"
+    set_osvar releasever "$releasever"
 
     case "$distro" in
     centos | almalinux | rocky | fedora) setos_centos_almalinux_rocky_fedora ;;
@@ -2787,9 +2801,9 @@ collect_netconf() {
         for v in 4 6; do
             if via_gateway_dev_ethx=$(ip -$v route show default | grep -Ewo 'via [^ ]+ dev [^ ]+' | head -1 | grep .); then
                 read -r _ gateway _ ethx <<<"$via_gateway_dev_ethx"
-                eval ipv${v}_ethx="$ethx" # can_use_cloud_kernel 要用
-                eval ipv${v}_mac="$(ip link show dev $ethx | grep link/ether | head -1 | awk '{print $2}')"
-                eval ipv${v}_gateway="$gateway"
+                set_var ipv${v}_ethx "$ethx" # can_use_cloud_kernel 要用
+                set_var ipv${v}_mac "$(ip link show dev $ethx | grep link/ether | head -1 | awk '{print $2}')"
+                set_var ipv${v}_gateway "$gateway"
 
                 # 获取所有全局地址
                 all_addrs=$(ip -$v -o addr show scope global dev $ethx | grep -v temporary | awk '{print $4}')
@@ -2808,9 +2822,9 @@ collect_netconf() {
                     fi
                 fi
 
-                eval ipv${v}_addr="$primary_addr"
+                set_var ipv${v}_addr "$primary_addr"
                 # extra_addrs: 除主地址外的所有地址
-                eval ipv${v}_extra_addrs="$(echo "$all_addrs" | grep -Fxve "$primary_addr" | tr '\n' ',' | sed 's/,$//')"
+                set_var ipv${v}_extra_addrs "$(echo "$all_addrs" | grep -Fxve "$primary_addr" | tr '\n' ',' | sed 's/,$//')"
             fi
         done
     fi
