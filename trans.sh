@@ -2868,9 +2868,11 @@ create_part() {
         apk add dosfstools
     fi
 
-    # 清除分区签名
-    # TODO: 先检测iso链接/各种链接
-    # wipefs -a /dev/$xda
+    # 清除分区表
+    # https://github.com/bin456789/reinstall/issues/638
+    apk add wipefs
+    wipefs -a -f /dev/$xda
+    apk del wipefs
 
     # shellcheck disable=SC2154
     if [ "$distro" = windows ]; then
