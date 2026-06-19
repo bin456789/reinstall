@@ -199,7 +199,7 @@ bash reinstall.sh anolis      7|8|23
 
 <details>
 
-<summary>Experimental Features</summary>
+<summary>Deprecated Features</summary>
 
 Install Debian using a cloud image
 
@@ -212,16 +212,19 @@ bash reinstall.sh debian --ci
 Install CentOS, AlmaLinux, Rocky, Fedora using ISO
 
 - Only supports machines with more than 2G of memory and dynamic IP.
-- Password is `123@@@`, and the SSH port is `22`; modifying them using parameters is not supported.
+- Username is `root`, Password is `123@@@`, and the SSH port is `22`; modifying them using parameters is not supported.
 
 ```bash
 bash reinstall.sh centos --installer
+bash reinstall.sh almalinux --installer
+bash reinstall.sh rocky --installer
+bash reinstall.sh fedora --installer
 ```
 
 Install Ubuntu using ISO
 
 - Only supports machines with more than 1G of memory and dynamic IP.
-- Password is `123@@@`, and the SSH port is `22`; modifying them using parameters is not supported.
+- Username is `root`, Password is `123@@@`, and the SSH port is `22`; modifying them using parameters is not supported.
 
 ```bash
 bash reinstall.sh ubuntu --installer

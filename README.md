@@ -199,7 +199,7 @@ bash reinstall.sh anolis      7|8|23
 
 <details>
 
-<summary>实验性功能</summary>
+<summary>已弃用的功能</summary>
 
 云镜像安装 Debian
 
@@ -212,16 +212,19 @@ bash reinstall.sh debian --ci
 ISO 安装 CentOS, AlmaLinux, Rocky, Fedora
 
 - 仅支持内存大于 2G 且为动态 IP 的机器
-- 密码 `123@@@`，SSH 端口 `22`，不支持用参数修改
+- 用户名 `root`，密码 `123@@@`，SSH 端口 `22`，不支持用参数修改
 
 ```bash
 bash reinstall.sh centos --installer
+bash reinstall.sh almalinux --installer
+bash reinstall.sh rocky --installer
+bash reinstall.sh fedora --installer
 ```
 
 ISO 安装 Ubuntu
 
 - 仅支持内存大于 1G 且为动态 IP 的机器
-- 密码 `123@@@`，SSH 端口 `22`，不支持用参数修改
+- 用户名 `root`，密码 `123@@@`，SSH 端口 `22`，不支持用参数修改
 
 ```bash
 bash reinstall.sh ubuntu --installer

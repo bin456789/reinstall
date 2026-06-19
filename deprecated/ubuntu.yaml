@@ -28,7 +28,7 @@ autoinstall:
       # 生成分区信息
       xda=$(curl -L "$confhome/get-xda.sh" | sh -s)
       export xda
-      curl -L "$confhome/ubuntu-storage-early.sh" | sh -s
+      curl -L "$confhome/deprecated/ubuntu-storage-early.sh" | sh -s
 
       # 要安装的版本
       # 有的镜像只有一个版本，没有 install-sources.yaml
@@ -72,7 +72,7 @@ autoinstall:
 
       # 下载合并分区脚本
       cd /target
-      curl -LO $confhome/resize.sh
+      curl -LO $confhome/deprecated/resize.sh
 
       # 升级 cloud-init
       # curtin in-target --target=/target -- apt update

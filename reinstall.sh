@@ -1390,7 +1390,7 @@ Continue?
             set_osvar iso "$iso"
 
             # ks
-            set_osvar ks "$confhome/ubuntu.yaml"
+            set_osvar ks "$confhome/deprecated/ubuntu.yaml"
             set_osvar minimal "$minimal"
         fi
     }
@@ -1773,7 +1773,7 @@ Continue with DD?
 
             set_osvar mirrorlist "$mirrorlist"
 
-            set_osvar ks "$confhome/redhat.cfg"
+            set_osvar ks "$confhome/deprecated/redhat.cfg"
             set_osvar vmlinuz "${mirror}images/pxeboot/vmlinuz"
             set_osvar initrd "${mirror}images/pxeboot/initrd.img"
             set_osvar squashfs "${mirror}images/install.img"
