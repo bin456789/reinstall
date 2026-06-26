@@ -7334,6 +7334,51 @@ EOF
 
         local baseurl=https://fedorapeople.org/groups/virt/virtio-win/direct-downloads
 
+        add_driver_virtio_from_rpm() {
+            # fedorapeople may reject or timeout on some VPS IPs, and DaoCloud may still fetch from it.
+            # The CentOS Stream x86_64 repo publishes this noarch RPM with Windows x86/x64 virtio drivers.
+            local url=https://mirror.stream.centos.org/10-stream/AppStream/x86_64/os/Packages/virtio-win-1.9.45-1.el10.noarch.rpm
+            local cpio_file
+
+            info "Add drivers: Generic virtio rpm"
+            apk add 7zip
+
+            download "$url" $drv/virtio.rpm
+
+            mkdir -p $drv/virtio-rpm/stage $drv/virtio-rpm/root
+            7z x $drv/virtio.rpm -o$drv/virtio-rpm/stage -y -bb1
+            cpio_file=$(find $drv/virtio-rpm/stage -maxdepth 1 -name '*.cpio' | head -1)
+            [ -n "$cpio_file" ] || error_and_exit "Failed to extract virtio-win rpm."
+            7z x "$cpio_file" -o$drv/virtio-rpm/root -y -bb1 \
+                -i'!./usr/share/virtio-win/drivers/by-driver/*/'"$virtio_sys"'/'"$arch"'/*'
+            find $drv/virtio-rpm/root -type f -ipath "*/$virtio_sys/$arch/*.inf" "$@" | grep . >/dev/null ||
+                error_and_exit "Can't find $virtio_sys/$arch drivers in virtio-win rpm."
+            cp_drivers $drv/virtio-rpm/root "$@"
+        }
+
+        get_latest_virtio_dir() {
+            local checksum=$1/stable-virtio/CHECKSUM
+            local dir
+
+            # 直接读取 CHECKSUM 可以兼容 fedorapeople 跳转和提供文件内容的镜像源
+            if dir=$(wget "$checksum" -O- |
+                grep -Eo -m1 'virtio-win-[0-9][^[:space:]]+\.noarch\.rpm' |
+                sed -E 's,^virtio-win-(.*)\.noarch\.rpm$,archive-virtio/virtio-win-\1,' |
+                grep .); then
+                echo "$dir"
+                return
+            fi
+
+            # 保留 Location 解析作为兼容逻辑
+            if dir=$(wget --spider -S "$checksum" 2>&1 >/dev/null |
+                grep -E '^  Location: ' | grep -Ewo -m1 'archive-virtio/virtio-win-[^/]+'); then
+                echo "$dir"
+                return
+            fi
+
+            return 1
+        }
+
         case "$nt_ver" in
         6.0 | 6.1) $support_sha256 &&
             dir=archive-virtio/virtio-win-0.1.187-1 ||
@@ -7348,8 +7393,17 @@ EOF
 
             # https://fedorapeople.org/groups/virt/virtio-win/direct-downloads/stable-virtio/CHECKSUM
             # 路径是文件，应该不会弹出 anubis 验证？
-            dir=$(wget --spider -S "$baseurl/stable-virtio/CHECKSUM" 2>&1 >/dev/null |
-                grep -E '^  Location: ' | grep -Ewo -m1 'archive-virtio/virtio-win-[^/]+')
+            if ! dir=$(get_latest_virtio_dir "$baseurl"); then
+                mirror_baseurl=https://files.m.daocloud.io/$(echo "$baseurl" | sed -E 's,^https?://,,i')
+                if is_any_ipv4_has_internet && dir=$(get_latest_virtio_dir "$mirror_baseurl"); then
+                    baseurl=$mirror_baseurl
+                elif [ "$arch_wim" = x86 ] || [ "$arch_wim" = x86_64 ]; then
+                    add_driver_virtio_from_rpm "$@"
+                    return
+                else
+                    error_and_exit "Failed to get latest virtio-win version."
+                fi
+            fi
             # dir=stable-virtio
             ;;
         esac
