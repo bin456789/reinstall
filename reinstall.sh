@@ -2188,21 +2188,19 @@ install_pkg() {
     }
 
     is_need_reinstall() {
-        cmd=$1
+        local cmd=$1
 
         # gentoo 默认编译的 unsquashfs 不支持 xz
-        if [ "$cmd" = unsquashfs ] && is_have_cmd emerge && ! $cmd |& grep -wq xz; then
+        if [ "$cmd" = unsquashfs ] && is_have_cmd emerge && ! "$cmd" |& grep -wq xz; then
             echo "unsquashfs not supported xz. rebuilding."
             return 0
         fi
 
+        # busybox grep  不支持 -oP
+        # busybox lsblk 不支持 -r -n --inverse
         # busybox fdisk 无法显示 mbr 分区表的 id
-        if [ "$cmd" = fdisk ] && is_have_cmd apk && $cmd |& grep -wq BusyBox; then
-            return 0
-        fi
-
-        # busybox grep 不支持 -oP
-        if [ "$cmd" = grep ] && is_have_cmd apk && $cmd |& grep -wq BusyBox; then
+        if { [ "$cmd" = grep ] || [ "$cmd" = lsblk ] || [ "$cmd" = fdisk ]; } &&
+            is_have_cmd apk && "$cmd" --help |& grep -wq BusyBox; then
             return 0
         fi
 
