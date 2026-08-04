@@ -356,8 +356,8 @@ bash reinstall.sh netboot.xyz
 
 #### Method 1: Let the Script Automatically Search for ISO
 
-- The script will search for ISOs from <https://massgrave.dev/genuine-installation-media>, a site that collects official ISOs.
-- Only supports ISOs searching for Windows 10, 11, Server 2019, 2022, 2025.
+- The script will search for ISOs from <https://massgrave.dev/genuine-installation-media> and <https://ntriver.org/download-windows-office>, sites that collect official ISOs.
+- Only supports ISOs searching for Windows 8.x, 10, 11, Server 2019, 2022, 2025.
 
 ```bash
 bash reinstall.sh windows \
@@ -436,7 +436,8 @@ bash reinstall.sh windows \
 
 - General
   - <https://msdl.gravesoft.dev>
-  - <https://massgrave.dev/genuine-installation-media>
+  - <https://massgrave.dev/genuine-installation-media> (Recommended, ISOs are up to date)
+  - <https://ntriver.org/download-windows-office> (Recommended, ISOs are up to date)
   - <https://next.itellyou.cn>
   - <https://www.xitongku.com>
   - <https://www.microsoft.com/software-download/windows10> (Need to open it with a non-Windows User-Agent)
