@@ -732,99 +732,127 @@ assert_cpu_supports_x86_64_v3() {
     fi
 }
 
-# sr-latn-rs 到 sr-latn
-en_us() {
-    echo "$lang" | awk -F- '{print $1"-"$2}'
-
-    # zh-hk 可回落到 zh-tw
-    if [ "$lang" = zh-hk ]; then
-        echo zh-tw
-    fi
+# 判断语言字符是否合法，允许全名和缩写
+is_valid_lang_chars() {
+    [[ "$1" =~ ^[A-Za-z_-]+$ ]]
 }
 
-# fr-ca 到 ca
-us() {
-    # 葡萄牙准确对应 pp
-    if [ "$lang" = pt-pt ]; then
-        echo pp
-        return
-    fi
-    # 巴西准确对应 pt
-    if [ "$lang" = pt-br ]; then
-        echo pt
+lang_convert() {
+    local out_format=$1
+    local in=$lang
+
+    if ! is_valid_lang_chars "$in"; then
         return
     fi
 
-    echo "$lang" | awk -F- '{print $2}'
+    # 如果是 fallback_ 开头的，先得到 fallback 后的 cc-cc
+    if [[ "$out_format" = fallback_* ]]; then
+        in=$(lang_convert_inner "$in" fallback_cc-cc)
+        # 如果要输出 fallback_cc-cc ，直接输出
+        if [ "$out_format" = fallback_cc-cc ]; then
+            printf '%s' "$in"
+            return
+        fi
+        # 去除 fallback_ 前缀
+        out_format=${out_format#fallback_}
+    fi
 
-    # hk 额外回落到 tw
-    if [ "$lang" = zh-hk ]; then
-        echo tw
+    # 尝试转换成目标格式
+    local out
+    out=$(lang_convert_inner "$in" "$out_format")
+
+    # 如果转换成功，则表示输入的语言在列表里面
+    if [ -n "$out" ]; then
+        printf '%s' "$out"
+    else
+        # 如果没有，则手动截取
+        case "$out_format" in
+        cc) cut -d- -f1 <<<"$in" ;;
+        cc-cc) cut -d- -f1-2 <<<"$in" ;;
+        cc-cc-cc) cut -d- -f1-3 <<<"$in" ;;
+        esac
     fi
 }
 
-# fr-ca 到 fr-fr
-en_en() {
-    echo "$lang" | awk -F- '{print $1"-"$1}'
+lang_convert_inner() {
+    local in=$1
+    local out_format=$2
 
-    # en-gb 额外回落到 en-us
-    if [ "$lang" = en-gb ]; then
-        echo en-us
-    fi
-}
-
-# fr-ca 到 fr
-en() {
-    # 巴西/葡萄牙回落到葡萄牙语
-    if [ "$lang" = pt-br ] || [ "$lang" = pt-pt ]; then
-        echo "pp"
+    if ! is_valid_lang_chars "$in"; then
         return
     fi
 
-    echo "$lang" | awk -F- '{print $1}'
+    # 可能得到 / ，用 is_valid_lang_chars 过滤掉
+    local out
+    if out=$(
+        lang_map_with_head | sed 1d | to_lower | awk \
+            -v val="$in" \
+            -v c1="$(get_col_number cc)" \
+            -v c2="$(get_col_number cc-cc)" \
+            -v c3="$(get_col_number cc-cc-cc)" \
+            -v c4="$(get_col_number full_language)" \
+            -v cout="$(get_col_number "$out_format")" \
+            '$c1 == val || $c2 == val || $c3 == val || $c4 == val { print $cout }'
+    ) && is_valid_lang_chars "$out"; then
+        printf '%s' "$out"
+    fi
 }
 
-english() {
-    case "$lang" in
-    ar-sa) echo Arabic ;;
-    bg-bg) echo Bulgarian ;;
-    cs-cz) echo Czech ;;
-    da-dk) echo Danish ;;
-    de-de) echo German ;;
-    el-gr) echo Greek ;;
-    en-gb) echo Eng_Intl ;;
-    en-us) echo English ;;
-    es-es) echo Spanish ;;
-    es-mx) echo Spanish_Latam ;;
-    et-ee) echo Estonian ;;
-    fi-fi) echo Finnish ;;
-    fr-ca) echo FrenchCanadian ;;
-    fr-fr) echo French ;;
-    he-il) echo Hebrew ;;
-    hr-hr) echo Croatian ;;
-    hu-hu) echo Hungarian ;;
-    it-it) echo Italian ;;
-    ja-jp) echo Japanese ;;
-    ko-kr) echo Korean ;;
-    lt-lt) echo Lithuanian ;;
-    lv-lv) echo Latvian ;;
-    nb-no) echo Norwegian ;;
-    nl-nl) echo Dutch ;;
-    pl-pl) echo Polish ;;
-    pt-pt) echo Portuguese ;;
-    pt-br) echo Brazilian ;;
-    ro-ro) echo Romanian ;;
-    ru-ru) echo Russian ;;
-    sk-sk) echo Slovak ;;
-    sl-si) echo Slovenian ;;
-    sr-latn | sr-latn-rs) echo Serbian_Latin ;;
-    sv-se) echo Swedish ;;
-    th-th) echo Thai ;;
-    tr-tr) echo Turkish ;;
-    uk-ua) echo Ukrainian ;;
-    zh-cn) echo ChnSimp ;;
-    zh-hk | zh-tw) echo ChnTrad ;;
-    esac
+get_col_number() {
+    local col_name=$1
+
+    # 找出第一行，用 xargs -n 1 转成列，然后用 grep 找到行号，再用 cut 取出行号
+    lang_map_with_head | head -1 | xargs -n 1 | grep -Fxn "$col_name" | cut -d: -f1
+}
+
+lang_map_with_head() {
+    # 没有 gb mx 开头的镜像，列出它们作用是，用户输入时识别成 en-gb es-mx
+    # ca 并非对应 fr-ca
+    # pt 对应 pt-br，而不是 pt-pt
+    # uk 对应乌克兰语而不是英国，如果用户输入 uk ，要识别成乌克兰
+    # 第 5 列是可回落的语言
+    cat <<EOF
+cc  cc-cc    cc-cc-cc    full_language     fallback_cc-cc
+ar  ar-sa        /       Arabic
+bg  bg-bg        /       Bulgarian
+cs  cs-cz        /       Czech
+da  da-dk        /       Danish
+de  de-de        /       German
+el  el-gr        /       Greek
+gb  en-gb        /       Eng_Intl           en-us
+en  en-us        /       English
+es  es-es        /       Spanish
+mx  es-mx        /       Spanish_Latam
+et  et-ee        /       Estonian
+fi  fi-fi        /       Finnish
+/   fr-ca        /       FrenchCanadian     fr-fr
+fr  fr-fr        /       French
+he  he-il        /       Hebrew
+hr  hr-hr        /       Croatian
+hu  hu-hu        /       Hungarian
+it  it-it        /       Italian
+ja  ja-jp        /       Japanese
+ko  ko-kr        /       Korean
+lt  lt-lt        /       Lithuanian
+lv  lv-lv        /       Latvian
+no  nb-no        /       Norwegian
+nl  nl-nl        /       Dutch
+pl  pl-pl        /       Polish
+pp  pt-pt        /       Portuguese
+pt  pt-br        /       Brazilian          pt-pt
+ro  ro-ro        /       Romanian
+ru  ru-ru        /       Russian
+sk  sk-sk        /       Slovak
+sl  sl-si        /       Slovenian
+sr  sr-latn  sr-latn-rs  Serbian_Latin
+sv  sv-se        /       Swedish
+th  th-th        /       Thai
+tr  tr-tr        /       Turkish
+uk  uk-ua        /       Ukrainian
+cn  zh-cn        /       ChnSimp
+tw  zh-tw        /       ChnTrad
+hk  zh-hk        /       ChnTrad_Hong_Kong  zh-tw
+EOF
 }
 
 parse_windows_image_name() {
@@ -890,9 +918,15 @@ find_windows_iso() {
     if [ -z "$lang" ]; then
         lang=en-us
     fi
-    langs="$lang $(en_us) $(us) $(en_en) $(en)"
-    langs=$(echo "$langs" | xargs -n 1 | awk '!seen[$0]++')
-    full_lang=$(english)
+
+    # 用户输入的语言最优先
+    langs=$lang
+    langs+=" $(lang_convert cc-cc-cc)          $(lang_convert cc-cc)          $(lang_convert cc)"
+    langs+=" $(lang_convert fallback_cc-cc-cc) $(lang_convert fallback_cc-cc) $(lang_convert fallback_cc)"
+    langs=$(xargs -n 1 <<<"$langs" | awk '!seen[$0]++' | xargs)
+
+    full_langs="$(lang_convert full_language) $(lang_convert fallback_full_language)"
+    full_langs=$(xargs -n 1 <<<"$full_langs" | awk '!seen[$0]++' | xargs)
 
     case "$basearch" in
     x86) # 备用，查找功能目前不支持 32 位
@@ -1085,6 +1119,7 @@ get_windows_iso_link() {
     echo "Label msdl: $label_msdl"
     echo "Label vlsc: $label_vlsc"
     echo "Page:       $page_url"
+    echo "Languages:  $langs $full_langs"
     echo
 
     # 先判断是否能自动查找该版本
@@ -1210,16 +1245,18 @@ get_windows_iso_link_inner() {
 
     # 先判断 full_lang 是否为空
     # 因为假如用户输入的 lang 不正确，full_lang 就为空，正则表达式就无法只匹配当前语言
-    if [ -n "$label_vlsc" ] && [ -n "$full_lang" ]; then
-        regexs+=("sw_?dvd[59]_win_?${label_vlsc}_?${version}_.*${arch_win_vlsc}.*_${full_lang}.*.(iso|img)")
-        regexs+=("sw_?dvd[59]_win_?${version}_${label_vlsc}_?.*${arch_win_vlsc}.*_${full_lang}.*.(iso|img)")
-        # LTSC 没有 windows 主版本号
-        # SW_DVD5_WIN_ENT_LTSB_10_2015_64BIT_Arabic_MLF_X20-26578.ISO # 将 ENT_LTSB_10_2015 视为 label
-        # SW_DVD5_WIN_ENT_LTSB_2016_64BIT_Arabic_MLF_X21-07425.ISO    # 将 ENT_LTSB_2016    视为 label
-        if is_ltsc; then
-            regexs+=("sw_?dvd[59]_win_?${label_vlsc}_?.*${arch_win_vlsc}.*_${full_lang}.*.(iso|img)")
+    for full_lang in $full_langs; do
+        if [ -n "$label_vlsc" ] && [ -n "$full_lang" ]; then
+            regexs+=("sw_?dvd[59]_win_?${label_vlsc}_?${version}_.*${arch_win_vlsc}.*_${full_lang}.*.(iso|img)")
+            regexs+=("sw_?dvd[59]_win_?${version}_${label_vlsc}_?.*${arch_win_vlsc}.*_${full_lang}.*.(iso|img)")
+            # LTSC 没有 windows 主版本号
+            # SW_DVD5_WIN_ENT_LTSB_10_2015_64BIT_Arabic_MLF_X20-26578.ISO # 将 ENT_LTSB_10_2015 视为 label
+            # SW_DVD5_WIN_ENT_LTSB_2016_64BIT_Arabic_MLF_X21-07425.ISO    # 将 ENT_LTSB_2016    视为 label
+            if is_ltsc; then
+                regexs+=("sw_?dvd[59]_win_?${label_vlsc}_?.*${arch_win_vlsc}.*_${full_lang}.*.(iso|img)")
+            fi
         fi
-    fi
+    done
 
     # 查找
     for regex in "${regexs[@]}"; do
@@ -4897,6 +4934,9 @@ EOF
         shift 2
         ;;
     --lang)
+        if ! is_valid_lang_chars "$2"; then
+            error_and_exit "Invalid $1 value: $2"
+        fi
         lang=$(echo "$2" | to_lower)
         shift 2
         ;;

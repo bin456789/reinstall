@@ -366,49 +366,51 @@ bash reinstall.sh windows \
 ```
 
 <details>
-<summary>Supported languages</summary>
+<summary> --lang list </summary>
 
-```text
-ar-sa
-bg-bg
-cs-cz
-da-dk
-de-de
-el-gr
-en-gb
-en-us
-es-es
-es-mx
-et-ee
-fi-fi
-fr-ca
-fr-fr
-he-il
-hr-hr
-hu-hu
-it-it
-ja-jp
-ko-kr
-lt-lt
-lv-lv
-nb-no
-nl-nl
-pl-pl
-pt-pt
-pt-br
-ro-ro
-ru-ru
-sk-sk
-sl-si
-sr-latn-rs
-sv-se
-th-th
-tr-tr
-uk-ua
-zh-cn
-zh-hk
-zh-tw
-```
+Supports these three language format codes. Case insensitive.
+
+| CC Format | CC-CC Format | Language |
+| - | - | - |
+| ar | ar-sa | Arabic |
+| bg | bg-bg | Bulgarian |
+| cs | cs-cz | Czech |
+| da | da-dk | Danish |
+| de | de-de | German |
+| el | el-gr | Greek |
+| gb | en-gb | Eng_Intl |
+| en | en-us | English |
+| es | es-es | Spanish |
+| mx | es-mx | Spanish_Latam |
+| et | et-ee | Estonian |
+| fi | fi-fi | Finnish |
+| | fr-ca | FrenchCanadian |
+| fr | fr-fr | French |
+| he | he-il | Hebrew |
+| hr | hr-hr | Croatian |
+| hu | hu-hu | Hungarian |
+| it | it-it | Italian |
+| ja | ja-jp | Japanese |
+| ko | ko-kr | Korean |
+| lt | lt-lt | Lithuanian |
+| lv | lv-lv | Latvian |
+| no | nb-no | Norwegian |
+| nl | nl-nl | Dutch |
+| pl | pl-pl | Polish |
+| pp | pt-pt | Portuguese |
+| pt | pt-br | Brazilian |
+| ro | ro-ro | Romanian |
+| ru | ru-ru | Russian |
+| sk | sk-sk | Slovak |
+| sl | sl-si | Slovenian |
+| sr | sr-latn / sr-latn-rs | Serbian_Latin |
+| sv | sv-se | Swedish |
+| th | th-th | Thai |
+| tr | tr-tr | Turkish |
+| uk | uk-ua | Ukrainian |
+| cn | zh-cn | ChnSimp |
+| tw | zh-tw | ChnTrad |
+| hk | zh-hk | ChnTrad_Hong_Kong |
 
 </details>
 
