@@ -785,7 +785,7 @@ lang_convert_inner() {
     # 可能得到 / ，用 is_valid_lang_chars 过滤掉
     local out
     if out=$(
-        lang_map_with_head | sed 1d | to_lower | awk \
+        lang_table_with_head | sed 1d | to_lower | awk \
             -v val="$in" \
             -v c1="$(get_col_number cc)" \
             -v c2="$(get_col_number cc-cc)" \
@@ -802,10 +802,10 @@ get_col_number() {
     local col_name=$1
 
     # 找出第一行，用 xargs -n 1 转成列，然后用 grep 找到行号，再用 cut 取出行号
-    lang_map_with_head | head -1 | xargs -n 1 | grep -Fxn "$col_name" | cut -d: -f1
+    lang_table_with_head | head -1 | xargs -n 1 | grep -Fxn "$col_name" | cut -d: -f1
 }
 
-lang_map_with_head() {
+lang_table_with_head() {
     # 没有 gb mx 开头的镜像，列出它们作用是，用户输入时识别成 en-gb es-mx
     # ca 并非对应 fr-ca
     # pt 对应 pt-br，而不是 pt-pt
@@ -856,6 +856,18 @@ EOF
 }
 
 parse_windows_image_name() {
+    # 将名称改成内部名称
+    # home basic 改为 homebasic
+    # home premium 改为 homepremium
+    # windows server 2008 server 改为 windows longhorn server
+    # 注意 windows server 2008 r2 serverdatacenter 不用改
+    image_name=$(
+        <<<"$image_name" sed \
+            -e 's/^windows server 2008 server/windows longhorn server/' \
+            -e 's/home basic$/homebasic/' \
+            -e 's/home premium$/homepremium/'
+    )
+
     set -- $image_name
 
     if ! [ "$1" = windows ]; then
@@ -890,10 +902,17 @@ parse_windows_image_name() {
         esac
         shift
     done
+
+    # longhorn 改成 server 2008 用于 iso 查找
+    if [ "$version" = longhorn ] && [[ "$edition" = server* ]]; then
+        server=server
+        version=2008
+    fi
 }
 
-is_have_arm_version() {
+is_have_arm64_version() {
     case "$version" in
+    # win8.x 有 arm32 版本，但是我们不支持 arm32
     10)
         case "$edition" in
         home | 'home single language' | pro | education | enterprise | 'pro education' | 'pro for workstations') return ;;
@@ -949,6 +968,44 @@ find_windows_iso() {
 get_windows_iso_link() {
     get_label_msdn() {
         case "$version" in
+        vista)
+            case "$edition" in
+            starter)
+                case "$arch_win" in
+                x86) echo _ ;;
+                esac
+                ;;
+            homebasic | homepremium | ultimate)
+                echo _
+                ;;
+            business | enterprise)
+                # ntriver 的 iso 是 vlsc 的
+                ;;
+            esac
+            ;;
+        7)
+            case "$edition" in
+            starter)
+                case "$arch_win" in
+                x86) echo starter ;;
+                esac
+                ;;
+            homebasic)
+                case "$arch_win" in
+                # ntriver 没有单独的 win7 homebasic x64 iso
+                # 可从 homepremium iso 获取
+                x86) echo "home basic" ;;
+                x64) echo "home premium" ;;
+                esac
+                ;;
+            homepremium)
+                echo "home premium"
+                ;;
+            professional | enterprise | ultimate)
+                echo "$edition"
+                ;;
+            esac
+            ;;
         8 | 8.1)
             case "$edition" in
             '') # windows 8.x core
@@ -1025,11 +1082,10 @@ get_windows_iso_link() {
                 ;;
             esac
             ;;
-        2019 | 2022 | 2025)
+        2012 | '2012 r2' | 2016 | 2019 | 2022 | 2025)
             case "$edition" in
-            serverstandard | serverstandardcore | serverdatacenter | serverdatacentercore)
-                echo _
-                ;;
+            serverstandard | serverstandardcore) echo _ ;;
+            serverdatacenter | serverdatacentercore) echo _ ;;
             esac
             ;;
         esac
@@ -1048,6 +1104,11 @@ get_windows_iso_link() {
         # SW_DVD5_Win_10_IOT_Enterprise_2015_LTSB_64Bit_EMB_English_OEM_X20-20063.IMG
         # SW_DVD5_Win10_IoT_Enterprise_LTSB_1607_64-bit_EMB_English_OEM_X21-05293.IMG
         # SW_DVD9_Win_11_IoT_Enterprise_LTSC_24H2_64-Bit_English_X23-70076.ISO
+        vista)
+            case "$edition" in
+            business | enterprise) echo "$edition" ;;
+            esac
+            ;;
         10)
             case "$edition" in
             pro | education | enterprise | 'pro education' | 'pro for workstations') echo pro ;;
@@ -1081,25 +1142,13 @@ get_windows_iso_link() {
     }
 
     get_page_url() {
-        local page=
-
-        if is_ltsc; then
-            page=ntriver/ltsc
-        elif [ "$server" = 'server' ]; then
-            page=massgrave/server
+        if [ "$server" = 'server' ]; then
+            echo https://ntriver.org/download-windows-server-${version/ /-}
+        elif is_ltsc; then
+            echo https://ntriver.org/download-windows-ltsc
         else
-            case "$version" in
-            8 | 8.1 | 10 | 11)
-                page=ntriver/$version
-                ;;
-            esac
+            echo https://ntriver.org/download-windows-$version
         fi
-
-        case "$page" in
-        massgrave/server) echo https://massgrave.dev/windows-server-links ;;
-        massgrave/*) echo https://massgrave.dev/windows_${page#*/}_links ;;
-        ntriver/*) echo https://ntriver.org/download-windows-${page#*/} ;;
-        esac
     }
 
     is_ltsc() {
@@ -1131,8 +1180,8 @@ get_windows_iso_link() {
         error_and_exit "Not support find this iso. Check if --image-name is wrong. Or set --iso manually."
     fi
 
-    if [ "$basearch" = aarch64 ] && ! is_have_arm_version; then
-        error_and_exit "No ARM iso for this Windows Version or Edition."
+    if [ "$basearch" = aarch64 ] && ! is_have_arm64_version; then
+        error_and_exit "No ARM64 iso for this Windows Version or Edition."
     fi
 
     if [ -n "$label_msdl" ]; then
@@ -1239,6 +1288,8 @@ get_windows_iso_link_inner() {
     fi
 
     # vlsc
+    # SW_DVD5_Windows_Vista_Business_64BIT_Arabic_Full_Int_SP2_MLF_X15-40038.ISO
+    # SW_DVD5_SA_Win_Vista_Enterprise_64BIT_Arabic_Full_Int_SP2_MLF_X15-40408.ISO
     # SW_DVD5_Win_10_IOT_Enterprise_2015_LTSB_64Bit_EMB_English_OEM_X20-20063.IMG
     # SW_DVD9_Win_Pro_10_22H2.15_Arm64_English_Pro_Ent_EDU_N_MLF_X23-67223.ISO
     # SWDVD9_WinSrvSTDCORE2025_24H2.16_64Bit_English_DC_STD_MLF_RTMUpdJan26_X24-26760.iso
@@ -1247,13 +1298,13 @@ get_windows_iso_link_inner() {
     # 因为假如用户输入的 lang 不正确，full_lang 就为空，正则表达式就无法只匹配当前语言
     for full_lang in $full_langs; do
         if [ -n "$label_vlsc" ] && [ -n "$full_lang" ]; then
-            regexs+=("sw_?dvd[59]_win_?${label_vlsc}_?${version}_.*${arch_win_vlsc}.*_${full_lang}.*.(iso|img)")
-            regexs+=("sw_?dvd[59]_win_?${version}_${label_vlsc}_?.*${arch_win_vlsc}.*_${full_lang}.*.(iso|img)")
+            regexs+=("sw_?dvd[59]_(SA_)?win(dows)?_?${label_vlsc}_?${version}_.*${arch_win_vlsc}.*_${full_lang}.*\.(iso|img)")
+            regexs+=("sw_?dvd[59]_(SA_)?win_?(dows)?${version}_${label_vlsc}_?.*${arch_win_vlsc}.*_${full_lang}.*\.(iso|img)")
             # LTSC 没有 windows 主版本号
             # SW_DVD5_WIN_ENT_LTSB_10_2015_64BIT_Arabic_MLF_X20-26578.ISO # 将 ENT_LTSB_10_2015 视为 label
             # SW_DVD5_WIN_ENT_LTSB_2016_64BIT_Arabic_MLF_X21-07425.ISO    # 将 ENT_LTSB_2016    视为 label
             if is_ltsc; then
-                regexs+=("sw_?dvd[59]_win_?${label_vlsc}_?.*${arch_win_vlsc}.*_${full_lang}.*.(iso|img)")
+                regexs+=("sw_?dvd[59]_(SA_)?win(dows)?_?${label_vlsc}_?.*${arch_win_vlsc}.*_${full_lang}.*\.(iso|img)")
             fi
         fi
     done
@@ -1657,27 +1708,36 @@ Continue?
         auto_find_iso=false
         if [ -z "$iso" ]; then
             auto_find_iso=true
-            # 查找时将 windows longhorn serverdatacenter 改成 windows server 2008 serverdatacenter
-            image_name=${image_name/windows longhorn server/windows server 2008 server}
             echo "iso url is not set. Attempting to find it automatically."
             find_windows_iso
         fi
 
-        # 将上面的 windows server 2008 serverdatacenter 改回 windows longhorn serverdatacenter
-        # 也能纠正用户输入了 windows server 2008 serverdatacenter
-        # 注意 windows server 2008 r2 serverdatacenter 不用改
-        image_name=${image_name/windows server 2008 server/windows longhorn server}
-
         if [[ "$iso" = magnet:* ]]; then
             : # 不测试磁力链接
         else
-            iso_is_tested=false
+            local iso_is_tested=false
+            local iso_is_direct_link=false
             if $auto_find_iso; then
                 # 目前自动获取 iso 肯定不是直连，因此先关闭直连测试
                 if false && test_url_grace "$iso" iso 2>/dev/null; then
                     iso_is_tested=true
-                else
-                    # 需要用户输入 massgrave.dev 直链
+                    iso_is_direct_link=true
+                elif [[ $(echo "$iso" | to_lower) =~ ^https://ntriver.org/drive/.*\.(iso|img)$ ]]; then
+                    info "get direct link"
+                    local iso_name=${iso##*/}
+                    local direct_link
+                    if direct_link=$(curl -L "https://delivery-api.ntriver.org/generate-link?filename=$iso_name" |
+                        grep -oE '"url":"[^"]+"' | cut -d: -f2- | tr -d '"' | grep .); then
+                        echo "Direct link: $direct_link" >&2
+                        iso="$direct_link"
+                        iso_is_direct_link=true
+                    else
+                        warn false "Failed to get direct link for $iso"
+                    fi
+                fi
+
+                # 需要用户输入直链的情况
+                if ! $iso_is_direct_link; then
                     info "Set Direct link"
                     # MobaXterm 不支持
                     # printf '\e]8;;http://example.com\e\\This is a link\e]8;;\e\\\n'

@@ -356,8 +356,7 @@ bash reinstall.sh netboot.xyz
 
 #### 方法 1: 让脚本自动查找 ISO
 
-- 脚本会从 <https://massgrave.dev/genuine-installation-media> 和 <https://ntriver.org/download-windows-office> 查找 ISO，网站专门提供官方 ISO 下载
-- 只支持查找 Windows 8.x, 10, 11, Server 2019, 2022, 2025 的 ISO
+- 脚本会 <https://ntriver.org/download-windows-office> 查找 ISO，网站专门提供官方 ISO 下载
 
 ```bash
 bash reinstall.sh windows \
@@ -438,8 +437,8 @@ bash reinstall.sh windows \
 
 - 正式版
   - <https://msdl.gravesoft.dev>
-  - <https://massgrave.dev/genuine-installation-media> (推荐，ISO 是最新版)
   - <https://ntriver.org/download-windows-office> (推荐，ISO 是最新版)
+  - <https://massgrave.dev/genuine-installation-media> (推荐，ISO 是最新版)
   - <https://next.itellyou.cn>
   - <https://www.xitongku.com>
   - <https://www.microsoft.com/software-download/windows10> (需用非 Windows User-Agent 打开)
@@ -559,7 +558,7 @@ Windows Server 2025 SERVERDATACENTER
 
 #### ARM 安装 Windows 的注意事项
 
-大部分 ARM 机器都支持安装最新版 Windows 11
+大部分 ARM 云服务器支持安装 Windows 11
 
 安装过程可能会黑屏，串行控制台可能会显示 `ConvertPages: failed to find range`，均不影响正常安装
 
