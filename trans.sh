@@ -4866,12 +4866,7 @@ get_cloud_image_part_size() {
 
     # openeuler 是 .qcow2.xz，要解压后才知道 qcow2 大小
     if [ "$distro" = openeuler ]; then
-        # openeuler 20.03 3g
-        if [ "$releasever" = 20.03 ]; then
-            echo 3GiB
-        else
-            echo 2GiB
-        fi
+        echo 3GiB
     elif size_bytes=$(get_http_file_size "$img"); then
         # 缩小 btrfs 需要写 qcow2 ，实测写入后只多了 1M，因此不用特殊处理
         echo "$(get_part_size_mb_for_file_size_b $size_bytes)MiB"
