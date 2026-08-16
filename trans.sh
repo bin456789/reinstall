@@ -1250,9 +1250,10 @@ EOF
         fi
 
         # ipv6
+        has_ipv6_iface=false
         if is_slaac; then
             echo "iface $ethx inet6 auto" >>$conf_file
-
+            has_ipv6_iface=true
         elif is_dhcpv6; then
             # debian 13 使用 ifupdown + dhcpcd-base
             # inet/inet6 都配置成 dhcp 时，重启后 dhcpv4 会丢失
@@ -1264,7 +1265,7 @@ EOF
             else
                 echo "iface $ethx inet6 dhcp" >>$conf_file
             fi
-
+            has_ipv6_iface=true
         elif is_staticv6; then
             get_netconf_to ipv6_addr
             get_netconf_to ipv6_gateway
@@ -1273,6 +1274,7 @@ iface $ethx inet6 static
     address $ipv6_addr
     gateway $ipv6_gateway
 EOF
+            has_ipv6_iface=true
             # debian 9
             # ipv4 支持静态 onlink 网关
             # ipv6 不支持静态 onlink 网关，需使用 post-up 添加，未测试动态
@@ -1300,7 +1302,14 @@ EOF
                 )
             fi
         fi
-
+        # accept_ra/autoconf 属于 iface 选项
+        # 如果当前网卡没有生成 IPv6 iface stanza，
+        # 先补一个 manual stanza，避免 ifupdown 报 misplaced option
+        if ! $has_ipv6_iface &&
+            { should_disable_accept_ra || should_disable_autoconf; } &&
+            [ "$distro" != alpine ]; then
+            echo "iface $ethx inet6 manual" >>$conf_file
+        fi
         # dns
         # 有 ipv6 但需设置 dns 的情况
         if is_need_manual_set_dnsv6; then
