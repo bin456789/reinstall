@@ -1722,9 +1722,9 @@ Continue?
                 if false && test_url_grace "$iso" iso 2>/dev/null; then
                     iso_is_tested=true
                     iso_is_direct_link=true
-                elif [[ $(echo "$iso" | to_lower) =~ ^https://ntriver.org/drive/.*\.(iso|img)$ ]]; then
+                elif [[ $(echo "$iso" | to_lower) =~ ^https://ntriver.org/drive\?.*\.(iso|img)$ ]]; then
                     info "get direct link"
-                    local iso_name=${iso##*/}
+                    local iso_name=${iso##*\?}
                     local direct_link
                     if direct_link=$(curl -L "https://delivery-api.ntriver.org/generate-link?filename=$iso_name" |
                         grep -oE '"url":"[^"]+"' | cut -d: -f2- | tr -d '"' | grep .); then
