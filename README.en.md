@@ -581,11 +581,12 @@ bash reinstall.sh windows \
 - `--add-driver INF_OR_DIR` Add additional driver, specifying .inf path, or the folder contains .inf file.
   - The driver must be downloaded to current system first.
   - This parameter can be set multiple times to add different driver.
+- `--no-auto-drivers` Prevent the script automatically download drivers. You need to use `--add-driver` to add the missing drivers.
 - `--frpc-config PATH` Add frpc for intranet tunneling. Parameter can be local filepath or HTTP URL of the configuration file.
 - `--hold 1` Reboot only into install environment, without running installer, only for SSH connect to test network connection.
 - `--hold 2` Allow SSH connections for modifying `boot.wim`, `install.wim` or other contents before rebooting into the official Windows installation program, with the disk mounted at `/os`.
 
-#### The following drivers will automatic download and install as needed, without the need for manual addition
+#### The following drivers will be downloaded and installed automatically as needed; use `--no-auto-drivers` to disable this feature
 
 - VirtIO ([Community][virtio-virtio], [Alibaba Cloud][virtio-aliyun], [Tencent Cloud][virtio-qcloud], [GCP][virtio-gcp], [GCP (Win7/2008 SHA-1)][virtio-gcp-win6.1sha1]))
 - XEN ([~~Community~~][xen-xen] (unsigned), [Citrix][xen-citrix], [AWS][xen-aws])

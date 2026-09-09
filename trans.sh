@@ -6921,6 +6921,14 @@ install_windows() {
         drv=/os/drivers
         mkdir_clear "$drv"
 
+        # 自定义驱动
+        add_driver_custom
+
+        # shellcheck disable=SC2154
+        if [ "$no_auto_drivers" = 1 ]; then
+            return
+        fi
+
         # 这里有坑
         # $(get_cloud_vendor) 调用了 cache_dmi_and_virt
         # 但是 $(get_cloud_vendor) 运行在 subshell 里面
@@ -7026,9 +7034,6 @@ install_windows() {
             grep -iq 8086 /sys/class/net/e*/device/vendor; then
             add_driver_intel_nic
         fi
-
-        # 自定义驱动
-        add_driver_custom
     }
 
     add_driver_intel_nic() {

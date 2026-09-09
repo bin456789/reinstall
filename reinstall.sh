@@ -117,10 +117,11 @@ Usage: $reinstall_____ anolis      7|8|23
                        For Windows Only:
                        [--allow-ping]
                        [--rdp-port    PORT]
-                       [--add-driver  INF_OR_DIR]
+                       [--add-driver  INF_OR_DIR]  (only for iso installation)
+                       [--no-auto-drivers]         (only for iso installation)
 
                        For Linux Only:
-                       [--no-cloud-kernel]  (Debian/Ubuntu/Alpine)
+                       [--no-cloud-kernel]         (only for Debian/Ubuntu/Alpine)
 
        Manual:         https://github.com/bin456789/reinstall
 
@@ -724,6 +725,7 @@ is_cpu_supports_x86_64_v3() {
     # /proc/cpuinfo 不显示 lzcnt, 可用 abm 代替，但 cygwin 也不显示 abm
     # /proc/cpuinfo 不显示 osxsave, 故用 xsave 代替
 
+    # 在 32 位 cygwin 上也能正常识别
     need_flags="avx avx2 bmi1 bmi2 f16c fma movbe xsave"
     had_flags=$(grep -m 1 ^flags /proc/cpuinfo | awk -F': ' '{print $2}')
 
@@ -3537,7 +3539,7 @@ build_extra_cmdline() {
     # 会将 extra.xxx=yyy 写入新系统的 /etc/modprobe.d/local.conf
     # https://answers.launchpad.net/ubuntu/+question/249456
     # https://salsa.debian.org/installer-team/rootskel/-/blob/master/src/lib/debian-installer-startup.d/S02module-params?ref_type=heads
-    for key in confhome hold force_boot_mode force_cn force_old_windows_setup cloud_image no_cloud_kernel main_disk \
+    for key in confhome hold force_boot_mode force_cn force_old_windows_setup cloud_image no_cloud_kernel no_auto_drivers main_disk \
         elts deb_mirror \
         username ssh_port rdp_port web_port web_path allow_ping; do
         value=${!key}
@@ -4773,7 +4775,7 @@ fi
 
 # 整理参数
 long_opts=
-for o in ci installer debug minimal no-cloud-kernel allow-ping force-cn help \
+for o in ci installer debug minimal no-cloud-kernel no-auto-drivers allow-ping force-cn help \
     add-driver: \
     hold: sleep: \
     iso: \
@@ -4871,6 +4873,10 @@ while true; do
         ;;
     --no-cloud-kernel)
         no_cloud_kernel=1
+        shift
+        ;;
+    --no-auto-drivers)
+        no_auto_drivers=1
         shift
         ;;
     --allow-ping)

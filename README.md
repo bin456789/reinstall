@@ -581,11 +581,12 @@ bash reinstall.sh windows \
 - `--add-driver INF_OR_DIR` 添加额外驱动，填写 .inf 路径，或者 .inf 所在的文件夹
   - 需先下载驱动到当前系统
   - 可多次设置该参数以添加不同的驱动
+- `--no-auto-drivers` 禁止脚本自动下载驱动，你需要用 `--add-driver` 补全驱动
 - `--frpc-config PATH` 添加 frpc 内网穿透，参数填配置文件的本地路径或 HTTP 链接
 - `--hold 1` 仅重启到安装环境，不运行安装，用于 SSH 登录验证网络连通性
 - `--hold 2` 用于在进入 Windows 官方安装程序之前，SSH 登录修改 `boot.wim`、`install.wim` 或者其它内容，硬盘挂载在 `/os`
 
-#### 以下驱动会自动按需下载安装，无需手动添加
+#### 以下驱动会自动按需下载安装，使用 `--no-auto-drivers` 可禁止此功能
 
 - VirtIO ([社区版][virtio-virtio], [阿里云][virtio-aliyun], [腾讯云][virtio-qcloud], [GCP][virtio-gcp], [GCP (Win7/2008 SHA-1)][virtio-gcp-win6.1sha1])
 - XEN ([~~社区版~~][xen-xen] (未签名), [Citrix][xen-citrix], [AWS][xen-aws])
