@@ -8305,8 +8305,6 @@ get_ubuntu_kernel_flavor() {
     # linux-image-virtual = linux-image-6.x-generic
     # linux-image-generic = linux-image-6.x-generic + amd64-microcode + intel-microcode + linux-firmware + linux-modules-extra-generic
 
-    # TODO: ISO virtual-hwe-24.04 不安装 linux-image-extra-virtual-hwe-24.04 不然会花屏
-
     # https://github.com/systemd/systemd/blob/main/src/basic/virt.c
     # https://github.com/canonical/cloud-init/blob/main/tools/ds-identify
     # http://git.annexia.org/?p=virt-what.git;a=blob;f=virt-what.in;hb=HEAD
@@ -8326,9 +8324,14 @@ get_ubuntu_kernel_flavor() {
     cache_dmi_and_virt
     vendor="$(get_cloud_vendor)"
     case "$vendor" in
-    aws | gcp | oracle | azure | ibm) echo $vendor ;;
+    aws | gcp | oracle | azure | ibm)
+        echo $vendor
+        ;;
     *)
-        if is_virt; then
+        # 20.04 后才有
+        if is_virt_contains vmware && [ "$releasever" != 18.04 ]; then
+            echo vmware$suffix
+        elif is_virt; then
             echo virtual$suffix
         else
             echo generic$suffix
