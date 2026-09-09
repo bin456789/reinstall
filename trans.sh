@@ -1736,9 +1736,12 @@ install_alpine() {
         chroot /os apk add frp
         # chroot rc-update add 默认添加到 sysinit
         # 但不加 chroot 默认添加到 default
-        chroot /os rc-update add frpc boot
-        cp -f /configs/frpc.* /os/etc/frp/
-        chmod 600 /os/etc/frp/frpc.*
+        chroot /os rc-update add frpc default
+
+        # 固定为 toml
+        # 这样就不用在 /etc/init.d/frpc drop-in 修改 cfgfile
+        cp -f /configs/frpc.* /os/etc/frp/frpc.toml
+        chmod 600 /os/etc/frp/frpc.toml
     fi
 
     # setup-disk 会自动选择固件，但不包括微码？
@@ -2054,6 +2057,8 @@ EOF
                 cp /configs/frpc.* /os/etc/nixos/
                 chmod 600 /os/etc/nixos/frpc.*
                 ext=$(basename /configs/frpc.* | awk -F. '{print $NF}')
+                # 默认已经开了 DynamicUser = true;
+                # https://github.com/NixOS/nixpkgs/blob/nixos-26.05/nixos/modules/services/networking/frp.nix
                 cat <<EOF
 services.frp = {
   enable = true;
@@ -2167,8 +2172,13 @@ EOF
 add_systemd_service() {
     local os_dir=$1
     local service_name=$2
+    local service_file=$3
 
-    download "$confhome/$service_name.service" "$os_dir/etc/systemd/system/$service_name.service"
+    if [ -n "$service_file" ]; then
+        cp "$service_file" "$os_dir/etc/systemd/system/$service_name.service"
+    else
+        download "$confhome/$service_name.service" "$os_dir/etc/systemd/system/$service_name.service"
+    fi
     chroot "$os_dir" systemctl enable "$service_name.service"
 
     # aosc 首次开机会执行 preset-all
@@ -2215,12 +2225,27 @@ add_frpc_systemd_service_if_need() {
         rm -f "$os_dir/frpc.tar.gz"
         chmod a+x "$os_dir/usr/local/bin/frpc"
 
-        # frpc conf
-        cp -f /configs/frpc.* "$os_dir/usr/local/etc/frpc/"
-        chmod 600 $os_dir/usr/local/etc/frpc/frpc.*
+        # frpc toml
+        cp -f /configs/frpc.* "$os_dir/usr/local/etc/frpc/frpc.toml"
+        download "$confhome/frpc.service" /tmp/frpc.service
+        if [ "$(chroot $os_dir systemctl --version | head -1 | awk '{print $2}')" -ge 247 ]; then
+            # 新版本 systemd
+            sed -i 's/^\[X-Service-New\]$/[Service]/' /tmp/frpc.service
+            chroot "$os_dir" chown root:root /usr/local/etc/frpc/frpc.toml
+            chroot "$os_dir" chmod 600 /usr/local/etc/frpc/frpc.toml
+        else
+            # 旧版本 systemd
+            sed -i 's/^\[X-Service-Old\]$/[Service]/' /tmp/frpc.service
+            chroot "$os_dir" useradd --system --no-create-home \
+                --home-dir /nonexistent \
+                --shell /sbin/nologin \
+                frpc
+            chroot "$os_dir" chown root:frpc /usr/local/etc/frpc/frpc.toml
+            chroot "$os_dir" chmod 640 /usr/local/etc/frpc/frpc.toml
+        fi
 
         # 添加服务
-        add_systemd_service "$os_dir" frpc
+        add_systemd_service "$os_dir" frpc /tmp/frpc.service
     fi
 }
 

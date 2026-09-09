@@ -5,13 +5,22 @@ Description=Frp Client Service
 After=network-online.target
 Wants=network-online.target
 
-[Service]
+[X-Service-Old]
 Type=simple
-User=nobody
 Restart=on-failure
 RestartSec=5s
-ExecStart=/usr/local/bin/frpc -c /usr/local/etc/frpc/frpc.conf
-ExecReload=/usr/local/bin/frpc reload -c /usr/local/etc/frpc/frpc.conf
+User=frpc
+ExecStart=/usr/local/bin/frpc -c /usr/local/etc/frpc/frpc.toml
+ExecReload=/usr/local/bin/frpc reload -c /usr/local/etc/frpc/frpc.toml
+
+[X-Service-New]
+Type=simple
+Restart=on-failure
+RestartSec=5s
+DynamicUser=yes
+LoadCredential=frpc.toml:/usr/local/etc/frpc/frpc.toml
+ExecStart=/usr/local/bin/frpc -c ${CREDENTIALS_DIRECTORY}/frpc.toml
+ExecReload=/usr/local/bin/frpc reload -c ${CREDENTIALS_DIRECTORY}/frpc.toml
 
 [Install]
 WantedBy=multi-user.target
