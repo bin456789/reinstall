@@ -21,7 +21,19 @@ rem https://learn.microsoft.com/windows-hardware/manufacture/desktop/capture-and
 rem win8 pe 没有 powercfg
 powercfg /s SCHEME_MIN 2>nul
 
-rem 安装 SCSI 驱动
+rem 两个同样的驱动，PE 下只会使用先加载的那个
+rem https://learn.microsoft.com/troubleshoot/windows-client/setup-upgrade-and-drivers/limitations-dollar-sign-winpedriver-dollar-sign
+
+rem 因此先安装用户添加的 SCSI 驱动
+rem 可以用 forfiles /p X:\custom_drivers /m *.inf /c "cmd /c echo @path"
+rem 不可以用 for %%F in ("X:\custom_drivers\*\*.inf")
+if exist X:\custom_drivers\ (
+    for /f "delims=" %%F in ('dir /s /b "X:\custom_drivers\*.inf" 2^>nul') do (
+        call :drvload_if_scsi "%%~F"
+    )
+)
+
+rem 后安装脚本自动添加的 SCSI 驱动
 if exist X:\drivers\ (
     for /f "delims=" %%F in ('dir /s /b "X:\drivers\*.inf" 2^>nul') do (
         call :drvload_if_scsi "%%~F"
@@ -35,15 +47,6 @@ if exist X:\drivers\ (
     rem if not errorlevel 1 (
     rem     drvload "%%~F"
     rem )
-)
-
-rem 安装自定义 SCSI 驱动
-rem 可以用 forfiles /p X:\custom_drivers /m *.inf /c "cmd /c echo @path"
-rem 不可以用 for %%F in ("X:\custom_drivers\*\*.inf")
-if exist X:\custom_drivers\ (
-    for /f "delims=" %%F in ('dir /s /b "X:\custom_drivers\*.inf" 2^>nul') do (
-        call :drvload_if_scsi "%%~F"
-    )
 )
 
 rem 等待加载分区
