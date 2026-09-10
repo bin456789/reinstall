@@ -75,10 +75,8 @@ else
 fi
 
 usage_and_exit() {
-
-    # kali 官网的 202x.x iso 安装后，apt 源是 rolling
-    # 因此 netboot last-snapshot 没有意义
-    # 因此这里不显示 last-snapshot|rolling
+    # kali 官网的 202x.x iso 安装后，apt 源是 kali-rolling
+    # 微软商店的 wsl kali，apt 源是 kali-last-snapshot
     cat <<EOF
 Usage: $reinstall_____ anolis      7|8|23
                        opencloudos 8|9|23
@@ -94,8 +92,8 @@ Usage: $reinstall_____ anolis      7|8|23
                        opensuse    16.0|tumbleweed
                        openeuler   20.03|22.03|24.03
                        alpine      3.21|3.22|3.23|3.24
+                       kali        last-snapshot|rolling
                        ubuntu      18.04|20.04|22.04|24.04|26.04 [--minimal]
-                       kali
                        arch
                        gentoo
                        aosc
@@ -3880,14 +3878,23 @@ EOF
     # 还原 kali netinst.iso 的 simple-cdd 机制
     # 主要用于调用 kali.postinst 设置 zsh 为默认 shell
     # 但 mini.iso 又没有这种机制
-    # https://gitlab.com/kalilinux/build-scripts/kali-live/-/raw/main/kali-config/common/includes.installer/kali-finish-install?ref_type=heads
+    # https://gitlab.com/kalilinux/build-scripts/kali-installer/-/raw/main/simple-cdd/profiles/kali.postinst?ref_type=heads
     # https://salsa.debian.org/debian/simple-cdd/-/blob/master/debian/14simple-cdd?ref_type=heads
     # https://http.kali.org/pool/main/s/simple-cdd/simple-cdd-profiles_0.6.9_all.udeb
     if [ "$distro" = kali ]; then
         # 但我们没有使用 iso，因此没有 kali.postinst，需要另外下载
         mkdir -p cdrom/simple-cdd
-        curl -Lo cdrom/simple-cdd/kali.postinst https://gitlab.com/kalilinux/build-scripts/kali-live/-/raw/main/kali-config/common/includes.installer/kali-finish-install?ref_type=heads
+        curl -Lo cdrom/simple-cdd/kali.postinst https://gitlab.com/kalilinux/build-scripts/kali-installer/-/raw/main/simple-cdd/profiles/kali.postinst?ref_type=heads
         chmod a+x cdrom/simple-cdd/kali.postinst
+
+        # kali simple-cdd 阶段将 apt 源改成 deb822 格式
+        # 但是写死了 http://http.kali.org/kali/ 和 kali-rolling
+        # 因此在这里改回去
+        # https://gitlab.com/kalilinux/build-scripts/kali-installer/-/raw/main/simple-cdd/profiles/kali.postinst?ref_type=heads
+        sed -E -i \
+            -e "s|^URIs: http://http.kali.org/kali/$|URIs: http://$nextos_deb_mirror/|" \
+            -e "s|^Suites: kali-rolling$|Suites: $nextos_codename|" \
+            cdrom/simple-cdd/kali.postinst
     fi
 
     # 安装 kali-last-snapshot 时
@@ -3901,15 +3908,6 @@ EOF
             etc/default-release \
             etc/udebs-source
     fi
-
-    # 无论是 netboot kali-last-snapshot 还是 kali-linux-202x.x-installer-netinst-amd64.iso
-    # tasksel 安装 openssh-server 时已经在用 /target 的源了，也就是 kali-rolling
-    # 我们遇到过 kali-rolling 的 openssh-server 有问题无法安装
-    # https://bugs.kali.org/view.php?id=9847
-    # https://bugs.kali.org/view.php?id=9853
-    # 如果要规避这种情况，或者想安装纯血 kali-last-snapshot
-    # debootstrap 后马上修改 apt 源应该可以做到
-    # 相关位置 /usr/lib/post-base-installer.d/
 
     if [ "$distro" = debian ] && is_debian_elts; then
         curl -Lo usr/share/keyrings/debian-archive-keyring.gpg https://deb.freexian.com/extended-lts/archive-key.gpg
