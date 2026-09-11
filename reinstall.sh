@@ -3659,6 +3659,29 @@ mkdir_clear() {
     mkdir -p "$dir"
 }
 
+mod_inittab_for_screen() {
+    # 主 tty 条目由 /usr/sbin/reopen-console 写入
+    # ttyAMA0::respawn:/sbin/debian-installer
+
+    # 我们补充其它 tty 条目，让他们显示 screen 会话
+    # tty1::respawn:screen -x root/ -p 1
+
+    # 这里用 tty1
+    # 因为直接用 netinst.iso 启动，/etc/inittab 自动创建的是 tty1 而不是 tty0
+    for tty in tty1 ttyS0 ttyAMA0; do
+        # 防止同时存在 tty0 tty1
+        if { [ "$tty" = tty0 ] || [ "$tty" = tty1 ]; } && grep -q "^tty[01]:" /etc/inittab; then
+            continue
+        fi
+        # debian 9-11 没有 stty
+        if ! grep -q "^$tty:" /etc/inittab &&
+            [ -c "/dev/$tty" ] &&
+            { stty -g -F "/dev/$tty" >/dev/null || : >"/dev/$tty"; } 2>/dev/null; then
+            echo "$tty::respawn:screen -x root/ -p 1" >>/etc/inittab
+        fi
+    done
+}
+
 mod_initrd_debian_kali() {
     # hack 1
     # 允许设置 ipv4 onlink 网关
@@ -3671,6 +3694,11 @@ mod_initrd_debian_kali() {
         echo 'if false && : \' | insert_into_file lib/debian-installer.d/S70menu before 'if [ -x "$bterm" ]' -F
         echo 'if true  || : \' | insert_into_file lib/debian-installer.d/S70menu before 'if [ -x "$screen_bin" -a' -F
     }
+    # debian 9 不在 reopen-console 处理 inittab
+    # 暂时不管
+    if ! { [ "$distro" = debian ] && [ "$releasever" -le 9 ]; }; then
+        get_function_content mod_inittab_for_screen | insert_into_file sbin/reopen-console before 'kill -HUP 1' -F
+    fi
 
     # hack 3
     # 修改 /var/lib/dpkg/info/netcfg.postinst 运行我们的脚本
@@ -4408,14 +4436,15 @@ remove_useless_initrd_files() {
         done
     )
     (
+        # 甲骨文 arm64 是 usb 键盘
+        # cat /proc/bus/input/devices
+
         cd lib/modules/*/kernel
         for item in \
             net/mac80211 \
             net/wireless \
             net/bluetooth \
-            drivers/hid \
             drivers/mtd \
-            drivers/usb \
             drivers/ssb \
             drivers/mfd \
             drivers/bcma \
@@ -4427,7 +4456,6 @@ remove_useless_initrd_files() {
             drivers/net/bonding \
             drivers/net/wireless \
             drivers/input/rmi4 \
-            drivers/input/keyboard \
             drivers/input/touchscreen \
             drivers/bus/mhi \
             drivers/char/pcmcia \
