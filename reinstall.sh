@@ -3585,6 +3585,7 @@ build_nextos_cmdline() {
     if [ $nextos_distro = alpine ]; then
         nextos_cmdline="alpine_repo=$nextos_repo modloop=$nextos_modloop"
     elif is_distro_like_debian $nextos_distro; then
+        # 我们直接强制 di 优先显示到 串口，因此不需要设置分辨率
         # 设置分辨率为800*600，防止分辨率过高 ssh screen attach 后无法全部显示
         # iso 默认有 vga=788
         # 如果要设置位数: video=800x600-16
@@ -3610,12 +3611,10 @@ build_nextos_cmdline() {
 
     if is_distro_like_debian $nextos_distro; then
         if [ "$basearch" = "x86_64" ]; then
-            # debian installer 好像第一个 tty 是主 tty
-            # 设置ttyS0,tty0,安装界面还是显示在ttyS0
             :
         else
             # debian arm 在没有ttyAMA0的机器上（aws t4g），最少要设置一个tty才能启动
-            # 只设置tty0也行，但安装过程ttyS0没有显示
+            # 只设置tty0也行
             nextos_cmdline+=" $(echo_tmp_ttys)"
         fi
     else
@@ -3660,6 +3659,11 @@ mkdir_clear() {
 }
 
 mod_inittab_for_screen() {
+    # 如果串口不可写
+    # true >/dev/ttyS0 正常
+    # echo >/dev/ttyS0 报 IO 错误
+
+    # /etc/inittab
     # 主 tty 条目由 /usr/sbin/reopen-console 写入
     # ttyAMA0::respawn:/sbin/debian-installer
 
@@ -3676,8 +3680,31 @@ mod_inittab_for_screen() {
         # debian 9-11 没有 stty
         if ! grep -q "^$tty:" /etc/inittab &&
             [ -c "/dev/$tty" ] &&
-            { stty -g -F "/dev/$tty" >/dev/null || : >"/dev/$tty"; } 2>/dev/null; then
+            { stty -g -F "/dev/$tty" >/dev/null || echo >"/dev/$tty"; } 2>/dev/null; then
             echo "$tty::respawn:screen -x root/ -p 1" >>/etc/inittab
+        fi
+    done
+}
+
+# 通过优先使用串口，强制 di 使用小分辨率
+# 防止 tty0 分辨率过大，内容同步到 ttyS0/ttyAMA0 后显示异常/乱码
+force_serial_if_exists() {
+    # 低版本环境没有 awk，改用 cut
+
+    # 优先使用有 C 标识的 tty
+    c_tty=$(cat /proc/consoles | grep -F '(EC' | cut -d' ' -f1)
+    if ! { [ "$c_tty" = ttyAMA0 ] || [ "$c_tty" = ttyS0 ]; }; then
+        # 如果不是串口，则忽略
+        c_tty=
+    fi
+
+    for tty in $c_tty ttyAMA0 ttyS0; do
+        # shellcheck disable=SC2034
+        if [ -c "/dev/$tty" ] &&
+            { stty -g -F "/dev/$tty" >/dev/null || echo >"/dev/$tty"; } 2>/dev/null; then
+            consoles=$tty
+            preferred=$tty
+            break
         fi
     done
 }
@@ -3696,8 +3723,25 @@ mod_initrd_debian_kali() {
     }
     # debian 9 不在 reopen-console 处理 inittab
     # 暂时不管
+    # shellcheck disable=SC2016
     if ! { [ "$distro" = debian ] && [ "$releasever" -le 9 ]; }; then
         get_function_content mod_inittab_for_screen | insert_into_file sbin/reopen-console before 'kill -HUP 1' -F
+
+        # 如果主 tty 是 tty0，S40term-linux 会开启 utf-8，通过 screen 显示在甲骨文云控制台时会出现乱码
+        # 如果主 tty 是 ttyS0 ，S40term-linux 不会开启 utf-8
+        # https://salsa.debian.org/installer-team/rootskel/-/blob/master/src/usr/lib/debian-installer.d/S40term-linux?ref_type=heads
+
+        # 可用以下方法强制 di 显示在 ttyS0，但 /proc/consoles 还是 tty0，S40term-linux 还是会打开 utf-8
+        # 因此还要设置 S40term-linux 或者通过 cmdline 强制 console=ttyS0
+        get_function_content force_serial_if_exists | insert_into_file sbin/reopen-console before 'if [ $PRESEEDING = 1 ]; then' -F
+
+        # 在甲骨文 arm 上设置 console=tty0 console=ttyAMA0 console=ttyS0
+        # 预期 ttyS0 不存在，会把倒数第二个 tty设为主 tty，但实际上主 tty 是 tty0
+        # cat /proc/consoles 可查看哪个是主 tty，有 C 标识的就是主 tty
+
+        # 因此在这里强制 S40term-linux 不使用 utf-8
+        # shellcheck disable=SC1003
+        echo 'if false && : \' | insert_into_file lib/debian-installer.d/S40term-linux before 'if [ -d /usr/lib/locale/C.UTF-8 ]; then' -F
     fi
 
     # hack 3
