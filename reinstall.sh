@@ -1771,7 +1771,7 @@ Continue?
                     info "get direct link"
                     local iso_name=${iso##*\?}
                     local direct_link
-                    if direct_link=$(curl -L "https://delivery-api.ntriver.org/generate-link?filename=$iso_name" |
+                    if direct_link=$(curl -L "https://ntriver.org/api/drive/generate-link?filename=$iso_name" |
                         grep -oE '"url":"[^"]+"' | cut -d: -f2- | tr -d '"' | grep .); then
                         echo "Direct link: $direct_link" >&2
                         iso="$direct_link"
