@@ -4671,10 +4671,17 @@ add_user_if_need() {
             chroot "$os_dir" adduser --help 2>&1 | grep -Fq -- BusyBox; then
             chroot "$os_dir" adduser --disabled-password "$username"
 
-        # debian/ubuntu
+        # 新版 debian/ubuntu
         elif is_have_cmd_on_disk "$os_dir" adduser &&
-            chroot "$os_dir" adduser --help 2>&1 | grep -Fq -- '--disabled-password'; then
+            chroot "$os_dir" adduser --help 2>&1 | grep -Fq -- '--disabled-password' &&
+            chroot "$os_dir" adduser --help 2>&1 | grep -Fq -- '--comment'; then
             chroot "$os_dir" adduser --disabled-password --comment '' "$username"
+
+        # 旧版 debian/ubuntu
+        elif is_have_cmd_on_disk "$os_dir" adduser &&
+            chroot "$os_dir" adduser --help 2>&1 | grep -Fq -- '--disabled-password' &&
+            chroot "$os_dir" adduser --help 2>&1 | grep -Fq -- '--gecos'; then
+            chroot "$os_dir" adduser --disabled-password --gecos '' "$username"
 
         # el
         elif is_have_cmd_on_disk "$os_dir" adduser &&
