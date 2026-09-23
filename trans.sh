@@ -2073,6 +2073,21 @@ EOF
         )
     fi
 
+    if is_tencent_cloud; then
+        # 不能用 /bin/sh 和 /bin/echo
+        # /nix/store/84akrjvm0clyjkwx3agr03j2iz1w4kxi-initrd-udev-rules/99-local.rules (origin unknown) contains references to /bin/sh and /bin/echo.
+        nix_udev_rules=$(
+            cat <<EOF
+services.udev.extraRules = ''
+  KERNEL=="vd*[a-z]", ACTION=="add|change", SUBSYSTEM=="block", ATTR{queue/max_sectors_kb}="512"
+'';
+boot.initrd.services.udev.rules = ''
+  KERNEL=="vd*[a-z]", ACTION=="add|change", SUBSYSTEM=="block", ATTR{queue/max_sectors_kb}="512"
+'';
+EOF
+        )
+    fi
+
     # TODO: 准确匹配网卡，添加 udev 或者直接配置 networkd 匹配 mac
     create_nixos_network_config /tmp/nixos_network_config.nix
 
@@ -2085,6 +2100,7 @@ boot.kernelParams = [ $(get_ttys console= | quote_word) ];
 $nix_users
 $nix_openssh
 $nix_frpc
+$nix_udev_rules
 $(cat /tmp/nixos_network_config.nix)
 ###################################################
 EOF
@@ -8377,6 +8393,87 @@ get_ubuntu_kernel_flavor() {
     esac
 }
 
+is_tencent_cloud() {
+    [ "$(cat /sys/devices/virtual/dmi/id/sys_vendor 2>/dev/null)" = 'Tencent Cloud' ]
+}
+
+add_max_sectors_kb_rule() {
+    local os_dir=$1
+
+    # 普通发行版
+    if [ -d $os_dir/etc/udev/rules.d/ ]; then
+        # 取自腾讯云 ubuntu 26.04 镜像
+        cat <<EOF >$os_dir/etc/udev/rules.d/80-max-sectors-blk.rules
+KERNEL=="vd*[a-z]", ACTION=="add|change", SUBSYSTEM=="block", RUN+="/bin/sh -c '/bin/echo 512 > /sys/%p/queue/max_sectors_kb'"
+EOF
+
+    # alpine
+    elif [ -f $os_dir/etc/mdev.conf ]; then
+        if ! grep -Eq '^vd.*max_sectors_kb' "$os_dir/etc/mdev.conf"; then
+            # shellcheck disable=SC2016
+            sed -Ei \
+                '/^vd\[a-z\]/s,$,; case "$ACTION" in add|change) if [[ "$MDEV" =~ [a-z]$ ]]; then echo 512 >/sys/class/block/$MDEV/queue/max_sectors_kb; fi;; esac,' \
+                "$os_dir/etc/mdev.conf"
+        fi
+    fi
+
+}
+
+set_max_sectors_kb_for_tencent_cloud_liveos() {
+    if is_tencent_cloud; then
+        local block
+        for block in /sys/class/block/vd[a-z]; do
+            if [ -d "$block" ]; then
+                echo 512 >"$block/queue/max_sectors_kb"
+            fi
+        done
+        add_max_sectors_kb_rule /
+        rc-service mdev restart
+        sleep 1
+        # update_part
+    fi
+}
+
+set_max_sectors_kb_for_tencent_cloud_persist() {
+    local os_dir etc_dir
+    if is_tencent_cloud && etc_dir=$({ ls -d /os/etc/ || ls -d /os/*/etc/; } 2>/dev/null); then
+        os_dir=$(dirname $etc_dir)
+        # 重新挂载为读写
+        mount -o remount,rw /os
+
+        # rule
+        add_max_sectors_kb_rule "$os_dir"
+
+        # swap on
+        # dracut 需要大量内存
+        # 防止之前有 swap
+        swapoff -a
+        rm -f $os_dir/swapfile
+        create_swap_if_ram_less_than 2048 $os_dir/swapfile
+
+        # 重新生成 initramfs
+        # el
+        if is_have_cmd_on_disk $os_dir dracut; then
+            chroot $os_dir dracut -f --regenerate-all
+        # debian/ubuntu
+        elif is_have_cmd_on_disk $os_dir update-initramfs; then
+            chroot $os_dir update-initramfs -u -k all
+        # arch
+        elif is_have_cmd_on_disk $os_dir mkinitcpio; then
+            echo 'FILES+=(/etc/udev/rules.d/80-max-sectors-blk.rules)' \
+                >$os_dir/etc/mkinitcpio.conf.d/80-max-sectors-blk.conf
+            chroot $os_dir mkinitcpio -P
+        # alpine
+        elif is_have_cmd_on_disk $os_dir mkinitfs; then
+            chroot $os_dir mkinitfs
+        fi
+
+        # swap off
+        swapoff -a
+        rm -f $os_dir/swapfile
+    fi
+}
+
 install_redhat_ubuntu() {
     info "Download iso installer"
 
@@ -8493,6 +8590,9 @@ trans() {
         find_xda
     fi
 
+    # 腾讯云特殊处理
+    set_max_sectors_kb_for_tencent_cloud_liveos
+
     if [ "$distro" != "alpine" ]; then
         setup_web_if_enough_ram
         # util-linux 包含 lsblk
@@ -8582,6 +8682,11 @@ trans() {
             esac
             ;;
         esac
+    fi
+
+    # 腾讯云特殊处理
+    if ! { [ "$distro" = dd ] || [ "$distro" = nixos ]; }; then
+        set_max_sectors_kb_for_tencent_cloud_persist
     fi
 
     # 需要用到 lsblk efibootmgr ，只要 1M 左右容量
