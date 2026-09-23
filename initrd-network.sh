@@ -174,7 +174,12 @@ add_missing_ipv6_config() {
         fi
 
         # 添加额外的 IPv6 地址（逗号分隔）
-        if [ -n "$ipv6_extra_addrs" ]; then
+        # 在腾讯云上，dhcpv6 获取的 IPv6 不是旧系统的 IPv6，且不可用
+        # 脚本添加旧系统的 IPv6 地址和额外的 IPv6 地址后，额外的 IPv6 地址在 ip -6 addr 第一位
+        # get_first_ipv6_addr 获得的是额外的 IPv6 地址，也就是不可用的 IPv6 地址
+        # 导致 ipv6 test_internet 失败
+        # 因此暂时关闭 ipv6_extra_addrs
+        if false && [ -n "$ipv6_extra_addrs" ]; then
             printf '%s\n' "$ipv6_extra_addrs" | tr ',' '\n' | while IFS= read -r addr; do
                 if [ -n "$addr" ]; then
                     ip -6 addr add "$addr" dev "$ethx" 2>/dev/null || true
