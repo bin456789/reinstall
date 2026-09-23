@@ -1665,7 +1665,9 @@ Continue?
         if is_in_china; then
             mirror=https://mirror.nju.edu.cn/nix-channels
         else
-            mirror=https://nixos.org/channels
+            # https://nixos.org/channels 没有 ipv6
+            # 且跳转到 https://channels.nixos.org
+            mirror=https://channels.nixos.org
         fi
 
         if is_use_cloud_image; then

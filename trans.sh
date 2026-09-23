@@ -1802,7 +1802,8 @@ install_nixos() {
     ram_per_thread=2048
 
     threads=$(get_build_threads $ram_per_thread)
-    swap_size=$(get_need_swap_size $ram_per_thread)
+    # 最少需要的总内存 = 1 个编译线程所需的内存 + Alpine Live OS 所需的内存 (512M)
+    swap_size=$(get_need_swap_size $((ram_per_thread + 512)))
 
     show_nixos_config() {
         echo
