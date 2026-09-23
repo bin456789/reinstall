@@ -1163,6 +1163,10 @@ insert_into_file() {
 
         case "$location" in
         before) line_num=$((line_num - 1)) ;;
+        replace)
+            sed -i "${line_num}d" "$file"
+            line_num=$((line_num - 1))
+            ;;
         after) ;;
         *) return 1 ;;
         esac
@@ -1710,20 +1714,6 @@ install_alpine() {
     if is_need_set_ssh_keys; then
         set_ssh_keys_and_del_password /os
     fi
-
-    # alpine 3.24+
-    # 要从 /etc/inittab 删除多余的 tty0
-    # 否则开机时 vnc 会有两个登录提示，一个是 tty0，一个是 tty1
-
-    # sed 找到 # enable login on alternative console 的行
-    # 用 N 读取下一行到当前空间
-    # 再匹配 \ntty0:
-    sed -i '
-/^# enable login on alternative console$/{
-    N
-    /\ntty0:/d
-}
-' /os/etc/inittab
 
     # 下载 fix-eth-name
     download "$confhome/fix-eth-name.sh" /os/fix-eth-name.sh

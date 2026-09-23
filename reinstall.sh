@@ -368,6 +368,10 @@ insert_into_file() {
 
     case "$location" in
     before) line_num=$((line_num - 1)) ;;
+    replace)
+        sed -i "${line_num}d" "$file"
+        line_num=$((line_num - 1))
+        ;;
     after) ;;
     *) return 1 ;;
     esac
@@ -4351,6 +4355,16 @@ EOF
         insert_into_file init before '^exec (/bin/busybox )?switch_root' <<EOF
         cp /can_use_cloud_kernel.sh \$sysroot/
         chmod a+x \$sysroot/can_use_cloud_kernel.sh
+EOF
+    fi
+
+    # 临时修复 liveos getty 运行在 tty0
+    # shellcheck disable=SC2016
+    if [ "$nextos_releasever" = 3.24 ] &&
+        txt_to_grep='done < "$ROOT"/sys/class/tty/"$1"/active' &&
+        grep -qF "$txt_to_grep" init; then
+        insert_into_file init replace "$txt_to_grep" -F <<EOF
+done < <(cat "\$ROOT"/sys/class/tty/"\$1"/active | xargs -n 1)
 EOF
     fi
 }
