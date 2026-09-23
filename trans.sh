@@ -10,7 +10,7 @@ set -eE
 
 # 用于判断 reinstall.sh 和 trans.sh 是否兼容
 # shellcheck disable=SC2034
-SCRIPT_VERSION=4BACD833-A585-23BA-6CBB-9AA4E08E0004
+SCRIPT_VERSION=4BACD833-A585-23BA-6CBB-9AA4E08E0005
 
 TRUE=0
 FALSE=1
@@ -4098,7 +4098,7 @@ EOF
     fi
 
     # opensuse
-    # 1. kernel-default-base 缺少 nvme gve mlx5 mana 驱动，换成 kernel-default
+    # 1. kernel-default-base 缺少 ena gve mlx mana 驱动，换成 kernel-default
     # 2. 添加微码+固件
     # https://documentation.suse.com/smart/virtualization-cloud/html/minimal-vm/index.html
     if grep -q opensuse $os_dir/etc/os-release; then
@@ -4120,11 +4120,18 @@ EOF
         rm /net.cfg
 
         # 选择新内核
-        # 只有 leap 有 kernel-azure
-        if grep -iq leap $os_dir/etc/os-release && [ "$(get_cloud_vendor)" = azure ]; then
-            target_kernel='kernel-azure'
-        else
+        if [ "$no_cloud_kernel" = 1 ]; then
             target_kernel='kernel-default'
+        else
+            # 只有 leap 有 kernel-azure
+            # shellcheck disable=SC2046
+            if grep -iq leap $os_dir/etc/os-release && [ "$(get_cloud_vendor)" = azure ]; then
+                target_kernel='kernel-azure'
+            elif sh /can_use_cloud_kernel.sh "$xda" $(get_eths); then
+                target_kernel='kernel-default-base'
+            else
+                target_kernel='kernel-default'
+            fi
         fi
 
         # rpm -qi 不支持通配符

@@ -11,7 +11,7 @@ confhome_cn=https://cnb.cool/bin456789/reinstall/-/git/raw/main
 # confhome_cn=https://www.ghproxy.cc/https://raw.githubusercontent.com/bin456789/reinstall/main
 
 # 用于判断 reinstall.sh 和 trans.sh 是否兼容
-SCRIPT_VERSION=4BACD833-A585-23BA-6CBB-9AA4E08E0004
+SCRIPT_VERSION=4BACD833-A585-23BA-6CBB-9AA4E08E0005
 
 # 记录要用到的 windows 程序，运行时输出删除 \r
 WINDOWS_EXES='cmd powershell wmic reg diskpart netsh bcdedit mountvol'
@@ -4187,9 +4187,18 @@ exit_if_cant_use_cloud_kernel() {
 can_use_cloud_kernel() {
     # initrd 下也要使用，不要用 <<<
 
-    # 有些虚拟机用了 ahci，但云内核没有 ahci 驱动
-    cloud_eth_modules='ena|gve|mana|virtio_net|xen_netfront|hv_netvsc|vmxnet3|mlx4_en|mlx4_core|mlx5_core|ixgbevf'
-    cloud_blk_modules='ata_generic|ata_piix|pata_legacy|nvme|virtio_blk|virtio_scsi|xen_blkfront|xen_scsifront|hv_storvsc|vmw_pvscsi'
+    if [ "$distro" = opensuse ]; then
+        # kernel-default-base 缺少 ena gve mlx mana 驱动
+        cloud_eth_modules='virtio_net|xen_netfront|hv_netvsc|vmxnet3|e100|e1000|e1000e|8139cp|8139too'
+        cloud_blk_modules='ata_generic|ata_piix|ahci|nvme|virtio_blk|virtio_scsi|xen_blkfront|xen_scsifront|hv_storvsc|vmw_pvscsi'
+    else
+        # debian kali
+        cloud_eth_modules='ena|gve|mana|virtio_net|xen_netfront|hv_netvsc|vmxnet3|mlx4_en|mlx4_core|mlx5_core|ixgbevf'
+        cloud_blk_modules='ata_generic|ata_piix|pata_legacy|nvme|virtio_blk|virtio_scsi|xen_blkfront|xen_scsifront|hv_storvsc|vmw_pvscsi'
+        if { [ "$distro" = debian ] && [ "$releasever" -ge 13 ]; } || [ "$distro" = kali ]; then
+            cloud_blk_modules="$cloud_blk_modules|ahci"
+        fi
+    fi
 
     # disk
     drivers="$(get_disk_drivers $1)"
@@ -4221,6 +4230,8 @@ create_can_use_cloud_kernel_sh() {
         $(get_function get_disk_drivers)
         $(get_function can_use_cloud_kernel)
 
+        distro="$distro"
+        releasever="$releasever"
         can_use_cloud_kernel "\$@"
 EOF
 }
@@ -4335,7 +4346,7 @@ EOF
 EOF
 
     # 判断云镜像 debain 能否用云内核
-    if is_distro_like_debian; then
+    if is_distro_like_debian || [ "$distro" = opensuse ]; then
         create_can_use_cloud_kernel_sh can_use_cloud_kernel.sh
         insert_into_file init before '^exec (/bin/busybox )?switch_root' <<EOF
         cp /can_use_cloud_kernel.sh \$sysroot/
