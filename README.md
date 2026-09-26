@@ -361,6 +361,7 @@ bash reinstall.sh netboot.xyz
 #### 方法 1: 让脚本自动查找 ISO
 
 - 脚本会从 <https://ntriver.org/download-windows-office> 查找 ISO，该网站专门收集官方 ISO 镜像
+- 默认查找 64 位系统镜像，除非指定了 `--bit 32`
 
 ```bash
 bash reinstall.sh windows \

@@ -361,6 +361,7 @@ bash reinstall.sh netboot.xyz
 #### Method 1: Let the Script Automatically Search for ISO
 
 - The script will search for ISOs from <https://ntriver.org/download-windows-office>, a site that collects official ISOs.
+- Searches for 64-bit system images by default, unless `--bit 32` is specified.
 
 ```bash
 bash reinstall.sh windows \

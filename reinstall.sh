@@ -944,6 +944,26 @@ is_have_arm64_version() {
     return 1
 }
 
+is_have_32_bit_version() {
+    case "$version" in
+    2008)
+        return
+        ;;
+    vista | 7 | 8 | 8.1)
+        return
+        ;;
+    10)
+        # iot enterprise 曾经有 32 位版本
+        # en_windows_10_iot_enterprise_version_1909_x86_dvd_b62f9c12.iso
+        case "$edition" in
+        'iot enterprise ltsc 2021') return 1 ;;
+        *) return ;;
+        esac
+        ;;
+    esac
+    return 1
+}
+
 find_windows_iso() {
     parse_windows_image_name || error_and_exit "--image-name wrong: $image_name"
     if ! { [ "$version" = 8 ] || [ "$version" = 8.1 ]; } && [ -z "$edition" ]; then
@@ -963,8 +983,14 @@ find_windows_iso() {
     full_langs="$(lang_convert full_language) $(lang_convert fallback_full_language)"
     full_langs=$(xargs -n 1 <<<"$full_langs" | awk '!seen[$0]++' | xargs)
 
-    case "$basearch" in
-    x86) # 备用，查找功能目前不支持 32 位
+    # 默认 64 位，除非指定了 32 位
+    iso_arch_to_find=$basearch
+    if [ "$bit" = 32 ]; then
+        iso_arch_to_find=x86
+    fi
+
+    case "$iso_arch_to_find" in
+    x86)
         arch_win=x86
         arch_win_vlsc='32-?bit'
         ;;
@@ -1193,6 +1219,7 @@ get_windows_iso_link() {
     echo "Label vlsc: $label_vlsc"
     echo "Page:       $page_url"
     echo "Languages:  $langs $full_langs"
+    echo "Arch:       $arch_win"
     echo
 
     # 先判断是否能自动查找该版本
@@ -1204,8 +1231,12 @@ get_windows_iso_link() {
         error_and_exit "Not support find this iso. Check if --image-name is wrong. Or set --iso manually."
     fi
 
-    if [ "$basearch" = aarch64 ] && ! is_have_arm64_version; then
+    if [ "$arch_win" = arm64 ] && ! is_have_arm64_version; then
         error_and_exit "No ARM64 iso for this Windows Version or Edition."
+    fi
+
+    if [ "$arch_win" = x86 ] && ! is_have_32_bit_version; then
+        error_and_exit "No 32-bit iso for this Windows Version or Edition."
     fi
 
     if [ -n "$label_msdl" ]; then
@@ -4877,6 +4908,7 @@ for o in ci installer debug minimal no-cloud-kernel no-auto-drivers allow-ping f
     hold: sleep: \
     iso: \
     image-name: \
+    bit: \
     boot-wim: \
     img: \
     cloud-data: \
@@ -5197,6 +5229,13 @@ EOF
             error_and_exit "Invalid $1 value: $2"
         fi
         lang=$(echo "$2" | to_lower)
+        shift 2
+        ;;
+    --bit)
+        if ! { [ "$2" = 32 ] || [ "$2" = 64 ]; }; then
+            error_and_exit "Invalid $1 value: $2"
+        fi
+        bit=$2
         shift 2
         ;;
     --)
