@@ -6499,6 +6499,13 @@ get_drivers() {
     )
 }
 
+is_xda_non_standard_virtio_scsi() {
+    get_drivers "/sys/class/block/$xda" | grep -q virtio_scsi &&
+        device_path="$(readlink -f "/sys/class/block/$xda" | sed 's,/virtio.*,,')" &&
+        [ -e "$device_path/subsystem_vendor" ] &&
+        ! [ "$(cat "$device_path/subsystem_vendor")" = 0x1af4 ]
+}
+
 get_windows_type_from_windows_drive() {
     local os_dir=$1
 
@@ -7563,24 +7570,36 @@ EOF
         }
 
         case "$nt_ver" in
-        6.0 | 6.1) $support_sha256 &&
-            dir=archive-virtio/virtio-win-0.1.187-1 ||
-            dir=archive-virtio/virtio-win-0.1.173-9 ;;        # vista|w7|2k8|2k8R2
+        6.0 | 6.1)
+            if $support_sha256; then
+                if is_xda_non_standard_virtio_scsi; then
+                    dir=archive-virtio/virtio-win-0.1.187-1 # 甲骨文
+                else
+                    dir=stable-virtio
+                fi
+            else
+                dir=archive-virtio/virtio-win-0.1.173-9
+            fi
+            ;;                                                # vista|w7|2k8|2k8R2
         6.2 | 6.3) dir=archive-virtio/virtio-win-0.1.215-2 ;; # w8|w8.1|2k12|2k12R2
-        *)
-            # 先获取最新版本号，再下载
-            # 用 stable-virtio 的话国内镜像下载的可能是缓存的旧版
+        *) dir=stable-virtio ;;
+        esac
 
-            # anubis 默认策略拉黑了华为云，连验证的机会都没有
+        # 先获取最新版本号，再下载
+        # 用 stable-virtio 的话国内镜像下载的可能是缓存的旧版
 
-            # https://fedorapeople.org/groups/virt/virtio-win/direct-downloads/stable-virtio/
-            # 路径是网页，可能会弹出 anubis 验证
+        # anubis 默认策略拉黑了华为云，连验证的机会都没有
 
-            # https://fedorapeople.org/groups/virt/virtio-win/direct-downloads/stable-virtio/CHECKSUM
-            # 路径是文件，应该不会弹出 anubis 验证？
+        # https://fedorapeople.org/groups/virt/virtio-win/direct-downloads/stable-virtio/
+        # 路径是网页，可能会弹出 anubis 验证
+
+        # https://fedorapeople.org/groups/virt/virtio-win/direct-downloads/stable-virtio/CHECKSUM
+        # 路径是文件，应该不会弹出 anubis 验证？
+        if [ "$dir" = stable-virtio ]; then
             if ! dir=$(get_latest_virtio_dir "$baseurl"); then
-                mirror_baseurl=https://files.m.daocloud.io/$(echo "$baseurl" | sed -E 's,^https?://,,i')
-                if is_any_ipv4_has_internet && dir=$(get_latest_virtio_dir "$mirror_baseurl"); then
+                if is_any_ipv4_has_internet &&
+                    mirror_baseurl=https://files.m.daocloud.io/$(echo "$baseurl" | sed -E 's,^https?://,,i') &&
+                    dir=$(get_latest_virtio_dir "$mirror_baseurl"); then
                     baseurl=$mirror_baseurl
                 elif [ "$arch_wim" = x86 ] || [ "$arch_wim" = x86_64 ]; then
                     add_driver_virtio_from_rpm "$@"
@@ -7589,9 +7608,7 @@ EOF
                     error_and_exit "Failed to get latest virtio-win version."
                 fi
             fi
-            # dir=stable-virtio
-            ;;
-        esac
+        fi
 
         # 如果 dir 包含数字，则是从具体版本号文件夹下载，文件不会更新，可以使用国内镜像
         if [[ "$dir" =~ [0-9] ]]; then
