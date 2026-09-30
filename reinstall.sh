@@ -1284,29 +1284,72 @@ get_shortest_line_by_field() {
     awk "(NR == 1 || length(\$$field) < length(field)) { line = \$0; field = \$$field } END { print line }"
 }
 
+month_to_mm() {
+    local month="${1,,}"     # 转小写
+    local mon="${month:0:3}" # 取前三个字母
+    local i=0
+    for _mon in jan feb mar apr may jun jul aug sep oct nov dec; do
+        i=$((i + 1))
+        if [ "$mon" = "$_mon" ]; then
+            printf "%02d\n" "$i"
+            return
+        fi
+    done
+    return 1
+}
+
 get_best_windows_iso_line() {
     local lines
     lines=$(cat)
 
+    # 注意
+    # zh-cn_windows_server_2019_x64_dvd_19d65722.iso                    2022-11-15
+    # cn_windows_server_2019_updated_april_2021_x64_dvd_a6dae187.iso    2021-04-20
+    # zh-cn 这种命名比 cn 新，可以通过此判断
+    # 我们已经在前面是先查找 cc-cc 格式，没找到才查找 cc 格式，因此在这里它们不会同时存在，无需处理
+
     # 排除 debug 版
     lines=$(echo "$lines" | grep -Ei -v '_(symbols|debug|debugging|checked)_')
 
-    # 在所有符合的 iso 中
     # 先选择 win10/11 大版本更新的 (version 26h1) 或者有 sp 版本的 (sp1, windows_8.1_with_update_)
-    # 再选择有日期更新的 (updated_july_2026)
-    # 再选择 vl
-    # 再按版本号排序选择最新版
+    if grep_lines=$(grep -Ei "_(version_[0-9h]{4}|sp[1-9]|service_pack|with_update)_" <<<"$lines"); then
+        lines=$grep_lines
+    fi
 
-    # 但是也有例外
-    # zh-cn_windows_server_2019_x64_dvd_19d65722.iso                    2022-11-15
-    # cn_windows_server_2019_updated_april_2021_x64_dvd_a6dae187.iso    2021-04-20
+    # 从 _version_26h1_ 字符串中选出最新的版本号
+    local latest_version=
+    if latest_version=$(awk '{print $1}' <<<"$lines" | grep -Eio "_version_[0-9h]{4}_" |
+        cut -d_ -f3 | sort -r | head -1 | grep .); then
+        info "ISO Latest version"
+        echo "$latest_version" >&2
+        lines=$(grep -Fi "_version_${latest_version}_" <<<"$lines")
+    fi
 
-    for key in '(version_[0-9h]{4}|sp[1-9]|service_pack|with_update)' 'updated' 'vl'; do
-        if grep_lines=$(grep -Ei "_${key}_" <<<"$lines"); then
-            lines=$grep_lines
-        fi
-    done
+    # 从 _updated_sep_2026_ 字符串中选出最新的日期
+    local latest_yyyymm=
+    local latest_updated_keyword=
+    if updated_keywords=$(awk '{print $1}' <<<"$lines" | grep -Eio '_updated_[a-z]+_[0-9]{4}_'); then
+        for _updated_xxx_20xx_ in $updated_keywords; do
+            IFS=_ read -r _ _ month yyyy <<<"$_updated_xxx_20xx_"
+            # alpine 不支持这种写法
+            # yymm=$(date -d "$month 1 $year" "+%y%m")
+            yyyymm="${yyyy}$(month_to_mm "$month")"
+            if [ -z "$latest_yyyymm" ] || [ "$yyyymm" -gt "$latest_yyyymm" ]; then
+                latest_yyyymm=$yyyymm
+                latest_updated_keyword=$_updated_xxx_20xx_
+                info "ISO Latest date"
+                echo "${latest_yyyymm:0:4}-${latest_yyyymm:4:2}" >&2
+            fi
+        done
+        lines=$(grep -Fi "$latest_updated_keyword" <<<"$lines")
+    fi
 
+    # 优先使用 vl
+    if grep_lines=$(grep -Fi "_vl_" <<<"$lines"); then
+        lines=$grep_lines
+    fi
+
+    # 最后按版本号倒序，选出第一行
     echo "$lines" | sort -Vr | head -1
 }
 
