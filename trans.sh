@@ -7694,7 +7694,7 @@ EOF
         # 下面的版本以 win10 viostor amd64 inf 为准
 
         # 58005 没有 32 位
-        # https://mirrors.tencent.com/install/windows/virtio_64_1.0.9.exe
+        # https://mirrors.cloud.tencent.com/install/windows/virtio_64_1.0.9.exe
 
         # 58007 没有气球驱动
         # https://windows-1251783334.cos.ap-shanghai.myqcloud.com/Win7_Win2008R2.zip                 有 32 位
@@ -7708,20 +7708,20 @@ EOF
         # https://windows-1251783334.cos.ap-shanghai.myqcloud.com/Install_KVMVirtIO.zip           只有 win10 有 32 位，没有气球驱动，netkvm 是社区版
         # https://windows-1251783334.cos.ap-shanghai.myqcloud.com/Install_QCloudVirtIO_new.zip    只有 win10 有 32 位，只有 win10 有气球驱动
         # https://winpecheck-1251783334.cos.accelerate.tencentcos.cn/Install_QCloudVirtIO_new.zip
-        # https://mirrors.tencent.com/install/cts/windows/Drivers.zip                             有 32 位，没有气球驱动
-        # https://mirrors.tencent.com/install/cts/windows/AllTools/Drivers.zip
+        # https://mirrors.cloud.tencent.com/install/cts/windows/Drivers.zip                       有 32 位，没有气球驱动
+        # https://mirrors.cloud.tencent.com/install/cts/windows/AllTools/Drivers.zip
 
         # 腾讯云 windows server 2025 系统镜像，驱动是 58010
 
         # Install_QCloudVirtIO_new.zip 可视为稳定版
         # 因为 WinPE-Diag.7z\checks\50-DriverCleanup.ps1 用的是 Install_QCloudVirtIO_new.zip
-        # https://mirrors.tencent.com/install/cts/windows/WinPE-Diag.7z
+        # https://mirrors.cloud.tencent.com/install/cts/windows/WinPE-Diag.7z
 
         # 第 1 步
         # 从 Drivers.zip 获取 viostor netkvm qxldod 驱动
         # 里面的 qxldod windows server 驱动和普通 windows 驱动文件相同
         # XP 文件夹有个中文文件，busybox unzip 解压会报错，因此排除该文件夹
-        download https://mirrors.tencent.com/install/cts/windows/Drivers.zip $drv/Drivers.zip
+        download https://mirrors.cloud.tencent.com/install/cts/windows/Drivers.zip $drv/Drivers.zip
         unzip $drv/Drivers.zip -d $drv/qcloud/
         unzip $drv/qcloud/Drivers/VirtIO_Win_20250827.zip -d $drv/qcloud/ -x '*/XP/*'
 
@@ -7768,7 +7768,7 @@ EOF
             return
         fi
         apk add 7zip
-        download https://mirrors.tencent.com/install/windows/virtio_64_1.0.9.exe $drv/virtio.exe true
+        download https://mirrors.cloud.tencent.com/install/windows/virtio_64_1.0.9.exe $drv/virtio.exe true
         exclude='$*' # 排除 $PLUGINSDIR
         override=u   # A(u)to rename all
         7z x $drv/virtio.exe -o$drv/qcloud/ -ao$override -x!$exclude
