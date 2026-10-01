@@ -5354,7 +5354,10 @@ install_deepin() {
         for kernel in $(ls $os_dir/lib/modules); do
             case $kernel in
             6.6.*) ;;
-            *) rm -rf $os_dir/lib/modules/$kernel ;;
+            *)
+                rm -rf $os_dir/lib/modules/$kernel
+                rm -f $os_dir/boot/*-$kernel
+                ;;
             esac
         done
     fi
