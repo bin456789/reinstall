@@ -66,6 +66,7 @@ The system requirements for the target system are as follows:
 | <img width="16" height="16" src="https://www.gentoo.org/assets/img/logo/gentoo-g.png" /> Gentoo                                                                                                                                                                                                                                                                        | Rolling                               | 512 MB    | 5 GB             |
 | <img width="16" height="16" src="https://aosc.io/distros/aosc-os.svg" /> AOSC OS                                                                                                                                                                                                                                                                                       | Rolling                               | 512 MB    | 5 GB             |
 | <img width="16" height="16" src="https://www.fnnas.com/favicon.ico" /> fnOS &nbsp;<img width="16" height="16" src="https://fygonas.com/favicon.ico" /> FygoOS                                                                                                                                                                                                          | 1                                     | 512 MB    | 10 GB            |
+| <img width="16" height="16" src="https://www.deepin.org/favicon.ico" /> Deepin                                                                                                                                                                                                                                                                                           | 25                                    | 512 MB    | 30 GB            |
 | <img width="16" height="16" src="https://blogs.windows.com/wp-content/uploads/prod/2022/09/cropped-Windows11IconTransparent512-32x32.png" /> Windows (DD)                                                                                                                                                                                                              | Any                                   | 512 MB    | Depends on image |
 | <img width="16" height="16" src="https://blogs.windows.com/wp-content/uploads/prod/2022/09/cropped-Windows11IconTransparent512-32x32.png" /> Windows (ISO)                                                                                                                                                                                                             | Vista, 7, 8.x (Server 2008 - 2012 R2) | 512 MB    | 25 GB            |
 | <img width="16" height="16" src="https://blogs.windows.com/wp-content/uploads/prod/2022/09/cropped-Windows11IconTransparent512-32x32.png" /> Windows (ISO)                                                                                                                                                                                                             | 10, 11 (Server 2016 - 2025)           | 1 GB      | 25 GB            |
@@ -157,6 +158,7 @@ certutil -urlcache -f -split https://cnb.cool/bin456789/reinstall/-/git/raw/main
 - After reinstallation, if you need to change the SSH port or switch to key-based login, make sure to also modify the files inside `/etc/ssh/sshd_config.d/`.
 - To ensure a faster reinstall, the new system will not be updated during the process. Please update the system manually after reinstallation.
 - The username, password, and key configured during the installation of fnOS/FygoOS are only used to log in via SSH to view logs during installation, and will not be applied to the new system. After installation, you need to go to the admin panel at <http://IP:5666> to create a user and enable SSH.
+- Installing Deepin uses the system files from the official ISO, which requires downloading a ~6.5G ISO, and the installed system takes about 21G. The 6.6 LTS kernel is kept by default; machines in China use Chinese locale and Chinese mirrors by default. The desktop uses software rendering on virtual machines. For remote desktop access, install `xrdp` after installation, or use the vendor's VNC console.
 
 ```bash
 bash reinstall.sh anolis      7|8|23
@@ -167,6 +169,7 @@ bash reinstall.sh anolis      7|8|23
                   centos      9|10
                   fnos        1
                   fygoos      1
+                  deepin      25
                   nixos       26.05
                   fedora      43|44
                   debian      9|10|11|12|13

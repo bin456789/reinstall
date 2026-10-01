@@ -86,6 +86,7 @@ Usage: $reinstall_____ anolis      7|8|23
                        centos      9|10
                        fnos        1
                        fygoos      1
+                       deepin      25
                        nixos       26.05
                        fedora      43|44
                        debian      9|10|11|12|13
@@ -2011,6 +2012,34 @@ Continue with DD?
         set_osvar iso "$iso"
     }
 
+    setos_deepin() {
+        # 官方下载页 https://www.deepin.org/zh/download/
+        # 镜像里是双层 squashfs (系统 + 安装器)，安装方法参考 trans.sh 里的 install_deepin
+        if is_in_china; then
+            mirror=https://mirrors.ustc.edu.cn/deepin-cd/releases
+        else
+            mirror=https://cdimage.deepin.com/releases
+        fi
+
+        if [ -z "$iso" ]; then
+            # 目录: https://cdimage.deepin.com/releases/25.2.0/amd64/
+            # 文件: deepin-desktop-community-25.2.0-amd64.iso
+
+            # 查找 $releasever 大版本下最新的版本号
+            ver=$(curl -L $mirror/ |
+                grep -oE "href=\"$releasever(\.[0-9]+)*" | grep -oE '[0-9.]+[0-9]' |
+                sort -uV | tail -1 | grep .)
+
+            iso=$(curl -L $mirror/$ver/$basearch_alt/ |
+                grep -oE "deepin-desktop-community[^\"]*-$basearch_alt\.iso" |
+                sort -uV | tail -1 | grep .)
+            iso=$mirror/$ver/$basearch_alt/$iso
+        fi
+
+        test_url "$iso" iso
+        set_osvar iso "$iso"
+    }
+
     setos_aosc() {
         if [ -z "$img" ]; then
             if is_in_china; then
@@ -2292,6 +2321,7 @@ verify_os_name() {
         'oracle      8|9|10' \
         'fnos        1' \
         'fygoos      1' \
+        'deepin      25' \
         'fedora      43|44' \
         'nixos       26.05' \
         'debian      9|10|11|12|13' \
@@ -2585,7 +2615,7 @@ check_ram() {
         case "$distro" in
         netboot.xyz) echo 0 ;;
         alpine | debian | kali | dd) echo 256 ;;
-        arch | gentoo | aosc | nixos | windows) echo 512 ;;
+        arch | gentoo | aosc | nixos | deepin | windows) echo 512 ;;
         redhat | centos | almalinux | rocky | fedora | oracle | ubuntu | anolis | opencloudos | openeuler) echo 1024 ;;
         opensuse | fnos) echo -1 ;; # 没有安装模式
         esac
@@ -2602,7 +2632,7 @@ check_ram() {
     has_cloud_image=$(
         case "$distro" in
         redhat | centos | almalinux | rocky | oracle | fedora | debian | ubuntu | opensuse | anolis | openeuler) echo true ;;
-        netboot.xyz | alpine | dd | arch | gentoo | nixos | kali | windows) echo false ;;
+        netboot.xyz | alpine | dd | arch | gentoo | nixos | kali | deepin | windows) echo false ;;
         esac
     )
 
@@ -5311,7 +5341,7 @@ fi
 # 强制忽略/强制添加 --ci 参数
 # debian 不强制忽略 ci 留作测试
 case "$distro" in
-dd | windows | netboot.xyz | kali | alpine | arch | gentoo | aosc | nixos | fnos)
+dd | windows | netboot.xyz | kali | alpine | arch | gentoo | aosc | nixos | fnos | deepin)
     if is_use_cloud_image; then
         echo "ignored --ci"
         unset cloud_image

@@ -66,6 +66,7 @@
 | <img width="16" height="16" src="https://www.gentoo.org/assets/img/logo/gentoo-g.png" /> Gentoo                                                                                                                                                                                                                                                                        | 滚动                                  | 512 MB    | 5 GB         |
 | <img width="16" height="16" src="https://aosc.io/distros/aosc-os.svg" /> 安同 OS                                                                                                                                                                                                                                                                                       | 滚动                                  | 512 MB    | 5 GB         |
 | <img width="16" height="16" src="https://www.fnnas.com/favicon.ico" /> 飞牛 fnOS &nbsp;<img width="16" height="16" src="https://fygonas.com/favicon.ico" /> FygoOS                                                                                                                                                                                                     | 1                                     | 512 MB    | 10 GB        |
+| <img width="16" height="16" src="https://www.deepin.org/favicon.ico" /> Deepin                                                                                                                                                                                                                                                                                           | 25                                    | 512 MB    | 30 GB        |
 | <img width="16" height="16" src="https://blogs.windows.com/wp-content/uploads/prod/2022/09/cropped-Windows11IconTransparent512-32x32.png" /> Windows (DD)                                                                                                                                                                                                              | 任何                                  | 512 MB    | 取决于镜像   |
 | <img width="16" height="16" src="https://blogs.windows.com/wp-content/uploads/prod/2022/09/cropped-Windows11IconTransparent512-32x32.png" /> Windows (ISO)                                                                                                                                                                                                             | Vista, 7, 8.x (Server 2008 - 2012 R2) | 512 MB    | 25 GB        |
 | <img width="16" height="16" src="https://blogs.windows.com/wp-content/uploads/prod/2022/09/cropped-Windows11IconTransparent512-32x32.png" /> Windows (ISO)                                                                                                                                                                                                             | 10, 11 (Server 2016 - 2025)           | 1 GB      | 25 GB        |
@@ -157,6 +158,7 @@ certutil -urlcache -f -split https://cnb.cool/bin456789/reinstall/-/git/raw/main
 - 重装后如需修改 SSH 端口或者改成密钥登录，注意还要修改 `/etc/ssh/sshd_config.d/` 里面的文件
 - 为了快速安装，重装时不会对新系统进行更新，请在重装后自行更新
 - 安装飞牛 fnOS/FygoOS 时设置的用户名、密码、密钥仅用于安装期间登录 SSH 查看日志，不会应用到新系统。系统安装后需到后台面板 <http://IP:5666> 创建用户和开启 SSH
+- 安装 Deepin 使用官方 ISO 里的系统文件，需要下载约 6.5G 的 ISO，安装后系统占约 21G。默认保留 6.6 LTS 内核；国内机器默认使用中文和国内镜像源。桌面在虚机上使用软件渲染，如需远程桌面请在安装完成后自行安装 `xrdp`，或通过商家后台 VNC 访问
 
 ```bash
 bash reinstall.sh anolis      7|8|23
@@ -167,6 +169,7 @@ bash reinstall.sh anolis      7|8|23
                   centos      9|10
                   fnos        1
                   fygoos      1
+                  deepin      25
                   nixos       26.05
                   fedora      43|44
                   debian      9|10|11|12|13

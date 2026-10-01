@@ -3117,7 +3117,7 @@ create_part() {
             mkfs.ext4 -F -L installer "/dev/$(xda 2)" #2 installer
         fi
     elif [ "$distro" = alpine ] || [ "$distro" = arch ] || [ "$distro" = gentoo ] ||
-        [ "$distro" = nixos ] || [ "$distro" = aosc ]; then
+        [ "$distro" = nixos ] || [ "$distro" = aosc ] || [ "$distro" = deepin ]; then
         # alpine 本身关闭了 64bit ext4
         # https://gitlab.alpinelinux.org/alpine/alpine-conf/-/blob/3.18.1/setup-disk.in?ref_type=tags#L908
         # 而且 alpine 的 extlinux 不兼容 64bit ext4
@@ -5273,6 +5273,190 @@ install_fnos() {
 
     # frpc
     add_frpc_systemd_service_if_need $os_dir
+}
+
+install_deepin() {
+    info "Install deepin"
+    local os_dir=/os
+
+    # 官方安装器也是将 iso 里的两层 squashfs 复制到硬盘
+    # live/filesystem.squashfs        系统本体
+    # live/filesystem-extra.squashfs  安装器 + 预装应用
+    # 安装后需删除安装器和多余的内核，处理逻辑参考 iso 里的 oem/hooks
+
+    # 挂载系统分区
+    local os_part_num
+    if is_efi || is_xda_gt_2t; then
+        os_part_num=2
+    else
+        os_part_num=1
+    fi
+    mkdir -p $os_dir
+    mount "/dev/$(xda $os_part_num)" $os_dir
+
+    # 下载并挂载 iso
+    mkdir -p $os_dir/installer /iso
+    download "$iso" $os_dir/installer/deepin.iso true
+    mount -o ro $os_dir/installer/deepin.iso /iso
+
+    # 解压 squashfs
+    apk add squashfs-tools
+    local fs
+    for fs in filesystem.squashfs filesystem-extra.squashfs; do
+        info "Extract $fs"
+        unsquashfs -f -d $os_dir /iso/live/$fs
+    done
+    apk del squashfs-tools
+
+    # 删除 iso 释放空间
+    umount /iso
+    rmdir /iso
+    rm -rf $os_dir/installer
+
+    # 挂载 efi 分区
+    if is_efi; then
+        mkdir -p $os_dir/boot/efi
+        mount "/dev/$(xda 1)" $os_dir/boot/efi
+    fi
+
+    mount_pseudo_fs $os_dir
+    cp_resolv_conf $os_dir
+
+    # 配置 apt 源
+    # 镜像里没有源，官方安装器也是安装时写入的
+    if is_in_china; then
+        mirror=https://mirrors.ustc.edu.cn/deepin
+    else
+        mirror=https://community-packages.deepin.com/deepin
+    fi
+    echo "deb $mirror/beige/ crimson main commercial community" >$os_dir/etc/apt/sources.list
+
+    # 临时禁用应用商店源，防止其不可达时影响 apt
+    mv $os_dir/etc/apt/sources.list.d/appstore.list $os_dir/etc/apt/sources.list.d/appstore.list.disabled 2>/dev/null || true
+
+    # 删除多余的内核，只保留 6.6 内核
+    # 参考 oem/hooks/in_chroot/04_set_kernel.job
+    # 确保有保留的内核，防止未来镜像更改内核版本时误删
+    local kernel pkgs=''
+    if ls $os_dir/lib/modules | grep -q '^6\.6\.'; then
+        for kernel in $(ls $os_dir/lib/modules); do
+            case $kernel in
+            6.6.*) ;;
+            *) pkgs="$pkgs linux-image-$kernel linux-headers-$kernel" ;;
+            esac
+        done
+    fi
+
+    # 删除安装器和游戏，官方安装后不保留
+    pkgs="$pkgs deepin-installer com.deepin.gomoku com.deepin.lianliankan"
+    chroot_apt_remove $os_dir $pkgs
+    if ls $os_dir/lib/modules | grep -q '^6\.6\.'; then
+        for kernel in $(ls $os_dir/lib/modules); do
+            case $kernel in
+            6.6.*) ;;
+            *) rm -rf $os_dir/lib/modules/$kernel ;;
+            esac
+        done
+    fi
+
+    # 安装 openssh-server，桌面版镜像里没有
+    chroot_apt_install $os_dir openssh-server
+
+    # 中文环境
+    # 镜像里的 /etc/default/locale 和 /etc/hosts 是空文件，官方安装器也是安装时写入的
+    if is_in_china; then
+        printf 'LANG="zh_CN.UTF-8"\nLANGUAGE="zh_CN"\n' >$os_dir/etc/default/locale
+        sed -i 's/^# \(zh_CN\.UTF-8.*$\)/\1/' $os_dir/etc/locale.gen
+        chroot $os_dir locale-gen
+    fi
+
+    # hosts
+    cat <<EOF >$os_dir/etc/hosts
+127.0.0.1 localhost
+
+# The following lines are desirable for IPv6 capable hosts
+::1     localhost ip6-localhost ip6-loopback
+fe00::0 ip6-localnet
+ff00::0 ip6-mcastprefix
+ff02::1 ip6-allnodes
+ff02::2 ip6-allrouters
+EOF
+
+    # swapfile
+    # 官方安装器会创建 swap 分区，这里用 swapfile 代替
+    local swap_size
+    swap_size=$(get_need_swap_size 4096)
+    if [ $swap_size -gt 0 ]; then
+        truncate -s 0 $os_dir/swapfile
+        chattr +C $os_dir/swapfile 2>/dev/null || true
+        fallocate -l ${swap_size}M $os_dir/swapfile
+        chmod 0600 $os_dir/swapfile
+        mkswap $os_dir/swapfile
+    fi
+
+    # fstab
+    {
+        uuid=$(lsblk "/dev/$(xda $os_part_num)" -no UUID)
+        echo "UUID=$uuid / ext4 rw,relatime 0 1"
+
+        if is_efi; then
+            uuid=$(lsblk "/dev/$(xda 1)" -no UUID)
+            echo "UUID=$uuid /boot/efi vfat rw,relatime,fmask=0022,dmask=0022,codepage=437,iocharset=iso8859-1,shortname=mixed,utf8,errors=remount-ro,noauto,x-systemd.automount 0 2"
+        fi
+
+        # nofail 防止 swapfile 丢失时无法开机
+        if [ $swap_size -gt 0 ]; then
+            echo '/swapfile none swap defaults,nofail 0 0'
+        fi
+    } >$os_dir/etc/fstab
+
+    # 主机名
+    echo deepin >$os_dir/etc/hostname
+
+    # 重新生成 initrd，确保磁盘引导正常
+    chroot $os_dir update-initramfs -u
+
+    # 安装 grub
+    if is_efi; then
+        chroot $os_dir grub-install --efi-directory=/boot/efi
+        chroot $os_dir grub-install --efi-directory=/boot/efi --removable
+        # 参考 oem/hooks/in_chroot/9999_zzzz_efi_copy.job
+        cp $os_dir/boot/efi/EFI/deepin/grubx64.efi $os_dir/boot/efi/EFI/deepin/grub.efi 2>/dev/null || true
+    else
+        chroot $os_dir grub-install /dev/$xda
+    fi
+
+    # grub 输出到串口，方便调试
+    ttys_cmdline=$(get_ttys console=)
+    echo GRUB_CMDLINE_LINUX=\"\$GRUB_CMDLINE_LINUX $ttys_cmdline\" >$os_dir/etc/default/grub.d/tty.cfg
+    chroot $os_dir update-grub
+
+    # 虚机下 treeland 桌面使用软件渲染
+    # 官方 oem 钩子只处理 VirtualBox，这里处理所有虚机
+    if is_virt; then
+        mkdir -p $os_dir/etc/environment.d $os_dir/etc/systemd/system/treeland.service.d
+        cat <<EOF >$os_dir/etc/environment.d/10-treeland-virtual-machine.conf
+QT_QUICK_BACKEND=software
+WLR_NO_HARDWARE_CURSORS=1
+EOF
+        cat <<EOF >$os_dir/etc/systemd/system/treeland.service.d/override.conf
+[Service]
+EnvironmentFile=/etc/environment.d/10-treeland-virtual-machine.conf
+EOF
+    fi
+
+    # 网卡配置
+    create_cloud_init_network_config /net.cfg
+    create_network_manager_config /net.cfg $os_dir
+    rm /net.cfg
+
+    # 时区 / machine-id / ssh / 用户名密码 / fix eth name / frpc
+    basic_init $os_dir
+
+    # 恢复应用商店源
+    mv $os_dir/etc/apt/sources.list.d/appstore.list.disabled $os_dir/etc/apt/sources.list.d/appstore.list 2>/dev/null || true
+
+    restore_resolv_conf $os_dir
 }
 
 install_qcow_by_copy() {
@@ -8768,6 +8952,10 @@ trans() {
         fnos)
             create_part
             install_fnos
+            ;;
+        deepin)
+            create_part
+            install_deepin
             ;;
         *)
             create_part
