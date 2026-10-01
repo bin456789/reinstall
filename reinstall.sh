@@ -2026,12 +2026,17 @@ Continue with DD?
             # 文件: deepin-desktop-community-25.2.0-amd64.iso
 
             # 查找 $releasever 大版本下最新的版本号
+            # 提取页面上的 x.y[.z] 格式的版本号
+            # 不能依赖 href=，因为不同镜像站的 href 格式不同
+            # cdimage.deepin.com:  href="25.2.0/"
+            # mirrors.ustc.edu.cn: href='/deepin-cd/releases/25.2.0/'
             ver=$(curl -L $mirror/ |
-                grep -oE "href=\"$releasever(\.[0-9]+)*" | grep -oE '[0-9.]+[0-9]' |
+                grep -oE "[0-9]+(\.[0-9]+)+" |
+                grep -Ex "$releasever(\.[0-9]+)*" |
                 sort -uV | tail -1 | grep .)
 
             iso=$(curl -L $mirror/$ver/$basearch_alt/ |
-                grep -oE "deepin-desktop-community[^\"]*-$basearch_alt\.iso" |
+                grep -oE "deepin-desktop-community[^\"']*-$basearch_alt\.iso" |
                 sort -uV | tail -1 | grep .)
             iso=$mirror/$ver/$basearch_alt/$iso
         fi
