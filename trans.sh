@@ -5337,21 +5337,32 @@ install_deepin() {
     # 删除多余的内核，只保留 6.6 内核
     # 参考 oem/hooks/in_chroot/04_set_kernel.job
     # 确保有保留的内核，防止未来镜像更改内核版本时误删
-    local kernel pkgs=''
-    if ls $os_dir/lib/modules | grep -q '^6\.6\.'; then
-        for kernel in $(ls $os_dir/lib/modules); do
-            case $kernel in
-            6.6.*) ;;
-            *) pkgs="$pkgs linux-image-$kernel linux-headers-$kernel" ;;
-            esac
-        done
+    local kernel kernel_dir pkgs='' kernel_pkgs=''
+    local has_keep_kernel=false
+    for kernel_dir in $os_dir/lib/modules/*/; do
+        # glob 无匹配时会得到字面量
+        [ -d "$kernel_dir" ] || continue
+        kernel=${kernel_dir%/}
+        kernel=${kernel##*/}
+        case $kernel in
+        6.6.*) has_keep_kernel=true ;;
+        *) kernel_pkgs="$kernel_pkgs linux-image-$kernel linux-headers-$kernel" ;;
+        esac
+    done
+
+    # 没有保留的内核则不删除
+    if $has_keep_kernel; then
+        pkgs="$pkgs$kernel_pkgs"
     fi
 
     # 删除安装器和游戏，官方安装后不保留
     pkgs="$pkgs deepin-installer com.deepin.gomoku com.deepin.lianliankan"
     chroot_apt_remove $os_dir $pkgs
-    if ls $os_dir/lib/modules | grep -q '^6\.6\.'; then
-        for kernel in $(ls $os_dir/lib/modules); do
+    if $has_keep_kernel; then
+        for kernel_dir in $os_dir/lib/modules/*/; do
+            [ -d "$kernel_dir" ] || continue
+            kernel=${kernel_dir%/}
+            kernel=${kernel##*/}
             case $kernel in
             6.6.*) ;;
             *)
