@@ -5426,10 +5426,25 @@ EOF
         chroot $os_dir grub-install /dev/$xda
     fi
 
-    # grub 输出到串口，方便调试
+    # 生成 grub.cfg
+    # deepin 25 删除了标准的 10_linux，linux 条目由定制的 15_immutable 生成
+    # 它只认 ostree 部署目录，直接铺 squashfs 的系统没有 ostree 结构
+    # 因此这里手写 grub.cfg
+    root_uuid=$(lsblk "/dev/$(xda $os_part_num)" -no UUID)
+    kernel_ver=$(ls $os_dir/lib/modules | head -1)
+    [ -n "$kernel_ver" ] || error_and_exit "No kernel found in /lib/modules."
     ttys_cmdline=$(get_ttys console=)
-    echo GRUB_CMDLINE_LINUX=\"\$GRUB_CMDLINE_LINUX $ttys_cmdline\" >$os_dir/etc/default/grub.d/tty.cfg
-    chroot $os_dir update-grub
+    mkdir -p $os_dir/boot/grub
+    cat <<EOF >$os_dir/boot/grub/grub.cfg
+set default=0
+set timeout=5
+menuentry 'Deepin' {
+    search --no-floppy --fs-uuid --set=root $root_uuid
+    linux /boot/vmlinuz-$kernel_ver root=UUID=$root_uuid rw $ttys_cmdline
+    initrd /boot/initrd.img-$kernel_ver
+}
+EOF
+    cat $os_dir/boot/grub/grub.cfg
 
     # 虚机下 treeland 桌面使用软件渲染
     # 官方 oem 钩子只处理 VirtualBox，这里处理所有虚机
