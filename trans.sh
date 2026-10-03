@@ -8479,7 +8479,7 @@ get_ubuntu_kernel_flavor() {
     *)
         # 20.04 后才有
         if is_virt_contains vmware && [ "$releasever" != 18.04 ]; then
-            echo vmware$suffix
+            echo vmware
         elif is_virt; then
             echo virtual$suffix
         else
