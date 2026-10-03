@@ -90,9 +90,9 @@ Usage: $reinstall_____ anolis      7|8|23
                        fedora      43|44
                        debian      9|10|11|12|13
                        opensuse    16.0|tumbleweed
-                       openeuler   20.03|22.03|24.03
                        alpine      3.21|3.22|3.23|3.24
                        kali        last-snapshot|rolling
+                       openeuler   20.03|22.03|24.03|26.09
                        ubuntu      18.04|20.04|22.04|24.04|26.04 [--minimal]
                        arch
                        gentoo
@@ -2297,7 +2297,7 @@ verify_os_name() {
         'debian      9|10|11|12|13' \
         'opensuse    16.0|tumbleweed' \
         'alpine      3.21|3.22|3.23|3.24' \
-        'openeuler   20.03|22.03|24.03' \
+        'openeuler   20.03|22.03|24.03|26.09' \
         'ubuntu      18.04|20.04|22.04|24.04|26.04' \
         'kali        last-snapshot|rolling' \
         'redhat' \
