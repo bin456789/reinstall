@@ -8477,8 +8477,13 @@ get_ubuntu_kernel_flavor() {
         echo $vendor
         ;;
     *)
-        # 20.04 后才有
-        if is_virt_contains vmware && [ "$releasever" != 18.04 ]; then
+        # 只有 x86_64 有 vmware 内核
+        # 22.04 在 proposed 里面，我们不使用
+        # 24.04 在 main 里面
+        # 26.04 目前没有
+        # https://pkgs.org/download/linux-image-vmware
+        # https://packages.ubuntu.com/linux-image-vmware
+        if is_virt_contains vmware && [ "$releasever" = 24.04 ] && [ "$(uname -m)" = x86_64 ]; then
             echo vmware
         elif is_virt; then
             echo virtual$suffix
