@@ -1708,7 +1708,9 @@ Continue?
             if is_in_china; then
                 mirror=https://mirror.nju.edu.cn/archlinux
             else
-                mirror=https://geo.mirror.pkgbuild.com # geoip
+                # https://archlinux.org/mirrorlist/all/   # 镜像源列表
+                # mirror=https://geo.mirror.pkgbuild.com  # geoip
+                mirror=https://fastly.mirror.pkgbuild.com # cdn
             fi
         else
             if is_in_china; then
