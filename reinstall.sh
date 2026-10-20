@@ -93,7 +93,7 @@ Usage: $reinstall_____ anolis      7|8|23
                        alpine      3.21|3.22|3.23|3.24
                        kali        last-snapshot|rolling
                        openeuler   20.03|22.03|24.03|26.09
-                       ubuntu      18.04|20.04|22.04|24.04|26.04 [--minimal]
+                       ubuntu      18.04|20.04|22.04|24.04|26.04|26.10 [--minimal]
                        arch
                        gentoo
                        aosc
@@ -1635,6 +1635,7 @@ Continue?
         22.04) codename=jammy ;;
         24.04) codename=noble ;;
         26.04) codename=resolute ;;
+        26.10) codename=stonking ;;
         esac
 
         if is_use_cloud_image; then
@@ -2298,7 +2299,7 @@ verify_os_name() {
         'opensuse    16.0|tumbleweed' \
         'alpine      3.21|3.22|3.23|3.24' \
         'openeuler   20.03|22.03|24.03|26.09' \
-        'ubuntu      18.04|20.04|22.04|24.04|26.04' \
+        'ubuntu      18.04|20.04|22.04|24.04|26.04|26.10' \
         'kali        last-snapshot|rolling' \
         'redhat' \
         'arch' \
