@@ -2341,8 +2341,18 @@ install_arch_gentoo_aosc() {
     )
 
     set_locale() {
-        echo "C.UTF-8 UTF-8" >>$os_dir/etc/locale.gen
+        # 如果存在注释/非注释的 en_US.UTF-8 UTF-8
+        # 则取消注释
+        if grep -Eq '^[# ]*en_US\.UTF-8 UTF-8' $os_dir/etc/locale.gen; then
+            sed -Ei 's/^[# ]*en_US\.UTF-8 UTF-8/en_US.UTF-8 UTF-8/' $os_dir/etc/locale.gen
+        else
+            echo 'en_US.UTF-8 UTF-8' >>$os_dir/etc/locale.gen
+        fi
         chroot $os_dir locale-gen
+
+        # chroot $os_dir localectl set-locale en_US.UTF-8
+        # chroot $os_dir systemd-firstboot --locale=en_US.UTF-8 --force
+        echo 'LANG=en_US.UTF-8' >$os_dir/etc/locale.conf
     }
 
     # shellcheck disable=SC2317
