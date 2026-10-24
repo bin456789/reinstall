@@ -2367,7 +2367,7 @@ install_arch_gentoo_aosc() {
 
         # 设置 repo
         insert_into_file $alpine_rootfs/etc/pacman.conf before '\[core\]' <<EOF
-SigLevel = Never
+SigLevel = Required DatabaseOptional
 ParallelDownloads = 5
 EOF
         cat <<EOF >>$alpine_rootfs/etc/pacman.conf
@@ -2380,11 +2380,46 @@ EOF
         mkdir -p $alpine_rootfs/etc/pacman.d
         # shellcheck disable=SC2016
         case "$(uname -m)" in
-        x86_64) dir='$repo/os/$arch' ;;
-        aarch64) dir='$arch/$repo' ;;
+        x86_64) repo_pattem='$repo/os/$arch' ;;
+        aarch64) repo_pattem='$arch/$repo' ;;
         esac
-        # shellcheck disable=SC2154
-        echo "Server = $mirror/$dir" >$alpine_rootfs/etc/pacman.d/mirrorlist
+        echo "Server = $mirror/$repo_pattem" >$alpine_rootfs/etc/pacman.d/mirrorlist
+
+        # 下载 core.db
+        core_dir=$(echo "$repo_pattem" | sed -e "s/\$repo/core/" -e "s/\$arch/$(uname -m)/")
+        download $mirror/$core_dir/core.db $alpine_rootfs/tmp/core.db
+
+        # 下载 archlinux-keyring archlinuxarm-keyring 包
+        # arch x86 是 tar.zst
+        # arch arm 是 tar.xz
+        xz_or_zstd=$([ "$(uname -m)" = aarch64 ] && echo xz || echo zstd)
+        apk add tar file $xz_or_zstd
+
+        keyrings=archlinux-keyring
+        if [ "$(uname -m)" = aarch64 ]; then
+            keyrings="$keyrings archlinuxarm-keyring"
+        fi
+
+        for keyring in $keyrings; do
+            # 找到包名
+            keyring_pkg_tar_xx=$(tar -xf $alpine_rootfs/tmp/core.db -O --wildcards "$keyring-*/desc" |
+                grep "^$keyring-.*-any\.pkg\.tar\..*" | sort -Vr | head -1)
+
+            # 下载并解压
+            download $mirror/$core_dir/$keyring_pkg_tar_xx $alpine_rootfs/tmp/$keyring_pkg_tar_xx
+            tar -xf $alpine_rootfs/tmp/$keyring_pkg_tar_xx \
+                -C $alpine_rootfs \
+                usr/share/pacman/keyrings/
+            rm -f $alpine_rootfs/tmp/$keyring_pkg_tar_xx
+        done
+
+        # 清理
+        rm -f $alpine_rootfs/tmp/core.db
+        apk del tar file $xz_or_zstd
+
+        # 初始化 pacman keyring
+        chroot $alpine_rootfs pacman-key --init
+        chroot $alpine_rootfs pacman-key --populate
 
         # 安装系统
         # 要安装分区工具(包含 fsck.xxx)，用于 initramfs 检查分区数据
@@ -2432,9 +2467,6 @@ EOF
         # bsdtar: bsdtar: Failed to set default locale
         # Failed to set default locale
         set_locale
-        if [ "$(uname -m)" = aarch64 ]; then
-            chroot $os_dir pacman-key --lsign-key builder@archlinuxarm.org
-        fi
 
         # firmware + microcode
         if fw_pkgs=$(get_ucode_firmware_pkgs) && [ -n "$fw_pkgs" ]; then
