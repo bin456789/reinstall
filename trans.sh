@@ -8505,10 +8505,10 @@ get_ubuntu_kernel_flavor() {
     # https://github.com/canonical/cloud-init/blob/main/tools/ds-identify
     # http://git.annexia.org/?p=virt-what.git;a=blob;f=virt-what.in;hb=HEAD
 
-    is_ubuntu_lts && suffix=-hwe-$releasever || suffix=
+    is_ubuntu_lts && hwe_suffix=-hwe-$releasever || hwe_suffix=
 
     if [ "$no_cloud_kernel" = 1 ]; then
-        echo generic$suffix
+        echo generic$hwe_suffix
         return
     fi
 
@@ -8533,9 +8533,9 @@ get_ubuntu_kernel_flavor() {
         if is_virt_contains vmware && [ "$releasever" = 24.04 ] && [ "$(uname -m)" = x86_64 ]; then
             echo vmware
         elif is_virt; then
-            echo virtual$suffix
+            echo virtual$hwe_suffix
         else
-            echo generic$suffix
+            echo generic$hwe_suffix
         fi
         ;;
     esac
@@ -8600,12 +8600,13 @@ set_max_sectors_kb_for_tencent_cloud_persist() {
         create_swap_if_ram_less_than 2048 $os_dir/swapfile
 
         # 重新生成 initramfs
-        # el
-        if is_have_cmd_on_disk $os_dir dracut; then
-            chroot $os_dir dracut -f --regenerate-all
         # debian/ubuntu
-        elif is_have_cmd_on_disk $os_dir update-initramfs; then
+        # 新版本 ubuntu 用的是 dracut，也有 update-initramfs 作为 wrapper
+        if is_have_cmd_on_disk $os_dir update-initramfs; then
             chroot $os_dir update-initramfs -u -k all
+        # el
+        elif is_have_cmd_on_disk $os_dir dracut; then
+            chroot $os_dir dracut -f --regenerate-all
         # arch
         elif is_have_cmd_on_disk $os_dir mkinitcpio; then
             echo 'FILES+=(/etc/udev/rules.d/80-max-sectors-blk.rules)' \

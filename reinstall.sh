@@ -727,6 +727,8 @@ is_cpu_supports_x86_64_v3() {
     # /proc/cpuinfo 不显示 lzcnt, 可用 abm 代替，但 cygwin 也不显示 abm
     # /proc/cpuinfo 不显示 osxsave, 故用 xsave 代替
 
+    # https://github.com/HenrikBengtsson/x86-64-level/blob/develop/x86-64-level
+
     # 在 32 位 cygwin 上也能正常识别
     need_flags="avx avx2 bmi1 bmi2 f16c fma movbe xsave"
     had_flags=$(grep -m 1 ^flags /proc/cpuinfo | awk -F': ' '{print $2}')
@@ -1337,10 +1339,10 @@ get_best_windows_iso_line() {
             if [ -z "$latest_yyyymm" ] || [ "$yyyymm" -gt "$latest_yyyymm" ]; then
                 latest_yyyymm=$yyyymm
                 latest_updated_keyword=$_updated_xxx_20xx_
-                info "ISO Latest date"
-                echo "${latest_yyyymm:0:4}-${latest_yyyymm:4:2}" >&2
             fi
         done
+        info "ISO Latest date"
+        echo "${latest_yyyymm:0:4}-${latest_yyyymm:4:2}" >&2
         lines=$(grep -Fi "$latest_updated_keyword" <<<"$lines")
     fi
 
@@ -2607,16 +2609,19 @@ check_ram() {
     if is_in_windows; then
         ram_size=$(wmic memorychip get capacity | awk -F= '{sum+=$2} END {if(sum>0) print sum/1024/1024}')
     else
-        # lsmem最准确但 centos7 arm 和 alpine 不能用，debian 9 util-linux 没有 lsmem
+        # lsmem 最准确但 centos7 arm 和 archlinux arm 不能用，debian 9 util-linux 没有 lsmem
         # arm 24g dmidecode 显示少了128m
-        # arm 24g lshw 显示23BiB
+        # arm 24g lshw 显示 23GiB?
         # ec2 t4g arm alpine 用 lsmem 和 dmidecode 都无效，要用 lshw，但结果和free -m一致，其他平台则没问题
         install_pkg lsmem
         ram_size=$(lsmem -b 2>/dev/null | grep 'Total online memory:' | awk '{ print $NF/1024/1024 }')
 
         if ! is_valid_ram_size "$ram_size"; then
             install_pkg dmidecode
-            ram_size=$(dmidecode -t 17 | grep "Size.*[GM]B" | awk '{if ($3=="GB") s+=$2*1024; else s+=$2} END {if(s>0) print s}')
+            # centos 7 是 GB
+            # alpine 是 GiB
+            ram_size=$(dmidecode -t memory | grep -E "Size.*[GB|GiB|MiB|MB]" |
+                awk '{if ($3=="GB" || $3=="GiB") s+=$2*1024; else s+=$2} END {if(s>0) print s}')
         fi
 
         if ! is_valid_ram_size "$ram_size"; then
