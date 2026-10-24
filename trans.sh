@@ -2977,6 +2977,11 @@ create_part() {
     wipefs -a -f /dev/$xda
     apk del wipefs
 
+    # 下面用 dd 擦除 bios_grub 分区
+    # 因为硬盘同时存在 efi bios_grub 分区时
+    # efi 平台没用到 bios_grub 分区
+    # 不擦除 bios_grub 分区的话，parted 会显示残留的文件系统签名
+
     # shellcheck disable=SC2154
     if [ "$distro" = windows ]; then
         if ! size_bytes=$(get_link_file_size "$iso"); then
@@ -3098,8 +3103,8 @@ create_part() {
                 set 1 bios_grub on
             update_part
 
-            echo                                    #1 bios_boot
-            mkfs.ext4 -F $ext4_opts "/dev/$(xda 2)" #2 os + installer
+            dd if=/dev/zero of="/dev/$(xda 1)" bs=1M count=100 #1 bios_grub
+            mkfs.ext4 -F $ext4_opts "/dev/$(xda 2)"            #2 os + installer
         else
             # bios
             parted /dev/$xda -s -- \
@@ -3109,8 +3114,8 @@ create_part() {
                 set 2 boot on
             update_part
 
-            echo                                    #1 官方安装有这个分区
-            mkfs.ext4 -F $ext4_opts "/dev/$(xda 2)" #2 os + installer
+            dd if=/dev/zero of="/dev/$(xda 1)" bs=1M count=100 #1 官方安装有这个分区
+            mkfs.ext4 -F $ext4_opts "/dev/$(xda 2)"            #2 os + installer
         fi
     elif is_use_cloud_image; then
         installer_part_size="$(get_cloud_image_part_size)"
@@ -3142,9 +3147,9 @@ create_part() {
                     set 1 bios_grub on
                 update_part
 
-                echo                                      #1 bios_boot
-                echo                                      #2 os 用目标系统的格式化工具
-                mkfs.ext4 -F -L installer "/dev/$(xda 3)" #3 installer
+                dd if=/dev/zero of="/dev/$(xda 1)" bs=1M count=1 #1 bios_grub
+                echo                                             #2 os 用目标系统的格式化工具
+                mkfs.ext4 -F -L installer "/dev/$(xda 3)"        #3 installer
             fi
         else
             # 使用 dd qcow2
@@ -3184,8 +3189,8 @@ create_part() {
                 set 1 bios_grub on
             update_part
 
-            echo                                    #1 bios_boot
-            mkfs.ext4 -F $ext4_opts "/dev/$(xda 2)" #2 os
+            dd if=/dev/zero of="/dev/$(xda 1)" bs=1M count=1 #1 bios_grub
+            mkfs.ext4 -F $ext4_opts "/dev/$(xda 2)"          #2 os
         else
             # bios
             parted /dev/$xda -s -- \
@@ -3197,7 +3202,7 @@ create_part() {
             mkfs.ext4 -F $ext4_opts "/dev/$(xda 1)" #1 os
         fi
     else
-        # 安装红帽系或ubuntu
+        # iso 安装红帽系或ubuntu
         # 对于红帽系是临时分区表，安装时除了 installer 分区，其他分区会重建为默认的大小
         # 对于ubuntu是最终分区表，因为 ubuntu 的安装器不能调整个别分区，只能重建整个分区表
         # installer 2g分区用fat格式刚好塞得下ubuntu-22.04.3 iso，而ext4塞不下或者需要改参数
@@ -3240,7 +3245,7 @@ create_part() {
                 set 1 bios_grub on
             update_part
 
-            echo                                                 #1 bios_boot
+            dd if=/dev/zero of="/dev/$(xda 1)" bs=1M count=1     #1 bios_grub
             mkfs.ext4 -F -L os "/dev/$(xda 2)"                   #2 os
             mkfs.ext4 -F -L installer $ext4_opts "/dev/$(xda 3)" #3 installer
         else
