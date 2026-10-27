@@ -233,12 +233,12 @@ is_in_china() {
 
     if [ -z "$_loc" ]; then
         # www.cloudflare.com/dash.cloudflare.com 国内访问的是美国服务器，而且部分地区被墙
-        # 没有ipv6 www.visa.cn
-        # 没有ipv6 www.bose.cn
-        # 没有ipv6 www.garmin.com.cn
-        # 备用 www.prologis.cn
-        # 备用 www.autodesk.com.cn
-        # 备用 www.keysight.com.cn
+        # 以下这些都是用 cf cdn 且开通了国内 cdn 节点
+        # www.visa.com.cn
+        # www.garmin.com.cn
+        # www.prologis.cn
+        # www.autodesk.com.cn
+        # www.keysight.com.cn
         if ! _loc=$(curl -L http://www.qualcomm.cn/cdn-cgi/trace | grep '^loc=' | cut -d= -f2 | grep .); then
             error_and_exit "Can not get location."
         fi
@@ -4463,6 +4463,11 @@ EOF
 done < <(cat "\$ROOT"/sys/class/tty/"\$1"/active | xargs -n 1)
 EOF
     fi
+
+    # 无法进入 alpine 时显示网络配置
+    insert_into_file init after 'Launching initramfs emergency recovery shell' -F <<EOF
+(cd /dev/netconf && grep -r . . >&2 || true)
+EOF
 }
 
 mod_initrd() {

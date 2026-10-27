@@ -1,5 +1,6 @@
 #!/bin/ash
 # shellcheck shell=dash
+# shellcheck disable=SC2034
 # alpine/debian initrd 共用此脚本
 
 # accept_ra 接收 RA + 自动配置网关
@@ -34,6 +35,17 @@ else
     ipv6_dns1='2606:4700:4700::1111'
     ipv6_dns2='2001:4860:4860::8888' # 不开放 80
 fi
+
+log() {
+    log_with_uptime="[$(printf '%6s' "$(cut -d ' ' -f1 /proc/uptime)")] $*"
+    echo "$log_with_uptime" >&2
+
+    # 写入文件
+    if [ -n "$ethx" ]; then
+        mkdir -p "/dev/netconf/$ethx"
+        echo "$log_with_uptime" >>"/dev/netconf/$ethx/logs"
+    fi
+}
 
 # 找到主网卡
 # debian 11 initrd 没有 xargs awk
@@ -190,11 +202,23 @@ add_missing_ipv6_config() {
 }
 
 is_need_test_ipv4() {
-    is_have_ipv4 && ! $ipv4_has_internet
+    mode=$1
+
+    if [ "$mode" = ip ]; then
+        is_have_ipv4 && ! $ipv4_has_internet
+    else
+        is_have_ipv4 && ! $ipv4_has_internet_with_dns
+    fi
 }
 
 is_need_test_ipv6() {
-    is_have_ipv6 && ! $ipv6_has_internet
+    mode=$1
+
+    if [ "$mode" = ip ]; then
+        is_have_ipv6 && ! $ipv6_has_internet
+    else
+        is_have_ipv6 && { ! $ipv6_has_internet || ! $ipv6_has_internet_with_dns; }
+    fi
 }
 
 # 测试方法：
@@ -211,14 +235,23 @@ test_by_wget() {
     src=$1
     dst=$2
 
-    # ipv6 需要添加 []
-    if echo "$dst" | grep -q ':'; then
-        url="https://[$dst]"
+    if echo "$dst" | grep -Eiq '^https?://'; then
+        url="$dst"
     else
-        url="https://$dst"
+        # 输入的是 ip，检测 443 (doh)
+        if echo "$dst" | grep -Fq ':'; then
+            # ipv6 需要添加 []
+            url="https://[$dst]"
+        elif echo "$dst" | grep -Fq '.'; then
+            # ipv4
+            url="https://$dst"
+        else
+            # ip 没有 : 或者 .
+            return 1
+        fi
     fi
 
-    # tcp 443 通了就算成功，不管 http 是不是 404
+    # tcp 通了就算成功，不管 http 是不是 404
     # grep -m1 快速返回
     wget -T "$TEST_TIMEOUT" \
         --bind-address="$src" \
@@ -233,18 +266,68 @@ test_by_nc() {
     src=$1
     dst=$2
 
-    # tcp 443 通了就算成功
-    nc -z -v \
-        -w "$TEST_TIMEOUT" \
-        -s "$src" \
-        "$dst" 443
+    if echo "$dst" | grep -Eiq '^https?://'; then
+        # 取出 domain 或者 domain:port
+        domain_colon_port=$(echo "$dst" | cut -d/ -f3)
+        if echo "$domain_colon_port" | grep -Eq ':[0-9]+'; then
+            host=$(echo "$domain_colon_port" | cut -d: -f1)
+            port=$(echo "$domain_colon_port" | cut -d: -f2)
+        else
+            host=$domain_colon_port
+            if echo "$dst" | grep -iq '^http://'; then
+                port=80
+            elif echo "$dst" | grep -iq '^https://'; then
+                port=443
+            fi
+        fi
+
+        # nc 的顺序是先解析 dns，再用指定 ip 连接
+        # 因此即使指定了 ipv4 源 IP，也有时会尝试连接 ipv6 地址，导致连接失败
+        # localhost:~# nc -z -v -s 10.0.0.208 www.qualcomm.cn 443
+        # nc: www.qualcomm.cn ([2606:4700:440d::6812:2bdb]:443): Address family not supported by protocol
+        # 因此先手动解析
+
+        if echo "$src" | grep -Fq ':'; then
+            type=AAAA
+        else
+            type=A
+        fi
+
+        if res=$(nslookup -type="$type" "$host" | grep -Ex 'Address: .+' | awk "{print \$2, \"$host\"}" | grep .); then
+            echo "$res" >/tmp/hosts
+        else
+            return 1
+        fi
+    else
+        # 输入的是 ip，检测 443 (doh)
+        host=$dst
+        port=443
+    fi
+
+    # tcp 通了就算成功
+    set -- nc -z -v -w "$TEST_TIMEOUT" -s "$src" "$host" "$port"
+    if [ -f /tmp/hosts ]; then
+        if unshare -m sh -c "
+            touch /etc/hosts &&
+            mount --bind /tmp/hosts /etc/hosts &&
+            $*
+            "; then
+            ret=0
+        else
+            ret=1
+        fi
+        rm -f /tmp/hosts
+        return $ret
+    else
+        "$@"
+    fi
 }
 
 is_debian_kali() {
     [ -f /etc/lsb-release ] && grep -Eiq 'Debian|Kali' /etc/lsb-release
 }
 
-test_connect() {
+test_internet_inner() {
     if is_debian_kali; then
         test_by_wget "$1" "$2"
     else
@@ -253,34 +336,80 @@ test_connect() {
 }
 
 test_internet() {
+    mode=$1
+
+    # 两种检测模式
+    # ip   = 检测 ip 是否有互联网连接
+    # full = 检测 dns 是否正常 + 检测 ip
+
+    if [ "$mode" = "ip" ]; then
+        ipv4_dst1=$ipv4_dns1
+        ipv4_dst2=$ipv4_dns2
+        ipv6_dst1=$ipv6_dns1
+        ipv6_dst2=$ipv6_dns2
+    else
+        # 这些都是用 cf cdn 且开通了国内 cdn 节点
+        ipv4_dst1=https://www.qualcomm.cn/
+        ipv4_dst2=https://www.autodesk.com.cn/
+        ipv6_dst1=https://www.qualcomm.cn/
+        ipv6_dst2=https://www.autodesk.com.cn/
+    fi
+
     for i in $(seq 5); do
-        echo "Testing Internet Connection. Test $i... "
-        if is_need_test_ipv4 &&
+        log "Testing internet. Mode: $mode. Test $i... "
+        if is_need_test_ipv4 "$mode" &&
             current_ipv4_addr="$(get_first_ipv4_addr | remove_netmask)" &&
-            { test_connect "$current_ipv4_addr" "$ipv4_dns1" ||
-                test_connect "$current_ipv4_addr" "$ipv4_dns2"; } >/dev/null 2>&1; then
-            echo "IPv4 has internet."
+            { test_internet_inner "$current_ipv4_addr" "$ipv4_dst1" ||
+                test_internet_inner "$current_ipv4_addr" "$ipv4_dst2"; } >/dev/null 2>&1; then
             ipv4_has_internet=true
+            if [ "$mode" = "full" ]; then
+                ipv4_has_internet_with_dns=true
+            fi
+            log "IPv4 has internet. Mode: $mode"
         fi
-        if is_need_test_ipv6 &&
+        if is_need_test_ipv6 "$mode" &&
             current_ipv6_addr="$(get_first_ipv6_addr | remove_netmask)" &&
-            { test_connect "$current_ipv6_addr" "$ipv6_dns1" ||
-                test_connect "$current_ipv6_addr" "$ipv6_dns2"; } >/dev/null 2>&1; then
-            echo "IPv6 has internet."
+            { test_internet_inner "$current_ipv6_addr" "$ipv6_dst1" ||
+                test_internet_inner "$current_ipv6_addr" "$ipv6_dst2"; } >/dev/null 2>&1; then
             ipv6_has_internet=true
+            if [ "$mode" = "full" ]; then
+                ipv6_has_internet_with_dns=true
+            fi
+            log "IPv6 has internet. Mode: $mode"
         fi
-        if ! is_need_test_ipv4 && ! is_need_test_ipv6; then
+        if ! is_need_test_ipv4 "$mode" && ! is_need_test_ipv6 "$mode"; then
             break
         fi
         sleep 1
     done
 }
 
+flush_ipv4_dns() {
+    sed -i "/\./d" /etc/resolv.conf
+}
+
+flush_ipv6_dns() {
+    sed -i "/:/d" /etc/resolv.conf
+}
+
+should_add_ipv4_static_dns=false
+should_add_ipv6_static_dns=false
+
+add_ipv4_static_dns() {
+    echo "nameserver $ipv4_dns1" >>/etc/resolv.conf
+    echo "nameserver $ipv4_dns2" >>/etc/resolv.conf
+}
+
+add_ipv6_static_dns() {
+    echo "nameserver $ipv6_dns1" >>/etc/resolv.conf
+    echo "nameserver $ipv6_dns2" >>/etc/resolv.conf
+}
+
 flush_ipv4_config() {
     ip -4 addr flush scope global dev "$ethx"
     ip -4 route flush dev "$ethx"
     # DHCP 获取的 IP 不是重装前的 IP 时，一并删除 DHCP 获取的 DNS，以防 DNS 无效
-    sed -i "/\./d" /etc/resolv.conf
+    flush_ipv4_dns
 }
 
 should_disable_dhcpv4=false
@@ -297,7 +426,7 @@ flush_ipv6_config() {
     ip -6 addr flush scope global dev "$ethx"
     ip -6 route flush dev "$ethx"
     # DHCP 获取的 IP 不是重装前的 IP 时，一并删除 DHCP 获取的 DNS，以防 DNS 无效
-    sed -i "/:/d" /etc/resolv.conf
+    flush_ipv6_dns
 }
 
 for i in $(seq 20); do
@@ -308,11 +437,11 @@ for i in $(seq 20); do
 done
 
 if [ -z "$ethx" ]; then
-    echo "Not found network card: $mac_addr"
+    log "Not found network card: $mac_addr"
     exit
 fi
 
-echo "Configuring $ethx ($mac_addr)..."
+log "Configuring $ethx ($mac_addr)..."
 
 # 不开启 lo 则 frp 无法连接 127.0.0.1 22
 ip link set dev lo up
@@ -403,9 +532,9 @@ fi
 # 有ipv6地址就跳过，不管是slaac或者dhcpv6
 # 因为会在trans里判断
 # 这里等待5秒就够了，因为之前尝试获取dhcp6也用了一段时间
+log "Waiting SLAAC..."
 for i in $(seq 5 -1 0); do
     is_have_ipv6 && break
-    echo "waiting slaac for ${i}s"
     sleep 1
 done
 
@@ -421,13 +550,13 @@ is_have_ipv6_gateway && ra_has_gateway=true || ra_has_gateway=false
 # 2. openSUSE wicked dhcpv6 是 64 位掩码，aws lightsail 模板上的也是，而其它 dhcpv6 软件都是 128 位掩码
 if $dhcpv4 && [ -n "$ipv4_addr" ] && [ -n "$ipv4_gateway" ] &&
     ! [ "$(echo "$ipv4_addr" | cut -d/ -f1)" = "$(get_first_ipv4_addr | cut -d/ -f1)" ]; then
-    echo "IPv4 address obtained from DHCP is different from old system."
+    log "IPv4 address obtained from DHCP is different from old system."
     should_disable_dhcpv4=true
     flush_ipv4_config
 fi
 if $dhcpv6_or_slaac && [ -n "$ipv6_addr" ] && [ -n "$ipv6_gateway" ] &&
     ! [ "$(echo "$ipv6_addr" | cut -d/ -f1)" = "$(get_first_ipv6_addr | cut -d/ -f1)" ]; then
-    echo "IPv6 address obtained from SLAAC/DHCPv6 is different from old system."
+    log "IPv6 address obtained from SLAAC/DHCPv6 is different from old system."
     should_disable_accept_ra=true
     should_disable_autoconf=true
     flush_ipv6_config
@@ -440,7 +569,9 @@ add_missing_ipv6_config
 # 检查 ipv4/ipv6 是否连接联网
 ipv4_has_internet=false
 ipv6_has_internet=false
-test_internet
+ipv4_has_internet_with_dns=false
+ipv6_has_internet_with_dns=false
+test_internet ip
 
 # 如果无法上网，并且自动获取的 掩码/网关 不是重装前的，则改成静态
 # ip_addr 包括 IP/掩码，所以可以用来判断掩码是否不同
@@ -448,23 +579,23 @@ test_internet
 if ! $ipv4_has_internet &&
     $dhcpv4 && [ -n "$ipv4_addr" ] && [ -n "$ipv4_gateway" ] &&
     ! { [ "$ipv4_addr" = "$(get_first_ipv4_addr)" ] && [ "$ipv4_gateway" = "$(get_first_ipv4_gateway)" ]; }; then
-    echo "IPv4 netmask/gateway obtained from DHCP is different from old system."
+    log "IPv4 netmask/gateway obtained from DHCP is different from old system."
     should_disable_dhcpv4=true
     flush_ipv4_config
     add_missing_ipv4_config
-    test_internet
+    test_internet ip
 fi
 # 有可能是静态 IPv6 但能从 RA 获取到网关，因此加上 || $ra_has_gateway
 if ! $ipv6_has_internet &&
     { $dhcpv6_or_slaac || $ra_has_gateway; } &&
     [ -n "$ipv6_addr" ] && [ -n "$ipv6_gateway" ] &&
     ! { [ "$ipv6_addr" = "$(get_first_ipv6_addr)" ] && [ "$ipv6_gateway" = "$(get_first_ipv6_gateway)" ]; }; then
-    echo "IPv6 netmask/gateway obtained from SLAAC/DHCPv6 is different from old system."
+    log "IPv6 netmask/gateway obtained from SLAAC/DHCPv6 is different from old system."
     should_disable_accept_ra=true
     should_disable_autoconf=true
     flush_ipv6_config
     add_missing_ipv6_config
-    test_internet
+    test_internet ip
 fi
 
 # 要删除不联网协议的ip，因为
@@ -491,36 +622,82 @@ if ! $ipv6_has_internet; then
     flush_ipv6_config
 fi
 
+# 模拟无法获取 DNS
+# : >/etc/resolv.conf
+
+# 模拟自动获取的 DNS 不能用
+# echo 'nameserver 11.11.11.11' >/etc/resolv.conf
+
 # 如果联网了，但没获取到默认 DNS，则添加我们的 DNS
 
 # 有一种情况是，多网卡，且能上网的网卡先完成了这个脚本，不能上网的网卡后完成
 # 无法上网的网卡通过 flush_ipv4_config 删除了不能上网的 IP 和 dns
-# （原计划是删除无法上网的网卡 dhcp4 获取的 dns，但实际上无法区分）
-# 因此这里直接添加 dns，不判断是否联网
-if ! is_have_ipv4_dns; then
-    echo "nameserver $ipv4_dns1" >>/etc/resolv.conf
-    echo "nameserver $ipv4_dns2" >>/etc/resolv.conf
+# （理论上应该是删除无法上网的网卡 dhcp4 获取的 dns，但实际上无法区分）
+if $ipv4_has_internet && ! is_have_ipv4_dns; then
+    should_add_ipv4_static_dns=true
+    log "IPv4 has internet. But no IPv4 DNS. Adding static DNS"
+    add_ipv4_static_dns
 fi
-if ! is_have_ipv6_dns; then
-    echo "nameserver $ipv6_dns1" >>/etc/resolv.conf
-    echo "nameserver $ipv6_dns2" >>/etc/resolv.conf
+if $ipv6_has_internet && ! is_have_ipv6_dns; then
+    should_add_ipv6_static_dns=true
+    log "IPv6 has internet. But no IPv6 DNS. Adding static DNS"
+    add_ipv6_static_dns
 fi
 
+# 测试完整的互联网连接，包括 DNS
+test_internet full
+
+# 需要覆盖自动 DNS 的情况
+if $ipv4_has_internet && ! $ipv4_has_internet_with_dns && $dhcpv4; then
+    should_add_ipv4_static_dns=true
+    log "IPv4 has internet. But DNS failed. Overriding with static DNS"
+    flush_ipv4_dns
+    add_ipv4_static_dns
+
+    # 再次测试完整的互联网连接
+    test_internet full
+fi
+if $ipv6_has_internet && ! $ipv6_has_internet_with_dns && $dhcpv6_or_slaac; then
+    should_add_ipv6_static_dns=true
+    log "IPv6 has internet. But DNS failed. Overriding with static DNS"
+    flush_ipv6_dns
+    add_ipv6_static_dns
+
+    # 再次测试完整的互联网连接
+    test_internet full
+fi
+
+# TODO: 测试这个阶段的 slaac/dhcpv6 能不能自动获取 dns?
+
 # 传参给 trans.start
-netconf="/dev/netconf/$ethx"
-mkdir -p "$netconf"
-$dhcpv4 && echo 1 >"$netconf/dhcpv4" || echo 0 >"$netconf/dhcpv4"
-$dhcpv6_or_slaac && echo 1 >"$netconf/dhcpv6_or_slaac" || echo 0 >"$netconf/dhcpv6_or_slaac"
-$should_disable_dhcpv4 && echo 1 >"$netconf/should_disable_dhcpv4" || echo 0 >"$netconf/should_disable_dhcpv4"
-$should_disable_accept_ra && echo 1 >"$netconf/should_disable_accept_ra" || echo 0 >"$netconf/should_disable_accept_ra"
-$should_disable_autoconf && echo 1 >"$netconf/should_disable_autoconf" || echo 0 >"$netconf/should_disable_autoconf"
-$is_in_china && echo 1 >"$netconf/is_in_china" || echo 0 >"$netconf/is_in_china"
-echo "$ethx" >"$netconf/ethx"
-echo "$mac_addr" >"$netconf/mac_addr"
-echo "$ipv4_addr" >"$netconf/ipv4_addr"
-echo "$ipv4_gateway" >"$netconf/ipv4_gateway"
-echo "$ipv6_addr" >"$netconf/ipv6_addr"
-echo "$ipv6_gateway" >"$netconf/ipv6_gateway"
-echo "$ipv6_extra_addrs" >"$netconf/ipv6_extra_addrs"
-$ipv4_has_internet && echo 1 >"$netconf/ipv4_has_internet" || echo 0 >"$netconf/ipv4_has_internet"
-$ipv6_has_internet && echo 1 >"$netconf/ipv6_has_internet" || echo 0 >"$netconf/ipv6_has_internet"
+mkdir -p "/dev/netconf/$ethx"
+
+for conf in \
+    is_in_china \
+    dhcpv4 \
+    dhcpv6_or_slaac \
+    should_disable_dhcpv4 \
+    should_disable_accept_ra \
+    should_disable_autoconf \
+    should_add_ipv4_static_dns \
+    should_add_ipv6_static_dns \
+    ipv4_has_internet \
+    ipv6_has_internet; do
+    { eval \$$conf && echo 1 || echo 0; } >"/dev/netconf/$ethx/$conf"
+done
+
+for conf in \
+    ethx \
+    mac_addr \
+    ipv4_addr \
+    ipv4_gateway \
+    ipv6_addr \
+    ipv6_gateway \
+    ipv6_extra_addrs; do
+    eval echo \"\$$conf\" >"/dev/netconf/$ethx/$conf"
+done
+
+# 模拟下载失败
+# : >/etc/resolv.conf
+
+# (cd /dev/netconf && grep -r . . >&2)
