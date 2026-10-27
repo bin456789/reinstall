@@ -166,14 +166,26 @@ error_and_exit() {
     exit 1
 }
 
-show_dd_password_tips() {
-    warn false "
-This password is only used for SSH access to view logs during the installation.
-Password of the image will NOT modify.
+show_dd_tips() {
+    warn false '********** 提醒 Info **********'
+    warn false '用户名/密码/公钥仅用于安装时登录 SSH 查看日志/救砖，不会应用到新系统。'
+    warn false '镜像的用户名/密码/公钥不会被修改。'
+    warn false
+    warn false 'The Username/Password/Public Key is only for SSH login to view logs or rescue the system during installation, it will not be applied to the new system.'
+    warn false 'The Username/Password/Public Key inside the image will NOT be modified.'
+    warn false '**********************************'
+}
 
-密码仅用于安装过程中通过 SSH 查看日志。
-镜像的密码不会被修改。
-"
+show_fnos_tips() {
+    warn false '********** 提醒 Info **********'
+    warn false '用户名/密码/公钥仅用于安装时登录 SSH 查看日志/救砖，不会应用到新系统。'
+    warn false '安装完成后，你需要尽快到 http://IP:5666 配置账号密码。'
+    warn false '安装完成后，SSH 服务不会开启，你需要到 http://IP:5666 自行开启。'
+    warn false
+    warn false 'The Username/Password/Public Key is only for SSH login to view logs or rescue the system during installation, it will not be applied to the new system.'
+    warn false 'After installation, you need to config the username and password on http://IP:5666 as soon as possible.'
+    warn false 'After installation, SSH Service is disabled. You need to enable it from http://IP:5666.'
+    warn false '**********************************'
 }
 
 show_url_in_args() {
@@ -2787,6 +2799,7 @@ is_administrator_username() {
 }
 
 prompt_username() {
+    echo >&2
     info "prompt username"
 
     if [ "$distro" = windows ]; then
@@ -2795,8 +2808,9 @@ prompt_username() {
         default_username=root
     fi
 
-    warn false "Set username, leave blank to use $default_username"
     warn false "设置用户名，不填写则使用 $default_username"
+    warn false "Set username, leave blank will use $default_username"
+
     IFS= read -r -p "Username: " username
     username="$(printf "%s" "$username" | trim)"
 
@@ -2807,9 +2821,12 @@ prompt_username() {
 }
 
 prompt_password() {
+    echo >&2
     info "prompt password"
-    warn false "Set password, leave blank to use a random password."
+
     warn false "设置密码，不填写则使用随机密码"
+    warn false "Set password, leave blank will use a random password"
+
     while true; do
         IFS= read -r -p "Password: " password
         if [ -n "$password" ]; then
@@ -5298,17 +5315,34 @@ done
 # 检查必须的参数
 verify_os_args
 
-# 用户名
-if ! is_netboot_xyz && [ -z "$username" ]; then
-    prompt_username
-fi
-
-# 密码
-if ! is_netboot_xyz && [ -z "$ssh_keys" ] && [ -z "$password" ]; then
-    if is_use_dd; then
-        show_dd_password_tips
+# 用户名密码
+if ! is_netboot_xyz; then
+    need_prompt_username=false
+    need_prompt_password=false
+    if [ -z "$username" ]; then
+        need_prompt_username=true
     fi
-    prompt_password
+    if [ -z "$password" ] && [ -z "$ssh_keys" ]; then
+        need_prompt_password=true
+    fi
+
+    # 提示
+    if $need_prompt_username || $need_prompt_password; then
+        case "$distro" in
+        dd) show_dd_tips ;;
+        fnos) show_fnos_tips ;;
+        esac
+    fi
+
+    # 用户名
+    if $need_prompt_username; then
+        prompt_username
+    fi
+
+    # 密码
+    if $need_prompt_password; then
+        prompt_password
+    fi
 fi
 
 # 强制忽略/强制添加 --ci 参数
@@ -5603,65 +5637,48 @@ elif [ "$distro" = alpine ] && [ "$hold" = 1 ]; then
     echo "SSH Port: $ssh_port"
 
 elif [ "$distro" = fnos ]; then
-    info "While Install (View Logs)"
-    echo "Username: $username"
+    echo "Username: $username (During installation only)"
     if [ -n "$ssh_keys" ]; then
-        echo "Public Key: $ssh_keys"
+        echo "Public Key: $ssh_keys (During installation only)"
     else
-        echo "Password: $password"
+        echo "Password: $password (During installation only)"
     fi
-    echo "SSH Port: $ssh_port"
-    echo "WEB: $(get_http_log_url)"
+    echo "SSH Port: $ssh_port (During installation only)"
+    echo "WEB: $(get_http_log_url) (During installation only)"
 
-    info "After Install"
-
-    echo "安装后不会开启 SSH 服务。"
-    echo "你需要尽快到 http://IP:5666 配置账号密码。"
     echo
-    echo "SSH Service is disabled after installation."
-    echo "You need to config the username and password on http://IP:5666 as soon as possible."
+    show_fnos_tips
 
 elif [ "$distro" = windows ]; then
-    info "While Install (View Logs)"
-    echo "Username: $username"
-    echo "Password: $password"
-    echo "SSH Port: $ssh_port"
-    echo "WEB: $(get_http_log_url)"
-
-    info "After Install"
     if is_administrator_username "$username"; then
-        echo "Username: $username (Depends on Windows iso's language)"
+        echo "Username: $username (Might vary on Windows, depends on system language)"
     else
         echo "Username: $username"
     fi
     echo "Password: $password"
     echo "RDP Port: $rdp_port"
+    echo "SSH Port: $ssh_port (During installation only)"
+    echo "WEB: $(get_http_log_url) (During installation only)"
 
 elif [ "$distro" = dd ]; then
-    info "While Install (View Logs)"
-    echo "Username: $username"
+    echo "Username: $username (During installation only)"
     if [ -n "$ssh_keys" ]; then
-        echo "Public Key: $ssh_keys"
+        echo "Public Key: $ssh_keys (During installation only)"
     else
-        echo "Password: $password"
+        echo "Password: $password (During installation only)"
     fi
-    echo "SSH Port: $ssh_port"
-    echo "WEB: $(get_http_log_url)"
+    echo "SSH Port: $ssh_port (During installation only)"
+    echo "WEB: $(get_http_log_url) (During installation only)"
 
-    info "After Install"
     if [ -n "$cloud_data" ]; then
         echo "Cloud Data: $cloud_data"
         echo "Cloud Data Files: $cloud_data_files"
     else
-        echo "Username: [Depends on image]"
-        echo "Public Key: [Depends on image]"
-        echo "Password: [Depends on image]"
-        echo "SSH Port: [Depends on image]"
+        echo
+        show_dd_tips
     fi
-
 else
     # 普通 linux
-    info "While Install (View Logs)"
     echo "Username: $username"
     if [ -n "$ssh_keys" ]; then
         echo "Public Key: $ssh_keys"
@@ -5669,16 +5686,7 @@ else
         echo "Password: $password"
     fi
     echo "SSH Port: $ssh_port"
-    echo "WEB: $(get_http_log_url)"
-
-    info "After Install"
-    echo "Username: $username"
-    if [ -n "$ssh_keys" ]; then
-        echo "Public Key: $ssh_keys"
-    else
-        echo "Password: $password"
-    fi
-    echo "SSH Port: $ssh_port"
+    echo "WEB: $(get_http_log_url) (During installation only)"
 fi
 
 if is_in_windows; then
@@ -5689,27 +5697,41 @@ fi
 
 echo
 if [ "$distro" = netboot.xyz ]; then
-    echo '重启后进入 netboot.xyz。'
-    echo "或者现在运行 \"$reinstall_____ reset\" 以清除该引导项。"
-    echo
-    echo 'Reboot to start netboot.xyz.'
-    echo "Or run \"$reinstall_____ reset\" now to clear this boot entry."
-    echo
+    warn false '********** 警告 Warning **********'
+    warn false '重启后会进入 netboot.xyz。'
+    warn false "如果要取消进入，请在重启前运行 \"$reinstall_____ reset\"。"
+    warn false
+    warn false 'Reboot will start netboot.xyz.'
+    warn false "If you want to cancel entering, run \"$reinstall_____ reset\" before reboot."
+    warn false '**********************************'
 
 elif [ "$distro" = alpine ] && [ "$hold" = 1 ]; then
-    echo '重启后进入 Alpine Live OS。'
-    echo "或者现在运行 \"$reinstall_____ reset\" 以清除该引导项。"
-    echo
-    echo 'Reboot to start Alpine Live OS.'
-    echo "Or run \"$reinstall_____ reset\" now to clear this boot entry."
-    echo
+    warn false '********** 警告 Warning **********'
+    warn false '重启后会进入 Alpine Live OS。'
+    warn false "如果要取消进入，请在重启前运行 \"$reinstall_____ reset\"。"
+    warn false
+    warn false 'Reboot will start Alpine Live OS.'
+    warn false "If you want to cancel entering, run \"$reinstall_____ reset\" before reboot."
+    warn false '**********************************'
+
+elif [ "$hold" = 1 ]; then
+    warn false '********** 警告 Warning **********'
+    warn false '重启后会进入安装环境，不会自动重装。'
+    warn false "如果要取消进入，请在重启前运行 \"$reinstall_____ reset\"。"
+    warn false
+    warn false 'Reboot will start the installation environment, will not automatically reinstall.'
+    warn false "If you want to cancel entering, run \"$reinstall_____ reset\" before reboot."
+    warn false '**********************************'
+
 else
-    warn false '警告：重装会清除主硬盘的所有数据，包括所有分区！'
-    echo '重启后开始重装。'
-    echo "或者现在运行 \"$reinstall_____ reset\" 以取消重装。"
-    echo
-    warn false 'Warning: Reinstalling will erase all data on the main disk, including all partitions!'
-    echo 'Reboot to start the reinstallation.'
-    echo "Or run \"$reinstall_____ reset\" now to cancel the reinstallation."
+    warn false '********** 警告 Warning **********'
+    warn false '重启后会自动开始重装。'
+    warn false '这将清除主硬盘的所有数据，包括所有分区！！！'
+    warn false "如果要取消重装，请在重启前运行 \"$reinstall_____ reset\"。"
+    warn false
+    warn false 'Reboot will start the automatic reinstallation.'
+    warn false 'THIS WILL ERASE ALL DATA ON THE MAIN DISK, INCLUDING ALL PARTITIONS!!!'
+    warn false "If you want to cancel the reinstallation, run \"$reinstall_____ reset\" before reboot."
+    warn false '**********************************'
 fi
 echo
