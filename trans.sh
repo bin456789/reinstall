@@ -294,10 +294,21 @@ download_via_browser() {
     remove_alpine_rootfs "$os_dir"
 }
 
+get_daocloud_url() {
+    local url=$1
+    echo "https://files.m.daocloud.io/$(echo "$url" | sed -E 's,^https?://,,i')"
+}
+
+is_anubis() {
+    [ -f "$1" ] &&
+        head -c 10240 "$1" | grep -Fiq anubis
+}
+
 download() {
     local url=$1
     local path=$2
     local can_use_cn_mirror=${3:-false}
+    local grace=${4:-false}
 
     # 有ipv4地址无ipv4网关的情况下，aria2可能会用ipv4下载，而不是ipv6
     # axel 在 lightsail 上会占用大量cpu
@@ -342,19 +353,50 @@ download() {
         -O "1=$(basename "$path")" \
         -U curl/7.54.1
 
-    if ! aria2c "$url" "$@" &&
-        ! { $can_use_cn_mirror && is_in_china && is_any_ipv4_has_internet &&
-            url_cn=https://files.m.daocloud.io/$(echo "$url" | sed -E 's,^https?://,,i') &&
-            aria2c "$url_cn" "$@"; }; then
-        error_and_exit "Failed to download $url"
+    local download_success=false
+    local is_in_anubis_blacklist=false
+
+    # 直接下载
+    if aria2c "$url" "$@"; then
+        # 被挡住时，下载了 anubis html 页面
+        if is_anubis "$path"; then
+            # 完全屏蔽，例如华为云
+            if grep -iq 'Access Denied' "$path"; then
+                is_in_anubis_blacklist=true
+                warn "IP in anubis blacklist"
+            fi
+            rm -rf "$path"
+        else
+            download_success=true
+        fi
     fi
 
-    # opensuse 官方镜像支持 metalink
-    # aria2 无法重命名用 metalink 下载的文件
-    # 需用以下方法重命名
-    if head -c 1024 "$path" | grep -Fq 'urn:ietf:params:xml:ns:metalink'; then
-        real_file=$(tr -d '\n' <"$path" | sed -E 's|.*<file[[:space:]]+name="([^"]*)".*|\1|')
-        mv "$(dirname "$path")/$real_file" "$path"
+    # daocloud 镜像
+    if ! $download_success && $can_use_cn_mirror &&
+        aria2c "$(get_daocloud_url "$url")" "$@" &&
+        ! is_anubis "$path"; then
+        download_success=true
+    fi
+
+    if $download_success; then
+        # opensuse 官方镜像支持 metalink
+        # aria2 无法重命名用 metalink 下载的文件
+        # 需用以下方法重命名
+        if head -c 1024 "$path" | grep -Fq 'urn:ietf:params:xml:ns:metalink'; then
+            real_file=$(tr -d '\n' <"$path" | sed -E 's|.*<file[[:space:]]+name="([^"]*)".*|\1|')
+            mv "$(dirname "$path")/$real_file" "$path"
+        fi
+    else
+        rm -f "$path"
+        if $grace; then
+            if $is_in_anubis_blacklist; then
+                return 10
+            else
+                return 1
+            fi
+        else
+            error_and_exit "Failed to download $url"
+        fi
     fi
 }
 
@@ -6732,6 +6774,40 @@ apk_del_edge() {
     apk del edge
 }
 
+download_from_fedorapeople() {
+    local url=$1
+    local file=$2
+    local can_use_cn_mirror=${3:-false}
+    local grace=${4:-false}
+
+    local skip_browser_download=false
+
+    # aria2 下载，包括用 daocloud 镜像
+    local aria2c_grace=true
+    if download "$url" "$file" $can_use_cn_mirror $aria2c_grace; then
+        return
+    else
+        # anubis 屏蔽了华为云
+        # 此时跳过用浏览器下载
+        if [ $? -eq 10 ]; then
+            skip_browser_download=true
+        fi
+    fi
+
+    # 用浏览器下载
+    if ! $skip_browser_download &&
+        download_via_browser "$url" "$file" &&
+        ! is_anubis "$file"; then
+        return
+    fi
+
+    if $grace; then
+        return 1
+    else
+        error_and_exit "Failed to download $url"
+    fi
+}
+
 install_windows() {
     get_wim_prop() {
         wim=$1
@@ -7707,25 +7783,14 @@ EOF
 
         get_latest_virtio_dir() {
             local checksum=$1/stable-virtio/CHECKSUM
-            local dir
+            local can_use_cn_mirror=false
+            local grace=true
 
-            # 直接读取 CHECKSUM 可以兼容 fedorapeople 跳转和提供文件内容的镜像源
-            if dir=$(wget "$checksum" -O- |
-                grep -Eo -m1 'virtio-win-[0-9][^[:space:]]+\.noarch\.rpm' |
+            mkdir -p "$drv/virtio"
+            download_from_fedorapeople "$checksum" "$drv/virtio/checksum" $can_use_cn_mirror $grace >/dev/null &&
+                grep -Eo -m1 'virtio-win-[0-9][^[:space:]]+\.noarch\.rpm' "$drv/virtio/checksum" |
                 sed -E 's,^virtio-win-(.*)\.noarch\.rpm$,archive-virtio/virtio-win-\1,' |
-                grep .); then
-                echo "$dir"
-                return
-            fi
-
-            # 保留 Location 解析作为兼容逻辑
-            if dir=$(wget --spider -S "$checksum" 2>&1 >/dev/null |
-                grep -E '^  Location: ' | grep -Ewo -m1 'archive-virtio/virtio-win-[^/]+'); then
-                echo "$dir"
-                return
-            fi
-
-            return 1
+                    grep .
         }
 
         case "$nt_ver" in
@@ -7749,18 +7814,11 @@ EOF
 
         # anubis 默认策略拉黑了华为云，连验证的机会都没有
 
-        # https://fedorapeople.org/groups/virt/virtio-win/direct-downloads/stable-virtio/
-        # 路径是网页，可能会弹出 anubis 验证
-
         # https://fedorapeople.org/groups/virt/virtio-win/direct-downloads/stable-virtio/CHECKSUM
-        # 路径是文件，应该不会弹出 anubis 验证？
+        # 路径是文件，也会弹出 anubis 验证
         if [ "$dir" = stable-virtio ]; then
             if ! dir=$(get_latest_virtio_dir "$baseurl"); then
-                if is_any_ipv4_has_internet &&
-                    mirror_baseurl=https://files.m.daocloud.io/$(echo "$baseurl" | sed -E 's,^https?://,,i') &&
-                    dir=$(get_latest_virtio_dir "$mirror_baseurl"); then
-                    baseurl=$mirror_baseurl
-                elif [ "$arch_wim" = x86 ] || [ "$arch_wim" = x86_64 ]; then
+                if [ "$arch_wim" = x86 ] || [ "$arch_wim" = x86_64 ]; then
                     add_driver_virtio_from_rpm "$@"
                     return
                 else
@@ -7784,7 +7842,7 @@ EOF
         fi
 
         if [ "$virtio_source" = iso ]; then
-            download $baseurl/$dir/virtio-win.iso $drv/virtio.iso $can_use_cn_mirror
+            download_from_fedorapeople $baseurl/$dir/virtio-win.iso $drv/virtio.iso $can_use_cn_mirror
             mkdir -p $drv/virtio
             mount -o ro $drv/virtio.iso $drv/virtio
 
@@ -7797,7 +7855,7 @@ EOF
             fi
         else
             apk add 7zip file
-            download $baseurl/$dir/virtio-win-gt-$arch_xdd.msi $drv/virtio.msi $can_use_cn_mirror
+            download_from_fedorapeople $baseurl/$dir/virtio-win-gt-$arch_xdd.msi $drv/virtio.msi $can_use_cn_mirror
             match="FILE_*_${virtio_sys}_${arch}*"
             7z x $drv/virtio.msi -o$drv/virtio -i!$match -y -bb1
             (
