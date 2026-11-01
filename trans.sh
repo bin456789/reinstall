@@ -1744,7 +1744,7 @@ install_alpine() {
 
     # 安装其他部件
     chroot /os setup-keymap us us
-    chroot /os setup-timezone -i Asia/Shanghai
+    chroot /os setup-timezone -i Etc/UTC
     # 3.21 默认是 chrony
     # 3.22 默认是 busybox ntp
     printf '\n' | chroot /os setup-ntp || true
@@ -2313,15 +2313,15 @@ basic_init() {
     local os_dir=$1
 
     # 此时不能用
-    # chroot $os_dir timedatectl set-timezone Asia/Shanghai
+    # chroot $os_dir timedatectl set-timezone Etc/UTC
     # Failed to create bus connection: No such file or directory
 
     # debian 11 没有 systemd-firstboot
     if is_have_cmd_on_disk $os_dir systemd-firstboot; then
         if chroot $os_dir systemd-firstboot --help | grep -wq '\--force'; then
-            chroot $os_dir systemd-firstboot --timezone=Asia/Shanghai --force
+            chroot $os_dir systemd-firstboot --timezone=Etc/UTC --force
         else
-            chroot $os_dir systemd-firstboot --timezone=Asia/Shanghai
+            chroot $os_dir systemd-firstboot --timezone=Etc/UTC
         fi
     fi
 
