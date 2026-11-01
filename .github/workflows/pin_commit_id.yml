@@ -1,0 +1,24 @@
+name: 临时固定 Commit ID
+on:
+  workflow_dispatch:
+
+jobs:
+  run:
+    name: 临时固定 Commit ID
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - run: |
+          git config --global core.autocrlf false
+
+      - uses: actions/checkout@v7
+
+      - run: |
+          commit_id=$(git rev-parse --short HEAD)
+          sed -Ei "/^(set )?confhome(_cn)?=.*main(\r)?$/s/main/$commit_id/" reinstall.sh reinstall.bat
+
+      - uses: EndBug/add-and-commit@v11
+        with:
+          default_author: github_actions
+          message: "临时固定 Commit ID [ci skip]"
