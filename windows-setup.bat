@@ -60,7 +60,7 @@ rem     set "ProductType=%%a"
 rem )
 
 rem 获取 installer 卷 id
-for /f "tokens=2" %%a in ('echo list vol ^| diskpart ^| find " installer "') do (
+for /f "tokens=2" %%a in ('echo list vol ^| diskpart ^| find /i " @installer_part_label@ "') do (
     set "VolIndex=%%a"
 )
 
@@ -132,10 +132,12 @@ exit /b 1
 del X:\disk.txt
 endlocal & set "DiskIndex=%DiskIndex%"
 
-rem 判断 efi 还是 bios
-rem 或者用 https://learn.microsoft.com/windows-hardware/manufacture/desktop/boot-to-uefi-mode-or-legacy-bios-mode
 rem pe 下没有 mountvol
-echo list vol | diskpart | find " efi " && (
+
+rem 判断 efi 还是 bios
+rem https://learn.microsoft.com/windows-hardware/manufacture/desktop/boot-to-uefi-mode-or-legacy-bios-mode
+wpeutil UpdateBootInfo
+reg query HKLM\System\CurrentControlSet\Control /v PEFirmwareType | find "0x2" && (
     set BootType=efi
 ) || (
     set BootType=bios
