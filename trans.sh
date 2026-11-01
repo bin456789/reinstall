@@ -405,6 +405,10 @@ update_part() {
     sync
     sleep 1
 
+    # mkfs.ntfs 有坑，在同一秒 mkfs.ntfs 生成的 uuid 一样
+    # lsblk 也有坑，格式化后立即查看分区 uuid ，可能显示格式化前的 uuid
+    # mkfs.ntfs -f -F /dev/vda1; mkfs.ntfs -f -F /dev/vda2; lsblk -f; sleep 3; lsblk -f
+
     # partprobe
     # 有分区挂载中会报 Resource busy 错误
     if is_have_cmd partprobe; then
@@ -3155,6 +3159,7 @@ create_part() {
         [ -n "$dev_efi" ] && mkfs.fat "$dev_efi"                    # efi
         [ -n "$dev_msr" ] && fill_zero "$dev_msr"                   # msr
         mkfs.ntfs -f -F "$dev_os"                                   # os
+        sleep 1                                                     # 在同一秒 mkfs.ntfs 生成的 uuid 一样
         mkfs.ntfs -f -F -L "$INSTALLER_PART_LABEL" "$dev_installer" # installer
     elif [ "$distro" = fnos ]; then
         # 1. 官方安装器对系统盘大小的定义包含引导分区大小
