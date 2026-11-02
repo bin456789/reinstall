@@ -7684,6 +7684,7 @@ EOF
     # https://fedorapeople.org/groups/virt/virtio-win/direct-downloads/stable-virtio/
     add_driver_generic_virtio() {
         info "Add drivers: Generic virtio"
+        mkdir -p "$drv/virtio"
 
         # 要区分 win10 / win11 驱动，虽然他们的 NT 版本号都是 10.0，但驱动文件有区别
         # https://github.com/virtio-win/kvm-guest-drivers-windows/commit/9af43da9e16e2d4bf4ea4663cdc4f29275fff48f
@@ -7791,11 +7792,15 @@ EOF
             local can_use_cn_mirror=false
             local grace=true
 
-            mkdir -p "$drv/virtio"
-            download_from_fedorapeople "$checksum" "$drv/virtio/checksum" $can_use_cn_mirror $grace >/dev/null &&
+            local ret=1
+            if download_from_fedorapeople "$checksum" "$drv/virtio/checksum" $can_use_cn_mirror $grace >/dev/null &&
                 grep -Eo -m1 'virtio-win-[0-9][^[:space:]]+\.noarch\.rpm' "$drv/virtio/checksum" |
                 sed -E 's,^virtio-win-(.*)\.noarch\.rpm$,archive-virtio/virtio-win-\1,' |
-                    grep .
+                    grep .; then
+                ret=0
+            fi
+            rm -f "$drv/virtio/checksum"
+            return $ret
         }
 
         case "$nt_ver" in
@@ -7848,7 +7853,6 @@ EOF
 
         if [ "$virtio_source" = iso ]; then
             download_from_fedorapeople $baseurl/$dir/virtio-win.iso $drv/virtio.iso $can_use_cn_mirror
-            mkdir -p $drv/virtio
             mount -o ro $drv/virtio.iso $drv/virtio
 
             # vista 如果安装气动驱动，会报错 windows could not configure one or more system components
