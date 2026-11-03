@@ -87,10 +87,10 @@ Usage: $reinstall_____ anolis      7|8|23
                        fnos        1
                        fygoos      1
                        nixos       26.05
-                       fedora      43|44
+                       fedora      44|45
                        debian      9|10|11|12|13
-                       opensuse    16.0|tumbleweed
                        alpine      3.21|3.22|3.23|3.24
+                       opensuse    16.0|16.1|tumbleweed
                        kali        last-snapshot|rolling
                        openeuler   20.03|22.03|24.03|26.09
                        ubuntu      18.04|20.04|22.04|24.04|26.04|26.10 [--minimal]
@@ -119,7 +119,7 @@ Usage: $reinstall_____ anolis      7|8|23
                        [--no-auto-drivers]         (only for iso installation)
 
                        For Linux Only:
-                       [--no-cloud-kernel]         (only for Debian/Ubuntu/Alpine)
+                       [--no-cloud-kernel]         (only for Debian/Ubuntu/Alpine/openSUSE)
 
        Manual:         https://github.com/bin456789/reinstall
 
@@ -1831,10 +1831,8 @@ Continue?
             else
                 # leap
                 dir=distribution/leap/$releasever/appliances
-                case "$releasever" in
-                16.0) file=Leap-$releasever-Minimal-VM.$basearch-Cloud.qcow2 ;;
-                # 16.0) file=Leap-$releasever-Minimal-VM.$basearch-kvm$(if [ "$basearch" = x86_64 ]; then echo '-and-xen'; fi).qcow2 ;;
-                esac
+                file=Leap-$releasever-Minimal-VM.$basearch-Cloud.qcow2
+                # file=Leap-$releasever-Minimal-VM.$basearch-kvm$(if [ "$basearch" = x86_64 ]; then echo '-and-xen'; fi).qcow2
 
                 # kvm 镜像里面没有 cloud-init
                 # 但不够 Cloud 镜像通用?
@@ -2304,10 +2302,10 @@ verify_os_name() {
         'oracle      8|9|10' \
         'fnos        1' \
         'fygoos      1' \
-        'fedora      43|44' \
+        'fedora      44|45' \
         'nixos       26.05' \
         'debian      9|10|11|12|13' \
-        'opensuse    16.0|tumbleweed' \
+        'opensuse    16.0|16.1|tumbleweed' \
         'alpine      3.21|3.22|3.23|3.24' \
         'openeuler   20.03|22.03|24.03|26.09' \
         'ubuntu      18.04|20.04|22.04|24.04|26.04|26.10' \
