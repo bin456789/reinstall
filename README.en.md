@@ -262,6 +262,7 @@ bash reinstall.sh dd --img "https://example.com/xxx.xz"
 - `--rdp-port PORT` Change RDP port (DD Windows only)
 - `--web-port PORT` Change Web port (for log observation during installation)
 - `--allow-ping` Configure Windows Firewall to Allow Ping Responses (DD Windows only)
+- `--no-lockout-threshold` Disable account lockout upon multiple failed login attempts (DD Windows only)
 - `--frpc-config PATH` Add frpc for intranet tunneling (DD Windows only). Parameter can be local filepath or HTTP URL of the configuration file.
 - `--cloud-data PATH_OR_URL` Inject cloud-init NoCloud configuration into the DD'd Linux image (DD Linux only)
 - `--hold 1` Reboot only into install environment, without running installer, only for SSH connect to test network connection.
@@ -579,6 +580,7 @@ bash reinstall.sh windows \
 - `--ssh-port PORT` Change SSH port (for log observation during installation only)
 - `--web-port PORT` Change Web port (for log observation during installation only)
 - `--allow-ping` Configure Windows Firewall to Allow Ping Responses
+- `--no-lockout-threshold` Disable account lockout upon multiple failed login attempts
 - `--add-driver INF_OR_DIR` Add additional driver, specifying .inf path, or the folder contains .inf file.
   - The driver must be downloaded to current system first.
   - This parameter can be set multiple times to add different driver.

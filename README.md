@@ -262,6 +262,7 @@ bash reinstall.sh dd --img "https://example.com/xxx.xz"
 - `--rdp-port PORT` 修改 RDP 端口（仅限 DD Windows）
 - `--web-port PORT` 修改 Web 端口（安装期间观察日志用）
 - `--allow-ping` 设置 Windows 防火墙允许被 Ping（仅限 DD Windows）
+- `--no-lockout-threshold` 禁止多次登录失败时锁定帐户（仅限 DD Windows）
 - `--frpc-config PATH` 添加 frpc 内网穿透（仅限 DD Windows），参数填配置文件的本地路径或 HTTP 链接
 - `--cloud-data PATH_OR_URL` 为 DD Linux 镜像注入 cloud-init NoCloud 配置（仅限 DD Linux）
 - `--hold 1` 仅重启到安装环境，不运行安装，用于 SSH 登录验证网络连通性
@@ -579,6 +580,7 @@ bash reinstall.sh windows \
 - `--ssh-port PORT` 修改 SSH 端口（安装期间观察日志用）
 - `--web-port PORT` 修改 Web 端口（安装期间观察日志用）
 - `--allow-ping` 设置 Windows 防火墙允许被 Ping
+- `--no-lockout-threshold` 禁止多次登录失败时锁定帐户
 - `--add-driver INF_OR_DIR` 添加额外驱动，填写 .inf 路径，或者 .inf 所在的文件夹
   - 需先下载驱动到当前系统
   - 可多次设置该参数以添加不同的驱动

@@ -3720,7 +3720,18 @@ EOF
         bats="$bats windows-set-user-password-never-expires.bat"
     fi
 
-    # 6. frp
+    # 6. 禁止多次登录失败后锁定账户
+    # shellcheck disable=SC2154
+    if [ "$no_lockout_threshold" = 1 ]; then
+        cat <<EOF >$os_dir/windows-set-no-lockout-threshold.bat
+net accounts /lockoutthreshold:0
+del "%~f0"
+EOF
+        unix2dos $os_dir/windows-set-no-lockout-threshold.bat
+        bats="$bats windows-set-no-lockout-threshold.bat"
+    fi
+
+    # 7. frp
     if ls /configs/frpc.* >/dev/null 2>&1; then
         if [ "$(get_windows_arch_from_windows_drive "$os_dir" | to_lower)" = x86 ]; then
             os_bit=32
