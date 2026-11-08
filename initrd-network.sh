@@ -329,9 +329,25 @@ is_debian_kali() {
 
 test_internet_inner() {
     if is_debian_kali; then
-        test_by_wget "$1" "$2"
+        test_by_wget "$1" "$2" && return
     else
-        test_by_nc "$1" "$2"
+        test_by_nc "$1" "$2" && return
+    fi
+
+    # dst 是裸 IP 时（ip 模式检测公共 DNS），上面测的是 443 (DoH)
+    # 部分商家会拦截到 1.1.1.1/8.8.8.8 等公共 DNS 的 443 端口（封 DoH），
+    # 但 80 端口和其他网站正常，此时改用 80 端口再测一次，避免误判为无法上网
+    if echo "$2" | grep -Eiq '^https?://'; then
+        return 1
+    fi
+    if is_debian_kali; then
+        if echo "$2" | grep -Fq ':'; then
+            test_by_wget "$1" "http://[$2]/"
+        else
+            test_by_wget "$1" "http://$2/"
+        fi
+    else
+        nc -z -v -w "$TEST_TIMEOUT" -s "$1" "$2" 80
     fi
 }
 
