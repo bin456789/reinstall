@@ -39,7 +39,8 @@ Buy me a milk tea:
 - [Feature 2. One-click DD Raw image to hard disk](#feature-2-dd-raw-image-to-hard-disk)
 - [Feature 3. One-click reboot to Alpine Live OS](#feature-3-reboot-to--alpine-live-os)
 - [Feature 4. One-click reboot to netboot.xyz](#feature-4-reboot-to--netbootxyz)
-- [Feature 5. One-click reinstallation to Windows](#feature-5-install--windows-iso)
+- [Feature 5. One-click reboot to Talos Maintenance Mode](#feature-5-reboot-to--talos-maintenance-mode)
+- [Feature 6. One-click reinstallation to Windows](#feature-6-install--windows-iso)
 - [Cancel the reinstallation](#cancel-the-reinstallation)
 
 ## System Requirements
@@ -333,7 +334,21 @@ bash reinstall.sh netboot.xyz
 
 ![netboot.xyz](https://netboot.xyz/images/netboot.xyz.gif)
 
-### Feature 5: Install <img width="16" height="16" src="https://blogs.windows.com/wp-content/uploads/prod/2022/09/cropped-Windows11IconTransparent512-32x32.png" /> Windows ISO
+### Feature 5: Reboot to <img width="16" height="16" src="https://factory.talos.dev/favicons/favicon.ico" /> Talos Maintenance Mode
+
+- Reboot will start Talos Maintenance Mode. Anyone can connect. So you need to connect and initialize the system using tools like `talosctl` as soon as possible.
+
+> [!TIP]
+>
+> Although the script being run is `reinstall`, this feature **does not** delete any data or perform an automatic reinstallation; manual user operation is required.
+>
+> If the user does not damage the original system during manual operation, rebooting will return to the original system.
+
+```bash
+bash reinstall.sh talos
+```
+
+### Feature 6: Install <img width="16" height="16" src="https://blogs.windows.com/wp-content/uploads/prod/2022/09/cropped-Windows11IconTransparent512-32x32.png" /> Windows ISO
 
 ![Windows Installation](https://github.com/bin456789/reinstall/assets/7548515/07c1aea2-1ce3-4967-904f-aaf9d6eec3f7)
 

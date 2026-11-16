@@ -38,6 +38,7 @@ jobs:
           # ${{ matrix.command }} gentoo
 
           ${{ matrix.command_no_username_option }} netboot.xyz
+          ${{ matrix.command_no_username_option }} talos
           ${{ matrix.command }} dd --img=https://cloud.debian.org/images/cloud/sid/daily/latest/debian-sid-nocloud-amd64-daily.tar.xz
           ${{ matrix.command }} windows --image-name='Windows Server blah' --iso https://aka.ms/HCIReleaseImage
 

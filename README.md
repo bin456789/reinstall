@@ -39,7 +39,8 @@
 - [功能 2. 一键 DD Raw 镜像到硬盘](#功能-2-dd-raw-镜像到硬盘)
 - [功能 3. 一键引导到 Alpine Live OS 内存系统](#功能-3-重启到--alpine-live-os内存系统)
 - [功能 4. 一键引导到 netboot.xyz](#功能-4-重启到--netbootxyz)
-- [功能 5. 一键重装到 Windows](#功能-5-安装--windows-iso)
+- [功能 5. 一键引导到 Talos 维护模式](#功能-5-重启到--talos-维护模式)
+- [功能 6. 一键重装到 Windows](#功能-6-安装--windows-iso)
 - [取消重装](#取消重装)
 
 ## 系统要求
@@ -333,7 +334,21 @@ bash reinstall.sh netboot.xyz
 
 ![netboot.xyz](https://netboot.xyz/images/netboot.xyz.gif)
 
-### 功能 5: 安装 <img width="16" height="16" src="https://blogs.windows.com/wp-content/uploads/prod/2022/09/cropped-Windows11IconTransparent512-32x32.png" /> Windows ISO
+### 功能 5: 重启到 <img width="16" height="16" src="https://factory.talos.dev/favicons/favicon.ico" /> Talos 维护模式
+
+- 重启后会进入 Talos 维护模式，任何人都可连接，因此你需要尽快使用 `talosctl` 等工具连接并初始化系统
+
+> [!TIP]
+>
+> 虽然运行的脚本叫 `reinstall`，但是此功能**不会**删除任何数据和进行自动重装，而是要用户手动操作
+>
+> 如果用户手动操作没有破坏原系统，再次重启将回到原系统
+
+```bash
+bash reinstall.sh talos
+```
+
+### 功能 6: 安装 <img width="16" height="16" src="https://blogs.windows.com/wp-content/uploads/prod/2022/09/cropped-Windows11IconTransparent512-32x32.png" /> Windows ISO
 
 ![Windows 安装界面](https://github.com/bin456789/reinstall/assets/7548515/07c1aea2-1ce3-4967-904f-aaf9d6eec3f7)
 

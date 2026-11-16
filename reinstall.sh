@@ -102,6 +102,7 @@ Usage: $reinstall_____ anolis      7|8|23
                        windows     --image-name="windows xxx yyy" --lang=xx-yy
                        windows     --image-name="windows xxx yyy" --iso="http://xxx.com/xxx.iso"
                        netboot.xyz
+                       talos
                        reset
 
        Options:        For Linux/Windows:
@@ -1499,6 +1500,11 @@ set_var() {
     # IFS= read -r "$1" <<<"$2"
 }
 
+get_daocloud_url() {
+    local url=$1
+    echo "https://files.m.daocloud.io/$(echo "$url" | sed -E 's,^https?://,,i')"
+}
+
 setos() {
     local step=$1
     local distro=$2
@@ -1519,6 +1525,26 @@ setos() {
         else
             set_osvar vmlinuz https://boot.netboot.xyz/ipxe/netboot.xyz.lkrn
         fi
+    }
+
+    setos_talos() {
+        # 全部网址都没有 ipv6
+        # https://factory.talos.dev/versions
+        # https://api.github.com/repos/siderolabs/talos/releases/latest # 有速率限制
+        # https://github.com/siderolabs/talos/releases/latest
+        # https://github.com/siderolabs/talos/releases/latest/download/sha256sum.txt
+
+        latest_tag=$(curl -i https://github.com/siderolabs/talos/releases/latest |
+            grep '^location:' | awk -F/ '{print $NF}' | tr -d '\r' | grep .)
+
+        # 无论是 github 还是 daocloud 都不支持 ipv6
+        local baseurl=https://github.com/siderolabs/talos/releases/download/$latest_tag
+        if is_in_china; then
+            baseurl=$(get_daocloud_url "$baseurl")
+        fi
+
+        set_osvar vmlinuz "$baseurl/vmlinuz-$basearch_alt"
+        set_osvar initrd "$baseurl/initramfs-$basearch_alt.xz"
     }
 
     setos_alpine() {
@@ -2361,6 +2387,7 @@ verify_os_name() {
         'windows' \
         'dd' \
         'netboot.xyz' \
+        'talos' \
         'reset'; do
         read -r ds vers <<<"$os"
         vers_=${vers//\./\\\.}
@@ -2637,7 +2664,7 @@ is_valid_ram_size() {
 check_ram() {
     ram_standard=$(
         case "$distro" in
-        netboot.xyz) echo 0 ;;
+        netboot.xyz | talos) echo 0 ;;
         alpine | debian | kali | dd) echo 256 ;;
         arch | gentoo | aosc | nixos | windows) echo 512 ;;
         redhat | centos | almalinux | rocky | fedora | oracle | ubuntu | anolis | opencloudos | openeuler) echo 1024 ;;
@@ -3789,6 +3816,12 @@ get_entry_name() {
 build_nextos_cmdline() {
     if [ $nextos_distro = alpine ]; then
         nextos_cmdline="alpine_repo=$nextos_repo modloop=$nextos_modloop"
+    elif [ $nextos_distro = talos ]; then
+        # https://docs.siderolabs.com/talos/v1.14/platform-specific-installations/bare-metal-platforms/pxe
+        nextos_cmdline=$(build_ip_cmdline)
+        nextos_cmdline+=" talos.platform=metal"
+        nextos_cmdline+=" slab_nomerge"
+        nextos_cmdline+=" pti=on"
     elif is_distro_like_debian $nextos_distro; then
         # 我们直接强制 di 优先显示到 串口，因此不需要设置分辨率
         # 设置分辨率为800*600，防止分辨率过高 ssh screen attach 后无法全部显示
@@ -3843,7 +3876,9 @@ build_cmdline() {
     fi
 
     # extra
-    build_extra_cmdline
+    if ! [ "$distro" = talos ]; then
+        build_extra_cmdline
+    fi
 
     cmdline="$nextos_cmdline $finalos_cmdline $extra_cmdline"
 }
@@ -4439,6 +4474,46 @@ create_can_use_cloud_kernel_sh() {
         releasever="$releasever"
         can_use_cloud_kernel "\$@"
 EOF
+}
+
+# shellcheck disable=SC2155
+build_ip_cmdline() {
+    collect_netconf >&2
+
+    if is_in_china; then
+        local ipv4_dns1='223.5.5.5'
+        local ipv4_dns2='119.29.29.29'
+        local ipv6_dns1='2400:3200::1'
+        local ipv6_dns2='2402:4e00::'
+    else
+        local ipv4_dns1='1.1.1.1'
+        local ipv4_dns2='8.8.8.8'
+        local ipv6_dns1='2606:4700:4700::1111'
+        local ipv6_dns2='2001:4860:4860::8888'
+    fi
+
+    # https://docs.siderolabs.com/talos/v1.14/reference/kernel#ip
+    # https://www.kernel.org/doc/Documentation/filesystems/nfs/nfsroot.txt
+    # 不从 /etc/resolv.conf 获取 DNS，因为它们可能指向 127.0.0.53，例如 networkd
+
+    # ip=<client-ip>:<server-ip>:<gw-ip>:<netmask>:<hostname>:<device>:<autoconf>:<dns0-ip>:<dns1-ip>:<ntp0-ip>
+    local ip_cmdline=
+    if is_found_ipv4_netconf; then
+        local client_ip=$(echo "$ipv4_addr" | cut -d/ -f1)
+        local netmask=$(echo "$ipv4_addr" | cut -d/ -f2)
+        local device=enx$(echo $ipv4_mac | tr -d ':')
+        ip_cmdline+="ip=$client_ip::$ipv4_gateway:$netmask::$device::$ipv4_dns1:$ipv4_dns2:"
+    fi
+    if is_found_ipv6_netconf; then
+        if [ -n "$ip_cmdline" ]; then
+            ip_cmdline+=" "
+        fi
+        local client_ip=$(echo "$ipv6_addr" | cut -d/ -f1)
+        local netmask=$(echo "$ipv6_addr" | cut -d/ -f2)
+        local device=enx$(echo $ipv6_mac | tr -d ':')
+        ip_cmdline+="ip=[$client_ip]::[$ipv6_gateway]:$netmask::$device::[$ipv6_dns1]:[$ipv6_dns2]:"
+    fi
+    echo "$ip_cmdline"
 }
 
 get_ip_conf_cmd() {
@@ -5464,7 +5539,7 @@ done
 verify_os_args
 
 # 用户名密码
-if ! is_netboot_xyz; then
+if ! { is_netboot_xyz || [ "$distro" = talos ]; }; then
     need_prompt_username=false
     need_prompt_password=false
     if [ -z "$username" ]; then
@@ -5524,7 +5599,7 @@ check_ram
 # el7 x86_64 >=1g
 # el7 aarch64 >=1.5g
 # el8/9/fedora 任何架构 >=2g
-if is_netboot_xyz ||
+if is_netboot_xyz || [ "$distro" = "talos" ] ||
     { ! is_use_cloud_image && {
         [ "$distro" = "alpine" ] || is_distro_like_debian ||
             { is_distro_like_redhat && [ $releasever -eq 7 ] && [ $ram_size -ge 1024 ] && [ $basearch = "x86_64" ]; } ||
@@ -5661,7 +5736,9 @@ if is_need_boot_vmlinuz; then
 
     # 设置 cmdlind initrds
     if ! is_netboot_xyz; then
-        find_main_disk
+        if ! [ "$distro" = talos ]; then
+            find_main_disk
+        fi
         build_cmdline
 
         initrds="$initrd"
@@ -5804,7 +5881,7 @@ ssh_port=${ssh_port:-22}
 rdp_port=${rdp_port:-3389}
 web_port=${web_port:-80}
 
-if [ "$distro" = netboot.xyz ]; then
+if [ "$distro" = netboot.xyz ] || [ "$distro" = talos ]; then
     :
 elif [ "$distro" = alpine ] && [ "$hold" = 1 ]; then
     info "Alpine Live OS"
@@ -5882,6 +5959,15 @@ if [ "$distro" = netboot.xyz ]; then
     warn false "如果要取消进入，请在重启前运行 \"$reinstall_____ reset\"。"
     warn false
     warn false 'Reboot will start netboot.xyz.'
+    warn false "If you want to cancel entering, run \"$reinstall_____ reset\" before reboot."
+    warn false '**********************************'
+
+elif [ "$distro" = talos ]; then
+    warn false '********** 警告 Warning **********'
+    warn false '重启后会进入 Talos 维护模式，任何人都可连接，因此你需要尽快使用 "talosctl" 等工具连接并初始化系统'
+    warn false "如果要取消进入，请在重启前运行 \"$reinstall_____ reset\"。"
+    warn false
+    warn false 'Reboot will start Talos Maintenance Mode. Anyone can connect. So you need to connect and initialize the system using tools like "talosctl" as soon as possible.'
     warn false "If you want to cancel entering, run \"$reinstall_____ reset\" before reboot."
     warn false '**********************************'
 
