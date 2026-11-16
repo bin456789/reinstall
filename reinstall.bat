@@ -17,7 +17,7 @@ rem 否则可能会出现 系统找不到指定的驱动器
 rem Windows 7 SP1 winhttp 默认不支持 tls 1.2
 rem https://support.microsoft.com/en-us/topic/update-to-enable-tls-1-1-and-tls-1-2-as-default-secure-protocols-in-winhttp-in-windows-c4bd73d2-31d7-761e-0178-11268bb10392
 rem 有些系统根证书没更新
-rem 所以不要用https
+rem Cygwin 引导下载仍使用 HTTP，地区检测只使用 HTTPS
 rem 进入脚本目录
 cd /d %~dp0
 
@@ -34,23 +34,17 @@ rem if not exist %tmp% (
 rem     md %tmp%
 rem )
 
-rem 下载 geoip
-if not exist geoip (
-    rem www.cloudflare.com/dash.cloudflare.com 国内访问的是美国服务器，而且部分地区被墙
-    call :download http://www.qualcomm.cn/cdn-cgi/trace %~dp0geoip || goto :download_failed
+rem 不使用旧的 HTTP geoip 缓存，HTTPS 不可用时继续使用国外源
+set loc=
+call :download https://www.cloudflare-cn.com/cdn-cgi/trace "%~dp0geoip"
+if not errorlevel 1 (
+    for /f "tokens=2 delims==" %%a in ('findstr /r /x "loc=[A-Z][A-Z]" geoip') do set loc=%%a
 )
-
-rem 判断是否有 loc=
-findstr /c:"loc=" geoip >nul
-if errorlevel 1 (
-    echo Invalid geoip file
-    del geoip
-    exit /b 1
-)
+del /q geoip 2>nul
+if not defined loc echo Warning: Can not get location. Using global mirrors.
 
 rem 检查是否国内
-findstr /c:"loc=CN" geoip >nul
-if not errorlevel 1 (
+if "!loc!"=="CN" (
     rem mirrors.tuna.tsinghua.edu.cn 会强制跳转 https
     set mirror=http://mirror.nju.edu.cn
     if defined confhome_cn (

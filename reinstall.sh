@@ -234,14 +234,13 @@ is_in_china() {
 
     if [ -z "$_loc" ]; then
         # www.cloudflare.com/dash.cloudflare.com 国内访问的是美国服务器，而且部分地区被墙
-        # 以下这些都是用 cf cdn 且开通了国内 cdn 节点
-        # www.visa.com.cn
-        # www.garmin.com.cn
-        # www.prologis.cn
-        # www.autodesk.com.cn
-        # www.keysight.com.cn
-        if ! _loc=$(curl -L http://www.qualcomm.cn/cdn-cgi/trace | grep '^loc=' | cut -d= -f2 | grep .); then
-            error_and_exit "Can not get location."
+        # 使用 cf 中国站，绕过 curl() 的 --insecure，也不读取 .curlrc 或跟随重定向
+        is_have_cmd curl || install_pkg curl
+        if ! { _loc=$(command curl -q -fsS --connect-timeout 10 --max-time 20 https://www.cloudflare-cn.com/cdn-cgi/trace) &&
+            _loc=$(sed -n 's/^loc=//p' <<<"$_loc") &&
+            [[ "$_loc" =~ ^[A-Z]{2}$ ]]; }; then
+            _loc=unknown
+            warn "Can not get location. Using global mirrors. Use --force-cn to select China mirrors."
         fi
         echo "Location: $_loc" >&2
     fi
