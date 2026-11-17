@@ -2419,18 +2419,6 @@ verify_os_args() {
     windows) [ -n "$image_name" ] || error_and_exit "Install Windows need --image-name." ;;
     esac
 
-    # 用户名/密码/证书相关
-    case "$distro" in
-    netboot.xyz)
-        [ -z "$username" ] || error_and_exit "not support set username for $distro."
-        [ -z "$password" ] || error_and_exit "not support set password for $distro."
-        [ -z "$ssh_keys" ] || error_and_exit "not support set ssh key for $distro."
-        ;;
-    windows)
-        [ -z "$ssh_keys" ] || error_and_exit "not support set ssh key for $distro."
-        ;;
-    esac
-
     # 不能同时使用证书和密码
     if [ -n "$password" ] && [ -n "$ssh_keys" ]; then
         error_and_exit "Cannot set both password and ssh key."
@@ -5126,6 +5114,128 @@ reset_and_exit() {
     fi
 }
 
+get_long_opts_generic() {
+    cat <<EOF
+help
+debug
+force-cn
+commit:
+EOF
+}
+
+get_long_opts_linux() {
+    local distro=$1
+
+    cat <<EOF
+user:|username:
+passwd:|password:
+ssh-key:|public-key:
+ssh-port:
+web-port:|http-port:
+frpc-conf:|frpc-config:
+hold:
+target-disk:
+EOF
+
+    cat <<EOF |
+ci                 debian ubuntu centos almalinux rocky fedora redhat oracle anolis opencloudos openeuler opensuse
+img:               debian ubuntu centos almalinux rocky fedora redhat oracle anolis opencloudos openeuler opensuse
+installer          debian ubuntu centos almalinux rocky fedora kali
+no-cloud-kernel    debian ubuntu kali alpine opensuse
+minimal            ubuntu
+EOF
+        if [ -n "$distro" ]; then
+            grep -w "$distro"
+        else
+            cat
+        fi | awk '{print $1}'
+}
+
+get_long_opts_windows() {
+    cat <<EOF
+image-name:
+lang:
+bit:
+iso:
+user:|username:
+passwd:|password:
+rdp-port:
+ssh-port:
+web-port:|http-port:
+allow-ping
+no-lockout|no-lockout-threshold
+add-driver:
+no-auto-drivers
+frpc-conf:|frpc-config:
+hold:
+boot-wim:
+target-disk:
+force-boot-mode:
+force-old-windows-setup:
+EOF
+}
+
+get_long_opts_dd() {
+    cat <<EOF
+img:
+user:|username:
+passwd:|password:
+ssh-key:|public-key:
+ssh-port:
+rdp-port:
+web-port:|http-port:
+allow-ping
+no-lockout|no-lockout-threshold
+frpc-conf:|frpc-config:
+cloud-data:
+hold:
+target-disk:
+EOF
+}
+
+get_long_opts() {
+    local distro=$1
+
+    local opt opts opts_str
+
+    opts=$({
+        # 通用选项
+        get_long_opts_generic
+
+        # 发行版特定选项
+        case "$distro" in
+        windows)
+            get_long_opts_windows
+            ;;
+        dd)
+            get_long_opts_dd
+            ;;
+        netboot.xyz | talos)
+            ;;
+        '')
+            # 如果未指定发行版，则获取所有
+            get_long_opts_linux
+            get_long_opts_windows
+            get_long_opts_dd
+            ;;
+        *)
+            # 特定 Linux
+            get_long_opts_linux "$distro"
+            ;;
+        esac
+    } | tr '|' '\n' | del_empty_lines | sort -u)
+
+    for opt in $opts; do
+        if [ -z "$opts_str" ]; then
+            opts_str="$opt"
+        else
+            opts_str+=",$opt"
+        fi
+    done
+
+    echo "$opts_str"
+}
+
 # 脚本入口
 
 # windows 环境下的额外初始化
@@ -5183,46 +5293,33 @@ if is_secure_boot_enabled; then
 fi
 
 # 整理参数
-long_opts=
-for o in ci installer debug minimal no-cloud-kernel no-auto-drivers allow-ping force-cn help \
-    no-lockout no-lockout-threshold \
-    add-driver: \
-    hold: sleep: \
-    iso: \
-    image-name: \
-    bit: \
-    boot-wim: \
-    img: \
-    cloud-data: \
-    lang: \
-    user: username: \
-    passwd: password: \
-    ssh-port: \
-    ssh-key: public-key: \
-    rdp-port: \
-    web-port: http-port: \
-    allow-ping: \
-    commit: \
-    frpc-conf: frpc-config: \
-    target-disk: \
-    force-boot-mode: \
-    force-old-windows-setup:; do
-    [ -n "$long_opts" ] && long_opts+=,
-    long_opts+=$o
-done
 
-# 使用 getopt 解析参数
-if ! ORIGINAL_OPTS=$(getopt -n $0 -o "h,x" --long "$long_opts" -- "$@"); then
+# 第一遍扫描
+# 验证要安装的系统和版本
+# 并处理通用参数
+if ! OPTS1_STR=$(getopt -n $0 -o "h,x" --long "$(get_long_opts)" -- "$@"); then
     exit 1
 fi
 
-# 第一遍扫描，验证要安装的系统和版本
-eval set -- "$ORIGINAL_OPTS"
+eval set -- "$OPTS1_STR"
+OPTS2_ARR=()
 while true; do
     case "$1" in
+    -h | --help)
+        usage_and_exit
+        ;;
     -x | --debug)
         set -x
         shift
+        ;;
+    --force-cn)
+        # 仅为了方便测试
+        force_cn=1
+        shift
+        ;;
+    --commit)
+        commit=$2
+        shift 2
         ;;
     --)
         shift
@@ -5230,6 +5327,7 @@ while true; do
         break
         ;;
     *)
+        OPTS2_ARR+=("$1")
         shift
         ;;
     esac
@@ -5252,22 +5350,19 @@ fi
 # 安装必备组件
 install_pkg curl grep
 
-# 第二遍扫描，处理参数
-eval set -- "$ORIGINAL_OPTS"
+# 第二遍扫描
+# 根据 distro 处理参数
+if ! OPTS2_STR=$(
+    getopt -n $0 -o "h,x" --long "$(get_long_opts "$distro")" -- "${OPTS2_ARR[@]}" \
+        2> >(sed "s/unrecognized option:/invalid option for $distro:/" >&2)
+); then
+    exit 1
+fi
+
+eval set -- "$OPTS2_STR"
 # shellcheck disable=SC2034
 while true; do
     case "$1" in
-    -x | --debug)
-        # 第一遍扫描已处理
-        shift
-        ;;
-    -h | --help)
-        usage_and_exit
-        ;;
-    --commit)
-        commit=$2
-        shift 2
-        ;;
     --ci)
         cloud_image=1
         unset installer
@@ -5298,12 +5393,7 @@ while true; do
         allow_ping=1
         shift
         ;;
-    --force-cn)
-        # 仅为了方便测试
-        force_cn=1
-        shift
-        ;;
-    --hold | --sleep)
+    --hold)
         if ! { [ "$2" = 0 ] || [ "$2" = 1 ] || [ "$2" = 2 ]; }; then
             error_and_exit "Invalid $1 value: $2"
         fi
