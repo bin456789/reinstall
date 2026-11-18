@@ -2424,6 +2424,40 @@ basic_init() {
     add_frpc_systemd_service_if_need $os_dir
 }
 
+download_and_extract_pacman_pkg() {
+    local mirror=$1
+    local repo=$2
+    local pkg=$3
+    local file_to_extract=$4
+    local dest_dir=$5
+    mkdir -p "$dest_dir"
+
+    local tmp_dir http_dir
+    tmp_dir=$(mktemp -d -p "$dest_dir")
+    http_dir=$(echo "$mirror" | sed -e "s/\$repo/$repo/" -e "s/\$arch/$(uname -m)/")
+
+    download "$http_dir/$repo.db" "$tmp_dir/$repo.db"
+
+    # archlinux 是 tar.zst
+    # archlinuxarm 是 tar.xz
+    # archlinuxcn 是 tar.zst
+    apk add tar file xz zstd
+
+    # 找到包名
+    pkg_tar_xx=$(tar -xf "$tmp_dir/$repo.db" -O --wildcards "$pkg-*/desc" |
+        grep "^$pkg-.*-any\.pkg\.tar\..*" | sort -Vr | head -1)
+
+    # 下载并解压
+    download "$http_dir/$pkg_tar_xx" "$tmp_dir/$pkg_tar_xx"
+    tar -xf "$tmp_dir/$pkg_tar_xx" \
+        -C "$dest_dir" \
+        "$file_to_extract"
+
+    # 清理
+    rm -rf "$tmp_dir"
+    apk del tar file xz zstd
+}
+
 install_arch_gentoo_aosc() {
     info "install $distro"
 
@@ -2489,37 +2523,16 @@ EOF
         esac
         echo "Server = $mirror/$repo_pattem" >$alpine_rootfs/etc/pacman.d/mirrorlist
 
-        # 下载 core.db
-        core_dir=$(echo "$repo_pattem" | sed -e "s/\$repo/core/" -e "s/\$arch/$(uname -m)/")
-        download $mirror/$core_dir/core.db $alpine_rootfs/tmp/core.db
-
-        # 下载 archlinux-keyring archlinuxarm-keyring 包
-        # arch x86 是 tar.zst
-        # arch arm 是 tar.xz
-        xz_or_zstd=$([ "$(uname -m)" = aarch64 ] && echo xz || echo zstd)
-        apk add tar file $xz_or_zstd
-
-        keyrings=archlinux-keyring
-        if [ "$(uname -m)" = aarch64 ]; then
-            keyrings="$keyrings archlinuxarm-keyring"
-        fi
+        # 下载 keyring
+        case "$(uname -m)" in
+        x86_64) keyrings="archlinux-keyring" ;;
+        aarch64) keyrings="archlinux-keyring archlinuxarm-keyring" ;;
+        esac
 
         for keyring in $keyrings; do
-            # 找到包名
-            keyring_pkg_tar_xx=$(tar -xf $alpine_rootfs/tmp/core.db -O --wildcards "$keyring-*/desc" |
-                grep "^$keyring-.*-any\.pkg\.tar\..*" | sort -Vr | head -1)
-
-            # 下载并解压
-            download $mirror/$core_dir/$keyring_pkg_tar_xx $alpine_rootfs/tmp/$keyring_pkg_tar_xx
-            tar -xf $alpine_rootfs/tmp/$keyring_pkg_tar_xx \
-                -C $alpine_rootfs \
-                usr/share/pacman/keyrings/
-            rm -f $alpine_rootfs/tmp/$keyring_pkg_tar_xx
+            download_and_extract_pacman_pkg "$mirror/$repo_pattem" core "$keyring" \
+                usr/share/pacman/keyrings/ "$alpine_rootfs"
         done
-
-        # 清理
-        rm -f $alpine_rootfs/tmp/core.db
-        apk del tar file $xz_or_zstd
 
         # 初始化 pacman keyring
         chroot $alpine_rootfs pacman-key --init
@@ -7835,14 +7848,30 @@ EOF
 
         # https://fedorapeople.org/groups/virt/virtio-win/direct-downloads/stable-virtio/CHECKSUM
         # 路径是文件，也会弹出 anubis 验证
-        if [ "$dir" = stable-virtio ]; then
-            if ! dir=$(get_latest_virtio_dir "$baseurl"); then
+
+        local download_site=fedorapeople
+
+        if [ "$dir" = stable-virtio ] && ! dir=$(get_latest_virtio_dir "$baseurl"); then
+            if false; then
+                # centos/rocky 的 virtio-win 是红帽版 ，缺少 arm64 和 qxldod 驱动
                 if [ "$arch_wim" = x86 ] || [ "$arch_wim" = x86_64 ]; then
                     add_driver_virtio_from_rpm "$@"
                     return
                 else
                     error_and_exit "Failed to get latest virtio-win version."
                 fi
+            else
+                # archlinuxcn 的 virtio-win 是社区版
+                if is_in_china; then
+                    archlinuxcn_mirror=https://mirrors.nju.edu.cn/archlinuxcn
+                else
+                    archlinuxcn_mirror=https://repo.archlinuxcn.org
+                fi
+                download_and_extract_pacman_pkg "$archlinuxcn_mirror/$(uname -m)" archlinuxcn virtio-win \
+                    var/lib/libvirt/images/virtio-win.iso "$drv"
+                mv "$drv/var/lib/libvirt/images/virtio-win.iso" "$drv/virtio-win.iso"
+                rm -rf "${drv:?}/var"
+                download_site=archlinuxcn
             fi
         fi
 
@@ -7854,15 +7883,19 @@ EOF
         fi
 
         # vista|w7|2k8|2k8R2|arm64 要从 iso 获取驱动
-        if [ "$nt_ver" = 6.0 ] || [ "$nt_ver" = 6.1 ] || [ "$arch_wim" = arm64 ]; then
+        # archlinuxcn 的 virtio-win 只有 iso
+        if [ "$nt_ver" = 6.0 ] || [ "$nt_ver" = 6.1 ] || [ "$arch_wim" = arm64 ] ||
+            [ "$download_site" = archlinuxcn ]; then
             virtio_source=iso
         else
             virtio_source=msi
         fi
 
         if [ "$virtio_source" = iso ]; then
-            download_from_fedorapeople $baseurl/$dir/virtio-win.iso $drv/virtio.iso $can_use_cn_mirror
-            mount -o ro $drv/virtio.iso $drv/virtio
+            if [ "$download_site" = fedorapeople ]; then
+                download_from_fedorapeople $baseurl/$dir/virtio-win.iso $drv/virtio-win.iso $can_use_cn_mirror
+            fi
+            mount -o ro $drv/virtio-win.iso $drv/virtio
 
             # vista 如果安装气动驱动，会报错 windows could not configure one or more system components
             # 2008 安装的气球驱动不能用，需要到硬件管理器重新安装设备才能用，无需更新驱动
@@ -7871,6 +7904,7 @@ EOF
             else
                 cp_drivers $drv/virtio -ipath "*/$virtio_sys/$arch/*" "$@"
             fi
+            umount $drv/virtio
         else
             apk add 7zip file
             download_from_fedorapeople $baseurl/$dir/virtio-win-gt-$arch_xdd.msi $drv/virtio.msi $can_use_cn_mirror
