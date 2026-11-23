@@ -2781,8 +2781,9 @@ get_local_bootloader_type() {
 
         # 先装 limine 后装 grub，mbr 前部分依然有 LIMINE 标记
         # 因此改成判断 mbr 尾部
+        # debian/ubuntu 的 GRUB 标记在偏移 384/392，rhel 系在 378，所以尾部范围要足够大
         if { is_have_cmd grub-mkconfig || is_have_cmd grub2-mkconfig; } &&
-            head -c 446 /dev/$xda | tail -c 64 | grep -a -Fq GRUB; then
+            head -c 446 /dev/$xda | tail -c 128 | grep -a -Fq GRUB; then
             _bootloader_type="grub"
 
         elif is_have_cmd limine &&
