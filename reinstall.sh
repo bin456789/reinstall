@@ -3828,6 +3828,10 @@ build_nextos_cmdline() {
         nextos_cmdline+=" mirror/http/hostname=${nextos_udeb_mirror%/*}"
         nextos_cmdline+=" mirror/http/directory=/${nextos_udeb_mirror##*/}"
         nextos_cmdline+=" base-installer/kernel/image=$nextos_kernel"
+        # security 源也使用南京大学镜像
+        if [ "$nextos_distro" = debian ] && is_in_china; then
+            nextos_cmdline+=" apt-setup/security_host=mirror.nju.edu.cn"
+        fi
         # elts 的 debian 不能用 security 源，否则安装过程会提示无法访问
         if [ "$nextos_distro" = debian ] && is_debian_elts; then
             nextos_cmdline+=" apt-setup/services-select="
@@ -4679,6 +4683,25 @@ This script is outdated, please download reinstall.sh again.
 
     curl -Lo $initrd_dir/initrd-network.sh $confhome/initrd-network.sh
     chmod a+x $initrd_dir/trans.sh $initrd_dir/initrd-network.sh
+
+    # security 源也改用南京大学镜像
+    insert_into_file $initrd_dir/trans.sh after 'Modify Ubuntu' <<'EOF'
+        if is_in_china; then
+            for file in $os_dir/etc/apt/sources.list $os_dir/etc/apt/sources.list.d/ubuntu.sources; do
+                if [ -f "$file" ]; then
+                    sed -i 's/security.ubuntu.com/mirror.nju.edu.cn/' "$file"
+                fi
+            done
+        fi
+EOF
+    insert_into_file $initrd_dir/trans.sh after 'debian-security\.list' <<'EOF'
+                for file in $os_dir/etc/apt/mirrors/debian-security.list \
+                    $os_dir/etc/apt/sources.list $os_dir/etc/apt/sources.list.d/debian.sources; do
+                    if [ -f "$file" ]; then
+                        sed -i 's|security\.debian\.org/debian-security|mirror.nju.edu.cn/debian-security|' "$file"
+                    fi
+                done
+EOF
 
     # 保存配置
     mkdir -p $initrd_dir/configs
