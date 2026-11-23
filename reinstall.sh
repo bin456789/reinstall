@@ -2265,6 +2265,13 @@ Continue with DD?
                     dir=$releasever/images/$basearch
                 fi
 
+                # 新版镜像移入版本号子目录，如 20260804.2/OpenCloudOS-*.qcow2
+                version=$(curl -L $mirror/$dir/ | grep -oP '\d+\.\d+(?=/")' |
+                    sort -uV | tail -1)
+                if [ -n "$version" ]; then
+                    dir=$dir/$version
+                fi
+
                 file=$(curl -L $mirror/$dir/ | grep -oP 'OpenCloudOS.*?\.qcow2' |
                     sort -uV | tail -1 | grep .)
                 img=$mirror/$dir/$file
